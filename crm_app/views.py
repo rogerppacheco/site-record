@@ -6741,7 +6741,8 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     if tipo_metrica not in ('BRUTA', 'INSTALADA'):
         tipo_metrica = 'BRUTA'
 
-    meses_ref = [_perf_add_months(inicio_mes_ref, -idx) for idx in range(meses_hist)]
+    # M-0 = mês base (mes_ref_real); M-1, M-2… = meses anteriores à âncora.
+    meses_ref = [_perf_add_months(mes_ref_real, -idx) for idx in range(meses_hist)]
     todos_meses = meses_ref + [mes_comp]
     mes_min = min(todos_meses)
     mes_max = max(todos_meses)
@@ -7216,7 +7217,15 @@ class ExportarPerformanceExcelView(APIView):
                     'Atingimento Meta %': r.get('atingimento_meta', 0),
                 }
                 for idx, lb in enumerate(labels):
-                    linha[lb['label']] = (r.get('serie') or [])[idx] if idx < len(r.get('serie') or []) else 0
+                    linha['%s (%s)' % (lb['label'], lb['mes'])] = (r.get('serie') or [])[idx] if idx < len(r.get('serie') or []) else 0
+                serie = r.get('serie') or []
+                for i in range(len(serie) - 1):
+                    a = int(serie[i] or 0)
+                    b = int(serie[i + 1] or 0)
+                    va = a - b
+                    vp = (va / b * 100.0) if b > 0 else (100.0 if a > 0 else 0.0)
+                    linha['Δ M%d→M%d' % (i, i + 1)] = va
+                    linha['%% M%d→M%d' % (i, i + 1)] = round(vp, 2)
                 dados_gestao.append(linha)
 
             dados_semanal = []

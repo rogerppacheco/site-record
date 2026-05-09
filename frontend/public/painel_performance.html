@@ -216,7 +216,7 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="small fw-bold">Mês base</label>
+                                <label class="small fw-bold" title="Define qual mês civil é o M-0 da série (demais colunas são meses anteriores).">Mês base (âncora M-0)</label>
                                 <select id="gestao-ref-offset" class="form-select form-select-sm" onchange="onChangeRefOffset()">
                                     <option value="0">M-0</option>
                                     <option value="1">M-1</option>
@@ -256,6 +256,21 @@
                                     <option value="REF_DESC">Maior total mês ref.</option>
                                     <option value="ALFA_ASC">Ordem alfabética</option>
                                 </select>
+                            </div>
+                            <div class="col-12 border-top pt-2 mt-1">
+                                <span class="small fw-bold text-muted me-2">Colunas da tabela:</span>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="gestao-show-volumes" checked onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <label class="form-check-label small" for="gestao-show-volumes">Meta e volumes M-0…</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="gestao-show-mm-pairs" checked onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <label class="form-check-label small" for="gestao-show-mm-pairs">Variações mês→mês (Δ e %)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="gestao-show-ref-comp" checked onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <label class="form-check-label small" for="gestao-show-ref-comp">Bloco Ref × Comp + %CC + Aprov + Meta ating.</label>
+                                </div>
                             </div>
                         </div>
                         <div class="table-responsive mb-3">
@@ -649,6 +664,28 @@
             document.getElementById('tfoot-mes').innerHTML = '';
         }
 
+        function _gestaoClsDelta(va) {
+            const n = Number(va || 0);
+            return n > 0 ? 'metric-up' : (n < 0 ? 'metric-down' : 'metric-flat');
+        }
+
+        function _gestaoPairCells(serie, labels) {
+            const ser = serie || [];
+            let html = '';
+            for (let i = 0; i < ser.length - 1; i++) {
+                const a = Number(ser[i] || 0);
+                const b = Number(ser[i + 1] || 0);
+                const va = a - b;
+                const vp = b > 0 ? ((va / b) * 100) : (a > 0 ? 100 : 0);
+                const title = labels[i] && labels[i + 1]
+                    ? `${labels[i].mes} vs ${labels[i + 1].mes}`
+                    : '';
+                html += `<td class="${_gestaoClsDelta(va)}" title="${title}">${va}</td>`;
+                html += `<td class="${_gestaoClsDelta(vp)}" title="${title}">${vp.toFixed(2)}%</td>`;
+            }
+            return html;
+        }
+
         function renderGestao(payload) {
             const thead = document.getElementById('thead-gestao');
             const tbody = document.getElementById('tbody-gestao');
@@ -663,6 +700,10 @@
                 if (resumoComp) resumoComp.innerHTML = '';
                 return;
             }
+            const showVol = document.getElementById('gestao-show-volumes')?.checked !== false;
+            const showMm = document.getElementById('gestao-show-mm-pairs')?.checked !== false;
+            const showRc = document.getElementById('gestao-show-ref-comp')?.checked !== false;
+
             const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
             const tipoMetrica = (payload.tipo_metrica || document.getElementById('gestao-tipo')?.value || 'BRUTA').toUpperCase();
             const labelPrincipal = tipoMetrica === 'INSTALADA' ? 'Instaladas' : 'Vendas';
@@ -674,8 +715,14 @@
             if (compMesEl && payload.mes_comp && payload.modo_comparacao === 'SEQUENCIAL') {
                 compMesEl.value = payload.mes_comp;
             }
+            const labels = payload.labels || [];
+            const mesM0 = labels[0]?.mes || payload.mes_ref;
+            const nMeses = payload.meses_historico || labels.length;
             if (resumoComp) {
-                resumoComp.textContent = `Comparando Ref: ${payload.mes_ref} com Comp: ${payload.mes_comp} (Métrica: ${tipoMetrica === 'INSTALADA' ? 'Venda Instalada' : 'Venda Bruta'})`;
+                resumoComp.innerHTML =
+                    `Série temporal: <strong>M-0 = ${mesM0}</strong> (${nMeses} meses no histórico, conforme filtro). ` +
+                    `Comparando <strong>Ref: ${payload.mes_ref}</strong> com <strong>Comp: ${payload.mes_comp}</strong> ` +
+                    `(Métrica: <strong>${tipoMetrica === 'INSTALADA' ? 'Venda Instalada' : 'Venda Bruta'}</strong>).`;
             }
             onChangeModoComparacaoGestao(false);
             const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
@@ -688,14 +735,27 @@
                 if (ord === 'ALFA_ASC') return String(a.grupo || '').localeCompare(String(b.grupo || ''), 'pt-BR');
                 return (Number(b.var_pct) || 0) - (Number(a.var_pct) || 0);
             });
-            const labels = payload.labels || [];
-            let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th><th>Meta</th>';
-            labels.forEach(lb => { h += `<th>${lb.label} (${lb.mes})</th>`; });
-            h += `<th>${labelPrincipal} Ref (${payload.mes_ref})</th><th>${labelPrincipal} Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th></tr>`;
+
+            let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th>';
+            if (showVol) {
+                h += '<th>Meta</th>';
+                labels.forEach(lb => { h += `<th>${lb.label} (${lb.mes})</th>`; });
+            }
+            if (showMm && labels.length > 1) {
+                for (let i = 0; i < labels.length - 1; i++) {
+                    const a = labels[i].mes;
+                    const b = labels[i + 1].mes;
+                    h += `<th title="${a} vs ${b}">Δ M${i}→M${i + 1}</th><th title="${a} vs ${b}">% M${i}→M${i + 1}</th>`;
+                }
+            }
+            if (showRc) {
+                h += `<th>${labelPrincipal} Ref (${payload.mes_ref})</th><th>${labelPrincipal} Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th>`;
+            }
+            h += '</tr>';
             thead.innerHTML = h;
 
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="20">Sem dados para os filtros selecionados</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="40">Sem dados para os filtros selecionados</td></tr>';
             } else {
                 let b = '';
                 const totSerie = new Array(labels.length).fill(0);
@@ -706,19 +766,28 @@
                 let somaPctCcPondNum = 0;
                 let somaAprovPondNum = 0;
                 rows.forEach(r => {
+                    (r.serie || []).forEach((v, idx) => {
+                        totSerie[idx] += Number(v || 0);
+                    });
                     const varAbs = Number(r.var_abs || 0);
                     const varPct = Number(r.var_pct || 0);
                     const ating = Number(r.atingimento_meta || 0);
                     const clsVar = varAbs > 0 ? 'metric-up' : (varAbs < 0 ? 'metric-down' : 'metric-flat');
                     const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
                     const clsMeta = ating >= 100 ? 'meta-hit' : 'meta-miss';
-                    b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td><td>${r.meta||0}</td>`;
-                    (r.serie || []).forEach((v, idx) => {
-                        const vv = Number(v || 0);
-                        totSerie[idx] += vv;
-                        b += `<td>${vv}</td>`;
-                    });
-                    b += `<td class="bg-total-column">${r.ref_total}</td><td>${r.comp_total}</td><td class="${clsVar}">${r.var_abs}</td><td class="${clsVarPct}">${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td class="${clsMeta}">${r.atingimento_meta}%</td></tr>`;
+                    b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td>`;
+                    if (showVol) {
+                        b += `<td>${r.meta||0}</td>`;
+                        (r.serie || []).forEach((v) => {
+                            b += `<td>${Number(v || 0)}</td>`;
+                        });
+                    }
+                    if (showMm && labels.length > 1) {
+                        b += _gestaoPairCells(r.serie, labels);
+                    }
+                    if (showRc) {
+                        b += `<td class="bg-total-column">${r.ref_total}</td><td>${r.comp_total}</td><td class="${clsVar}">${r.var_abs}</td><td class="${clsVarPct}">${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td class="${clsMeta}">${r.atingimento_meta}%</td>`;
+                    }
 
                     const meta = Number(r.meta || 0);
                     const ref = Number(r.ref_total || 0);
@@ -731,6 +800,7 @@
                     totVarAbs += varAbs;
                     somaPctCcPondNum += (pctCc * ref);
                     somaAprovPondNum += (aprov * ref);
+                    b += '</tr>';
                 });
                 const totVarPct = totComp > 0 ? ((totVarAbs / totComp) * 100) : (totRef > 0 ? 100 : 0);
                 const totPctCc = totRef > 0 ? (somaPctCcPondNum / totRef) : 0;
@@ -739,13 +809,21 @@
                 const clsTotVar = totVarAbs > 0 ? 'metric-up' : (totVarAbs < 0 ? 'metric-down' : 'metric-flat');
                 const clsTotVarPct = totVarPct > 0 ? 'metric-up' : (totVarPct < 0 ? 'metric-down' : 'metric-flat');
                 const clsTotMeta = totAting >= 100 ? 'meta-hit' : 'meta-miss';
-                let linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${totMeta}</td>`;
-                totSerie.forEach(v => { linhaTotal += `<td>${v}</td>`; });
-                linhaTotal += `<td>${totRef}</td><td>${totComp}</td><td class="${clsTotVar}">${totVarAbs}</td><td class="${clsTotVarPct}">${totVarPct.toFixed(2)}%</td><td>${totPctCc.toFixed(2)}%</td><td>${totAprov.toFixed(2)}%</td><td class="${clsTotMeta}">${totAting.toFixed(2)}%</td></tr>`;
+                let linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td>`;
+                if (showVol) {
+                    linhaTotal += `<td>${totMeta}</td>`;
+                    totSerie.forEach(v => { linhaTotal += `<td>${v}</td>`; });
+                }
+                if (showMm && labels.length > 1) {
+                    linhaTotal += _gestaoPairCells(totSerie, labels);
+                }
+                if (showRc) {
+                    linhaTotal += `<td>${totRef}</td><td>${totComp}</td><td class="${clsTotVar}">${totVarAbs}</td><td class="${clsTotVarPct}">${totVarPct.toFixed(2)}%</td><td>${totPctCc.toFixed(2)}%</td><td>${totAprov.toFixed(2)}%</td><td class="${clsTotMeta}">${totAting.toFixed(2)}%</td>`;
+                }
+                linhaTotal += '</tr>';
                 b = linhaTotal + b;
                 tbody.innerHTML = b;
 
-                // Comparativo mês a mês fixo (sempre mês atual da série vs mês imediatamente anterior)
                 if (tMesAMes) {
                     let monthRows = '';
                     for (let i = 0; i < labels.length - 1; i++) {
