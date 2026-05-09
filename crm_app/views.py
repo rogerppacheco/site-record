@@ -6718,11 +6718,25 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     except (TypeError, ValueError):
         meses_hist = 6
     meses_hist = max(1, min(12, meses_hist))
+    ref_offset_raw = request.query_params.get('gestao_ref_offset')
+    try:
+        ref_offset = int(ref_offset_raw)
+    except (TypeError, ValueError):
+        ref_offset = 0
+    ref_offset = max(0, min(11, ref_offset))
+    ref_offset = min(ref_offset, meses_hist - 1)
+    modo_comp = (request.query_params.get('gestao_modo_comp') or 'ESPECIFICA').strip().upper()
+    if modo_comp not in ('ESPECIFICA', 'SEQUENCIAL'):
+        modo_comp = 'ESPECIFICA'
 
-    mes_comp = _perf_parse_mes_ref(
-        request.query_params.get('gestao_comp_mes'),
-        _perf_add_months(inicio_mes_ref, -1),
-    )
+    mes_ref_real = _perf_add_months(inicio_mes_ref, -ref_offset)
+    if modo_comp == 'SEQUENCIAL':
+        mes_comp = _perf_add_months(mes_ref_real, -1)
+    else:
+        mes_comp = _perf_parse_mes_ref(
+            request.query_params.get('gestao_comp_mes'),
+            _perf_add_months(mes_ref_real, -1),
+        )
     tipo_metrica = (request.query_params.get('gestao_tipo') or 'BRUTA').strip().upper()
     if tipo_metrica not in ('BRUTA', 'INSTALADA'):
         tipo_metrica = 'BRUTA'
@@ -6778,7 +6792,7 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
         ym = mref.strftime('%Y-%m')
         labels.append({'key': ym, 'label': f"M-{idx}", 'mes': ym})
 
-    ym_ref = inicio_mes_ref.strftime('%Y-%m')
+    ym_ref = mes_ref_real.strftime('%Y-%m')
     ym_comp = mes_comp.strftime('%Y-%m')
 
     rows_vendedor = []
@@ -6914,6 +6928,8 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
 
     return {
         'tipo_metrica': tipo_metrica,
+        'modo_comparacao': modo_comp,
+        'ref_offset': ref_offset,
         'meses_historico': meses_hist,
         'mes_ref': ym_ref,
         'mes_comp': ym_comp,

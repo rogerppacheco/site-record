@@ -46,6 +46,12 @@
             font-weight: 700;
         }
         .top-action-wrap { width: 180px; }
+        .gestao-filtros-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
@@ -190,7 +196,11 @@
             <div class="tab-pane fade" id="content-gestao">
                 <div class="card border-0 shadow">
                     <div class="card-body">
-                        <div class="row g-2 mb-3">
+                        <div class="gestao-filtros-header">
+                            <h6 class="fw-bold mb-0">Filtros da Gestão</h6>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" id="btn-toggle-filtros-gestao" onclick="toggleFiltrosGestao()">Esconder filtros</button>
+                        </div>
+                        <div class="row g-2 mb-3" id="gestao-filtros-wrap">
                             <div class="col-md-3">
                                 <label class="small fw-bold">Visão</label>
                                 <select id="gestao-visao" class="form-select form-select-sm" onchange="renderGestao(window.__gestaoPayload || null)">
@@ -206,8 +216,32 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
+                                <label class="small fw-bold">Mês base</label>
+                                <select id="gestao-ref-offset" class="form-select form-select-sm" onchange="onChangeRefOffset()">
+                                    <option value="0">M-0</option>
+                                    <option value="1">M-1</option>
+                                    <option value="2">M-2</option>
+                                    <option value="3">M-3</option>
+                                    <option value="4">M-4</option>
+                                    <option value="5">M-5</option>
+                                    <option value="6">M-6</option>
+                                    <option value="7">M-7</option>
+                                    <option value="8">M-8</option>
+                                    <option value="9">M-9</option>
+                                    <option value="10">M-10</option>
+                                    <option value="11">M-11</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">Modo comparação</label>
+                                <select id="gestao-modo-comp" class="form-select form-select-sm" onchange="onChangeModoComparacaoGestao()">
+                                    <option value="ESPECIFICA">Mês específico</option>
+                                    <option value="SEQUENCIAL">Sequencial (mês anterior)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
                                 <label class="small fw-bold">Histórico (meses)</label>
-                                <input type="number" min="1" max="12" value="6" id="gestao-meses" class="form-control form-control-sm" onchange="carregarDados()">
+                                <input type="number" min="1" max="12" value="6" id="gestao-meses" class="form-control form-control-sm" onchange="onChangeHistoricoMeses()">
                             </div>
                             <div class="col-md-3">
                                 <label class="small fw-bold">Comparar com (mês/ano)</label>
@@ -384,6 +418,7 @@
         const modalRobo = new bootstrap.Modal(document.getElementById('modalConfigRobo'));
         const modalManual = new bootstrap.Modal(document.getElementById('modalEnvioManual'));
         const modalSeletor = new bootstrap.Modal(document.getElementById('modalSeletor'));
+        let gestaoFiltrosVisiveis = true;
 
         function paramsPeriodoPerformance() {
             const params = new URLSearchParams();
@@ -474,10 +509,14 @@
             const gc = document.getElementById('gestao-comp-mes')?.value;
             const gv = document.getElementById('gestao-visao')?.value;
             const gt = document.getElementById('gestao-tipo')?.value;
+            const gr = document.getElementById('gestao-ref-offset')?.value;
+            const gmc = document.getElementById('gestao-modo-comp')?.value;
             if (gm) params.set('gestao_meses', gm);
             if (gc) params.set('gestao_comp_mes', gc);
             if (gv) params.set('gestao_visao', gv);
             if (gt) params.set('gestao_tipo', gt);
+            if (gr !== undefined && gr !== null) params.set('gestao_ref_offset', gr);
+            if (gmc) params.set('gestao_modo_comp', gmc);
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
                 if (response.data.aviso) {
@@ -504,10 +543,14 @@
             const gc = document.getElementById('gestao-comp-mes')?.value;
             const gv = document.getElementById('gestao-visao')?.value;
             const gt = document.getElementById('gestao-tipo')?.value;
+            const gr = document.getElementById('gestao-ref-offset')?.value;
+            const gmc = document.getElementById('gestao-modo-comp')?.value;
             if (gm) params.set('gestao_meses', gm);
             if (gc) params.set('gestao_comp_mes', gc);
             if (gv) params.set('gestao_visao', gv);
             if (gt) params.set('gestao_tipo', gt);
+            if (gr !== undefined && gr !== null) params.set('gestao_ref_offset', gr);
+            if (gmc) params.set('gestao_modo_comp', gmc);
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
                 const response = await axios.get(url, {
@@ -609,6 +652,15 @@
             const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
             const tipoMetrica = (payload.tipo_metrica || document.getElementById('gestao-tipo')?.value || 'BRUTA').toUpperCase();
             const labelPrincipal = tipoMetrica === 'INSTALADA' ? 'Instaladas' : 'Vendas';
+            const refOffsetEl = document.getElementById('gestao-ref-offset');
+            if (refOffsetEl && payload.ref_offset != null) refOffsetEl.value = String(payload.ref_offset);
+            const modoCompEl = document.getElementById('gestao-modo-comp');
+            if (modoCompEl && payload.modo_comparacao) modoCompEl.value = payload.modo_comparacao;
+            const compMesEl = document.getElementById('gestao-comp-mes');
+            if (compMesEl && payload.mes_comp && payload.modo_comparacao === 'SEQUENCIAL') {
+                compMesEl.value = payload.mes_comp;
+            }
+            onChangeModoComparacaoGestao(false);
             const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
             const ord = (document.getElementById('gestao-ordenacao')?.value || 'VAR_PCT_DESC').toUpperCase();
             const rows = [...rowsRaw];
@@ -655,6 +707,46 @@
                     return `<tr><td>${s.semana}</td><td>${s.ref_total}</td><td>${s.comp_total}</td><td class="${clsVar}">${s.var_abs}</td><td class="${clsVarPct}">${s.var_pct}%</td></tr>`;
                 }).join('');
             }
+        }
+
+        function toggleFiltrosGestao() {
+            const wrap = document.getElementById('gestao-filtros-wrap');
+            const btn = document.getElementById('btn-toggle-filtros-gestao');
+            if (!wrap || !btn) return;
+            gestaoFiltrosVisiveis = !gestaoFiltrosVisiveis;
+            wrap.style.display = gestaoFiltrosVisiveis ? '' : 'none';
+            btn.textContent = gestaoFiltrosVisiveis ? 'Esconder filtros' : 'Mostrar filtros';
+        }
+
+        function onChangeHistoricoMeses() {
+            const el = document.getElementById('gestao-meses');
+            if (el) {
+                let v = parseInt(el.value, 10);
+                if (!Number.isInteger(v)) v = 6;
+                v = Math.max(1, Math.min(12, v));
+                el.value = String(v);
+            }
+            carregarDados();
+        }
+
+        function onChangeRefOffset() {
+            const elRef = document.getElementById('gestao-ref-offset');
+            const elHist = document.getElementById('gestao-meses');
+            if (elRef && elHist) {
+                const ref = parseInt(elRef.value, 10) || 0;
+                const hist = Math.max(1, Math.min(12, parseInt(elHist.value, 10) || 6));
+                if (ref >= hist) {
+                    elRef.value = String(hist - 1);
+                }
+            }
+            carregarDados();
+        }
+
+        function onChangeModoComparacaoGestao(recarregar = true) {
+            const modo = (document.getElementById('gestao-modo-comp')?.value || 'ESPECIFICA').toUpperCase();
+            const compMes = document.getElementById('gestao-comp-mes');
+            if (compMes) compMes.disabled = (modo === 'SEQUENCIAL');
+            if (recarregar) carregarDados();
         }
 
         // --- LÓGICA DO ROBÔ ---
