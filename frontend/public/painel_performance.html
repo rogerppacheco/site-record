@@ -259,9 +259,19 @@
                             </div>
                         </div>
                         <div class="table-responsive mb-3">
+                            <div id="gestao-resumo-comparacao" class="small fw-bold text-primary mb-2"></div>
                             <table class="table-excel">
                                 <thead id="thead-gestao"></thead>
                                 <tbody id="tbody-gestao"></tbody>
+                            </table>
+                        </div>
+                        <h6 class="fw-bold">Comparativo Mês a Mês (Sequencial)</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table-excel">
+                                <thead>
+                                    <tr><th>Mês Ref</th><th>Mês Anterior</th><th>Total Ref</th><th>Total Ant.</th><th>Var. Abs</th><th>Var. %</th></tr>
+                                </thead>
+                                <tbody id="tbody-gestao-mes-a-mes"></tbody>
                             </table>
                         </div>
                         <h6 class="fw-bold">Comparativo Semanal (S1..S4)</h6>
@@ -643,10 +653,14 @@
             const thead = document.getElementById('thead-gestao');
             const tbody = document.getElementById('tbody-gestao');
             const tsem = document.getElementById('tbody-gestao-semana');
+            const tMesAMes = document.getElementById('tbody-gestao-mes-a-mes');
+            const resumoComp = document.getElementById('gestao-resumo-comparacao');
             if (!payload) {
                 thead.innerHTML = '';
                 tbody.innerHTML = '<tr><td>Sem dados</td></tr>';
                 tsem.innerHTML = '<tr><td colspan="5">Sem dados</td></tr>';
+                if (tMesAMes) tMesAMes.innerHTML = '<tr><td colspan="6">Sem dados</td></tr>';
+                if (resumoComp) resumoComp.innerHTML = '';
                 return;
             }
             const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
@@ -659,6 +673,9 @@
             const compMesEl = document.getElementById('gestao-comp-mes');
             if (compMesEl && payload.mes_comp && payload.modo_comparacao === 'SEQUENCIAL') {
                 compMesEl.value = payload.mes_comp;
+            }
+            if (resumoComp) {
+                resumoComp.textContent = `Comparando Ref: ${payload.mes_ref} com Comp: ${payload.mes_comp} (Métrica: ${tipoMetrica === 'INSTALADA' ? 'Venda Instalada' : 'Venda Bruta'})`;
             }
             onChangeModoComparacaoGestao(false);
             const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
@@ -673,7 +690,7 @@
             });
             const labels = payload.labels || [];
             let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th><th>Meta</th>';
-            labels.forEach(lb => { h += `<th>${lb.label}</th>`; });
+            labels.forEach(lb => { h += `<th>${lb.label} (${lb.mes})</th>`; });
             h += `<th>${labelPrincipal} Ref (${payload.mes_ref})</th><th>${labelPrincipal} Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th></tr>`;
             thead.innerHTML = h;
 
@@ -681,6 +698,13 @@
                 tbody.innerHTML = '<tr><td colspan="20">Sem dados para os filtros selecionados</td></tr>';
             } else {
                 let b = '';
+                const totSerie = new Array(labels.length).fill(0);
+                let totMeta = 0;
+                let totRef = 0;
+                let totComp = 0;
+                let totVarAbs = 0;
+                let somaPctCcPondNum = 0;
+                let somaAprovPondNum = 0;
                 rows.forEach(r => {
                     const varAbs = Number(r.var_abs || 0);
                     const varPct = Number(r.var_pct || 0);
@@ -689,10 +713,54 @@
                     const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
                     const clsMeta = ating >= 100 ? 'meta-hit' : 'meta-miss';
                     b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td><td>${r.meta||0}</td>`;
-                    (r.serie || []).forEach(v => { b += `<td>${v}</td>`; });
+                    (r.serie || []).forEach((v, idx) => {
+                        const vv = Number(v || 0);
+                        totSerie[idx] += vv;
+                        b += `<td>${vv}</td>`;
+                    });
                     b += `<td class="bg-total-column">${r.ref_total}</td><td>${r.comp_total}</td><td class="${clsVar}">${r.var_abs}</td><td class="${clsVarPct}">${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td class="${clsMeta}">${r.atingimento_meta}%</td></tr>`;
+
+                    const meta = Number(r.meta || 0);
+                    const ref = Number(r.ref_total || 0);
+                    const comp = Number(r.comp_total || 0);
+                    const pctCc = Number(r.pct_cc_ref || 0);
+                    const aprov = Number(r.aprov_ref || 0);
+                    totMeta += meta;
+                    totRef += ref;
+                    totComp += comp;
+                    totVarAbs += varAbs;
+                    somaPctCcPondNum += (pctCc * ref);
+                    somaAprovPondNum += (aprov * ref);
                 });
+                const totVarPct = totComp > 0 ? ((totVarAbs / totComp) * 100) : (totRef > 0 ? 100 : 0);
+                const totPctCc = totRef > 0 ? (somaPctCcPondNum / totRef) : 0;
+                const totAprov = totRef > 0 ? (somaAprovPondNum / totRef) : 0;
+                const totAting = totMeta > 0 ? ((totRef / totMeta) * 100) : 0;
+                const clsTotVar = totVarAbs > 0 ? 'metric-up' : (totVarAbs < 0 ? 'metric-down' : 'metric-flat');
+                const clsTotVarPct = totVarPct > 0 ? 'metric-up' : (totVarPct < 0 ? 'metric-down' : 'metric-flat');
+                const clsTotMeta = totAting >= 100 ? 'meta-hit' : 'meta-miss';
+                let linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${totMeta}</td>`;
+                totSerie.forEach(v => { linhaTotal += `<td>${v}</td>`; });
+                linhaTotal += `<td>${totRef}</td><td>${totComp}</td><td class="${clsTotVar}">${totVarAbs}</td><td class="${clsTotVarPct}">${totVarPct.toFixed(2)}%</td><td>${totPctCc.toFixed(2)}%</td><td>${totAprov.toFixed(2)}%</td><td class="${clsTotMeta}">${totAting.toFixed(2)}%</td></tr>`;
+                b = linhaTotal + b;
                 tbody.innerHTML = b;
+
+                // Comparativo mês a mês fixo (sempre mês atual da série vs mês imediatamente anterior)
+                if (tMesAMes) {
+                    let monthRows = '';
+                    for (let i = 0; i < labels.length - 1; i++) {
+                        const mesRef = labels[i];
+                        const mesAnt = labels[i + 1];
+                        const totalRef = Number(totSerie[i] || 0);
+                        const totalAnt = Number(totSerie[i + 1] || 0);
+                        const varAbsMm = totalRef - totalAnt;
+                        const varPctMm = totalAnt > 0 ? ((varAbsMm / totalAnt) * 100) : (totalRef > 0 ? 100 : 0);
+                        const clsAbsMm = varAbsMm > 0 ? 'metric-up' : (varAbsMm < 0 ? 'metric-down' : 'metric-flat');
+                        const clsPctMm = varPctMm > 0 ? 'metric-up' : (varPctMm < 0 ? 'metric-down' : 'metric-flat');
+                        monthRows += `<tr><td>${mesRef.mes}</td><td>${mesAnt.mes}</td><td>${totalRef}</td><td>${totalAnt}</td><td class="${clsAbsMm}">${varAbsMm}</td><td class="${clsPctMm}">${varPctMm.toFixed(2)}%</td></tr>`;
+                    }
+                    tMesAMes.innerHTML = monthRows || '<tr><td colspan="6">Sem meses suficientes para comparar</td></tr>';
+                }
             }
 
             const sem = payload.semanal_comparativo || [];
