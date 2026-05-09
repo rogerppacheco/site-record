@@ -101,6 +101,7 @@
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('HOJE')">Base de Hoje</button></li>
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('SEMANAL')">Base Semanal</button></li>
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('MENSAL')">Base Mensal</button></li>
+                        <li><button class="dropdown-item" type="button" onclick="exportarPerformance('GESTAO')">Base Gestão</button></li>
                     </ul>
                 </div>
                 
@@ -158,6 +159,7 @@
             <li class="nav-item"><button class="nav-link active" id="tab-hoje" data-bs-toggle="pill" data-bs-target="#content-hoje">Hoje</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-semana" data-bs-toggle="pill" data-bs-target="#content-semana">Semanal</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-mes" data-bs-toggle="pill" data-bs-target="#content-mes">Mensal</button></li>
+            <li class="nav-item"><button class="nav-link" id="tab-gestao" data-bs-toggle="pill" data-bs-target="#content-gestao">Gestão</button></li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
@@ -169,6 +171,44 @@
             </div>
             <div class="tab-pane fade" id="content-mes">
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+            </div>
+            <div class="tab-pane fade" id="content-gestao">
+                <div class="card border-0 shadow">
+                    <div class="card-body">
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Visão</label>
+                                <select id="gestao-visao" class="form-select form-select-sm" onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <option value="VENDEDOR">Vendedor</option>
+                                    <option value="CANAL_CLUSTER">Canal/Cluster</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">Histórico (meses)</label>
+                                <input type="number" min="1" max="12" value="6" id="gestao-meses" class="form-control form-control-sm" onchange="carregarDados()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Comparar com (mês/ano)</label>
+                                <input type="month" id="gestao-comp-mes" class="form-control form-control-sm" onchange="carregarDados()">
+                            </div>
+                        </div>
+                        <div class="table-responsive mb-3">
+                            <table class="table-excel">
+                                <thead id="thead-gestao"></thead>
+                                <tbody id="tbody-gestao"></tbody>
+                            </table>
+                        </div>
+                        <h6 class="fw-bold">Comparativo Semanal (S1..S4)</h6>
+                        <div class="table-responsive">
+                            <table class="table-excel">
+                                <thead>
+                                    <tr><th>Semana</th><th>Total Ref</th><th>Total Comp</th><th>Var. Abs</th><th>Var. %</th></tr>
+                                </thead>
+                                <tbody id="tbody-gestao-semana"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
@@ -353,6 +393,10 @@
                     const elMes = document.getElementById('filtro-mes-livre');
                     if (elMes) elMes.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                 }
+                const mesComp = new Date();
+                mesComp.setMonth(mesComp.getMonth() - 1);
+                const elComp = document.getElementById('gestao-comp-mes');
+                if (elComp) elComp.value = `${mesComp.getFullYear()}-${String(mesComp.getMonth() + 1).padStart(2, '0')}`;
                 if (!perfilExportExcel) {
                     document.getElementById('dropdown-export-performance')?.classList.add('d-none');
                 }
@@ -394,6 +438,12 @@
             if (canal) params.set('canal', canal);
             if (cluster) params.set('cluster', cluster);
             params.set('vendedor_ativo', vendedorAtivo || 'todos');
+            const gm = document.getElementById('gestao-meses')?.value;
+            const gc = document.getElementById('gestao-comp-mes')?.value;
+            const gv = document.getElementById('gestao-visao')?.value;
+            if (gm) params.set('gestao_meses', gm);
+            if (gc) params.set('gestao_comp_mes', gc);
+            if (gv) params.set('gestao_visao', gv);
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
                 if (response.data.aviso) {
@@ -402,6 +452,8 @@
                 renderHoje(response.data.hoje);
                 renderSemana(response.data.semana);
                 renderMes(response.data.mes);
+                window.__gestaoPayload = response.data.gestao || null;
+                renderGestao(window.__gestaoPayload);
             } catch (e) { console.error(e); }
         }
 
@@ -414,6 +466,12 @@
             params.set('canal', canal);
             params.set('cluster', cluster);
             params.set('vendedor_ativo', (vaEl ? vaEl.value : 'todos') || 'todos');
+            const gm = document.getElementById('gestao-meses')?.value;
+            const gc = document.getElementById('gestao-comp-mes')?.value;
+            const gv = document.getElementById('gestao-visao')?.value;
+            if (gm) params.set('gestao_meses', gm);
+            if (gc) params.set('gestao_comp_mes', gc);
+            if (gv) params.set('gestao_visao', gv);
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
                 const response = await axios.get(url, {
@@ -500,6 +558,44 @@
             document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
             // Remover tfoot
             document.getElementById('tfoot-mes').innerHTML = '';
+        }
+
+        function renderGestao(payload) {
+            const thead = document.getElementById('thead-gestao');
+            const tbody = document.getElementById('tbody-gestao');
+            const tsem = document.getElementById('tbody-gestao-semana');
+            if (!payload) {
+                thead.innerHTML = '';
+                tbody.innerHTML = '<tr><td>Sem dados</td></tr>';
+                tsem.innerHTML = '<tr><td colspan="5">Sem dados</td></tr>';
+                return;
+            }
+            const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
+            const rows = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
+            const labels = payload.labels || [];
+            let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th><th>Meta</th>';
+            labels.forEach(lb => { h += `<th>${lb.label}</th>`; });
+            h += `<th>Ref (${payload.mes_ref})</th><th>Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th></tr>`;
+            thead.innerHTML = h;
+
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="20">Sem dados para os filtros selecionados</td></tr>';
+            } else {
+                let b = '';
+                rows.forEach(r => {
+                    b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td><td>${r.meta||0}</td>`;
+                    (r.serie || []).forEach(v => { b += `<td>${v}</td>`; });
+                    b += `<td>${r.ref_total}</td><td>${r.comp_total}</td><td>${r.var_abs}</td><td>${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td>${r.atingimento_meta}%</td></tr>`;
+                });
+                tbody.innerHTML = b;
+            }
+
+            const sem = payload.semanal_comparativo || [];
+            if (!sem.length) {
+                tsem.innerHTML = '<tr><td colspan="5">Sem dados semanais</td></tr>';
+            } else {
+                tsem.innerHTML = sem.map(s => `<tr><td>${s.semana}</td><td>${s.ref_total}</td><td>${s.comp_total}</td><td>${s.var_abs}</td><td>${s.var_pct}%</td></tr>`).join('');
+            }
         }
 
         // --- LÓGICA DO ROBÔ ---

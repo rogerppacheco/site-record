@@ -6683,6 +6683,228 @@ def _perf_resolver_periodos_performance(request, user, hoje_d):
     }
 
 
+def _perf_add_months(base_month, delta_months):
+    total = (base_month.year * 12 + (base_month.month - 1)) + delta_months
+    y = total // 12
+    m = (total % 12) + 1
+    return date(y, m, 1)
+
+
+def _perf_parse_mes_ref(valor, fallback):
+    txt = (valor or '').strip()
+    if not txt:
+        return fallback
+    try:
+        y, m = txt.split('-')
+        return date(int(y), int(m), 1)
+    except (ValueError, TypeError):
+        return fallback
+
+
+def _perf_semana_bucket_dia_mes(dia_mes):
+    if dia_mes <= 7:
+        return 'S1'
+    if dia_mes <= 14:
+        return 'S2'
+    if dia_mes <= 21:
+        return 'S3'
+    return 'S4'
+
+
+def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
+    meses_hist = request.query_params.get('gestao_meses')
+    try:
+        meses_hist = int(meses_hist)
+    except (TypeError, ValueError):
+        meses_hist = 6
+    meses_hist = max(1, min(12, meses_hist))
+
+    mes_comp = _perf_parse_mes_ref(
+        request.query_params.get('gestao_comp_mes'),
+        _perf_add_months(inicio_mes_ref, -1),
+    )
+
+    meses_ref = [_perf_add_months(inicio_mes_ref, -idx) for idx in range(meses_hist)]
+    todos_meses = meses_ref + [mes_comp]
+    mes_min = min(todos_meses)
+    mes_max = max(todos_meses)
+    fim_mes_max = _perf_ultimo_dia_mes(mes_max.year, mes_max.month)
+
+    filtro_base = (
+        Q(vendas__ativo=True)
+        & ~Q(vendas__ordem_servico='')
+        & Q(vendas__ordem_servico__isnull=False)
+        & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
+    )
+    filtro_cc = (
+        Q(vendas__forma_pagamento__nome__icontains='CREDIT')
+        | Q(vendas__forma_pagamento__nome__icontains='CRÉDIT')
+        | (Q(vendas__forma_pagamento__nome__icontains='CARTA') & ~Q(vendas__forma_pagamento__nome__icontains='DEBIT'))
+    )
+    filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
+
+    users_base = list(
+        users.values('id', 'username', 'canal', 'cluster', 'meta_comissao').order_by('username')
+    )
+    user_index = {u['id']: u for u in users_base}
+
+    mes_user_stats = {}
+    for mref in meses_ref:
+        fim_m = _perf_ultimo_dia_mes(mref.year, mref.month)
+        filtro_ab = Q(vendas__data_abertura__date__gte=mref) & Q(vendas__data_abertura__date__lte=fim_m)
+        filtro_inst_mes = _perf_filtro_data_efetiva_instalacao_intervalo(mref, fim_m)
+        qs = users.annotate(
+            total_vendas=Count('vendas', filter=filtro_base & filtro_ab),
+            total_cc=Count('vendas', filter=filtro_base & filtro_ab & filtro_cc),
+            instaladas=Count('vendas', filter=filtro_base & filtro_inst_mes & filtro_inst),
+        ).values('id', 'total_vendas', 'total_cc', 'instaladas')
+        mes_user_stats[mref.strftime('%Y-%m')] = {int(r['id']): r for r in qs}
+
+    def _get_user_stat(ym, uid):
+        return (mes_user_stats.get(ym) or {}).get(uid) or {'total_vendas': 0, 'total_cc': 0, 'instaladas': 0}
+
+    labels = []
+    for idx, mref in enumerate(meses_ref):
+        ym = mref.strftime('%Y-%m')
+        labels.append({'key': ym, 'label': f"M-{idx}", 'mes': ym})
+
+    ym_ref = inicio_mes_ref.strftime('%Y-%m')
+    ym_comp = mes_comp.strftime('%Y-%m')
+
+    rows_vendedor = []
+    for u in users_base:
+        serie = []
+        for lb in labels:
+            st = _get_user_stat(lb['key'], u['id'])
+            serie.append(int(st['total_vendas'] or 0))
+        st_ref = _get_user_stat(ym_ref, u['id'])
+        st_comp = _get_user_stat(ym_comp, u['id'])
+        total_ref = int(st_ref['total_vendas'] or 0)
+        total_comp = int(st_comp['total_vendas'] or 0)
+        cc_ref = int(st_ref['total_cc'] or 0)
+        inst_ref = int(st_ref['instaladas'] or 0)
+        var_abs = total_ref - total_comp
+        var_pct = (var_abs / total_comp * 100.0) if total_comp > 0 else (100.0 if total_ref > 0 else 0.0)
+        pct_cc_ref = (cc_ref / total_ref * 100.0) if total_ref > 0 else 0.0
+        aprov_ref = (inst_ref / total_ref * 100.0) if total_ref > 0 else 0.0
+        meta = int(u.get('meta_comissao') or 0)
+        ating = (total_ref / meta * 100.0) if meta > 0 else 0.0
+        rows_vendedor.append({
+            'grupo': u['username'].upper(),
+            'canal': u.get('canal') or '-',
+            'cluster': u.get('cluster') or '-',
+            'meta': meta,
+            'serie': serie,
+            'ref_total': total_ref,
+            'comp_total': total_comp,
+            'var_abs': var_abs,
+            'var_pct': round(var_pct, 2),
+            'pct_cc_ref': round(pct_cc_ref, 2),
+            'aprov_ref': round(aprov_ref, 2),
+            'atingimento_meta': round(ating, 2),
+        })
+
+    agrup_canal_cluster = {}
+    for u in users_base:
+        key = f"{(u.get('canal') or '-').upper()}|{(u.get('cluster') or '-').upper()}"
+        if key not in agrup_canal_cluster:
+            agrup_canal_cluster[key] = {
+                'canal': (u.get('canal') or '-').upper(),
+                'cluster': (u.get('cluster') or '-').upper(),
+                'meta': 0,
+                'uid': [],
+            }
+        agrup_canal_cluster[key]['meta'] += int(u.get('meta_comissao') or 0)
+        agrup_canal_cluster[key]['uid'].append(int(u['id']))
+
+    rows_canal_cluster = []
+    for _, grp in sorted(agrup_canal_cluster.items(), key=lambda item: (item[1]['canal'], item[1]['cluster'])):
+        serie = []
+        for lb in labels:
+            ym = lb['key']
+            total = sum(int(_get_user_stat(ym, uid)['total_vendas'] or 0) for uid in grp['uid'])
+            serie.append(total)
+        ref_total = sum(int(_get_user_stat(ym_ref, uid)['total_vendas'] or 0) for uid in grp['uid'])
+        comp_total = sum(int(_get_user_stat(ym_comp, uid)['total_vendas'] or 0) for uid in grp['uid'])
+        cc_ref = sum(int(_get_user_stat(ym_ref, uid)['total_cc'] or 0) for uid in grp['uid'])
+        inst_ref = sum(int(_get_user_stat(ym_ref, uid)['instaladas'] or 0) for uid in grp['uid'])
+        var_abs = ref_total - comp_total
+        var_pct = (var_abs / comp_total * 100.0) if comp_total > 0 else (100.0 if ref_total > 0 else 0.0)
+        pct_cc_ref = (cc_ref / ref_total * 100.0) if ref_total > 0 else 0.0
+        aprov_ref = (inst_ref / ref_total * 100.0) if ref_total > 0 else 0.0
+        meta = int(grp['meta'] or 0)
+        ating = (ref_total / meta * 100.0) if meta > 0 else 0.0
+        rows_canal_cluster.append({
+            'grupo': f"{grp['canal']} / {grp['cluster']}",
+            'canal': grp['canal'],
+            'cluster': grp['cluster'],
+            'meta': meta,
+            'serie': serie,
+            'ref_total': ref_total,
+            'comp_total': comp_total,
+            'var_abs': var_abs,
+            'var_pct': round(var_pct, 2),
+            'pct_cc_ref': round(pct_cc_ref, 2),
+            'aprov_ref': round(aprov_ref, 2),
+            'atingimento_meta': round(ating, 2),
+        })
+
+    vendas_semanais = (
+        Venda.objects.filter(
+            ativo=True,
+            vendedor_id__in=list(user_index.keys()),
+            data_abertura__date__gte=mes_min,
+            data_abertura__date__lte=fim_mes_max,
+        )
+        .exclude(ordem_servico__isnull=True)
+        .exclude(ordem_servico='')
+        .filter(status_tratamento__nome__iexact='CADASTRADA')
+        .select_related('forma_pagamento')
+        .only('data_abertura', 'forma_pagamento__nome')
+    )
+    semanas = {
+        'ref': {'S1': {'total': 0, 'cc': 0}, 'S2': {'total': 0, 'cc': 0}, 'S3': {'total': 0, 'cc': 0}, 'S4': {'total': 0, 'cc': 0}},
+        'comp': {'S1': {'total': 0, 'cc': 0}, 'S2': {'total': 0, 'cc': 0}, 'S3': {'total': 0, 'cc': 0}, 'S4': {'total': 0, 'cc': 0}},
+    }
+    for v in vendas_semanais:
+        if not v.data_abertura:
+            continue
+        d_ab = timezone.localtime(v.data_abertura).date()
+        ym = d_ab.strftime('%Y-%m')
+        alvo = 'ref' if ym == ym_ref else ('comp' if ym == ym_comp else None)
+        if not alvo:
+            continue
+        bucket = _perf_semana_bucket_dia_mes(d_ab.day)
+        semanas[alvo][bucket]['total'] += 1
+        nome_fp = (getattr(getattr(v, 'forma_pagamento', None), 'nome', '') or '').upper()
+        if ('CREDIT' in nome_fp) or ('CRÉDIT' in nome_fp) or (('CARTA' in nome_fp) and ('DEBIT' not in nome_fp)):
+            semanas[alvo][bucket]['cc'] += 1
+
+    semanal_cmp = []
+    for b in ['S1', 'S2', 'S3', 'S4']:
+        t_ref = semanas['ref'][b]['total']
+        t_comp = semanas['comp'][b]['total']
+        v_abs = t_ref - t_comp
+        v_pct = (v_abs / t_comp * 100.0) if t_comp > 0 else (100.0 if t_ref > 0 else 0.0)
+        semanal_cmp.append({
+            'semana': b,
+            'ref_total': t_ref,
+            'comp_total': t_comp,
+            'var_abs': v_abs,
+            'var_pct': round(v_pct, 2),
+        })
+
+    return {
+        'meses_historico': meses_hist,
+        'mes_ref': ym_ref,
+        'mes_comp': ym_comp,
+        'labels': labels,
+        'rows_vendedor': rows_vendedor,
+        'rows_canal_cluster': rows_canal_cluster,
+        'semanal_comparativo': semanal_cmp,
+    }
+
+
 class PainelPerformanceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -6721,12 +6943,14 @@ class PainelPerformanceView(APIView):
             Q(vendas__ativo=True)
             & ~Q(vendas__ordem_servico='')
             & Q(vendas__ordem_servico__isnull=False)
+            & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
             & Q(vendas__reemissao=False)
         )
         filtro_os_com_reemissao = (
             Q(vendas__ativo=True)
             & ~Q(vendas__ordem_servico='')
             & Q(vendas__ordem_servico__isnull=False)
+            & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
         )
         filtro_cc = (
             Q(vendas__forma_pagamento__nome__icontains='CREDIT')
@@ -6861,11 +7085,13 @@ class PainelPerformanceView(APIView):
         total_hoje = sum(i['total'] for i in lista_hoje)
         total_semana = sum(i['total'] for i in lista_semana)
         total_mes = sum(i['total'] for i in lista_mes)
+        payload_gestao = _perf_montar_payload_gestao(users, inicio_mes, request)
 
         payload = {
             'hoje': lista_hoje,
             'semana': lista_semana,
             'mes': lista_mes,
+            'gestao': payload_gestao,
             'totais': {'hoje': total_hoje, 'semana': total_semana, 'mes': total_mes},
             'periodo': {
                 'mes_referencia': periodo['mes_referencia'],
@@ -6929,8 +7155,57 @@ class ExportarPerformanceExcelView(APIView):
 
         # Período selecionado no botão (define nome do arquivo e prioridade das abas)
         periodo = (request.query_params.get('periodo') or 'HOJE').strip().upper()
-        if periodo not in ('HOJE', 'SEMANAL', 'MENSAL'):
+        if periodo not in ('HOJE', 'SEMANAL', 'MENSAL', 'GESTAO'):
             periodo = 'HOJE'
+
+        if periodo == 'GESTAO':
+            payload_gestao = _perf_montar_payload_gestao(users_export, inicio_mes, request)
+            visao = (request.query_params.get('gestao_visao') or 'VENDEDOR').strip().upper()
+            linhas_base = payload_gestao['rows_canal_cluster'] if visao == 'CANAL_CLUSTER' else payload_gestao['rows_vendedor']
+            labels = payload_gestao['labels']
+            dados_gestao = []
+            for r in linhas_base:
+                linha = {
+                    'Grupo': r.get('grupo'),
+                    'Canal': r.get('canal'),
+                    'Cluster': r.get('cluster'),
+                    'Meta': r.get('meta', 0),
+                    'Mês Ref': payload_gestao.get('mes_ref'),
+                    'Total Ref': r.get('ref_total', 0),
+                    'Mês Comparação': payload_gestao.get('mes_comp'),
+                    'Total Comparação': r.get('comp_total', 0),
+                    'Var. Abs': r.get('var_abs', 0),
+                    'Var. %': r.get('var_pct', 0),
+                    '% CC Ref': r.get('pct_cc_ref', 0),
+                    'Aprov. Ref %': r.get('aprov_ref', 0),
+                    'Atingimento Meta %': r.get('atingimento_meta', 0),
+                }
+                for idx, lb in enumerate(labels):
+                    linha[lb['label']] = (r.get('serie') or [])[idx] if idx < len(r.get('serie') or []) else 0
+                dados_gestao.append(linha)
+
+            dados_semanal = []
+            for s in payload_gestao.get('semanal_comparativo') or []:
+                dados_semanal.append({
+                    'Semana': s.get('semana'),
+                    f"Total {payload_gestao.get('mes_ref')}": s.get('ref_total', 0),
+                    f"Total {payload_gestao.get('mes_comp')}": s.get('comp_total', 0),
+                    'Var. Abs': s.get('var_abs', 0),
+                    'Var. %': s.get('var_pct', 0),
+                })
+
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                pd.DataFrame(dados_gestao or [{'Status': 'Sem dados para visão selecionada'}]).to_excel(
+                    writer, sheet_name='Gestao', index=False
+                )
+                pd.DataFrame(dados_semanal or [{'Status': 'Sem dados semanais para comparação'}]).to_excel(
+                    writer, sheet_name='Gestao Semanas', index=False
+                )
+            output.seek(0)
+            response = HttpResponse(output, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = f'attachment; filename="Performance_Gestao_{hoje_ref}.xlsx"'
+            return response
 
         # 3. Preparar os 3 DataFrames (consultores veem data efetiva na coluna Data Instalação)
         grupos_gestao = _perf_grupos_gestao()
@@ -7150,12 +7425,14 @@ class EnviarImagemPerformanceView(APIView):
             Q(vendas__ativo=True)
             & ~Q(vendas__ordem_servico='')
             & Q(vendas__ordem_servico__isnull=False)
+            & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
             & Q(vendas__reemissao=False)
         )
         filtro_os_com_reemissao = (
             Q(vendas__ativo=True)
             & ~Q(vendas__ordem_servico='')
             & Q(vendas__ordem_servico__isnull=False)
+            & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
         )
         filtro_cc = _filtro_cc()
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')

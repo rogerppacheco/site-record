@@ -117,8 +117,14 @@ def processar_envio_performance():
             try:
                 hoje = agora.date()
                 inicio_semana = hoje - timedelta(days=hoje.weekday())
+                fim_semana = inicio_semana + timedelta(days=5)
                 dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
                 inicio_mes = hoje.replace(day=1)
+                if inicio_mes.month == 12:
+                    prox_mes = inicio_mes.replace(year=inicio_mes.year + 1, month=1, day=1)
+                else:
+                    prox_mes = inicio_mes.replace(month=inicio_mes.month + 1, day=1)
+                fim_mes = prox_mes - timedelta(days=1)
 
                 # Alinhado ao Painel (default gestão): inclui vendedores inativos; bots continuam excluídos
                 users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
@@ -132,7 +138,19 @@ def processar_envio_performance():
                 if getattr(regra, 'cluster_alvo', None) and str(regra.cluster_alvo).strip() and str(regra.cluster_alvo).upper() != 'TODOS':
                     users = users.filter(cluster__iexact=regra.cluster_alvo.strip())
 
-                filtro_os = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
+                filtro_os_sem_reemissao = (
+                    Q(vendas__ativo=True)
+                    & ~Q(vendas__ordem_servico='')
+                    & Q(vendas__ordem_servico__isnull=False)
+                    & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
+                    & Q(vendas__reemissao=False)
+                )
+                filtro_os_com_reemissao = (
+                    Q(vendas__ativo=True)
+                    & ~Q(vendas__ordem_servico='')
+                    & Q(vendas__ordem_servico__isnull=False)
+                    & Q(vendas__status_tratamento__nome__iexact='CADASTRADA')
+                )
                 filtro_cc = _filtro_cc()
                 filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
                 tipo_rel = getattr(regra, 'tipo_relatorio', 'HOJE') or 'HOJE'
@@ -144,7 +162,7 @@ def processar_envio_performance():
                 titulo_extra = ""
 
                 if tipo_rel == 'HOJE':
-                    filtro = filtro_os & Q(vendas__data_abertura__date=hoje)
+                    filtro = filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje)
                     qs = users.annotate(
                         total=Count('vendas', filter=filtro),
                         cc=Count('vendas', filter=filtro & filtro_cc)
@@ -168,14 +186,14 @@ def processar_envio_performance():
 
                 elif tipo_rel == 'SEMANAL':
                     qs_semana = users.annotate(
-                        seg=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[0])),
-                        ter=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[1])),
-                        qua=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[2])),
-                        qui=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[3])),
-                        sex=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[4])),
-                        sab=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[5])),
-                        total_semana=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana)),
-                        total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
+                        seg=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[0])),
+                        ter=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[1])),
+                        qua=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[2])),
+                        qui=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[3])),
+                        sex=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[4])),
+                        sab=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[5])),
+                        total_semana=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date__gte=inicio_semana) & Q(vendas__data_abertura__date__lte=fim_semana)),
+                        total_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date__gte=inicio_semana) & Q(vendas__data_abertura__date__lte=fim_semana) & filtro_cc)
                     ).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
                     if not qs_semana.exists():
                         logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
@@ -198,9 +216,9 @@ def processar_envio_performance():
 
                 else:  # MENSAL
                     qs_mes = users.annotate(
-                        total_vendas=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes)),
-                        instaladas=Count('vendas', filter=filtro_os & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst),
-                        total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
+                        total_vendas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes) & Q(vendas__data_abertura__date__lte=fim_mes)),
+                        instaladas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_instalacao__gte=inicio_mes) & Q(vendas__data_instalacao__lte=fim_mes) & filtro_inst),
+                        total_cc=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes) & Q(vendas__data_abertura__date__lte=fim_mes) & filtro_cc)
                     ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
                     if not qs_mes.exists():
                         logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
