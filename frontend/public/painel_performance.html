@@ -99,7 +99,7 @@
         <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm flex-wrap gap-2">
             <div><h4 class="fw-bold text-dark mb-0"><i class="bi bi-bar-chart-line-fill text-primary"></i> Painel de Performance</h4></div>
             
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
                 <button class="btn btn-sm btn-outline-dark top-action-btn" onclick="abrirConfiguracaoRobo()">
                     <i class="bi bi-robot"></i> Robô Automático
                 </button>
@@ -196,6 +196,13 @@
                                 <select id="gestao-visao" class="form-select form-select-sm" onchange="renderGestao(window.__gestaoPayload || null)">
                                     <option value="VENDEDOR">Vendedor</option>
                                     <option value="CANAL_CLUSTER">Canal/Cluster</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">Métrica</label>
+                                <select id="gestao-tipo" class="form-select form-select-sm" onchange="carregarDados()">
+                                    <option value="BRUTA">Venda Bruta</option>
+                                    <option value="INSTALADA">Venda Instalada</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
@@ -466,9 +473,11 @@
             const gm = document.getElementById('gestao-meses')?.value;
             const gc = document.getElementById('gestao-comp-mes')?.value;
             const gv = document.getElementById('gestao-visao')?.value;
+            const gt = document.getElementById('gestao-tipo')?.value;
             if (gm) params.set('gestao_meses', gm);
             if (gc) params.set('gestao_comp_mes', gc);
             if (gv) params.set('gestao_visao', gv);
+            if (gt) params.set('gestao_tipo', gt);
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
                 if (response.data.aviso) {
@@ -494,9 +503,11 @@
             const gm = document.getElementById('gestao-meses')?.value;
             const gc = document.getElementById('gestao-comp-mes')?.value;
             const gv = document.getElementById('gestao-visao')?.value;
+            const gt = document.getElementById('gestao-tipo')?.value;
             if (gm) params.set('gestao_meses', gm);
             if (gc) params.set('gestao_comp_mes', gc);
             if (gv) params.set('gestao_visao', gv);
+            if (gt) params.set('gestao_tipo', gt);
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
                 const response = await axios.get(url, {
@@ -596,6 +607,8 @@
                 return;
             }
             const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
+            const tipoMetrica = (payload.tipo_metrica || document.getElementById('gestao-tipo')?.value || 'BRUTA').toUpperCase();
+            const labelPrincipal = tipoMetrica === 'INSTALADA' ? 'Instaladas' : 'Vendas';
             const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
             const ord = (document.getElementById('gestao-ordenacao')?.value || 'VAR_PCT_DESC').toUpperCase();
             const rows = [...rowsRaw];
@@ -609,7 +622,7 @@
             const labels = payload.labels || [];
             let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th><th>Meta</th>';
             labels.forEach(lb => { h += `<th>${lb.label}</th>`; });
-            h += `<th>Ref (${payload.mes_ref})</th><th>Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th></tr>`;
+            h += `<th>${labelPrincipal} Ref (${payload.mes_ref})</th><th>${labelPrincipal} Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th></tr>`;
             thead.innerHTML = h;
 
             if (!rows.length) {

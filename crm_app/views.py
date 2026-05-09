@@ -6723,6 +6723,9 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
         request.query_params.get('gestao_comp_mes'),
         _perf_add_months(inicio_mes_ref, -1),
     )
+    tipo_metrica = (request.query_params.get('gestao_tipo') or 'BRUTA').strip().upper()
+    if tipo_metrica not in ('BRUTA', 'INSTALADA'):
+        tipo_metrica = 'BRUTA'
 
     meses_ref = [_perf_add_months(inicio_mes_ref, -idx) for idx in range(meses_hist)]
     todos_meses = meses_ref + [mes_comp]
@@ -6757,11 +6760,18 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
             total_vendas=Count('vendas', filter=filtro_base & filtro_ab),
             total_cc=Count('vendas', filter=filtro_base & filtro_ab & filtro_cc),
             instaladas=Count('vendas', filter=filtro_base & filtro_inst_mes & filtro_inst),
-        ).values('id', 'total_vendas', 'total_cc', 'instaladas')
+            instaladas_cc=Count('vendas', filter=filtro_base & filtro_inst_mes & filtro_inst & filtro_cc),
+        ).values('id', 'total_vendas', 'total_cc', 'instaladas', 'instaladas_cc')
         mes_user_stats[mref.strftime('%Y-%m')] = {int(r['id']): r for r in qs}
 
     def _get_user_stat(ym, uid):
-        return (mes_user_stats.get(ym) or {}).get(uid) or {'total_vendas': 0, 'total_cc': 0, 'instaladas': 0}
+        return (mes_user_stats.get(ym) or {}).get(uid) or {'total_vendas': 0, 'total_cc': 0, 'instaladas': 0, 'instaladas_cc': 0}
+
+    def _valor_principal(stat):
+        return int(stat['instaladas'] or 0) if tipo_metrica == 'INSTALADA' else int(stat['total_vendas'] or 0)
+
+    def _valor_cc(stat):
+        return int(stat['instaladas_cc'] or 0) if tipo_metrica == 'INSTALADA' else int(stat['total_cc'] or 0)
 
     labels = []
     for idx, mref in enumerate(meses_ref):
@@ -6776,12 +6786,12 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
         serie = []
         for lb in labels:
             st = _get_user_stat(lb['key'], u['id'])
-            serie.append(int(st['total_vendas'] or 0))
+            serie.append(_valor_principal(st))
         st_ref = _get_user_stat(ym_ref, u['id'])
         st_comp = _get_user_stat(ym_comp, u['id'])
-        total_ref = int(st_ref['total_vendas'] or 0)
-        total_comp = int(st_comp['total_vendas'] or 0)
-        cc_ref = int(st_ref['total_cc'] or 0)
+        total_ref = _valor_principal(st_ref)
+        total_comp = _valor_principal(st_comp)
+        cc_ref = _valor_cc(st_ref)
         inst_ref = int(st_ref['instaladas'] or 0)
         var_abs = total_ref - total_comp
         var_pct = (var_abs / total_comp * 100.0) if total_comp > 0 else (100.0 if total_ref > 0 else 0.0)
@@ -6822,11 +6832,11 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
         serie = []
         for lb in labels:
             ym = lb['key']
-            total = sum(int(_get_user_stat(ym, uid)['total_vendas'] or 0) for uid in grp['uid'])
+            total = sum(_valor_principal(_get_user_stat(ym, uid)) for uid in grp['uid'])
             serie.append(total)
-        ref_total = sum(int(_get_user_stat(ym_ref, uid)['total_vendas'] or 0) for uid in grp['uid'])
-        comp_total = sum(int(_get_user_stat(ym_comp, uid)['total_vendas'] or 0) for uid in grp['uid'])
-        cc_ref = sum(int(_get_user_stat(ym_ref, uid)['total_cc'] or 0) for uid in grp['uid'])
+        ref_total = sum(_valor_principal(_get_user_stat(ym_ref, uid)) for uid in grp['uid'])
+        comp_total = sum(_valor_principal(_get_user_stat(ym_comp, uid)) for uid in grp['uid'])
+        cc_ref = sum(_valor_cc(_get_user_stat(ym_ref, uid)) for uid in grp['uid'])
         inst_ref = sum(int(_get_user_stat(ym_ref, uid)['instaladas'] or 0) for uid in grp['uid'])
         var_abs = ref_total - comp_total
         var_pct = (var_abs / comp_total * 100.0) if comp_total > 0 else (100.0 if ref_total > 0 else 0.0)
@@ -6849,27 +6859,35 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
             'atingimento_meta': round(ating, 2),
         })
 
-    vendas_semanais = (
+    base_semanais = (
         Venda.objects.filter(
             ativo=True,
             vendedor_id__in=list(user_index.keys()),
-            data_abertura__date__gte=mes_min,
-            data_abertura__date__lte=fim_mes_max,
         )
         .exclude(ordem_servico__isnull=True)
         .exclude(ordem_servico='')
         .filter(status_tratamento__nome__iexact='CADASTRADA')
         .select_related('forma_pagamento')
-        .only('data_abertura', 'forma_pagamento__nome')
+        .only('data_abertura', 'data_instalacao', 'data_instalacao_fisica', 'status_esteira__nome', 'forma_pagamento__nome')
     )
+    if tipo_metrica == 'INSTALADA':
+        base_semanais = base_semanais.filter(status_esteira__nome__iexact='INSTALADA')
+    vendas_semanais = base_semanais
     semanas = {
         'ref': {'S1': {'total': 0, 'cc': 0}, 'S2': {'total': 0, 'cc': 0}, 'S3': {'total': 0, 'cc': 0}, 'S4': {'total': 0, 'cc': 0}},
         'comp': {'S1': {'total': 0, 'cc': 0}, 'S2': {'total': 0, 'cc': 0}, 'S3': {'total': 0, 'cc': 0}, 'S4': {'total': 0, 'cc': 0}},
     }
     for v in vendas_semanais:
-        if not v.data_abertura:
+        if tipo_metrica == 'INSTALADA':
+            d_ab = v.data_instalacao_fisica or v.data_instalacao
+        else:
+            if not v.data_abertura:
+                continue
+            d_ab = timezone.localtime(v.data_abertura).date()
+        if not d_ab:
             continue
-        d_ab = timezone.localtime(v.data_abertura).date()
+        if d_ab < mes_min or d_ab > fim_mes_max:
+            continue
         ym = d_ab.strftime('%Y-%m')
         alvo = 'ref' if ym == ym_ref else ('comp' if ym == ym_comp else None)
         if not alvo:
@@ -6895,6 +6913,7 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
         })
 
     return {
+        'tipo_metrica': tipo_metrica,
         'meses_historico': meses_hist,
         'mes_ref': ym_ref,
         'mes_comp': ym_comp,
