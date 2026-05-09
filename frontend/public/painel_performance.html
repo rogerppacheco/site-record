@@ -24,6 +24,11 @@
         .bg-info { background-color: #0d6efd !important; }
         .bg-success { background-color: #198754 !important; }
         .bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; font-weight: bold; }
+        .metric-up { background-color: #d1e7dd; color: #0f5132; font-weight: 700; }
+        .metric-down { background-color: #f8d7da; color: #842029; font-weight: 700; }
+        .metric-flat { background-color: #f8f9fa; color: #495057; font-weight: 700; }
+        .meta-hit { background-color: #d1e7dd; color: #0f5132; font-weight: 700; }
+        .meta-miss { background-color: #fff3cd; color: #664d03; font-weight: 700; }
         #capture-area { position: absolute; left: -9999px; top: -9999px; width: 1200px; background: white; padding: 20px; }
         #capture-area .table-excel thead th { position: static !important; }
         #capture-area .table-excel tfoot td { position: static !important; }
@@ -31,6 +36,16 @@
         #capture-summary.show { display: block; }
         .nav-pills .nav-link { color: #5a5c69; font-weight: 600; border-radius: 20px; padding: 8px 20px; margin-right: 5px; }
         .nav-pills .nav-link.active { background-color: #4e73df; color: white; box-shadow: 0 2px 5px rgba(78,115,223,0.3); }
+        .top-action-btn {
+            width: 180px;
+            height: 52px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-weight: 700;
+        }
+        .top-action-wrap { width: 180px; }
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
@@ -85,16 +100,16 @@
             <div><h4 class="fw-bold text-dark mb-0"><i class="bi bi-bar-chart-line-fill text-primary"></i> Painel de Performance</h4></div>
             
             <div class="d-flex align-items-center gap-2">
-                <button class="btn btn-sm btn-outline-dark fw-bold" onclick="abrirConfiguracaoRobo()">
+                <button class="btn btn-sm btn-outline-dark top-action-btn" onclick="abrirConfiguracaoRobo()">
                     <i class="bi bi-robot"></i> Robô Automático
                 </button>
 
-                <button class="btn btn-sm btn-success" onclick="abrirModalEnvioManual()">
+                <button class="btn btn-sm btn-success top-action-btn" onclick="abrirModalEnvioManual()">
                     <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
                 </button>
 
-                <div class="dropdown" id="dropdown-export-performance">
-                    <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <div class="dropdown top-action-wrap" id="dropdown-export-performance">
+                    <button class="btn btn-sm btn-outline-primary dropdown-toggle top-action-btn w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-file-earmark-excel"></i> Exportar
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
@@ -190,6 +205,16 @@
                             <div class="col-md-3">
                                 <label class="small fw-bold">Comparar com (mês/ano)</label>
                                 <input type="month" id="gestao-comp-mes" class="form-control form-control-sm" onchange="carregarDados()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Ordenação</label>
+                                <select id="gestao-ordenacao" class="form-select form-select-sm" title="Ordenação da tabela de gestão" onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <option value="VAR_PCT_DESC">Maior crescimento (%)</option>
+                                    <option value="VAR_PCT_ASC">Maior queda (%)</option>
+                                    <option value="ATING_DESC">Maior atingimento de meta</option>
+                                    <option value="REF_DESC">Maior total mês ref.</option>
+                                    <option value="ALFA_ASC">Ordem alfabética</option>
+                                </select>
                             </div>
                         </div>
                         <div class="table-responsive mb-3">
@@ -571,7 +596,16 @@
                 return;
             }
             const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
-            const rows = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
+            const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
+            const ord = (document.getElementById('gestao-ordenacao')?.value || 'VAR_PCT_DESC').toUpperCase();
+            const rows = [...rowsRaw];
+            rows.sort((a, b) => {
+                if (ord === 'VAR_PCT_ASC') return (Number(a.var_pct) || 0) - (Number(b.var_pct) || 0);
+                if (ord === 'ATING_DESC') return (Number(b.atingimento_meta) || 0) - (Number(a.atingimento_meta) || 0);
+                if (ord === 'REF_DESC') return (Number(b.ref_total) || 0) - (Number(a.ref_total) || 0);
+                if (ord === 'ALFA_ASC') return String(a.grupo || '').localeCompare(String(b.grupo || ''), 'pt-BR');
+                return (Number(b.var_pct) || 0) - (Number(a.var_pct) || 0);
+            });
             const labels = payload.labels || [];
             let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th><th>Meta</th>';
             labels.forEach(lb => { h += `<th>${lb.label}</th>`; });
@@ -583,9 +617,15 @@
             } else {
                 let b = '';
                 rows.forEach(r => {
+                    const varAbs = Number(r.var_abs || 0);
+                    const varPct = Number(r.var_pct || 0);
+                    const ating = Number(r.atingimento_meta || 0);
+                    const clsVar = varAbs > 0 ? 'metric-up' : (varAbs < 0 ? 'metric-down' : 'metric-flat');
+                    const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
+                    const clsMeta = ating >= 100 ? 'meta-hit' : 'meta-miss';
                     b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td><td>${r.meta||0}</td>`;
                     (r.serie || []).forEach(v => { b += `<td>${v}</td>`; });
-                    b += `<td>${r.ref_total}</td><td>${r.comp_total}</td><td>${r.var_abs}</td><td>${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td>${r.atingimento_meta}%</td></tr>`;
+                    b += `<td class="bg-total-column">${r.ref_total}</td><td>${r.comp_total}</td><td class="${clsVar}">${r.var_abs}</td><td class="${clsVarPct}">${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td class="${clsMeta}">${r.atingimento_meta}%</td></tr>`;
                 });
                 tbody.innerHTML = b;
             }
@@ -594,7 +634,13 @@
             if (!sem.length) {
                 tsem.innerHTML = '<tr><td colspan="5">Sem dados semanais</td></tr>';
             } else {
-                tsem.innerHTML = sem.map(s => `<tr><td>${s.semana}</td><td>${s.ref_total}</td><td>${s.comp_total}</td><td>${s.var_abs}</td><td>${s.var_pct}%</td></tr>`).join('');
+                tsem.innerHTML = sem.map(s => {
+                    const varAbs = Number(s.var_abs || 0);
+                    const varPct = Number(s.var_pct || 0);
+                    const clsVar = varAbs > 0 ? 'metric-up' : (varAbs < 0 ? 'metric-down' : 'metric-flat');
+                    const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
+                    return `<tr><td>${s.semana}</td><td>${s.ref_total}</td><td>${s.comp_total}</td><td class="${clsVar}">${s.var_abs}</td><td class="${clsVarPct}">${s.var_pct}%</td></tr>`;
+                }).join('');
             }
         }
 

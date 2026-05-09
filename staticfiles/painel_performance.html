@@ -31,6 +31,16 @@
         #capture-summary.show { display: block; }
         .nav-pills .nav-link { color: #5a5c69; font-weight: 600; border-radius: 20px; padding: 8px 20px; margin-right: 5px; }
         .nav-pills .nav-link.active { background-color: #4e73df; color: white; box-shadow: 0 2px 5px rgba(78,115,223,0.3); }
+        .top-action-btn {
+            width: 180px;
+            height: 52px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-weight: 700;
+        }
+        .top-action-wrap { width: 180px; }
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
@@ -85,16 +95,16 @@
             <div><h4 class="fw-bold text-dark mb-0"><i class="bi bi-bar-chart-line-fill text-primary"></i> Painel de Performance</h4></div>
             
             <div class="d-flex align-items-center gap-2">
-                <button class="btn btn-sm btn-outline-dark fw-bold" onclick="abrirConfiguracaoRobo()">
+                <button class="btn btn-sm btn-outline-dark top-action-btn" onclick="abrirConfiguracaoRobo()">
                     <i class="bi bi-robot"></i> Robô Automático
                 </button>
 
-                <button class="btn btn-sm btn-success" onclick="abrirModalEnvioManual()">
+                <button class="btn btn-sm btn-success top-action-btn" onclick="abrirModalEnvioManual()">
                     <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
                 </button>
 
-                <div class="dropdown" id="dropdown-export-performance">
-                    <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <div class="dropdown top-action-wrap" id="dropdown-export-performance">
+                    <button class="btn btn-sm btn-outline-primary dropdown-toggle top-action-btn w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-file-earmark-excel"></i> Exportar
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
