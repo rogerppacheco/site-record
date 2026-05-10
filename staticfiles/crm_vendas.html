@@ -48,12 +48,121 @@
         .bg-gradient-success { background: linear-gradient(45deg, #1cc88a, #13855c); }
         .bg-gradient-info { background: linear-gradient(45deg, #36b9cc, #258391); }
         .bg-gradient-warning { background: linear-gradient(45deg, #f6c23e, #dda20a); color: #fff; }
+
+        /* Card diretoria: contraste legível no gradiente azul */
+        .receita-operadora-card .receita-operadora-label {
+            font-size: 0.78rem;
+            letter-spacing: 0.06em;
+            color: rgba(255, 255, 255, 0.92);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        }
+        .receita-operadora-card .receita-operadora-valor {
+            color: #fff !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+            font-size: clamp(1.35rem, 4vw, 1.85rem);
+        }
+        .receita-operadora-card .receita-operadora-proj {
+            color: rgba(255, 255, 255, 0.98);
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
         
         thead input { width: 100%; padding: 3px; box-sizing: border-box; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; }
         
         .input-loading { background: url('https://i.gifer.com/ZZ5H.gif') no-repeat right 10px center; background-size: 20px; }
 
-        @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } .header-controls button { width: 100%; } }
+        @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } }
+
+        /* Record Vendas: layout útil em telas pequenas */
+        main.area-interna-section.crm-vendas-page {
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+            width: 100%;
+            padding-left: clamp(0.65rem, 2vw, 1.25rem);
+            padding-right: clamp(0.65rem, 2vw, 1.25rem);
+        }
+        main.crm-vendas-page .system-container {
+            width: 100%;
+            max-width: min(1700px, 100%) !important;
+            min-width: 0;
+            padding: 0.9rem 1rem !important;
+        }
+        .crm-vendas-toolbar-acoes {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem;
+            justify-content: flex-end;
+        }
+        .crm-vendas-toolbar-acoes .btn {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            padding: 0.4rem 0.65rem;
+            border-radius: 8px;
+            box-shadow: none;
+        }
+        .crm-vendas-scroll-top {
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 12px;
+            margin-bottom: 4px;
+            scrollbar-width: thin;
+        }
+        .crm-vendas-scroll-top::-webkit-scrollbar { height: 6px; }
+        .crm-vendas-scroll-top-inner { height: 1px; }
+        .crm-vendas-table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .crm-painel-filtros-shell {
+            border: 1px solid var(--cor-borda, #e4e9f2);
+            border-radius: 10px;
+            background: #fff;
+            margin-bottom: 0.75rem;
+            overflow: hidden;
+        }
+        .crm-painel-filtros-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            padding: 0.4rem 0.6rem;
+            background: #fafbfc;
+        }
+        .crm-painel-filtros-corpo .filter-bar {
+            padding: 0.65rem !important;
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+        }
+        .crm-painel-filtros-corpo .filter-item {
+            min-width: min(140px, 100%);
+        }
+        @media (max-width: 767.98px) {
+            .crm-vendas-scroll-top { display: none !important; }
+            #abas-status.nav-pills {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                gap: 0.35rem;
+                padding-bottom: 4px;
+                margin-bottom: 0.5rem !important;
+            }
+            #abas-status.nav-pills .nav-item { flex: 0 0 auto; }
+            #abas-status.nav-pills .nav-link {
+                font-size: 0.78rem;
+                padding: 0.35rem 0.55rem;
+                white-space: nowrap;
+            }
+            .contador-instaladas {
+                padding: 0.45rem 0.65rem !important;
+                font-size: 0.78rem !important;
+            }
+        }
         
         /* Correção para modal não aparecer */
         #modal-origem-venda {
@@ -88,30 +197,30 @@
         </div>
     </header>
 
-    <main class="area-interna-section">
+    <main class="area-interna-section crm-vendas-page">
         <div class="system-container" style="max-width: 1700px;"> 
-            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3 header-controls">
-                <div>
-                    <h1 style="font-size: 1.8rem; margin: 0;">Vendas</h1>
-                    <p class="text-muted mb-0">Gerencie vendas e acompanhe o status.</p>
+            <div class="d-flex justify-content-between align-items-start align-items-md-center mb-3 mb-md-4 flex-wrap gap-3 header-controls">
+                <div class="flex-shrink-0">
+                    <h1 style="font-size: 1.75rem; margin: 0;">Vendas</h1>
+                    <p class="text-muted mb-0 small">Gerencie vendas e acompanhe o status.</p>
                 </div>
-                <div class="d-flex gap-2">
-                    <button id="btn-exportar-excel" class="btn btn-success shadow-sm fw-bold d-none" onclick="exportarExcelDiretoria()">
-                        <i class="bi bi-file-earmark-excel-fill"></i> Baixar Base
+                <div class="crm-vendas-toolbar-acoes ms-md-auto">
+                    <button type="button" id="btn-exportar-excel" class="btn btn-sm btn-success d-none" onclick="exportarExcelDiretoria()" title="Exportar planilha (Diretoria/Admin/BackOffice)">
+                        <i class="bi bi-file-earmark-excel-fill"></i><span class="d-none d-md-inline ms-1">Baixar Base</span>
                     </button>
-                    <button class="btn btn-outline-success shadow-sm fw-bold" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
-                        <i class="bi bi-chat-heart"></i> Boas Vindas
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
+                        <i class="bi bi-chat-heart"></i><span class="d-none d-md-inline ms-1">Boas Vindas</span>
                     </button>
-                    <button class="btn btn-primary shadow-sm fw-bold" onclick="abrirModalOrigem()">
-                        <i class="bi bi-plus-lg"></i> Nova Venda
+                    <button type="button" class="btn btn-sm btn-primary" onclick="abrirModalOrigem()" title="Registrar nova venda">
+                        <i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline ms-1">Nova Venda</span>
                     </button>
                 </div>
             </div>
 
-            <ul class="nav nav-tabs mb-3" id="abas-navegacao">
-                <li class="nav-item"><a class="nav-link active" onclick="alterarAba('minhas_vendas', this)">Minhas Vendas</a></li>
-                <li class="nav-item d-none" id="aba-equipe"><a class="nav-link" onclick="alterarAba('equipe', this)">Visão de Equipe</a></li>
-                <li class="nav-item"><a class="nav-link" onclick="alterarAba('dashboard', this)">Dashboard</a></li>
+            <ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto" id="abas-navegacao" style="gap: 0.25rem;">
+                <li class="nav-item flex-shrink-0"><a class="nav-link active" href="#" data-view="minhas_vendas" onclick="alterarAba('minhas_vendas', this); return false;">Minhas Vendas</a></li>
+                <li class="nav-item d-none flex-shrink-0" id="aba-equipe"><a class="nav-link" href="#" data-view="equipe" onclick="alterarAba('equipe', this); return false;">Visão de Equipe</a></li>
+                <li class="nav-item flex-shrink-0"><a class="nav-link" href="#" data-view="dashboard" onclick="alterarAba('dashboard', this); return false;">Dashboard</a></li>
             </ul>
 
             <div id="conteudo-lista">
@@ -125,30 +234,42 @@
                     </ul>
                 </div>
 
-                <div class="filter-bar mb-4 shadow-sm" id="barra-filtros">
-                    <div class="filter-item">
-                        <label class="form-label small fw-bold text-muted">Buscar Global</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                            <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="CPF, Nome ou OS...">
+                <div id="crm-vendas-filtros-wrap" class="d-none">
+                    <div class="crm-painel-filtros-shell shadow-sm" id="crm-vendas-filtros-shell">
+                        <div class="crm-painel-filtros-bar">
+                            <span class="small text-secondary fw-semibold text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.06em;">Filtros</span>
+                            <button type="button" id="btn-toggle-crm-filtros" class="btn btn-sm btn-outline-secondary" onclick="toggleCrmVendasFiltros()" aria-expanded="false" title="Mostrar ou ocultar filtros">
+                                <i class="bi bi-chevron-down" id="crm-filtros-chevron"></i><span class="ms-1" id="crm-filtros-toggle-label">Mostrar filtros</span>
+                            </button>
+                        </div>
+                        <div id="crm-vendas-filtros-corpo" class="crm-painel-filtros-corpo" style="display: none;">
+                            <div class="filter-bar mb-0 shadow-sm" id="barra-filtros">
+                                <div class="filter-item">
+                                    <label class="form-label small fw-bold text-muted mb-0">Buscar Global</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text bg-white py-1"><i class="bi bi-search"></i></span>
+                                        <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="CPF, Nome ou OS...">
+                                    </div>
+                                </div>
+
+                                <div class="filter-item"><label class="form-label small fw-bold text-muted mb-0">Início</label><input type="date" id="filtro-inicio" class="form-control form-control-sm"></div>
+                                <div class="filter-item"><label class="form-label small fw-bold text-muted mb-0">Fim</label><input type="date" id="filtro-fim" class="form-control form-control-sm"></div>
+                                <div class="filter-item d-none" id="container-filtro-vendedor">
+                                    <label class="form-label small fw-bold text-muted mb-0">Vendedor</label>
+                                    <select id="filtro-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
+                                </div>
+                                <div class="filter-item d-none" id="filtro-dash-vendedor-ativo-wrap">
+                                    <label class="form-label small fw-bold text-muted mb-0">Conta vendedor</label>
+                                    <select id="filtro-vendedor-ativo-dash" class="form-select form-select-sm" title="Ativo = usuário ativo no sistema">
+                                        <option value="todos" selected>Todos (ativos e inativos)</option>
+                                        <option value="ativos">Só ativos</option>
+                                        <option value="inativos">Só inativos</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item" style="flex: 0 0 auto;"><button type="button" onclick="aplicarFiltros()" class="btn btn-sm btn-primary px-3"><i class="bi bi-filter"></i> Filtrar</button></div>
+                            </div>
                         </div>
                     </div>
-
-                    <div class="filter-item"><label class="form-label small fw-bold text-muted">Início</label><input type="date" id="filtro-inicio" class="form-control form-control-sm"></div>
-                    <div class="filter-item"><label class="form-label small fw-bold text-muted">Fim</label><input type="date" id="filtro-fim" class="form-control form-control-sm"></div>
-                    <div class="filter-item d-none" id="container-filtro-vendedor">
-                        <label class="form-label small fw-bold text-muted">Vendedor</label>
-                        <select id="filtro-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
-                    </div>
-                    <div class="filter-item d-none" id="filtro-dash-vendedor-ativo-wrap">
-                        <label class="form-label small fw-bold text-muted">Conta vendedor</label>
-                        <select id="filtro-vendedor-ativo-dash" class="form-select form-select-sm" title="Ativo = usuário ativo no sistema">
-                            <option value="todos" selected>Todos (ativos e inativos)</option>
-                            <option value="ativos">Só ativos</option>
-                            <option value="inativos">Só inativos</option>
-                        </select>
-                    </div>
-                    <div class="filter-item" style="flex: 0 0 auto;"><button onclick="aplicarFiltros()" class="btn btn-sm btn-primary w-100"><i class="bi bi-filter"></i> Filtrar</button></div>
                 </div>
 
                 <div id="aviso-filtro-bloqueado" class="alert alert-light border mb-3 d-none text-center text-muted">
@@ -160,7 +281,10 @@
                 </div>
 
                 <div class="card border-0 shadow-none">
-                    <div class="table-responsive">
+                    <div class="crm-vendas-scroll-top" id="crm-vendas-scroll-top" aria-hidden="true">
+                        <div class="crm-vendas-scroll-top-inner" id="crm-vendas-scroll-top-inner"></div>
+                    </div>
+                    <div class="table-responsive crm-vendas-table-scroll" id="crm-vendas-scroll-main">
                         <table id="tabela-vendas" class="table table-hover align-middle mb-0" style="width:100%">
                             <thead class="table-light">
                                 <tr>
@@ -177,10 +301,16 @@
                 <div class="alert alert-info py-2 small mb-4"><i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.</div>
                 <div class="row mb-4" id="row-diretoria" style="display:none;">
                     <div class="col-12">
-                        <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; cursor: pointer;" onclick="abrirModalMix()">
+                        <div class="card border-0 shadow-sm receita-operadora-card" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #fff; cursor: pointer;" onclick="abrirModalMix()">
                             <div class="card-body d-flex justify-content-between align-items-center">
-                                <div><h6 class="text-uppercase mb-1" style="font-size: 0.8rem; opacity: 0.9;">Receita Operadora (Instaladas)</h6><div class="d-flex align-items-baseline"><h2 class="mb-0 fw-bold me-3" id="dir-fat-real">R$ 0,00</h2><small class="text-info bg-white bg-opacity-10 px-2 py-1 rounded">Proj: <span id="dir-fat-proj">R$ 0,00</span></small></div></div>
-                                <div class="text-end"><i class="bi bi-pie-chart-fill fs-1 opacity-50"></i><div class="small mt-1 opacity-75">Clique para ver Mix</div></div>
+                                <div class="min-w-0">
+                                    <h6 class="text-uppercase mb-2 mb-md-1 fw-semibold text-white receita-operadora-label">Receita Operadora (Instaladas)</h6>
+                                    <div class="d-flex align-items-baseline flex-wrap gap-2">
+                                        <h2 class="mb-0 fw-bold text-white receita-operadora-valor" id="dir-fat-real">R$ 0,00</h2>
+                                        <small class="receita-operadora-proj px-2 py-1 rounded">Proj: <span id="dir-fat-proj">R$ 0,00</span></small>
+                                    </div>
+                                </div>
+                                <div class="text-end flex-shrink-0 ps-2"><i class="bi bi-pie-chart-fill fs-1 text-white opacity-50"></i><div class="small mt-1 text-white opacity-75">Clique para ver Mix</div></div>
                             </div>
                         </div>
                     </div>
@@ -492,6 +622,81 @@
         let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep, modalReemissao;
         let vendaReemissaoId = null;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
+        let crmVendasScrollSyncing = false;
+
+        function toggleCrmVendasFiltros() {
+            const corpo = document.getElementById('crm-vendas-filtros-corpo');
+            const btn = document.getElementById('btn-toggle-crm-filtros');
+            const chevron = document.getElementById('crm-filtros-chevron');
+            const label = document.getElementById('crm-filtros-toggle-label');
+            if (!corpo) return;
+            const oculto = corpo.style.display === 'none' || window.getComputedStyle(corpo).display === 'none';
+            const abrir = oculto;
+            corpo.style.display = abrir ? '' : 'none';
+            if (chevron) {
+                chevron.classList.remove('bi-chevron-down', 'bi-chevron-up');
+                chevron.classList.add(abrir ? 'bi-chevron-up' : 'bi-chevron-down');
+            }
+            if (label) label.textContent = abrir ? 'Ocultar filtros' : 'Mostrar filtros';
+            if (btn) btn.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+            try { sessionStorage.setItem('crm-vendas-filtros-aberto', abrir ? '1' : '0'); } catch (e) {}
+        }
+
+        function restaurarEstadoPainelFiltros() {
+            const wrap = document.getElementById('crm-vendas-filtros-wrap');
+            const corpo = document.getElementById('crm-vendas-filtros-corpo');
+            if (!wrap || !corpo || wrap.classList.contains('d-none')) return;
+            let aberto = false;
+            try { aberto = sessionStorage.getItem('crm-vendas-filtros-aberto') === '1'; } catch (e) {}
+            corpo.style.display = aberto ? '' : 'none';
+            const chevron = document.getElementById('crm-filtros-chevron');
+            const label = document.getElementById('crm-filtros-toggle-label');
+            const btn = document.getElementById('btn-toggle-crm-filtros');
+            if (chevron) {
+                chevron.classList.remove('bi-chevron-down', 'bi-chevron-up');
+                chevron.classList.add(aberto ? 'bi-chevron-up' : 'bi-chevron-down');
+            }
+            if (label) label.textContent = aberto ? 'Ocultar filtros' : 'Mostrar filtros';
+            if (btn) btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+        }
+
+        function syncCrmVendasScrollbars() {
+            const inner = document.getElementById('crm-vendas-scroll-top-inner');
+            const table = document.getElementById('tabela-vendas');
+            if (!inner || !table) return;
+            inner.style.width = table.scrollWidth + 'px';
+        }
+
+        function bindCrmVendasScrollSync() {
+            const top = document.getElementById('crm-vendas-scroll-top');
+            const main = document.getElementById('crm-vendas-scroll-main');
+            if (!top || !main) return;
+            top.addEventListener('scroll', () => {
+                if (crmVendasScrollSyncing) return;
+                crmVendasScrollSyncing = true;
+                main.scrollLeft = top.scrollLeft;
+                crmVendasScrollSyncing = false;
+            }, { passive: true });
+            main.addEventListener('scroll', () => {
+                if (crmVendasScrollSyncing) return;
+                crmVendasScrollSyncing = true;
+                top.scrollLeft = main.scrollLeft;
+                crmVendasScrollSyncing = false;
+            }, { passive: true });
+        }
+
+        function aplicarAbaInicialPorPerfil() {
+            const perfisEquipeDefault = ['Diretoria', 'Admin', 'BackOffice'];
+            if (!perfisEquipeDefault.includes(userProfile)) return;
+            const liEquipe = document.getElementById('aba-equipe');
+            const linkEquipe = liEquipe ? liEquipe.querySelector('.nav-link[data-view="equipe"]') : null;
+            if (!linkEquipe || liEquipe.classList.contains('d-none')) return;
+            document.querySelectorAll('#abas-navegacao .nav-link').forEach(l => l.classList.remove('active'));
+            linkEquipe.classList.add('active');
+            viewAtual = 'geral';
+            const cv = document.getElementById('container-filtro-vendedor');
+            if (cv) cv.classList.remove('d-none');
+        }
         let dadosMixCache = null;
         let vendedoresCache = [];
         let dashboardDataCache = {}; 
@@ -541,11 +746,18 @@
             document.getElementById('filtro-fim').valueAsDate = hoje;
 
             configurarPerfil();
+            aplicarAbaInicialPorPerfil();
+            restaurarEstadoPainelFiltros();
             await carregarAuxiliares();
-            
-            if(['Supervisor', 'Diretoria', 'BackOffice', 'Admin'].includes(userProfile)) { carregarVendedores(); }
-            
-            aplicarFiltros(); 
+
+            if (['Supervisor', 'Diretoria', 'BackOffice', 'Admin'].includes(userProfile)) {
+                await carregarVendedores();
+            }
+
+            bindCrmVendasScrollSync();
+            window.addEventListener('resize', () => { requestAnimationFrame(syncCrmVendasScrollbars); });
+
+            aplicarFiltros();
 
             document.getElementById('form-nova-venda').addEventListener('submit', salvarVenda);
             document.getElementById('nova-cep').addEventListener('blur', buscarCepNovaVenda);
@@ -783,8 +995,10 @@
         }
 
         function aplicarFiltros() {
-            const abaAtiva = document.querySelector('.nav-tabs .nav-link.active').innerText;
-            if(abaAtiva === 'Dashboard') { carregarDashboard(); } else { carregarVendas(); }
+            const tab = document.querySelector('#abas-navegacao .nav-link.active');
+            const dv = tab ? tab.getAttribute('data-view') : '';
+            if (dv === 'dashboard') carregarDashboard();
+            else carregarVendas();
         }
 
         function filtrarPorStatus(status, element) {
@@ -844,7 +1058,37 @@
         // =========================================================================
         // FUNÇÃO CARREGAR VENDAS (CORRIGIDA: Lógica de Status Fechado)
         // =========================================================================
+        function consultorMesFiltroValido(iniStr, fimStr) {
+            if (!['Vendedor', 'Supervisor'].includes(userProfile)) return true;
+            if (!iniStr || !fimStr) return true;
+            const a = new Date(iniStr + 'T12:00:00');
+            const b = new Date(fimStr + 'T12:00:00');
+            if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return false;
+            if (a.getDate() !== 1) return false;
+            const ultimo = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+            if (b.getFullYear() !== ultimo.getFullYear() || b.getMonth() !== ultimo.getMonth() || b.getDate() !== ultimo.getDate()) return false;
+            const hoje = new Date();
+            const ym = (d) => d.getFullYear() * 12 + d.getMonth();
+            const yma = ym(a);
+            if (yma === ym(hoje)) return true;
+            const ant = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+            return yma === ym(ant);
+        }
+
+        function garantirFiltroMesConsultor() {
+            if (!['Vendedor', 'Supervisor'].includes(userProfile)) return;
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
+            if (!inicio || !fim) return;
+            if (consultorMesFiltroValido(inicio, fim)) return;
+            alert('Para seu perfil, use apenas o mês atual ou o mês anterior completo (do dia 1 ao último dia do mês).');
+            const h = new Date();
+            document.getElementById('filtro-inicio').valueAsDate = new Date(h.getFullYear(), h.getMonth(), 1);
+            document.getElementById('filtro-fim').valueAsDate = new Date(h.getFullYear(), h.getMonth() + 1, 0);
+        }
+
         async function carregarVendas(silent = false) {
+            garantirFiltroMesConsultor();
             document.getElementById('contador-filtros-principais').textContent = '0';
             document.getElementById('contador-filtros-cabecalho').textContent = '0';
             // Destruição segura do DataTable
@@ -861,7 +1105,9 @@
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
             const busca = document.getElementById('filtro-busca').value;
-            const viewAtual = document.querySelector('.nav-tabs .nav-link.active').innerText === 'Minhas Vendas' ? 'minhas_vendas' : 'geral';
+            const tabLista = document.querySelector('#abas-navegacao .nav-link.active');
+            const tabView = tabLista ? tabLista.getAttribute('data-view') : 'minhas_vendas';
+            const viewAtual = tabView === 'minhas_vendas' ? 'minhas_vendas' : 'geral';
             
             let url = `/crm/vendas/?view=${viewAtual}`;
             if(inicio) url += `&data_inicio=${inicio}`;
@@ -1123,12 +1369,17 @@
                     });
                 }
             });
+
             const atualizarContadorCabecalho = () => {
                 const totalAplicado = table.rows({ filter: 'applied' }).count();
                 document.getElementById('contador-filtros-cabecalho').textContent = `${totalAplicado}`;
             };
-            table.on('draw.dt', atualizarContadorCabecalho);
+            table.on('draw.dt', function () {
+                atualizarContadorCabecalho();
+                requestAnimationFrame(syncCrmVendasScrollbars);
+            });
             atualizarContadorCabecalho();
+            requestAnimationFrame(syncCrmVendasScrollbars);
         }
 
         async function reenviarWhatsApp(id) {
@@ -1453,9 +1704,20 @@
                 userProfile = payload.user_role || payload.perfil || 'Vendedor'; 
                 const perfisGestao = ['Supervisor', 'Diretoria', 'BackOffice', 'Admin'];
                 if (perfisGestao.includes(userProfile)) { document.getElementById('aba-equipe').classList.remove('d-none'); }
-                if (!['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) { 
-                    document.getElementById('barra-filtros').style.display = 'none'; 
-                    document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); 
+                const mostraBarraFiltros = ['Diretoria', 'Admin', 'BackOffice', 'Vendedor', 'Supervisor'].includes(userProfile);
+                const wrapFiltros = document.getElementById('crm-vendas-filtros-wrap');
+                const aviso = document.getElementById('aviso-filtro-bloqueado');
+                if (wrapFiltros) wrapFiltros.classList.toggle('d-none', !mostraBarraFiltros);
+                if (aviso) {
+                    if (mostraBarraFiltros) {
+                        aviso.classList.add('d-none');
+                    } else {
+                        aviso.classList.remove('d-none');
+                    }
+                }
+                if (['Vendedor', 'Supervisor'].includes(userProfile) && aviso) {
+                    aviso.classList.remove('d-none');
+                    aviso.innerHTML = '<i class="bi bi-calendar-check"></i> Filtro de datas: apenas <strong>mês civil completo</strong> (dia 1 ao último dia), <strong>mês atual</strong> ou <strong>mês anterior</strong>.';
                 }
                 if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
@@ -1465,21 +1727,27 @@
             } catch(e) {}
         }
 
-        function alterarAba(tipo, elemento) {
+        async function alterarAba(tipo, elemento) {
             document.querySelectorAll('#abas-navegacao .nav-link').forEach(l => l.classList.remove('active'));
             elemento.classList.add('active');
             const divLista = document.getElementById('conteudo-lista');
             const divDash = document.getElementById('conteudo-dashboard');
-            if (tipo === 'dashboard') { divLista.style.display = 'none'; divDash.style.display = 'block'; carregarDashboard(); } else {
-                divDash.style.display = 'none'; divLista.style.display = 'block';
+            if (tipo === 'dashboard') {
+                divLista.style.display = 'none';
+                divDash.style.display = 'block';
+                carregarDashboard();
+            } else {
+                divDash.style.display = 'none';
+                divLista.style.display = 'block';
                 viewAtual = (tipo === 'minhas_vendas') ? 'minhas_vendas' : 'geral';
                 document.getElementById('container-filtro-vendedor').classList.toggle('d-none', viewAtual === 'minhas_vendas');
-                if (viewAtual === 'geral') carregarVendedores();
+                if (viewAtual === 'geral') await carregarVendedores();
                 carregarVendas();
             }
         }
 
         async function carregarDashboard() {
+            garantirFiltroMesConsultor();
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const consultorId = document.getElementById('filtro-vendedor').value;
