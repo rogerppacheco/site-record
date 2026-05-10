@@ -1861,17 +1861,37 @@
 
                 const btnExcluir = document.createElement('button');
                 btnExcluir.className = 'btn btn-xs btn-excluir';
-                btnExcluir.innerHTML = '<i class="bi bi-trash"></i>';
+                btnExcluir.innerHTML = '<i class="bi bi-person-x"></i>';
+                btnExcluir.title = 'Inativar usuário';
                 btnExcluir.onclick = () => inativarUsuario(user.id);
 
                 acoesCell.appendChild(btnEditar);
                 acoesCell.appendChild(btnExcluir);
+
+                if (isSuperuser) {
+                    const btnExcluirDefinitivo = document.createElement('button');
+                    btnExcluirDefinitivo.className = 'btn btn-xs btn-danger ms-1';
+                    btnExcluirDefinitivo.innerHTML = '<i class="bi bi-trash3-fill"></i>';
+                    btnExcluirDefinitivo.title = 'Excluir definitivamente';
+                    btnExcluirDefinitivo.onclick = () => excluirUsuarioDefinitivo(user.id, user.username);
+                    acoesCell.appendChild(btnExcluirDefinitivo);
+                }
             } else {
                 const btnReativar = document.createElement('button');
                 btnReativar.className = 'btn btn-xs btn-outline-success';
                 btnReativar.innerHTML = '<i class="bi bi-check-circle"></i>';
+                btnReativar.title = 'Reativar usuário';
                 btnReativar.onclick = () => reativarUsuario(user.id);
                 acoesCell.appendChild(btnReativar);
+
+                if (isSuperuser) {
+                    const btnExcluirDefinitivo = document.createElement('button');
+                    btnExcluirDefinitivo.className = 'btn btn-xs btn-danger ms-1';
+                    btnExcluirDefinitivo.innerHTML = '<i class="bi bi-trash3-fill"></i>';
+                    btnExcluirDefinitivo.title = 'Excluir definitivamente';
+                    btnExcluirDefinitivo.onclick = () => excluirUsuarioDefinitivo(user.id, user.username);
+                    acoesCell.appendChild(btnExcluirDefinitivo);
+                }
             }
 
             row.appendChild(acoesCell);
@@ -2255,6 +2275,23 @@
             await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
             const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
             carregarUsuarios(statusAtual, paginacaoAtual.page);
+        }
+    }
+
+    async function excluirUsuarioDefinitivo(id, username) {
+        const nome = username || `ID ${id}`;
+        const confirmar = confirm(
+            `ATENÇÃO: esta ação remove permanentemente o usuário ${nome} e dados relacionados.\n\nDeseja continuar?`
+        );
+        if (!confirmar) return;
+
+        try {
+            await apiFetch(`/usuarios/${id}/excluir-definitivo/`, { method: 'DELETE' });
+            const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            await carregarUsuarios(statusAtual, paginacaoAtual.page);
+            alert('Usuário excluído definitivamente.');
+        } catch (e) {
+            alert('Erro ao excluir definitivamente: ' + (e.message || e));
         }
     }
 

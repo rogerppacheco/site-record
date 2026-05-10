@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth.models import ContentType, Group, Permission
-from django.db import transaction
+from django.db import transaction, connection
 from django.db.models import Q
 from django.utils.crypto import get_random_string
 from django.http import HttpResponse
@@ -445,6 +445,79 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         usuario.is_active = True
         usuario.save()
         return Response({'status': 'reativado'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['delete'], url_path='excluir-definitivo')
+    def excluir_definitivo(self, request, pk=None):
+        """
+        Exclui definitivamente o usuário e registros relacionados (FK) existentes no banco.
+        Disponível apenas para superusuário.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'detail': 'Apenas superusuário pode excluir definitivamente usuários.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        usuario = self.get_object()
+        if usuario.id == request.user.id:
+            return Response(
+                {'detail': 'Não é permitido excluir o próprio usuário logado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        usuario_id = usuario.id
+        deletados_relacionados = 0
+
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            tc.table_schema,
+                            tc.table_name,
+                            kcu.column_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu
+                          ON tc.constraint_name = kcu.constraint_name
+                         AND tc.table_schema = kcu.table_schema
+                        JOIN information_schema.constraint_column_usage ccu
+                          ON ccu.constraint_name = tc.constraint_name
+                         AND ccu.table_schema = tc.table_schema
+                        WHERE tc.constraint_type = 'FOREIGN KEY'
+                          AND ccu.table_name = 'usuarios_usuario'
+                          AND ccu.column_name = 'id'
+                        ORDER BY tc.table_schema, tc.table_name
+                        """
+                    )
+                    referencias = cursor.fetchall()
+
+                    for schema_name, table_name, column_name in referencias:
+                        tabela = f'{connection.ops.quote_name(schema_name)}.{connection.ops.quote_name(table_name)}'
+                        coluna = connection.ops.quote_name(column_name)
+                        cursor.execute(f"DELETE FROM {tabela} WHERE {coluna} = %s", [usuario_id])
+                        deletados_relacionados += cursor.rowcount or 0
+
+                    # DELETE direto no SQL: evita o collector do Django, que faria SET_NULL/CASCADE em
+                    # *todos* os modelos registrados — inclusive tabelas ausentes no banco (ex.: outro
+                    # deploy/migration), o que gera erro mesmo após limpar FKs reais em information_schema.
+                    utable = connection.ops.quote_name(Usuario._meta.db_table)
+                    cursor.execute(f"DELETE FROM {utable} WHERE {connection.ops.quote_name('id')} = %s", [usuario_id])
+
+        except Exception as exc:
+            return Response(
+                {'detail': f'Erro ao excluir definitivamente: {str(exc)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response(
+            {
+                'status': 'excluido_definitivamente',
+                'usuario_id': usuario_id,
+                'registros_relacionados_removidos': deletados_relacionados,
+            },
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=False, methods=['get'])
     def lideres(self, request):

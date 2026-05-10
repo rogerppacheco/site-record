@@ -56,9 +56,189 @@
         .contador-instaladas { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; color: #495057; }
         .contador-instaladas strong { color: #0d6efd; }
 
+        /* Rolagem horizontal + larguras mínimas: evita colunas finais ilegíveis em telas estreitas */
+        .esteira-table-scroll {
+            overflow-x: auto;
+            overflow-y: visible;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 10px;
+            margin-bottom: 0.25rem;
+        }
+        .table-esteira {
+            width: max-content;
+            min-width: 100%;
+            table-layout: auto;
+            --esteira-sticky-w1: 9rem;
+            --esteira-sticky-w2: 7.5rem;
+        }
+        .table-esteira thead th {
+            white-space: nowrap;
+        }
+        .table-esteira .esteira-col-cliente {
+            white-space: normal;
+            max-width: 14rem;
+            vertical-align: middle;
+        }
+        .table-esteira th.esteira-col-motivo,
+        .table-esteira td.esteira-col-motivo { min-width: 12rem; }
+        .table-esteira th.esteira-col-conf,
+        .table-esteira td.esteira-col-conf { min-width: 10rem; }
+        .table-esteira th.esteira-col-resp,
+        .table-esteira td.esteira-col-resp { min-width: 10rem; }
+        .table-esteira th.esteira-col-comissao-cb,
+        .table-esteira td.esteira-col-comissao-cb { min-width: 3rem; text-align: center; }
+        .table-esteira th.esteira-col-acoes,
+        .table-esteira td.esteira-col-acoes { min-width: 7.5rem; white-space: nowrap; }
+
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .header-controls button { width: 100%; }
+            .header-controls .esteira-toolbar-acoes-wrap button:not(.esteira-btn-icon-only) { min-width: 0; }
+        }
+
+        /* Barra de ações do topo: mais compacta (padrão toolbar / data grid) */
+        .esteira-toolbar-principal {
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .esteira-toolbar-acoes-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .esteira-toolbar-principal .btn {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            padding: 0.38rem 0.65rem;
+            border-radius: 8px;
+            box-shadow: none;
+        }
+        .esteira-toolbar-principal .btn:hover {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+        .esteira-toolbar-principal .input-group-sm > .form-control {
+            font-size: 0.875rem;
+        }
+
+        /* Esteira: título visível + tabela sem cortar à esquerda */
+        main.area-interna-section.esteira-page-main {
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding-left: clamp(0.75rem, 2.5vw, 1.5rem);
+            padding-right: clamp(0.75rem, 2.5vw, 1.5rem);
+        }
+        main.area-interna-section.esteira-page-main .system-container {
+            width: 100%;
+            max-width: min(1600px, 100%) !important;
+            margin-left: auto;
+            margin-right: auto;
+            min-width: 0;
+        }
+        .esteira-scroll-wrapper { width: 100%; min-width: 0; }
+        .esteira-scroll-top {
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 14px;
+            margin-bottom: 4px;
+            scrollbar-width: thin;
+        }
+        .esteira-scroll-top::-webkit-scrollbar { height: 8px; }
+        .esteira-scroll-top-inner { height: 1px; }
+
+        /* Duas primeiras colunas fixas na rolagem horizontal (sticky) */
+        .esteira-col-id-venda { vertical-align: middle; }
+        .esteira-col-agenda { min-width: 7rem; vertical-align: middle; }
+        .esteira-col-agenda .esteira-turno-sub {
+            font-size: 0.78rem;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .table-esteira thead th.esteira-col-sticky-1,
+        .table-esteira tbody td.esteira-col-sticky-1 {
+            position: sticky;
+            left: 0;
+            width: var(--esteira-sticky-w1);
+            min-width: var(--esteira-sticky-w1);
+            max-width: var(--esteira-sticky-w1);
+            box-sizing: border-box;
+            background-color: #ffffff !important;
+            box-shadow: 6px 0 14px -10px rgba(0, 0, 0, 0.35);
+            vertical-align: middle;
+        }
+        .table-esteira thead th.esteira-col-sticky-2,
+        .table-esteira tbody td.esteira-col-sticky-2 {
+            position: sticky;
+            left: var(--esteira-sticky-w1);
+            width: var(--esteira-sticky-w2);
+            min-width: var(--esteira-sticky-w2);
+            max-width: var(--esteira-sticky-w2);
+            box-sizing: border-box;
+            background-color: #ffffff !important;
+            box-shadow: 6px 0 14px -10px rgba(0, 0, 0, 0.22);
+            vertical-align: middle;
+        }
+        .table-esteira thead th.esteira-col-sticky-1 {
+            z-index: 6;
+            background-color: #f8f9fa !important;
+            white-space: normal;
+        }
+        .table-esteira thead th.esteira-col-sticky-2 {
+            z-index: 5;
+            background-color: #f8f9fa !important;
+            white-space: normal;
+        }
+        .table-esteira tbody td.esteira-col-sticky-1 { z-index: 4; }
+        .table-esteira tbody td.esteira-col-sticky-2 { z-index: 3; }
+
+        /* Hover sem transform no <tr>: transform quebra position:sticky nas células */
+        .table-esteira tbody tr {
+            transition: filter 0.18s ease, box-shadow 0.18s ease;
+        }
+        .table-esteira tbody tr:hover {
+            filter: brightness(0.985);
+        }
+
+        /* Filtros por coluna: compactos + linha dupla horizontal (menos altura) */
+        #esteira-toolbar-filtros .btn-sm {
+            padding: 0.25rem 0.55rem;
+            font-size: 0.8rem;
+        }
+        .esteira-fc-inline2 {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            gap: 4px;
+            width: 100%;
+        }
+        .esteira-fc-inline2 .esteira-fc-input {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        #linha-filtros-colunas th {
+            padding-top: 0.3rem !important;
+            padding-bottom: 0.3rem !important;
+            vertical-align: middle !important;
+        }
+        .table-esteira thead #linha-filtros-colunas .esteira-fc-input {
+            padding: 0.16rem 0.28rem;
+            font-size: 0.72rem;
+            line-height: 1.2;
+            min-height: 1.52rem;
+            border-radius: 6px;
+        }
+        .table-esteira thead #linha-filtros-colunas select.esteira-fc-select {
+            padding: 0.14rem 1.15rem 0.14rem 0.32rem;
+            font-size: 0.72rem;
+            line-height: 1.2;
+            min-height: 1.52rem;
+            border-radius: 6px;
+            background-size: 10px 8px;
+            background-position: right 0.28rem center;
         }
     </style>
 </head>
@@ -77,39 +257,41 @@
         </div>
     </header>
 
-    <main class="area-interna-section">
+    <main class="area-interna-section esteira-page-main">
         <div class="system-container" style="max-width: 1600px;">
-            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
-                <div>
+            <div class="d-flex justify-content-between align-items-start align-items-md-center flex-wrap gap-3 mb-4 header-controls">
+                <div class="flex-shrink-0">
                     <h1 style="font-size: 1.8rem; margin: 0;">Esteira de Vendas</h1>
                     <p class="text-muted mb-0">Acompanhamento e tratamento de pendências.</p>
                 </div>
-                
-                <div class="d-flex gap-2">
-                    <div class="input-group" style="max-width: 300px;">
-                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                        <input type="text" id="filtro-busca" class="form-control" placeholder="Buscar CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()">
+
+                <div class="d-flex flex-wrap align-items-center esteira-toolbar-principal ms-md-auto">
+                    <div class="input-group input-group-sm mb-1 mb-md-0 me-md-1" style="max-width: min(280px, 100%);">
+                        <span class="input-group-text bg-white py-1"><i class="bi bi-search"></i></span>
+                        <input type="text" id="filtro-busca" class="form-control py-1" placeholder="CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()" title="Buscar por CPF ou número da O.S.">
                     </div>
 
-                    <button id="btn-toggle-wpp" class="btn btn-outline-success fw-bold shadow-sm" style="display: none;" onclick="toggleEnvioZap()">
-                        <i class="bi bi-whatsapp"></i> WPP ON
-                    </button>
+                    <div class="esteira-toolbar-acoes-wrap">
+                        <button id="btn-toggle-wpp" class="btn btn-sm btn-outline-secondary" style="display: none;" onclick="toggleEnvioZap()" title="Alternar envio de WhatsApp ao mudar status" type="button">
+                            <i class="bi bi-whatsapp"></i><span class="esteira-wpp-label d-none d-sm-inline ms-1">ON</span>
+                        </button>
 
-                    <button type="button" id="btn-adiant-sabado-lote" onclick="abrirModalAdiantSabadoLote()" class="btn btn-outline-primary fw-bold shadow-sm" style="display: none;" title="Marcar em lote as vendas de um sábado (abertura O.S.) para vendedores habilitados">
-                        <i class="bi bi-calendar-check"></i> Adiant. sábado (dia…)
-                    </button>
+                        <button type="button" id="btn-adiant-sabado-lote" onclick="abrirModalAdiantSabadoLote()" class="btn btn-sm btn-outline-primary" style="display: none;" title="Marcar em lote as vendas de um sábado (abertura O.S.) para vendedores habilitados">
+                            <i class="bi bi-calendar-check"></i><span class="d-none d-lg-inline ms-1">Adiant. sábado</span>
+                        </button>
 
-                    <button onclick="exportarAgendamentosDia()" class="btn btn-outline-success fw-bold shadow-sm" title="Baixar planilha de agendamentos do dia para envio à operadora">
-                        <i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje
-                    </button>
+                        <button type="button" onclick="exportarAgendamentosDia()" class="btn btn-sm btn-outline-success" title="Baixar planilha de agendamentos do dia para envio à operadora">
+                            <i class="bi bi-file-earmark-excel"></i><span class="d-none d-lg-inline ms-1">Exportar hoje</span>
+                        </button>
 
-                    <button onclick="abrirModalEnviarLembrete()" class="btn btn-outline-success fw-bold shadow-sm" title="Enviar mensagem de lembrete para clientes agendados">
-                        <i class="bi bi-whatsapp"></i> Enviar Lembrete
-                    </button>
+                        <button type="button" onclick="abrirModalEnviarLembrete()" class="btn btn-sm btn-outline-success" title="Enviar mensagem de lembrete para clientes agendados na data e turno escolhidos">
+                            <i class="bi bi-whatsapp"></i><span class="d-none d-lg-inline ms-1">Lembrete</span>
+                        </button>
 
-                    <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
-                        <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
-                    </button>
+                        <button type="button" onclick="carregarVendas()" class="btn btn-sm btn-primary" title="Recarregar a lista da esteira">
+                            <i class="bi bi-arrow-clockwise"></i><span class="d-none d-sm-inline ms-1">Atualizar</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -249,39 +431,58 @@
                 </div>
             </div>
 
-            <div class="card border-0 shadow-none" style="background: transparent;">
-                <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
-                    <table class="table mb-0">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+                <p class="small text-muted mb-0 flex-grow-1" style="min-width: 10rem;"><i class="bi bi-arrows-expand"></i> Rolagem horizontal: use a <strong>barra acima</strong> ou <strong>abaixo</strong> da tabela (ambas movem juntas).</p>
+                <div id="esteira-toolbar-filtros" class="d-none align-items-center gap-2 flex-wrap justify-content-end flex-shrink-0">
+                    <button type="button" id="btn-toggle-filtros-colunas" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" onclick="togglePainelFiltrosColunas()" aria-expanded="false" title="Mostrar ou ocultar filtros por coluna na tabela">
+                        <i class="bi bi-funnel"></i><span class="esteira-btn-filtros-label">Filtros na tabela</span>
+                    </button>
+                    <span id="esteira-filtros-colunas-badge" class="badge rounded-pill bg-primary d-none">Filtros ativos</span>
+                    <button type="button" class="btn btn-sm btn-link text-secondary py-0 px-1" onclick="limparSomenteFiltrosColunas()" title="Limpar filtros das colunas">Limpar colunas</button>
+                </div>
+            </div>
+            <div class="card border-0 shadow-none esteira-scroll-wrapper" style="background: transparent;">
+                <div class="esteira-scroll-top" id="esteira-scroll-top" aria-hidden="true">
+                    <div class="esteira-scroll-top-inner" id="esteira-scroll-top-inner"></div>
+                </div>
+                <div class="table-responsive esteira-table-scroll" id="esteira-scroll-main" style="overflow-y: visible;">
+                    <table class="table table-esteira mb-0">
                         <thead>
                             <tr>
-                                <th class="ps-3">ID</th>
-                                <th>Data Venda</th> 
-                                <th>O.S.</th>
-                                <th>Data Agendada</th> 
-                                <th>Turno</th>
-                                <th>Cliente</th>
+                                <th class="ps-3 esteira-col-id-venda esteira-col-sticky-1">ID / Data venda</th>
+                                <th class="esteira-col-sticky-2">O.S.</th>
+                                <th class="esteira-col-agenda">Agendamento</th>
+                                <th class="esteira-col-cliente">Cliente</th>
                                 <th>Vendedor</th>
                                 <th>Adiant. CNPJ</th>
                                 <th>Adiant. Comissão</th>
                                 <th title="Adiantamento comissão (O.S. aberta em sábado, Regras por Faixa)">Adiant. sábado</th>
                                 <th>Plano</th>
                                 <th>Status Atual</th>
-                                <th>Motivo Pendência</th>
-                                <th title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
-                                <th>Resp. Alteração</th>
-                                <th title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
-                                <th class="pe-3">Ações</th>
+                                <th class="esteira-col-motivo">Motivo Pendência</th>
+                                <th class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
+                                <th class="esteira-col-resp">Resp. Alteração</th>
+                                <th class="esteira-col-comissao-cb" title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
+                                <th class="esteira-col-acoes pe-3">Ações</th>
                             </tr>
                             <tr id="linha-filtros-colunas" style="display:none;">
-                                <th><input id="fc-id" class="form-control form-control-sm" placeholder="ID"></th>
-                                <th><input id="fc-data-venda" class="form-control form-control-sm" placeholder="dd/mm/aaaa"></th>
-                                <th><input id="fc-os" class="form-control form-control-sm" placeholder="O.S."></th>
-                                <th><input id="fc-data-agendada" class="form-control form-control-sm" placeholder="dd/mm/aaaa"></th>
-                                <th><input id="fc-turno" class="form-control form-control-sm" placeholder="Turno"></th>
-                                <th><input id="fc-cliente" class="form-control form-control-sm" placeholder="Cliente/CPF"></th>
-                                <th><input id="fc-vendedor" class="form-control form-control-sm" placeholder="Vendedor"></th>
+                                <th class="esteira-col-id-venda esteira-col-sticky-1">
+                                    <div class="esteira-fc-inline2">
+                                        <input id="fc-id" class="form-control form-control-sm esteira-fc-input" placeholder="ID">
+                                        <input id="fc-data-venda" class="form-control form-control-sm esteira-fc-input" placeholder="Dt. venda">
+                                    </div>
+                                </th>
+                                <th class="esteira-col-sticky-2"><input id="fc-os" class="form-control form-control-sm esteira-fc-input" placeholder="O.S."></th>
+                                <th class="esteira-col-agenda">
+                                    <div class="esteira-fc-inline2">
+                                        <input id="fc-data-agendada" class="form-control form-control-sm esteira-fc-input" placeholder="Data">
+                                        <input id="fc-turno" class="form-control form-control-sm esteira-fc-input" placeholder="Turno">
+                                    </div>
+                                </th>
+                                <th class="esteira-col-cliente"><input id="fc-cliente" class="form-control form-control-sm esteira-fc-input" placeholder="Cliente / CPF"></th>
+                                <th><input id="fc-vendedor" class="form-control form-control-sm esteira-fc-input" placeholder="Vendedor"></th>
                                 <th>
-                                    <select id="fc-adiant-cnpj" class="form-select form-select-sm">
+                                    <select id="fc-adiant-cnpj" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="realizado">Realizado</option>
                                         <option value="pendente">Pendente</option>
@@ -289,27 +490,27 @@
                                     </select>
                                 </th>
                                 <th>
-                                    <select id="fc-adiant-comissao" class="form-select form-select-sm">
+                                    <select id="fc-adiant-comissao" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="sim">Sim</option>
                                         <option value="nao">Não</option>
                                     </select>
                                 </th>
                                 <th>
-                                    <select id="fc-adiant-sabado" class="form-select form-select-sm">
+                                    <select id="fc-adiant-sabado" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="marcado">Marcado</option>
                                         <option value="nao">Não</option>
                                         <option value="quitado">Quitado inst.</option>
                                     </select>
                                 </th>
-                                <th><input id="fc-plano" class="form-control form-control-sm" placeholder="Plano"></th>
-                                <th><input id="fc-status" class="form-control form-control-sm" placeholder="Status"></th>
-                                <th><input id="fc-motivo" class="form-control form-control-sm" placeholder="Motivo"></th>
-                                <th><input id="fc-conf" class="form-control form-control-sm" placeholder="Conf. cliente"></th>
-                                <th><input id="fc-resp" class="form-control form-control-sm" placeholder="Resp. alteração"></th>
-                                <th></th>
-                                <th></th>
+                                <th><input id="fc-plano" class="form-control form-control-sm esteira-fc-input" placeholder="Plano"></th>
+                                <th><input id="fc-status" class="form-control form-control-sm esteira-fc-input" placeholder="Status"></th>
+                                <th class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
+                                <th class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
+                                <th class="esteira-col-resp"><input id="fc-resp" class="form-control form-control-sm esteira-fc-input" placeholder="Resp."></th>
+                                <th class="esteira-col-comissao-cb"></th>
+                                <th class="esteira-col-acoes"></th>
                             </tr>
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
@@ -341,6 +542,17 @@
                         </div>
                         <div class="col-md-6"><label class="form-label">Plano</label><select class="form-select" id="edit-plano"></select></div>
                         <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
+                        <div class="col-12">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="edit-bloquear-osab">
+                                <label class="form-check-label fw-bold" for="edit-bloquear-osab">
+                                    Bloquear atualização de status pela OSAB
+                                </label>
+                                <div class="form-text">
+                                    Quando marcado, a OSAB não atualiza este pedido (exceto INSTALADA, CANCELADA, INSTALADA OUTRO PDV e NAO CONSTA NA OSAB).
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="campos-datas-agendamento" class="row g-3 mb-4 p-3 rounded border" style="display: none; background: #cce5ff; border-color: #b8daff !important;">
@@ -457,6 +669,15 @@
                     <form id="form-pendencia">
                         <div class="mb-3"><label class="form-label fw-bold">Motivo *</label><select class="form-select" id="pendencia-motivo" required><option value="">Carregando motivos...</option></select></div>
                         <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="pendencia-obs" rows="3" placeholder="Detalhes..."></textarea></div>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="pendencia-bloquear-osab">
+                            <label class="form-check-label fw-bold" for="pendencia-bloquear-osab">
+                                Bloquear atualização de status pela OSAB
+                            </label>
+                            <div class="form-text">
+                                Se marcado, a OSAB não atualizará este pedido (exceto INSTALADA, CANCELADA, INSTALADA OUTRO PDV e NAO CONSTA NA OSAB).
+                            </div>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPendencia()">Confirmar</button></div>
@@ -614,6 +835,7 @@
         let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
+        const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'];
         let tempVendaId = null;
         let tempStatusId = null;
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
@@ -633,6 +855,8 @@
             popularFiltroVendedorAgendados();
             popularFiltroVendedorVendasTotais();
             inicializarFiltrosColunas();
+            sincronizarToolbarEFiltrosColunas();
+            atualizarBadgeFiltrosColunas();
             const tabVendasTotais = document.getElementById('tab-vendas-totais-item');
             if (tabVendasTotais && !podeAcessarVendasTotais) tabVendasTotais.remove();
             const btnAdiantCnpjSemana = document.getElementById('btn-marcar-adiant-cnpj-semana');
@@ -640,6 +864,12 @@
             const cbSelComissaoVisiveis = document.getElementById('selecionar-comissao-visiveis');
             if (cbSelComissaoVisiveis && !podeEditarAdiantamentosFinanceiros) cbSelComissaoVisiveis.style.display = 'none';
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
+
+            var resizeEsteiraT = null;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeEsteiraT);
+                resizeEsteiraT = setTimeout(function() { syncEsteiraScrollbars(); }, 100);
+            });
 
             if (podeConfigurarZap) {
                 const btnZap = document.getElementById('btn-toggle-wpp');
@@ -655,15 +885,15 @@
         function atualizarBotaoZap() {
             const btn = document.getElementById('btn-toggle-wpp');
             if (!btn) return;
-            btn.textContent = envioWhatsappAtivo ? 'WPP ON' : 'WPP OFF';
+            let span = btn.querySelector('.esteira-wpp-label');
+            if (!span) {
+                btn.innerHTML = '<i class="bi bi-whatsapp"></i><span class="esteira-wpp-label d-none d-sm-inline ms-1"></span>';
+                span = btn.querySelector('.esteira-wpp-label');
+            }
+            if (span) span.textContent = envioWhatsappAtivo ? 'ON' : 'OFF';
             btn.classList.toggle('btn-outline-success', envioWhatsappAtivo);
             btn.classList.toggle('btn-outline-secondary', !envioWhatsappAtivo);
             btn.title = envioWhatsappAtivo ? 'Enviar WhatsApp ao alterar status' : 'Silenciar WhatsApp ao alterar status';
-            if (!btn.querySelector('i')) {
-                const icon = document.createElement('i');
-                icon.className = 'bi bi-whatsapp me-1';
-                btn.prepend(icon);
-            }
         }
 
         async function carregarMotivosPendencia() {
@@ -683,21 +913,117 @@
             return `${dia}/${mes}/${ano}`;
         }
 
+        var esteiraScrollSyncLock = false;
+        var esteiraScrollListenersOk = false;
+        function inicializarSyncScrollEsteira() {
+            if (esteiraScrollListenersOk) return;
+            var top = document.getElementById('esteira-scroll-top');
+            var main = document.getElementById('esteira-scroll-main');
+            if (!top || !main) return;
+            esteiraScrollListenersOk = true;
+            top.addEventListener('scroll', function() {
+                if (esteiraScrollSyncLock) return;
+                esteiraScrollSyncLock = true;
+                main.scrollLeft = top.scrollLeft;
+                esteiraScrollSyncLock = false;
+            });
+            main.addEventListener('scroll', function() {
+                if (esteiraScrollSyncLock) return;
+                esteiraScrollSyncLock = true;
+                top.scrollLeft = main.scrollLeft;
+                esteiraScrollSyncLock = false;
+            });
+        }
+        function syncEsteiraScrollbars() {
+            inicializarSyncScrollEsteira();
+            var main = document.getElementById('esteira-scroll-main');
+            var inner = document.getElementById('esteira-scroll-top-inner');
+            var top = document.getElementById('esteira-scroll-top');
+            if (!main || !inner) return;
+            inner.style.width = main.scrollWidth + 'px';
+            if (top && top.scrollLeft !== main.scrollLeft) {
+                esteiraScrollSyncLock = true;
+                top.scrollLeft = main.scrollLeft;
+                esteiraScrollSyncLock = false;
+            }
+        }
+
         function inicializarFiltrosColunas() {
-            const ids = [
-                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
-                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
-            ];
-            ids.forEach(id => {
+            FC_COLUMN_IDS.forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
                 el.addEventListener('input', () => {
-                    if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') carregarVendas(true);
+                    atualizarBadgeFiltrosColunas();
+                    if (filtrosColunasSuportadosNaAbaAtual()) carregarVendas(true);
                 });
                 el.addEventListener('change', () => {
-                    if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') carregarVendas(true);
+                    atualizarBadgeFiltrosColunas();
+                    if (filtrosColunasSuportadosNaAbaAtual()) carregarVendas(true);
                 });
             });
+        }
+
+        function filtrosColunasSuportadosNaAbaAtual() {
+            if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') return true;
+            if (filtroAtual === 'TODOS' || filtroAtual === 'PENDEN') return true;
+            return /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual);
+        }
+
+        function atualizarBadgeFiltrosColunas() {
+            const badge = document.getElementById('esteira-filtros-colunas-badge');
+            if (!badge) return;
+            const algum = FC_COLUMN_IDS.some(id => {
+                const el = document.getElementById(id);
+                return el && String(el.value || '').trim() !== '';
+            });
+            badge.classList.toggle('d-none', !algum);
+        }
+
+        function aplicarEstadoPainelFiltrosColunas(aberto, persistir) {
+            if (persistir) sessionStorage.setItem('esteira-filtros-colunas-aberto', aberto ? '1' : '0');
+            if (!filtrosColunasSuportadosNaAbaAtual()) return;
+            const lf = document.getElementById('linha-filtros-colunas');
+            if (lf) lf.style.display = aberto ? '' : 'none';
+            const btn = document.getElementById('btn-toggle-filtros-colunas');
+            if (btn) {
+                btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+                const icon = btn.querySelector('i');
+                if (icon) icon.className = aberto ? 'bi bi-funnel-fill' : 'bi bi-funnel';
+                const span = btn.querySelector('.esteira-btn-filtros-label');
+                if (span) span.textContent = aberto ? 'Ocultar filtros' : 'Filtros na tabela';
+            }
+            requestAnimationFrame(function() { requestAnimationFrame(syncEsteiraScrollbars); });
+        }
+
+        function togglePainelFiltrosColunas() {
+            const lf = document.getElementById('linha-filtros-colunas');
+            const aberto = lf && lf.style.display !== 'none';
+            aplicarEstadoPainelFiltrosColunas(!aberto, true);
+        }
+
+        function sincronizarToolbarEFiltrosColunas() {
+            const toolbar = document.getElementById('esteira-toolbar-filtros');
+            const sup = filtrosColunasSuportadosNaAbaAtual();
+            if (toolbar) {
+                toolbar.classList.toggle('d-none', !sup);
+                toolbar.classList.toggle('d-flex', sup);
+            }
+            if (!sup) {
+                const lf = document.getElementById('linha-filtros-colunas');
+                if (lf) lf.style.display = 'none';
+                return;
+            }
+            const aberto = sessionStorage.getItem('esteira-filtros-colunas-aberto') === '1';
+            aplicarEstadoPainelFiltrosColunas(aberto, false);
+        }
+
+        function limparSomenteFiltrosColunas() {
+            FC_COLUMN_IDS.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            atualizarBadgeFiltrosColunas();
+            if (filtrosColunasSuportadosNaAbaAtual()) carregarVendas(true);
         }
 
         function getFiltroColuna(id) {
@@ -767,10 +1093,8 @@
             if (v) v.value = '';
             if (i) i.value = '';
             if (f) f.value = '';
-            [
-                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
-                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
-            ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            FC_COLUMN_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            atualizarBadgeFiltrosColunas();
             filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
             if (!resetApenas) carregarVendas();
         }
@@ -811,10 +1135,8 @@
             if (v) v.value = '';
             if (i) i.value = '';
             if (f) f.value = '';
-            [
-                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
-                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
-            ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            FC_COLUMN_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            atualizarBadgeFiltrosColunas();
             filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
             if (!resetApenas) carregarVendas();
         }
@@ -826,10 +1148,8 @@
             if (v) v.value = '';
             if (i) i.value = '';
             if (f) f.value = '';
-            [
-                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
-                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
-            ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            FC_COLUMN_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            atualizarBadgeFiltrosColunas();
             filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
             carregarVendas();
         }
@@ -1253,7 +1573,7 @@
                 // Restaura botão em caso de erro
                 const btn = event.target.closest('button');
                 if (btn) {
-                    btn.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje';
+                    btn.innerHTML = '<i class="bi bi-file-earmark-excel"></i><span class="d-none d-lg-inline ms-1">Exportar hoje</span>';
                     btn.disabled = false;
                 }
             }
@@ -1318,13 +1638,13 @@
             );
 
             if (carregarInstaladas && !temFiltroInstaladas) {
-                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
                 const paEmpty = document.getElementById('painel-instaladas-antecipacao');
                 if (paEmpty) paEmpty.style.display = 'none';
                 return;
             }
             if (carregarVendasTotais && !temFiltroVendasTotais) {
-                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 return;
             }
 
@@ -1332,7 +1652,7 @@
                 var inp = document.getElementById('filtro-busca');
                 if (inp) inp.placeholder = 'Buscar CPF ou OS...';
             }
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
 
             try {
                 const timestamp = new Date().getTime();
@@ -1451,7 +1771,7 @@
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
-                    tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     const pa = document.getElementById('painel-instaladas-antecipacao');
                     if (pa) pa.style.display = 'none';
                     return;
@@ -1592,7 +1912,7 @@
                         confCliente = '<span class="badge bg-secondary" title="' + respTitle + '">Não' + (respShort ? ': ' + respShort + (v.cliente_resposta_lembrete_instalacao && v.cliente_resposta_lembrete_instalacao.length > 30 ? '…' : '') : '') + '</span>';
                     }
 
-                    if (carregarInstaladas || carregarAgendados || carregarVendasTotais) {
+                    {
                         const adCnpjTexto = v.flag_adiant_cnpj
                             ? 'realizado'
                             : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel');
@@ -1630,33 +1950,31 @@
                         }
                         if (!passa) return;
                     }
-                    if (!carregarInstaladas) {
-                        const fsSab = (document.getElementById('fc-adiant-sabado') && document.getElementById('fc-adiant-sabado').value) || '';
-                        if (fsSab === 'marcado' && !v.adiantamento_sabado_marcado) return;
-                        if (fsSab === 'nao' && v.adiantamento_sabado_marcado) return;
-                        if (fsSab === 'quitado' && !(v.adiantamento_sabado_marcado && v.adiantamento_sabado_quitado_em)) return;
-                    }
                     if (carregarInstaladas || carregarAgendados || carregarVendasTotais) totalVisivelPosCabecalho += 1;
 
                     htmlContent += `
-                        <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
-                            <td class="fw-bold text-primary ps-4">#${v.id}</td>
-                            <td>${dataFmt}</td>
-                            <td>${osAtual}</td>
-                            <td>${dataAgendada}</td>
-                            <td>${turno}</td>
-                            <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
+                        <tr style="${rowStyle}">
+                            <td class="esteira-col-id-venda ps-3 esteira-col-sticky-1">
+                                <div class="fw-bold text-primary">#${v.id}</div>
+                                <div class="small text-muted">${dataFmt}</div>
+                            </td>
+                            <td class="esteira-col-sticky-2"><span class="text-break d-inline-block" style="max-width:100%">${osAtual}</span></td>
+                            <td class="esteira-col-agenda">
+                                <div>${dataAgendada}</div>
+                                <div class="esteira-turno-sub">${turno}</div>
+                            </td>
+                            <td class="esteira-col-cliente"><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
                             <td>${nomeVendedor}</td> 
                             <td>${celulaAdiantCnpj}</td>
                             <td>${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
                             <td>${celulaAdiantSabado}</td>
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
-                            <td class="text-danger small fw-bold">${motivoPendencia}</td>
-                            <td class="small">${confCliente}</td>
-                            <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="text-center">${carregarInstaladas ? checkboxComissao : '-'}</td>
-                            <td class="pe-4 text-end">
+                            <td class="esteira-col-motivo text-danger small fw-bold">${motivoPendencia}</td>
+                            <td class="esteira-col-conf small">${confCliente}</td>
+                            <td class="esteira-col-resp"><small class="text-muted fw-bold">${alteradoPor}</small></td>
+                            <td class="esteira-col-comissao-cb text-center">${carregarInstaladas ? checkboxComissao : '-'}</td>
+                            <td class="esteira-col-acoes pe-4 text-end">
                                 ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
                                 <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
                             </td>
@@ -1664,6 +1982,9 @@
                     `;
                 });
                 tbody.innerHTML = htmlContent;
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(syncEsteiraScrollbars);
+                });
                 if (carregarInstaladas && contadorCabecalhoEl) contadorCabecalhoEl.textContent = `${totalVisivelPosCabecalho}`;
                 if (carregarAgendados && contadorAgendadosCabecalhoEl) contadorAgendadosCabecalhoEl.textContent = `${totalVisivelPosCabecalho}`;
                 if (carregarAgendados) {
@@ -1694,7 +2015,7 @@
                     }
                 }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="17" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                if(!silent) tbody.innerHTML = '<tr><td colspan="15" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
                 var paErr = document.getElementById('painel-instaladas-antecipacao');
                 if (paErr) paErr.style.display = 'none';
             }
@@ -1862,8 +2183,7 @@
             if (status === 'INSTALADAS') {
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
-                var lf = document.getElementById('linha-filtros-colunas');
-                if (lf) lf.style.display = '';
+                sincronizarToolbarEFiltrosColunas();
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'block';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
@@ -1872,14 +2192,13 @@
                 if (pa) pa.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                tb.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
                 return;
             }
             if (status === 'AGENDADO') {
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
-                var lfAg = document.getElementById('linha-filtros-colunas');
-                if (lfAg) lfAg.style.display = '';
+                sincronizarToolbarEFiltrosColunas();
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'block';
@@ -1892,8 +2211,7 @@
             }
             if (status === 'VENDAS_TOTAIS') {
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
-                var lfTot = document.getElementById('linha-filtros-colunas');
-                if (lfTot) lfTot.style.display = '';
+                sincronizarToolbarEFiltrosColunas();
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
@@ -1902,11 +2220,10 @@
                 if (paTot) paTot.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 const tbTot = document.getElementById('tabela-esteira-body');
-                tbTot.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                tbTot.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 return;
             }
-            var lf2 = document.getElementById('linha-filtros-colunas');
-            if (lf2) lf2.style.display = 'none';
+            sincronizarToolbarEFiltrosColunas();
             document.getElementById('painel-busca-instaladas').style.display = 'none';
             document.getElementById('painel-busca-agendados').style.display = 'none';
             document.getElementById('painel-busca-vendas-totais').style.display = 'none';
@@ -1951,6 +2268,8 @@
                 } else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
                     setVal('pendencia-motivo', vendaData.motivo_pendencia);
                     setVal('pendencia-obs', vendaData.observacoes);
+                    const chkBloqOsabExistente = document.getElementById('pendencia-bloquear-osab');
+                    if (chkBloqOsabExistente) chkBloqOsabExistente.checked = !!vendaData.bloquear_atualizacao_status_osab;
                     
                     const titulo = document.getElementById('titulo-modal-pendencia');
                     if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
@@ -2029,6 +2348,8 @@
                 if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
                 document.getElementById('pendencia-motivo').value = '';
                 document.getElementById('pendencia-obs').value = '';
+                const chkBloqOsab = document.getElementById('pendencia-bloquear-osab');
+                if (chkBloqOsab) chkBloqOsab.checked = false;
                 
                 if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
                     try {
@@ -2036,6 +2357,7 @@
                         if (vendaData) {
                             document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
                             document.getElementById('pendencia-obs').value = vendaData.observacao_pendencia || '';
+                            if (chkBloqOsab) chkBloqOsab.checked = !!vendaData.bloquear_atualizacao_status_osab;
                         }
                     } catch (e) { /* dados existentes não encontrados */ }
                 }
@@ -2069,7 +2391,13 @@
 
         async function salvarPendencia() {
             if (!getVal('pendencia-motivo')) { alert("Selecione o motivo."); return; }
-            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, motivo_pendencia: getVal('pendencia-motivo'), observacoes: getVal('pendencia-obs') });
+            const bloquearOsab = !!document.getElementById('pendencia-bloquear-osab')?.checked;
+            await salvarStatusNoBanco(tempVendaId, {
+                status_esteira: tempStatusId,
+                motivo_pendencia: getVal('pendencia-motivo'),
+                observacoes: getVal('pendencia-obs'),
+                bloquear_atualizacao_status_osab: bloquearOsab,
+            });
             modalPendencia.hide();
         }
 
@@ -2098,6 +2426,7 @@
                 
                 setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
                 setVal('edit-ordem-servico', v.ordem_servico);
+                document.getElementById('edit-bloquear-osab').checked = !!v.bloquear_atualizacao_status_osab;
                 setVal('edit-telefone1', v.telefone1); setVal('edit-telefone2', v.telefone2);
                 setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
                 setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
@@ -2150,6 +2479,7 @@
                 cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
                 complemento: getVal('edit-complemento'), bairro: getVal('edit-bairro'), cidade: getVal('edit-cidade'),
                 estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
+                bloquear_atualizacao_status_osab: !!document.getElementById('edit-bloquear-osab')?.checked,
                 enviar_whatsapp: envioWhatsappAtivo
             };
             const divAgend = document.getElementById('campos-datas-agendamento');

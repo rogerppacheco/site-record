@@ -378,6 +378,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         token['perfil'] = perfil_nome
         token['user_role'] = perfil_nome  # Compatibilidade com frontend
+        token['is_superuser'] = bool(user.is_superuser)
         
         # Adiciona o primeiro grupo como perfil principal
         if user.groups.exists():
@@ -451,6 +452,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'groups': [g.name for g in self.user.groups.all()],
                 'obriga_troca_senha': self.user.obriga_troca_senha,
                 'vendedor_solo': getattr(self.user, 'vendedor_solo', False),
+                'is_superuser': bool(getattr(self.user, 'is_superuser', False)),
             }
         
         return data

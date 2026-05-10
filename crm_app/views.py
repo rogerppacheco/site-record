@@ -4141,7 +4141,7 @@ class EnviarExtratoEmailView(APIView):
 import threading
 
 class ImportacaoOsabView(APIView):
-    permission_classes = [CheckAPIPermission]
+    permission_classes = [permissions.IsAuthenticated]
     # Deve coincidir com ImportacaoOsab._meta.model_name → permissão crm_app.add_importacaoosab
     resource_name = 'importacaoosab'
     parser_classes = [MultiPartParser, FormParser]
@@ -4351,6 +4351,15 @@ class ImportacaoOsabView(APIView):
         return out
 
     def post(self, request, *args, **kwargs):
+        if not (
+            request.user.has_perm('crm_app.add_importacaoosab')
+            or is_member(request.user, ['Admin', 'Diretoria', 'BackOffice'])
+        ):
+            return Response(
+                {'error': 'Sem permissão para importar base OSAB.'},
+                status=403
+            )
+
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
         
@@ -4959,12 +4968,12 @@ class ImportacaoOsabView(APIView):
 
                         elif 'PENDEN' in nome_est_upper:
                             novo_motivo = target_motivo_pendencia
+                            cod_raw = row.get('COD_PENDENCIA', '')
+                            cod_str = str(cod_raw).replace('.0', '').strip()
+                            digits_only = re.sub(r'\D', '', cod_str)
                             if not novo_motivo:
                                 # COD_PENDENCIA: match apenas pelo código numérico completo (ex.: 4 dígitos).
                                 # Não usar prefixo de 2 dígitos — evita colidir 1234 vs 1256 (ambos "12").
-                                cod_raw = row.get('COD_PENDENCIA', '')
-                                cod_str = str(cod_raw).replace('.0', '').strip()
-                                digits_only = re.sub(r'\D', '', cod_str)
                                 novo_motivo = None
                                 if digits_only:
                                     novo_motivo = motivo_pendencia_map.get(digits_only)
@@ -4975,16 +4984,28 @@ class ImportacaoOsabView(APIView):
                                         )
                                     if not novo_motivo and len(digits_only) >= 4:
                                         novo_motivo = motivo_pendencia_map.get(digits_only[:4])
-                                if not novo_motivo:
+                                # Código informado na OSAB mas sem cadastro no CRM → fallback histórico.
+                                # COD em branco/nulo → não altera o motivo que o usuário definiu no CRM.
+                                if not novo_motivo and digits_only:
                                     novo_motivo = motivo_padrao_osab
-                            
-                            if venda.motivo_pendencia_id != novo_motivo.id:
-                                detalhes_hist['motivo_pendencia'] = f"Novo: {novo_motivo.nome}"
-                                venda.motivo_pendencia = novo_motivo
-                                houve_alteracao = True
-                            
+
+                            if novo_motivo is not None:
+                                if venda.motivo_pendencia_id != novo_motivo.id:
+                                    detalhes_hist['motivo_pendencia'] = f"Novo: {novo_motivo.nome}"
+                                    venda.motivo_pendencia = novo_motivo
+                                    houve_alteracao = True
+
                             if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
-                                msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"⚠️ *VENDA PENDENCIADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Motivo:* {novo_motivo.nome}")
+                                nome_motivo_zap = (
+                                    novo_motivo.nome
+                                    if novo_motivo
+                                    else (
+                                        venda.motivo_pendencia.nome
+                                        if venda.motivo_pendencia
+                                        else 'Não informado'
+                                    )
+                                )
+                                msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"⚠️ *VENDA PENDENCIADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Motivo:* {nome_motivo_zap}")
 
                     # Pagamento
                     pgto_osab_raw = row.get('MEIO_PAGAMENTO')
@@ -11703,7 +11724,7 @@ class LogsImportacaoOSABView(APIView):
         from .models import LogImportacaoOSAB
         
         # Buscar últimos 20 logs (todos os usuários podem ver todos os logs OSAB)
-        if is_member(request.user, ['Admin', 'Diretoria']):
+        if is_member(request.user, ['Admin', 'Diretoria', 'BackOffice']):
             logs = LogImportacaoOSAB.objects.all().order_by('-iniciado_em')[:20]
         else:
             logs = LogImportacaoOSAB.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
@@ -11728,6 +11749,7 @@ class LogsImportacaoOSABView(APIView):
                 'mensagem': log.mensagem,
                 'mensagem_erro': log.mensagem_erro,
                 'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
+                'usuario_username': log.usuario.username if log.usuario else '-',
                 'enviar_whatsapp': log.enviar_whatsapp,
                 'download_url': f"/api/crm/logs-osab/{log.id}/relatorio/",
             })
@@ -11753,7 +11775,7 @@ class DownloadRelatorioOSABView(APIView):
             if not log:
                 return Response({'error': 'Log não encontrado.'}, status=404)
 
-            if not is_member(request.user, ['Admin', 'Diretoria']) and log.usuario != request.user:
+            if not is_member(request.user, ['Admin', 'Diretoria', 'BackOffice']) and log.usuario != request.user:
                 return Response({'error': 'Sem permissão para acessar este relatório.'}, status=403)
 
             report = log.detalhes_json or {}
@@ -12098,7 +12120,7 @@ class CancelarImportacaoOSABView(APIView):
         if not log:
             return Response({'error': 'Log não encontrado.'}, status=404)
 
-        if not is_member(request.user, ['Admin', 'Diretoria']) and log.usuario != request.user:
+        if not is_member(request.user, ['Admin', 'Diretoria', 'BackOffice']) and log.usuario != request.user:
             return Response({'error': 'Sem permissão para cancelar este log.'}, status=403)
 
         if log.status != 'PROCESSANDO':

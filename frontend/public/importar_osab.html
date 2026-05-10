@@ -531,6 +531,7 @@
                     <thead>
                         <tr>
                             <th>Arquivo</th>
+                            <th>Usuário</th>
                             <th>Status</th>
                             <th>Iniciado</th>
                             <th>Duração</th>
@@ -551,6 +552,9 @@
                 const vendas = log.vendas_encontradas || 0;
                 const atualizadas = log.atualizados || 0;
                 const whatsapp = log.enviar_whatsapp ? '<i class="bi bi-whatsapp text-success" title="WhatsApp ativado"></i>' : '';
+                const usuarioLogin = log.usuario_username != null && log.usuario_username !== ''
+                    ? String(log.usuario_username)
+                    : '-';
                 
                 // Status detalhado durante processamento
                 if (log.status === 'PROCESSANDO' && log.total_registros > 0) {
@@ -568,6 +572,7 @@
                 html += `
                     <tr>
                         <td><small>${log.nome_arquivo}</small></td>
+                        <td><small class="font-monospace">${usuarioLogin}</small></td>
                         <td>${statusBadge}</td>
                         <td><small>${iniciado}</small></td>
                         <td>${duracao}</td>

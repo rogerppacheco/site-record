@@ -121,7 +121,9 @@ if database_url:
     DATABASES['default']['OPTIONS'] = {
         'connect_timeout': 10,
     }
-    print("OK - Usando PostgreSQL (Railway)")
+    _h = DATABASES['default'].get('HOST') or 'localhost'
+    _n = DATABASES['default'].get('NAME')
+    print(f"OK - PostgreSQL: host={_h!r} db={_n!r}")
 
 elif jawsdb_url:
     # Usar MySQL (JawsDB - Heroku)
