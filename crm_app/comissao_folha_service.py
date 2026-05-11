@@ -57,19 +57,17 @@ def get_valor_from_faixa(regra_faixa, chave):
 
 def carregar_faixa_adiantamento_regras_faixa():
     """
-    Faixa de finalidade Adiantamento (REGRAS_FAIXAS), usada para valor por plano
-    das vendas com 'Adiant. Comissão' = Sim na esteira (mesma lógica da esteira).
+    Faixa base para adiantamentos na folha.
+    Regra solicitada: usar SEMPRE a primeira faixa de finalidade COMISSAO.
     """
     from .models import RegraComissaoFaixa
 
-    faixa = RegraComissaoFaixa.objects.filter(finalidade='ADIANTAMENTO').first()
-    if not faixa:
-        faixa = RegraComissaoFaixa.objects.filter(faixa_nome__iexact='Adiantamento').first()
+    faixa = RegraComissaoFaixa.objects.filter(finalidade='COMISSAO').order_by('id').first()
     return faixa
 
 
 def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
-    """Valor por venda conforme tabela Adiantamento (faixa) ou fallback plano.comissao_base."""
+    """Valor por venda conforme primeira faixa COMISSAO ou fallback plano.comissao_base."""
     if faixa_adiantamento and chave:
         v = get_valor_from_faixa(faixa_adiantamento, chave)
         if v is not None:
@@ -313,13 +311,19 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         faixa_regra = encontrar_faixa(consultor, qtd_instalada_a_pagar)
         usar_manual = config and config.usar_valor_manual
 
-        # Por plano (chave): qtd a pagar, qtd antecipada (esteira), total já adiantado (tabela Adiantamento)
+        # Por plano (chave): qtd a pagar, qtd antecipada (esteira), total já adiantado (primeira faixa COMISSAO)
         por_plano = defaultdict(
             lambda: {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0.0, 'total_antecipado': 0.0}
         )
         comissao_total_geral = Decimal('0')
         qtd_adiant_sem_chave_excel = 0
         valor_adiant_sem_chave_excel = 0.0
+        info_adiantamento_origem = {
+            'adiantamento_sabado': {'quantidade': 0, 'valor_total': 0.0},
+            'adiantamento_sabado_quitado_instalacao': {'quantidade': 0, 'valor_total': 0.0},
+            'adiantamento_esteira_instalados': {'quantidade': 0, 'valor_total': 0.0},
+            'adiantamento_nao_classificado': {'quantidade': 0, 'valor_total': 0.0},
+        }
         for v in vendas:
             doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
             doc_limpo = ''.join(filter(str.isdigit, doc))
@@ -327,13 +331,25 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             plano_nome = v.plano.nome if v.plano else ''
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
             if getattr(v, 'antecipacao_comissao', False):
+                va = valor_comissao_tabela_adiantamento(v, faixa_adiantamento, chave)
                 if chave:
                     por_plano[chave]['qtd_antecipada'] += 1
-                    va = valor_comissao_tabela_adiantamento(v, faixa_adiantamento, chave)
                     por_plano[chave]['total_antecipado'] += va
                 else:
                     qtd_adiant_sem_chave_excel += 1
-                    valor_adiant_sem_chave_excel += valor_comissao_tabela_adiantamento(v, faixa_adiantamento, None)
+                    valor_adiant_sem_chave_excel += va
+                if not chave:
+                    chave_origem = 'adiantamento_nao_classificado'
+                elif getattr(v, 'adiantamento_sabado_marcado', False) and getattr(v, 'adiantamento_sabado_quitado_em', None):
+                    chave_origem = 'adiantamento_sabado_quitado_instalacao'
+                elif getattr(v, 'adiantamento_sabado_marcado', False):
+                    chave_origem = 'adiantamento_sabado'
+                elif getattr(v, 'adiantamento_sabado_quitado_em', None):
+                    chave_origem = 'adiantamento_sabado_quitado_instalacao'
+                else:
+                    chave_origem = 'adiantamento_esteira_instalados'
+                info_adiantamento_origem[chave_origem]['quantidade'] += 1
+                info_adiantamento_origem[chave_origem]['valor_total'] += float(va or 0)
                 continue
             if not chave:
                 continue
@@ -392,7 +408,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 )
                 continue
             if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
-                # Folha usa apenas a marcação na esteira + tabela Adiantamento; não é desconto.
+                # Folha usa apenas a marcação na esteira + primeira faixa COMISSAO; não é desconto.
                 continue
             qtd = getattr(l, 'quantidade_vendas', None) or 1
             if getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
@@ -741,6 +757,13 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             'quantidade_total': int(tot_q_adiant),
             'valor_total': round(tot_v_adiant, 2),
             'por_plano': info_por_plano_adiant,
+            'por_origem': {
+                k: {
+                    'quantidade': int(v['quantidade']),
+                    'valor_total': round(float(v['valor_total']), 2),
+                }
+                for k, v in info_adiantamento_origem.items()
+            },
         }
 
         resultado.append({

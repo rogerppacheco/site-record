@@ -269,8 +269,20 @@
                     })() : ''}
                     ${(r.info_comissao_adiantada && r.info_comissao_adiantada.quantidade_total > 0) ? (function(){
                         const i = r.info_comissao_adiantada;
+                        const porOrigem = i.por_origem || {};
+                        const linhaRef = (label, key) => {
+                            const d = porOrigem[key] || {};
+                            const qtd = Number(d.quantidade || 0);
+                            const val = Number(d.valor_total || 0);
+                            if (qtd <= 0 && val <= 0) return '';
+                            return `<div class="d-flex justify-content-between text-info mt-1"><span><i class="bi bi-info-circle"></i> ${label} <strong>(${qtd} un.)</strong></span><span class="fw-bold">${fmtMoney(val)}</span></div>`;
+                        };
                         let b = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Referência — não entra em descontos</strong>';
-                        b += `<div class="d-flex justify-content-between text-info mt-1"><span><i class="bi bi-info-circle"></i> Comissão já adiantada (esteira + tabela Adiantamento — Regras por faixa) <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
+                        b += linhaRef('Adiantamento sábado', 'adiantamento_sabado');
+                        b += linhaRef('Sábado — quitado na instalação', 'adiantamento_sabado_quitado_instalacao');
+                        b += linhaRef('Adiantamento na esteira / instalados', 'adiantamento_esteira_instalados');
+                        b += linhaRef('Não classificado', 'adiantamento_nao_classificado');
+                        b += `<div class="d-flex justify-content-between text-info mt-1 border-top pt-1"><span>Total adiantado <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
                         if (i.por_plano && i.por_plano.length) {
                             i.por_plano.forEach(row => {
                                 if (row.qtd > 0) b += `<div class="small text-muted ms-2">${row.plano}: ${row.qtd} un. → ${fmtMoney(row.valor_total)}</div>`;

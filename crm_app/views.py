@@ -478,7 +478,7 @@ def buscar_fatura_nio_bonus_m10(request):
 import logging
 import pandas as pd
 import numpy as np
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, date
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
@@ -1531,6 +1531,22 @@ def _pode_gerir_adiantamento_sabado(user):
     return bool(user and user.is_superuser) or is_member(user, ['Diretoria', 'Admin', 'BackOffice'])
 
 
+def _get_primeira_faixa_comissao():
+    """Retorna a primeira faixa de COMISSAO (ordem por id)."""
+    return RegraComissaoFaixa.objects.filter(finalidade='COMISSAO').order_by('id').first()
+
+
+def _valor_adiantamento_base_comissao(venda):
+    """
+    Valor base do adiantamento pela primeira faixa de COMISSAO.
+    Fallback: plano.comissao_base.
+    """
+    faixa = _get_primeira_faixa_comissao()
+    doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
+    is_cnpj_venda = len(doc) == 14
+    return Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa, is_cnpj_venda)))
+
+
 def _quitar_adiantamento_sabado_na_instalacao(venda, status_esteira_antes):
     """Ao instalar venda que tinha adiantamento sábado: marca antecipação e quitação sem novo lançamento."""
     nome_new = (venda.status_esteira.nome if venda.status_esteira else '') or ''
@@ -1548,7 +1564,7 @@ def _quitar_adiantamento_sabado_na_instalacao(venda, status_esteira_antes):
     venda.save(update_fields=['antecipacao_comissao', 'adiantamento_sabado_quitado_em'])
 
 
-def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs=''):
+def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_manual=None):
     """
     Marca adiantamento sábado para uma venda (mesmas regras do endpoint unitário).
     Levanta ValueError com mensagem amigável em caso de falha.
@@ -1577,16 +1593,18 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs=''):
         if not eh_sabado:
             raise ValueError('A data de abertura da O.S. deve ser um sábado.')
 
-    faixa_adiantamento = RegraComissaoFaixa.objects.filter(finalidade='ADIANTAMENTO').first()
-    if not faixa_adiantamento:
-        faixa_adiantamento = RegraComissaoFaixa.objects.filter(faixa_nome__iexact='Adiantamento').first()
-    doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
-    is_cnpj_venda = len(doc) == 14
-    valor_unit = Decimal(
-        str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa_adiantamento, is_cnpj_venda))
-    )
+    valor_unit = _valor_adiantamento_base_comissao(venda)
+    valor_manual_dec = None
+    if valor_manual is not None and str(valor_manual).strip() != '':
+        try:
+            valor_manual_dec = Decimal(str(valor_manual))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError('Valor manual inválido.')
+        if valor_manual_dec <= 0:
+            raise ValueError('Valor manual deve ser maior que zero.')
+        valor_unit = valor_manual_dec
     if valor_unit <= 0:
-        raise ValueError('Valor zero nas Regras por Faixa (Finalidade = Adiantamento).')
+        raise ValueError('Valor zero nas Regras por Faixa (Finalidade = Comissão).')
 
     data_lanc = dt_ab_local
     descricao = 'Adiantamento sábado (Agendados)'
@@ -1595,8 +1613,8 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs=''):
         venda.adiantamento_sabado_valor = valor_unit
         venda.adiantamento_sabado_marcado_em = timezone.now()
         venda.adiantamento_sabado_marcado_por = user
-        venda.adiantamento_sabado_manual = manual
-        venda.adiantamento_sabado_obs_manual = obs if manual else ''
+        venda.adiantamento_sabado_manual = bool(manual or valor_manual_dec is not None)
+        venda.adiantamento_sabado_obs_manual = obs if (manual or valor_manual_dec is not None) else ''
         venda.save(
             update_fields=[
                 'adiantamento_sabado_marcado',
@@ -1642,6 +1660,17 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs=''):
                 metadados=meta,
                 criado_por=user,
             )
+        HistoricoAlteracaoVenda.objects.create(
+            venda=venda,
+            usuario=user,
+            alteracoes={
+                'acao': 'marcar_adiantamento_sabado',
+                'manual': bool(manual),
+                'valor': str(valor_unit),
+                'valor_tabela_comissao': str(_valor_adiantamento_base_comissao(venda)),
+                'observacao': venda.adiantamento_sabado_obs_manual,
+            },
+        )
 
     return {
         'adiantamento_sabado_valor': float(valor_unit),
@@ -2884,14 +2913,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         if not venda.status_esteira or (venda.status_esteira.nome or '').strip().upper() != 'INSTALADA':
             return Response({'detail': 'Apenas vendas instaladas podem receber adiantamento de comissão.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        faixa_adiantamento = RegraComissaoFaixa.objects.filter(finalidade='ADIANTAMENTO').first()
-        if not faixa_adiantamento:
-            faixa_adiantamento = RegraComissaoFaixa.objects.filter(faixa_nome__iexact='Adiantamento').first()
-        doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
-        is_cnpj_venda = len(doc) == 14
-        valor_unit = Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa_adiantamento, is_cnpj_venda)))
+        valor_unit = _valor_adiantamento_base_comissao(venda)
         if valor_unit <= 0:
-            return Response({'detail': 'Valor de adiantamento da venda é zero. Revise Regras por Faixa (Finalidade = Adiantamento).'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Valor de adiantamento da venda é zero. Revise Regras por Faixa (Finalidade = Comissão).'}, status=status.HTTP_400_BAD_REQUEST)
 
         hoje = timezone.localdate()
         with transaction.atomic():
@@ -3147,16 +3171,88 @@ class VendaViewSet(viewsets.ModelViewSet):
         venda = self.get_object()
         manual = str(request.data.get('manual', '')).lower() in ('1', 'true', 'sim', 's')
         obs = (request.data.get('observacao') or '').strip()
+        valor_manual = request.data.get('valor_manual')
         if manual and len(obs) < 3:
             return Response(
                 {'detail': 'Informe a observação para marcação manual (mín. 3 caracteres).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            out = _marcar_adiantamento_sabado_exec(venda, request.user, manual=manual, obs=obs)
+            out = _marcar_adiantamento_sabado_exec(
+                venda,
+                request.user,
+                manual=manual,
+                obs=obs,
+                valor_manual=valor_manual,
+            )
         except ValueError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'ok': True, **out})
+
+    @action(detail=True, methods=['post'], url_path='editar-adiantamento-sabado')
+    def editar_adiantamento_sabado(self, request, pk=None):
+        if not _pode_gerir_adiantamento_sabado(request.user):
+            return Response(
+                {'detail': 'Acesso negado. Apenas Diretoria, Admin ou BackOffice.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        venda = self.get_object()
+        if not venda.adiantamento_sabado_marcado:
+            return Response({'detail': 'Venda não está marcada como adiantamento sábado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        valor_manual = request.data.get('valor_manual')
+        obs = (request.data.get('observacao') or '').strip()
+        if valor_manual is None or str(valor_manual).strip() == '':
+            return Response({'detail': 'Informe o valor manual.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            valor_novo = Decimal(str(valor_manual))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'detail': 'Valor manual inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+        if valor_novo <= 0:
+            return Response({'detail': 'Valor manual deve ser maior que zero.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        valor_antigo = Decimal(str(venda.adiantamento_sabado_valor or 0))
+        delta = valor_novo - valor_antigo
+        data_lanc = timezone.localtime(venda.data_abertura).date() if venda.data_abertura else timezone.localdate()
+        descricao = 'Adiantamento sábado (Agendados)'
+        valor_tabela = _valor_adiantamento_base_comissao(venda)
+
+        with transaction.atomic():
+            venda.adiantamento_sabado_valor = valor_novo
+            venda.adiantamento_sabado_manual = True
+            venda.adiantamento_sabado_obs_manual = obs
+            venda.save(update_fields=['adiantamento_sabado_valor', 'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual'])
+
+            lanc = LancamentoFinanceiro.objects.filter(
+                usuario_id=venda.vendedor_id,
+                tipo='ADIANTAMENTO_COMISSAO',
+                data=data_lanc,
+                descricao=descricao,
+            ).first()
+            if lanc and isinstance(lanc.metadados, dict) and lanc.metadados.get('origem') == 'esteira_sabado_agendados':
+                valores = dict((lanc.metadados or {}).get('valores_por_venda_id') or {})
+                valores[str(venda.id)] = str(valor_novo)
+                lanc.valor = Decimal(str(lanc.valor or 0)) + delta
+                lanc.metadados = {
+                    **(lanc.metadados or {}),
+                    'origem': 'esteira_sabado_agendados',
+                    'valores_por_venda_id': valores,
+                }
+                lanc.save(update_fields=['valor', 'metadados'])
+
+            HistoricoAlteracaoVenda.objects.create(
+                venda=venda,
+                usuario=request.user,
+                alteracoes={
+                    'acao': 'editar_adiantamento_sabado',
+                    'valor_antigo': str(valor_antigo),
+                    'valor_novo': str(valor_novo),
+                    'valor_tabela_comissao': str(valor_tabela),
+                    'observacao': obs,
+                },
+            )
+
+        return Response({'ok': True, 'adiantamento_sabado_valor': float(valor_novo)})
 
     @action(detail=False, methods=['post'], url_path='marcar-adiantamento-sabado-lote')
     def marcar_adiantamento_sabado_lote(self, request):
@@ -3246,17 +3342,13 @@ class VendaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         venda = self.get_object()
-        st = (venda.status_esteira.nome if venda.status_esteira else '') or ''
-        if 'AGENDADO' not in st.upper():
-            return Response(
-                {'detail': 'Só é possível desmarcar enquanto a venda estiver AGENDADA.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         if not venda.adiantamento_sabado_marcado:
             return Response(
                 {'detail': 'Venda não está marcada como adiantamento sábado.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        st = (venda.status_esteira.nome if venda.status_esteira else '') or ''
+        venda_instalada = 'INSTALADA' in st.upper()
 
         data_lanc = (
             timezone.localtime(venda.data_abertura).date()
@@ -3267,37 +3359,38 @@ class VendaViewSet(viewsets.ModelViewSet):
         valor_unit = Decimal(str(venda.adiantamento_sabado_valor or 0))
 
         with transaction.atomic():
-            for lanc in LancamentoFinanceiro.objects.filter(
-                usuario_id=venda.vendedor_id,
-                tipo='ADIANTAMENTO_COMISSAO',
-                data=data_lanc,
-                descricao=descricao,
-            ):
-                meta = lanc.metadados if isinstance(lanc.metadados, dict) else {}
-                if meta.get('origem') != 'esteira_sabado_agendados':
-                    continue
-                vids = [int(x) for x in (meta.get('venda_ids') or []) if x is not None]
-                if venda.id not in vids:
-                    continue
-                vids_new = [x for x in vids if int(x) != int(venda.id)]
-                valores = dict(meta.get('valores_por_venda_id') or {})
-                sub = valor_unit
-                if sub <= 0:
-                    sub = Decimal(str(valores.get(str(venda.id)) or 0))
-                valores.pop(str(venda.id), None)
-                novo_valor = Decimal(str(lanc.valor or 0)) - sub
-                if novo_valor <= 0 or len(vids_new) == 0:
-                    lanc.delete()
-                else:
-                    lanc.valor = novo_valor
-                    lanc.quantidade_vendas = len(vids_new)
-                    lanc.metadados = {
-                        'origem': 'esteira_sabado_agendados',
-                        'venda_ids': vids_new,
-                        'valores_por_venda_id': valores,
-                    }
-                    lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
-                break
+            if not venda_instalada:
+                for lanc in LancamentoFinanceiro.objects.filter(
+                    usuario_id=venda.vendedor_id,
+                    tipo='ADIANTAMENTO_COMISSAO',
+                    data=data_lanc,
+                    descricao=descricao,
+                ):
+                    meta = lanc.metadados if isinstance(lanc.metadados, dict) else {}
+                    if meta.get('origem') != 'esteira_sabado_agendados':
+                        continue
+                    vids = [int(x) for x in (meta.get('venda_ids') or []) if x is not None]
+                    if venda.id not in vids:
+                        continue
+                    vids_new = [x for x in vids if int(x) != int(venda.id)]
+                    valores = dict(meta.get('valores_por_venda_id') or {})
+                    sub = valor_unit
+                    if sub <= 0:
+                        sub = Decimal(str(valores.get(str(venda.id)) or 0))
+                    valores.pop(str(venda.id), None)
+                    novo_valor = Decimal(str(lanc.valor or 0)) - sub
+                    if novo_valor <= 0 or len(vids_new) == 0:
+                        lanc.delete()
+                    else:
+                        lanc.valor = novo_valor
+                        lanc.quantidade_vendas = len(vids_new)
+                        lanc.metadados = {
+                            'origem': 'esteira_sabado_agendados',
+                            'venda_ids': vids_new,
+                            'valores_por_venda_id': valores,
+                        }
+                        lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+                    break
 
             venda.adiantamento_sabado_marcado = False
             venda.adiantamento_sabado_valor = None
@@ -3305,6 +3398,8 @@ class VendaViewSet(viewsets.ModelViewSet):
             venda.adiantamento_sabado_marcado_por = None
             venda.adiantamento_sabado_manual = False
             venda.adiantamento_sabado_obs_manual = ''
+            if venda_instalada:
+                venda.antecipacao_comissao = False
             venda.save(
                 update_fields=[
                     'adiantamento_sabado_marcado',
@@ -3313,7 +3408,17 @@ class VendaViewSet(viewsets.ModelViewSet):
                     'adiantamento_sabado_marcado_por',
                     'adiantamento_sabado_manual',
                     'adiantamento_sabado_obs_manual',
+                    'antecipacao_comissao',
                 ]
+            )
+            HistoricoAlteracaoVenda.objects.create(
+                venda=venda,
+                usuario=request.user,
+                alteracoes={
+                    'acao': 'desmarcar_adiantamento_sabado',
+                    'status_venda_ao_desmarcar': st or '-',
+                    'financeiro_alterado': not venda_instalada,
+                },
             )
 
         return Response({'ok': True})
@@ -7843,7 +7948,7 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='vendas-instaladas-mes')
     def vendas_instaladas_mes(self, request):
         """Lista vendas instaladas de um vendedor em um mês. ?tipo_cliente=CNPJ para só vendas CNPJ.
-        A coluna 'Comissão est.' usa a faixa 'Adiantamento' em REGRAS_FAIXAS quando existir (valores fixos por plano 500MB/700/1GB)."""
+        A coluna 'Comissão est.' usa a primeira faixa COMISSAO em REGRAS_FAIXAS quando existir."""
         from datetime import datetime
         import re
         vendedor_id = request.query_params.get('vendedor_id')
@@ -7870,14 +7975,10 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
             data_instalacao__gte=data_inicio,
             data_instalacao__lt=data_fim,
         ).select_related('plano', 'cliente').order_by('data_instalacao', 'id')
-        # Faixa com finalidade ADIANTAMENTO define o valor fixo da "Comissão est." (500MB/700/1GB)
+        # Primeira faixa COMISSAO define o valor fixo da "Comissão est." (500MB/700/1GB).
         faixa_adiantamento = RegraComissaoFaixa.objects.filter(
-            finalidade='ADIANTAMENTO'
-        ).first()
-        if not faixa_adiantamento:
-            faixa_adiantamento = RegraComissaoFaixa.objects.filter(
-                faixa_nome__iexact='Adiantamento'
-            ).first()
+            finalidade='COMISSAO'
+        ).order_by('id').first()
         only_cnpj = (tipo_cliente == 'CNPJ')
         hoje_sp = timezone.localtime(timezone.now())
         semana_ini = (hoje_sp - timedelta(days=hoje_sp.weekday())).date()
@@ -7936,7 +8037,7 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _valor_comissao_estimado_venda(venda, faixa_adiantamento, is_cnpj):
-        """Usa a faixa 'Adiantamento' (REGRAS_FAIXAS) para valor fixo; senão fallback em plano.comissao_base."""
+        """Usa a faixa informada (ex.: primeira COMISSAO) para valor fixo; senão fallback em plano.comissao_base."""
         if faixa_adiantamento:
             nome_plano = venda.plano.nome if venda.plano else ''
             banda = LancamentoFinanceiroViewSet._banda_plano(nome_plano)

@@ -911,7 +911,11 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">Valor conforme <strong>Regras por Faixa</strong> (Finalidade Adiantamento). O lançamento usa a <strong>data de abertura da O.S.</strong></p>
+                    <p class="small text-muted">Valor padrão conforme <strong>Regras por Faixa</strong> (primeira faixa com finalidade <strong>Comissão</strong>). O lançamento usa a <strong>data de abertura da O.S.</strong></p>
+                    <div class="mb-2">
+                        <label class="form-label small">Valor do adiantamento (opcional)</label>
+                        <input type="number" class="form-control form-control-sm" id="txt-adiant-sabado-valor" min="0.01" step="0.01" placeholder="Se vazio, usa valor da tabela de Comissão">
+                    </div>
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="chk-adiant-sabado-manual">
                         <label class="form-check-label" for="chk-adiant-sabado-manual">Marcação manual (exceção)</label>
@@ -1647,6 +1651,7 @@
             if (!podeMarcarAdiantSabado) return;
             document.getElementById('hid-adiant-sabado-venda-id').value = String(vendaId);
             document.getElementById('chk-adiant-sabado-manual').checked = false;
+            document.getElementById('txt-adiant-sabado-valor').value = '';
             document.getElementById('txt-adiant-sabado-obs').value = '';
             if (modalMarcarAdiantSabado) modalMarcarAdiantSabado.show();
         }
@@ -1654,16 +1659,25 @@
         async function confirmarMarcarAdiantSabado() {
             const vid = (document.getElementById('hid-adiant-sabado-venda-id').value || '').trim();
             const manual = document.getElementById('chk-adiant-sabado-manual').checked;
+            const valorManualRaw = (document.getElementById('txt-adiant-sabado-valor').value || '').trim();
             const obs = (document.getElementById('txt-adiant-sabado-obs').value || '').trim();
             if (!vid) return;
             if (manual && obs.length < 3) {
                 alert('Informe a observação (mín. 3 caracteres) para marcação manual.');
                 return;
             }
+            if (valorManualRaw && !(Number(valorManualRaw) > 0)) {
+                alert('Informe um valor manual maior que zero.');
+                return;
+            }
             try {
                 await apiFetch(`/crm/vendas/${vid}/marcar-adiantamento-sabado/`, {
                     method: 'POST',
-                    body: JSON.stringify({ manual, observacao: obs }),
+                    body: JSON.stringify({
+                        manual,
+                        observacao: obs,
+                        valor_manual: valorManualRaw || null,
+                    }),
                 });
                 if (modalMarcarAdiantSabado) modalMarcarAdiantSabado.hide();
                 carregarVendas(true);
@@ -1679,9 +1693,38 @@
 
         async function desmarcarAdiantSabado(vendaId) {
             if (!podeMarcarAdiantSabado) return;
-            if (!confirm('Remover marcação de adiantamento sábado e estornar o lançamento desta venda?')) return;
+            if (!confirm('Remover marcação de adiantamento sábado? Em venda instalada, isso não altera o financeiro já lançado.')) return;
             try {
                 await apiFetch(`/crm/vendas/${vendaId}/desmarcar-adiantamento-sabado/`, { method: 'POST', body: '{}' });
+                carregarVendas(true);
+            } catch (e) {
+                let msg = e && e.message ? e.message : String(e);
+                try {
+                    const p = JSON.parse(msg);
+                    if (p && p.detail) msg = typeof p.detail === 'string' ? p.detail : JSON.stringify(p.detail);
+                } catch (_) {}
+                alert('Erro: ' + msg);
+            }
+        }
+
+        async function editarAdiantSabado(vendaId, valorAtual, obsAtual) {
+            if (!podeMarcarAdiantSabado) return;
+            const novoValor = prompt('Novo valor do adiantamento sábado (R$):', String(valorAtual || '').replace(',', '.'));
+            if (novoValor === null) return;
+            const valorNormalizado = String(novoValor).trim().replace(',', '.');
+            if (!(Number(valorNormalizado) > 0)) {
+                alert('Valor inválido. Informe um número maior que zero.');
+                return;
+            }
+            const novaObs = prompt('Observação da alteração (opcional):', obsAtual || '') || '';
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/editar-adiantamento-sabado/`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        valor_manual: valorNormalizado,
+                        observacao: novaObs.trim(),
+                    }),
+                });
                 carregarVendas(true);
             } catch (e) {
                 let msg = e && e.message ? e.message : String(e);
@@ -2114,6 +2157,8 @@
                                 celulaAdiantSabado += ' <span class="badge bg-secondary" title="' + String(v.adiantamento_sabado_obs_manual || '').replace(/"/g, '&quot;') + '">manual</span>';
                             }
                             if (podeMarcarAdiantSabado) {
+                                const obsEsc = String(v.adiantamento_sabado_obs_manual || '').replace(/'/g, "\\'");
+                                celulaAdiantSabado += ' <button type="button" class="btn btn-sm btn-outline-secondary py-0 ms-1" onclick="editarAdiantSabado(' + v.id + ', \'' + vlr + '\', \'' + obsEsc + '\')">Editar valor</button>';
                                 celulaAdiantSabado += ' <button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="desmarcarAdiantSabado(' + v.id + ')">Desmarcar</button>';
                             }
                         } else if (agSt && podeMarcarAdiantSabado) {
