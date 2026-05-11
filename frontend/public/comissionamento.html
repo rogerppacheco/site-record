@@ -473,6 +473,38 @@
             }
         }
 
+        function nomeMesPdfFechamento(m) {
+            const meses = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+            const i = parseInt(m, 10) - 1;
+            return (i >= 0 && i < meses.length) ? meses[i] : String(m);
+        }
+        function nomeArquivoPdfExportFallback(mes, idsEnvio) {
+            const mesNome = nomeMesPdfFechamento(mes);
+            if (idsEnvio.length === 1) {
+                const id0 = String(idsEnvio[0]);
+                let rotulo = '';
+                const selV = document.getElementById('folha-excel-vendedor');
+                if (selV && String(selV.value) === id0 && selV.selectedOptions && selV.selectedOptions[0]) {
+                    rotulo = selV.selectedOptions[0].textContent.trim();
+                }
+                if (!rotulo) {
+                    const selM = document.getElementById('folha-excel-vendedores-multi');
+                    if (selM) {
+                        const o = Array.from(selM.options).find(x => String(x.value) === id0);
+                        if (o && o.textContent) rotulo = o.textContent.trim();
+                    }
+                }
+                if (!rotulo && folhaExcelCache.dados && folhaExcelCache.dados.vendedores) {
+                    const v = folhaExcelCache.dados.vendedores.find(x => String(x.vendedor_id) === id0);
+                    if (v && v.vendedor_nome) rotulo = String(v.vendedor_nome).trim();
+                }
+                if (!rotulo) rotulo = 'vendedor';
+                const u = rotulo.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').trim() || 'vendedor';
+                return `FECHAMENTO VENDAS - ${mesNome} ${u}.pdf`;
+            }
+            return `FECHAMENTO VENDAS - ${mesNome} MULTIPLOS.zip`;
+        }
+
         async function exportarFolhaExtratoPdf() {
             const vendedorId = document.getElementById('folha-excel-vendedor')?.value;
             const selMulti = document.getElementById('folha-excel-vendedores-multi');
@@ -501,7 +533,7 @@
                     { responseType: 'blob' }
                 );
                 const cd = res.headers['content-disposition'] || '';
-                let filename = `folha_extrato_${mes}_${ano}.pdf`;
+                let filename = nomeArquivoPdfExportFallback(mes, idsEnvio);
                 const mStar = /filename\*=UTF-8''([^;\n]+)/i.exec(cd);
                 const mQuoted = /filename="([^"]+)"/i.exec(cd);
                 if (mStar && mStar[1]) {

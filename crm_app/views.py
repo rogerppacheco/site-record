@@ -2695,6 +2695,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
             'OS', 'Data Agendamento', 'Turno', 'Data Instalação', 'Data Física (no cliente)',
             'Adiant. CNPJ', 'Adiantamento de Comissão',
+            'Adiant. Sábado', 'Valor Adiant. Sábado (R$)', 'Quitado adiant. sábado (inst.)',
             'Motivo Pendência', 'Observações',
             'CEP', 'Logradouro', 'Número', 'Complemento', 'Bairro', 'Cidade', 'UF', 'Ponto Ref.'
         ]
@@ -2735,6 +2736,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                 dt_instalacao_fisica,
                 'Sim' if v.flag_adiant_cnpj else 'Não',
                 'Sim' if v.antecipacao_comissao else 'Não',
+                'Sim' if getattr(v, 'adiantamento_sabado_marcado', False) else 'Não',
+                float(v.adiantamento_sabado_valor) if getattr(v, 'adiantamento_sabado_marcado', False) and v.adiantamento_sabado_valor is not None else '',
+                'Sim' if getattr(v, 'adiantamento_sabado_quitado_em', None) else 'Não',
                 v.motivo_pendencia.nome if v.motivo_pendencia else '-',
                 v.observacoes or '-',
                 v.cep or '-',
@@ -6320,6 +6324,22 @@ def exportar_folha_extrato_pdf(request):
             ).strip("_") or "vendedor"
             return s
 
+        _NOMES_MES_PDF_FECHAMENTO = (
+            "JANEIRO",
+            "FEVEREIRO",
+            "MARÇO",
+            "ABRIL",
+            "MAIO",
+            "JUNHO",
+            "JULHO",
+            "AGOSTO",
+            "SETEMBRO",
+            "OUTUBRO",
+            "NOVEMBRO",
+            "DEZEMBRO",
+        )
+        mes_label = _NOMES_MES_PDF_FECHAMENTO[mes - 1] if 1 <= mes <= 12 else f"MES_{mes}"
+
         pdfs_ok = []
         erros = []
         for vid in ids_envio:
@@ -6339,9 +6359,10 @@ def exportar_folha_extrato_pdf(request):
             if pisa_status.err:
                 erros.append(f"{consultor.username}: erro ao gerar PDF")
                 continue
-            nome_pdf = (
-                f"Folha_Comissao_{_nome_arquivo_seguro(vendedor_data.get('vendedor_nome'))}_{mes}_{ano}.pdf"
+            username_v = _nome_arquivo_seguro(
+                getattr(consultor, "username", None) or vendedor_data.get("vendedor_nome")
             )
+            nome_pdf = f"FECHAMENTO VENDAS - {mes_label} {username_v}.pdf"
             pdfs_ok.append((nome_pdf, pdf_buffer.getvalue()))
 
         if not pdfs_ok:
@@ -6366,7 +6387,7 @@ def exportar_folha_extrato_pdf(request):
             for nome, conteudo in pdfs_ok:
                 zf.writestr(nome, conteudo)
         zip_bytes = zip_buffer.getvalue()
-        zip_nome = f"Folha_Comissao_{mes:02d}_{ano}_varios_vendedores.zip"
+        zip_nome = f"FECHAMENTO VENDAS - {mes_label} MULTIPLOS.zip"
         resp = HttpResponse(zip_bytes, content_type="application/zip")
         resp["Content-Disposition"] = (
             f'attachment; filename="{zip_nome}"; filename*=UTF-8\'\'{quote(zip_nome)}'
