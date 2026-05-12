@@ -7066,7 +7066,37 @@ def processar_webhook_whatsapp(data, request=None):
         
         # Verificação mais flexível - aceita comandos com ou sem acentuação, maiúsculas/minúsculas
         mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
-        
+
+        # Comandos de comissão (Diretoria/Admin/BackOffice) — bônus, desconto, adiantamentos
+        try:
+            from crm_app.whatsapp_comissao_service import (
+                ETAPA_ADIANT_SABADO_ESCOLHA,
+                limpar_fluxo_adiant_sabado_sessao,
+                processar_escolha_adiant_sabado_sessao,
+                processar_whatsapp_comissao,
+            )
+
+            if sessao.etapa == ETAPA_ADIANT_SABADO_ESCOLHA:
+                if mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
+                    limpar_fluxo_adiant_sabado_sessao(sessao)
+                    sessao.refresh_from_db()
+                else:
+                    _r_esc = processar_escolha_adiant_sabado_sessao(
+                        sessao, usuario_whatsapp, mensagem_texto, mensagem_limpa
+                    )
+                    if _r_esc is not None:
+                        sessao.refresh_from_db()
+                        return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(_r_esc))
+
+            _resp_comissao = processar_whatsapp_comissao(
+                usuario_whatsapp, mensagem_texto, mensagem_limpa, sessao=sessao
+            )
+            if _resp_comissao is not None:
+                sessao.refresh_from_db()
+                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(_resp_comissao))
+        except Exception as e_com:
+            logger.exception("[Webhook] Erro nos comandos de comissão WhatsApp: %s", e_com)
+
         # Comando FATURA (Nio Negociar / API)
         if mensagem_limpa in ['FATURA', 'FATURAS']:
             logger.info(f"[Webhook] Comando FATURA reconhecido!")
@@ -7264,7 +7294,8 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Crédito* - Consultar análise de crédito por CPF\n"
                 "• *Pedido* - Consultar pedido/O.S. por CPF no PAP\n"
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕\n"
-                "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)"
+                "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)\n"
+                "• *Comissao* - Bônus, desconto, adiant. comissão/sábado (Diretoria/Admin; ver ajuda)"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 

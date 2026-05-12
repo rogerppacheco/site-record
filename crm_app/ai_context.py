@@ -48,6 +48,7 @@ O bot do WhatsApp oferece estes comandos e fluxos:
 - *Pedido*: consultar pedido/O.S. por CPF no PAP
 - *Vender*: realizar venda pelo WhatsApp (fluxo completo)
 - *Nova Venda*: cadastrar venda no CRM (Via APP ou Sem APP)
+- *Comissao*: comandos de bônus, desconto e adiantamento (Diretoria/Admin; digite COMISSAO para ver sintaxe)
 - *MENU* ou *AJUDA*: listar opções
 
 Regras para suas respostas:
