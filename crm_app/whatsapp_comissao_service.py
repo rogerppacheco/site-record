@@ -6,7 +6,8 @@ Comandos de comissão pelo WhatsApp (espelho do que Diretoria/Admin faz no site)
 - Adiant. comissão (instaladas) → mesma lógica do toggle na esteira.
 - Adiant. sábado → _marcar_adiantamento_sabado_exec em views.
 - Adiant. comissão (instaladas) em lote: *ADIANT_COMISSAO* ou *ADIANT_COMISSAO* `AAAA-MM`
-  (mês de *instalação*); depois *linha×quantidade*, *DETALHE*, *LISTA* (igual ao sábado).
+  (mês de *instalação*); opcional *login* (`ADIANT_COMISSAO` `[login]` ou com mês);
+  depois *linha×quantidade*, *DETALHE*, *LISTA* (igual ao sábado).
 """
 from __future__ import annotations
 
@@ -82,6 +83,37 @@ def _fmt_reais_br(val: Decimal) -> str:
     mil = '.'.join(reversed(segs))
     body = f'{mil},{frac}'
     return f'-{body}' if neg else body
+
+
+def _normalize_login_filtro_adiant_comissao(fragment: str) -> str:
+    """Remove colchetes externos e @ para filtro de login (ex.: `[Gleice]` → `Gleice`)."""
+    t = (fragment or '').strip()
+    while len(t) >= 2 and t.startswith('[') and t.endswith(']'):
+        t = t[1:-1].strip()
+    if t.startswith('@'):
+        t = t[1:].strip()
+    return t.strip()
+
+
+def _token_eh_ano_mes_instalacao(tok: str) -> bool:
+    return bool(re.match(r'^\d{4}-\d{2}$', (tok or '').strip()))
+
+
+def _fmt_id_venda_com_os(venda_id: int, ordem_servico: Optional[str] = None) -> str:
+    os_txt = (ordem_servico or '').strip()
+    if os_txt:
+        return f'#{venda_id} (O.S. {os_txt})'
+    return f'#{venda_id}'
+
+
+def _fmt_lista_ok_ids_com_os(ok_ids: list[int]) -> str:
+    """Lista na ordem de ok_ids; uma consulta ao banco."""
+    if not ok_ids:
+        return ''
+    from crm_app.models import Venda
+
+    mapa = dict(Venda.objects.filter(id__in=ok_ids).values_list('id', 'ordem_servico'))
+    return ', '.join(_fmt_id_venda_com_os(vid, mapa.get(vid)) for vid in ok_ids)
 
 
 def _query_candidatas_adiantamento_sabado(ref_date):
@@ -164,7 +196,9 @@ def limpar_fluxo_adiant_comissao_inst_sessao(sessao) -> None:
     sessao.save()
 
 
-def _query_vendas_antecip_comissao_instaladas_mes(ano: int, mes: int):
+def _query_vendas_antecip_comissao_instaladas_mes(
+    ano: int, mes: int, username_filtro: Optional[str] = None
+):
     """
     Vendas instaladas no mês (data_instalacao), com vendedor, sem adiantamento ativo:
     sem antecipação na esteira e sem marcação de adiant. sábado (evita duplicar fluxos).
@@ -193,6 +227,9 @@ def _query_vendas_antecip_comissao_instaladas_mes(ano: int, mes: int):
         .select_related('vendedor', 'status_esteira', 'cliente', 'plano')
         .order_by('vendedor_id', 'id')
     )
+    uq = _normalize_login_filtro_adiant_comissao(username_filtro or '')
+    if uq:
+        qs = qs.filter(vendedor__username__icontains=uq)
     out = []
     for v in qs:
         try:
@@ -204,21 +241,34 @@ def _query_vendas_antecip_comissao_instaladas_mes(ano: int, mes: int):
     return out
 
 
-def iniciar_resumo_adiant_comissao_instaladas_whatsapp(sessao, actor, ano: int, mes: int) -> str:
-    """Lista por consultor vendas instaladas do mês elegíveis a marcar adiant. comissão."""
+def iniciar_resumo_adiant_comissao_instaladas_whatsapp(
+    sessao, actor, ano: int, mes: int, username_filtro: Optional[str] = None
+) -> str:
+    """Lista por consultor vendas instaladas do mês elegíveis a marcar adiant. comissão (opcional filtro por login)."""
     limpar_fluxo_adiant_sabado_sessao(sessao)
 
-    candidatas = _query_vendas_antecip_comissao_instaladas_mes(ano, mes)
+    uq = _normalize_login_filtro_adiant_comissao(username_filtro or '')
+    if not uq:
+        uq = None
+
+    candidatas = _query_vendas_antecip_comissao_instaladas_mes(ano, mes, username_filtro=uq)
     linhas = _montar_linhas_resumo_adiant_sabado(candidatas)
 
     if not linhas:
         limpar_fluxo_adiant_comissao_inst_sessao(sessao)
-        return (
+        msg_base = (
             f'💼 *Adiantamento de comissão (instaladas)*\n'
             f'Mês de instalação: *{mes:02d}/{ano}*\n\n'
             'Nenhuma venda *elegível* (instalada neste mês, sem comissão antecipada, '
             'sem adiant. sábado marcado, valor na faixa de comissão maior que zero).'
         )
+        if uq:
+            return (
+                msg_base
+                + f'\n\n_Filtro de login: «{uq}»._\n'
+                '_Confira o username ou envie *ADIANT_COMISSAO* sem filtro para ver todos os consultores._'
+            )
+        return msg_base
 
     d = dict(sessao.dados_temp or {})
     d[CHAVE_DADOS_ADIANT_COMISSAO_INST] = {
@@ -226,6 +276,7 @@ def iniciar_resumo_adiant_comissao_instaladas_whatsapp(sessao, actor, ano: int, 
         'ano': ano,
         'mes': mes,
         'linhas': linhas,
+        'username_filtro': uq or '',
     }
     sessao.dados_temp = d
     sessao.etapa = ETAPA_ADIANT_COMISSAO_INST_ESCOLHA
@@ -247,15 +298,19 @@ def iniciar_resumo_adiant_comissao_instaladas_whatsapp(sessao, actor, ano: int, 
         'Ex.: `1x2 3x1`\n'
         '*DETALHE* + número — lista pedidos (#venda, O.S., instalação, valor).\n'
         '*MARCADAS* — quem *já* tem antecipação (comissão ou sábado) neste mês; '
-        'opcional: *MARCADAS* `@login` (ou parte do username) para resumo + lista de pedidos.\n'
+        'opcional: *MARCADAS* `@login` (ou parte do username). Só *MARCADAS* repete o filtro da lista, se você entrou com login.\n'
         '*LISTA* — repetir este resumo.\n'
         '*CANCELAR* ou *MENU* encerra.\n'
         '_Para uma venda avulsa: *ADIANT_COMISSAO* id *MARCAR* ou *DESMARCAR*._'
     )
+    filtro_lin = ''
+    if uq:
+        filtro_lin = f'_Filtro: login contém «{uq}»._\n'
     cab = (
         f'💼 *Adiantamento de comissão (instaladas)*\n'
         f'Mês de instalação: *{mes:02d}/{ano}*\n'
-        f'_Total: {total_cons} consultor(es) com vendas elegíveis._\n\n'
+        + filtro_lin
+        + f'_Total: {total_cons} consultor(es) com vendas elegíveis._\n\n'
     )
     texto = cab + '\n\n'.join(blocos) + instr
     if len(texto) > 4000:
@@ -274,7 +329,10 @@ def _texto_lista_repeticao_comissao_inst(bloco: dict) -> str:
     for L in linhas:
         linhas_txt.append(_fmt_linha_resumo_consultor_username(L))
     ref_m = f'{int(mes):02d}/{int(ano)}' if ano is not None and mes is not None else ref
-    cab = f'💼 *Adiant. comissão (instaladas)* — mês *{ref_m}*\n_reenvio da lista._\n\n'
+    uq = (bloco or {}).get('username_filtro') or ''
+    uq = (uq or '').strip()
+    filtro_lin = f'_Filtro: login contém «{uq}»._\n' if uq else ''
+    cab = f'💼 *Adiant. comissão (instaladas)* — mês *{ref_m}*\n' + filtro_lin + '_reenvio da lista._\n\n'
     rod = (
         '\n\n_Use *DETALHE N*, *MARCADAS* (opcional `@login`), depois *linha×quantidade* ou *CANCELAR*._'
     )
@@ -449,7 +507,7 @@ def processar_escolha_adiant_comissao_inst_sessao(
         limpar_fluxo_adiant_comissao_inst_sessao(sessao)
         return None
     if tok0 == 'ADIANT_COMISSAO':
-        if len(toks) >= 3 and toks[2].upper() in (
+        if len(toks) >= 3 and toks[1].isdigit() and toks[2].upper() in (
             'MARCAR',
             'DESMARCAR',
             'SIM',
@@ -462,10 +520,19 @@ def processar_escolha_adiant_comissao_inst_sessao(
         if len(toks) == 2 and re.match(r'^\d{4}-\d{2}$', toks[1]):
             limpar_fluxo_adiant_comissao_inst_sessao(sessao)
             return None
+        if len(toks) == 2 and toks[1].isdigit():
+            return None
+        if len(toks) >= 3 and re.match(r'^\d{4}-\d{2}$', toks[1]):
+            limpar_fluxo_adiant_comissao_inst_sessao(sessao)
+            return None
+        if len(toks) >= 3 and re.match(r'^\d{4}-\d{2}$', toks[-1]):
+            limpar_fluxo_adiant_comissao_inst_sessao(sessao)
+            return None
         if len(toks) == 1:
             limpar_fluxo_adiant_comissao_inst_sessao(sessao)
             return None
-        if len(toks) == 2 and toks[1].isdigit():
+        if len(toks) >= 2:
+            limpar_fluxo_adiant_comissao_inst_sessao(sessao)
             return None
         limpar_fluxo_adiant_comissao_inst_sessao(sessao)
         return None
@@ -490,6 +557,8 @@ def processar_escolha_adiant_comissao_inst_sessao(
             return '❌ Sessão expirada. Envie *ADIANT_COMISSAO* de novo.'
         rest = ' '.join(toks[1:]).strip()
         filtro_u = _strip_at(rest) if rest else ''
+        if not filtro_u:
+            filtro_u = (bloco_ctx.get('username_filtro') or '').strip()
         if not filtro_u:
             filtro_u = None
         return _texto_marcadas_comissao_inst_mes(int(ano_ctx), int(mes_ctx), filtro_u)
@@ -551,7 +620,7 @@ def processar_escolha_adiant_comissao_inst_sessao(
 
     partes = []
     if ok_ids:
-        partes.append(f'✅ *Marcadas* {len(ok_ids)} venda(s): {", ".join(f"#{i}" for i in ok_ids)}.')
+        partes.append(f'✅ *Marcadas* {len(ok_ids)} venda(s): {_fmt_lista_ok_ids_com_os(ok_ids)}.')
     if erros:
         partes.append('⚠️ *Atenção:*\n' + '\n'.join(f'• {e}' for e in erros[:15]))
         if len(erros) > 15:
@@ -818,7 +887,7 @@ def processar_escolha_adiant_sabado_sessao(sessao, actor, mensagem_texto: str, m
 
     partes = []
     if ok_ids:
-        partes.append(f'✅ *Marcadas* {len(ok_ids)} venda(s): {", ".join(f"#{i}" for i in ok_ids)}.')
+        partes.append(f'✅ *Marcadas* {len(ok_ids)} venda(s): {_fmt_lista_ok_ids_com_os(ok_ids)}.')
     if erros:
         partes.append('⚠️ *Atenção:*\n' + '\n'.join(f'• {e}' for e in erros[:15]))
         if len(erros) > 15:
@@ -841,7 +910,9 @@ def texto_ajuda_comissao_whatsapp() -> str:
         "*ADIANT_COMISSAO* — modo *lista* (instaladas do mês):\n"
         "• Só *ADIANT_COMISSAO* → mês corrente (data de *instalação*).\n"
         "• *ADIANT_COMISSAO* `AAAA-MM` → mês explícito (ex.: `2026-05`).\n"
-        "Depois: *LISTA*, *DETALHE N*, *MARCADAS* (opcional filtro por login), *linha×quantidade* (igual ao sábado).\n\n"
+        "• *ADIANT_COMISSAO* `login` ou `[login]` ou `@login` → só consultores cujo *username* contém esse texto (mês corrente).\n"
+        "• *ADIANT_COMISSAO* `AAAA-MM` `login…` ou `login…` `AAAA-MM` → mês + mesmo filtro.\n"
+        "Depois: *LISTA*, *DETALHE N*, *MARCADAS* (sem texto = mesmo filtro da lista, se houver), *linha×quantidade*.\n\n"
         "*ADIANT_COMISSAO* — modo *uma venda*:\n"
         "`ADIANT_COMISSAO id_venda` `MARCAR` ou `DESMARCAR`\n"
         "_(venda instalada; mesmo critério da esteira)_\n\n"
@@ -1030,7 +1101,7 @@ def _toggle_adiantamento_comissao_instaladas(venda, marcar: bool, actor) -> tupl
                     criado_por=actor,
                 )
             return True, (
-                f"✅ Adiantamento de comissão *marcado* para a venda #{venda.id}.\n"
+                f"✅ Adiantamento de comissão *marcado* para a venda {_fmt_id_venda_com_os(venda.id, venda.ordem_servico)}.\n"
                 f"Valor unitário na folha (referência {_fmt_data_exibicao_br(hoje)}): R$ {valor_unit}"
             )
         if not venda.antecipacao_comissao:
@@ -1060,7 +1131,7 @@ def _toggle_adiantamento_comissao_instaladas(venda, marcar: bool, actor) -> tupl
                 lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
             break
         return True, (
-            f"✅ Adiantamento de comissão *desmarcado* para a venda #{venda.id} "
+            f"✅ Adiantamento de comissão *desmarcado* para a venda {_fmt_id_venda_com_os(venda.id, venda.ordem_servico)} "
             f"(referência {_fmt_data_exibicao_br(hoje)})."
         )
 
@@ -1091,6 +1162,8 @@ def _dispatch_adiant_comissao(parts: list[str], actor, sessao) -> str:
     """
     ADIANT_COMISSAO — lista por consultor (mês de instalação) + escolha linha×qtd;
     ADIANT_COMISSAO AAAA-MM — mês explícito;
+    ADIANT_COMISSAO [login] | login — mês corrente só desse consultor (icontains no username);
+    ADIANT_COMISSAO AAAA-MM login… | login… AAAA-MM — mês + filtro;
     ADIANT_COMISSAO id MARCAR|DESMARCAR — uma venda.
     """
     if sessao is None:
@@ -1119,7 +1192,7 @@ def _dispatch_adiant_comissao(parts: list[str], actor, sessao) -> str:
 
     if len(parts) == 2:
         tok = parts[1].strip()
-        if re.match(r'^\d{4}-\d{2}$', tok):
+        if _token_eh_ano_mes_instalacao(tok):
             y, mo = tok.split('-')
             ano, mes = int(y), int(mo)
             if mes < 1 or mes > 12:
@@ -1128,10 +1201,56 @@ def _dispatch_adiant_comissao(parts: list[str], actor, sessao) -> str:
         if tok.isdigit():
             return (
                 '❌ Para *uma venda*, use: `ADIANT_COMISSAO id_venda MARCAR` (ou `DESMARCAR`).\n'
-                'Para *lista do mês*: envie só *ADIANT_COMISSAO* ou `ADIANT_COMISSAO AAAA-MM`.'
+                'Para *lista do mês*: *ADIANT_COMISSAO* ou `ADIANT_COMISSAO AAAA-MM`.\n'
+                'Para *filtrar por consultor*: `ADIANT_COMISSAO login` ou `[login]` (mês corrente).'
             )
+        uq = _normalize_login_filtro_adiant_comissao(tok)
+        if not uq:
+            return (
+                '❌ Informe um *login* para filtrar (ex.: `ADIANT_COMISSAO gleice` ou `ADIANT_COMISSAO [Gleice]`).'
+            )
+        d = timezone.localdate()
+        return iniciar_resumo_adiant_comissao_instaladas_whatsapp(
+            sessao, actor, d.year, d.month, username_filtro=uq
+        )
 
-    return '❌ Comando *ADIANT_COMISSAO* não reconhecido. Digite *COMISSAO* para ver a ajuda.'
+    if _token_eh_ano_mes_instalacao(parts[1]):
+        uq = _normalize_login_filtro_adiant_comissao(' '.join(parts[2:]))
+        if not uq:
+            return (
+                '❌ Após *AAAA-MM*, informe o *login* do consultor '
+                '(ex.: `ADIANT_COMISSAO 2026-05 gleice`).'
+            )
+        y, mo = parts[1].split('-')
+        ano, mes = int(y), int(mo)
+        if mes < 1 or mes > 12:
+            return '❌ Mês inválido em *AAAA-MM*.'
+        return iniciar_resumo_adiant_comissao_instaladas_whatsapp(
+            sessao, actor, ano, mes, username_filtro=uq
+        )
+
+    if _token_eh_ano_mes_instalacao(parts[-1]):
+        uq = _normalize_login_filtro_adiant_comissao(' '.join(parts[1:-1]))
+        if not uq:
+            return (
+                '❌ Antes de *AAAA-MM*, informe o *login* '
+                '(ex.: `ADIANT_COMISSAO gleice 2026-05`).'
+            )
+        y, mo = parts[-1].split('-')
+        ano, mes = int(y), int(mo)
+        if mes < 1 or mes > 12:
+            return '❌ Mês inválido em *AAAA-MM*.'
+        return iniciar_resumo_adiant_comissao_instaladas_whatsapp(
+            sessao, actor, ano, mes, username_filtro=uq
+        )
+
+    uq = _normalize_login_filtro_adiant_comissao(' '.join(parts[1:]))
+    if not uq:
+        return '❌ Comando *ADIANT_COMISSAO* não reconhecido. Digite *COMISSAO* para ver a ajuda.'
+    d = timezone.localdate()
+    return iniciar_resumo_adiant_comissao_instaladas_whatsapp(
+        sessao, actor, d.year, d.month, username_filtro=uq
+    )
 
 
 def _marcar_um_adiant_sabado_por_id(parts: list[str], actor) -> str:
@@ -1176,7 +1295,7 @@ def _marcar_um_adiant_sabado_por_id(parts: list[str], actor) -> str:
 
     return (
         "✅ *Adiantamento sábado* registrado.\n"
-        f"• Venda: #{vid}\n"
+        f"• Venda: {_fmt_id_venda_com_os(vid, venda.ordem_servico)}\n"
         f"• Valor: R$ {out['adiantamento_sabado_valor']}\n"
         f"• Data do lançamento: {_fmt_data_exibicao_br(out.get('data_lancamento'))}"
     )
