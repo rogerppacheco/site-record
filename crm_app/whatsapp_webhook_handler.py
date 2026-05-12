@@ -7067,11 +7067,16 @@ def processar_webhook_whatsapp(data, request=None):
         # Verificação mais flexível - aceita comandos com ou sem acentuação, maiúsculas/minúsculas
         mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
 
-        # Comandos de comissão (Diretoria/Admin/BackOffice) — bônus, desconto, adiantamentos
+        # Comandos de comissão (somente Diretoria/Admin no WhatsApp)
         try:
             from crm_app.whatsapp_comissao_service import (
+                ETAPA_ADIANT_COMISSAO_INST_ESCOLHA,
                 ETAPA_ADIANT_SABADO_ESCOLHA,
+                limpar_fluxo_adiant_comissao_inst_sessao,
                 limpar_fluxo_adiant_sabado_sessao,
+                mensagem_eh_comando_comissao_reservado,
+                pode_acesso_comissao_whatsapp_wpp,
+                processar_escolha_adiant_comissao_inst_sessao,
                 processar_escolha_adiant_sabado_sessao,
                 processar_whatsapp_comissao,
             )
@@ -7088,12 +7093,31 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.refresh_from_db()
                         return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(_r_esc))
 
-            _resp_comissao = processar_whatsapp_comissao(
-                usuario_whatsapp, mensagem_texto, mensagem_limpa, sessao=sessao
-            )
-            if _resp_comissao is not None:
-                sessao.refresh_from_db()
-                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(_resp_comissao))
+            if sessao.etapa == ETAPA_ADIANT_COMISSAO_INST_ESCOLHA:
+                if mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
+                    limpar_fluxo_adiant_comissao_inst_sessao(sessao)
+                    sessao.refresh_from_db()
+                else:
+                    _r_ci = processar_escolha_adiant_comissao_inst_sessao(
+                        sessao, usuario_whatsapp, mensagem_texto, mensagem_limpa
+                    )
+                    if _r_ci is not None:
+                        sessao.refresh_from_db()
+                        return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(_r_ci))
+
+            if pode_acesso_comissao_whatsapp_wpp(usuario_whatsapp):
+                _resp_comissao = processar_whatsapp_comissao(
+                    usuario_whatsapp, mensagem_texto, mensagem_limpa, sessao=sessao
+                )
+                if _resp_comissao is not None:
+                    sessao.refresh_from_db()
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(_resp_comissao))
+            elif mensagem_eh_comando_comissao_reservado(mensagem_texto, mensagem_limpa):
+                return _enviar_resposta_e_retornar(
+                    _com_prefixo_primeira_mensagem(
+                        '❌ Comandos de comissão pelo WhatsApp são restritos a *Diretoria* ou *Admin*.'
+                    )
+                )
         except Exception as e_com:
             logger.exception("[Webhook] Erro nos comandos de comissão WhatsApp: %s", e_com)
 
@@ -7279,24 +7303,30 @@ def processar_webhook_whatsapp(data, request=None):
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()
-            resposta = (
-                "📋 *MENU*\n\n"
-                "Escolha uma opção:\n"
-                "• *Fachada* - Consultar fachadas por CEP\n"
-                "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
-                "• *Inclusão* - Solicitar viabilidade (formulário)\n"
-                "• *Status* - Consultar status de pedido\n"
-                "• *Fatura* - Consultar fatura por CPF (Nio Negociar)\n"
-                "• *Conta* - 2ª via de conta por CPF (site Nio)\n"
-                "• *Material* - Buscar materiais/documentos\n"
-                "• *Apoia* - Record Apoia (buscar arquivos por palavra-chave)\n"
-                "• *Andamento* - Ver agendamentos do dia\n"
-                "• *Crédito* - Consultar análise de crédito por CPF\n"
-                "• *Pedido* - Consultar pedido/O.S. por CPF no PAP\n"
-                "• *Vender* - Realizar venda pelo WhatsApp 🆕\n"
-                "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)\n"
-                "• *Comissao* - Bônus, desconto, adiant. comissão/sábado (Diretoria/Admin; ver ajuda)"
-            )
+            from crm_app.whatsapp_comissao_service import pode_acesso_comissao_whatsapp_wpp
+
+            linhas_menu = [
+                "📋 *MENU*\n\n",
+                "Escolha uma opção:\n",
+                "• *Fachada* - Consultar fachadas por CEP\n",
+                "• *Viabilidade* - Consultar viabilidade por CEP e número\n",
+                "• *Inclusão* - Solicitar viabilidade (formulário)\n",
+                "• *Status* - Consultar status de pedido\n",
+                "• *Fatura* - Consultar fatura por CPF (Nio Negociar)\n",
+                "• *Conta* - 2ª via de conta por CPF (site Nio)\n",
+                "• *Material* - Buscar materiais/documentos\n",
+                "• *Apoia* - Record Apoia (buscar arquivos por palavra-chave)\n",
+                "• *Andamento* - Ver agendamentos do dia\n",
+                "• *Crédito* - Consultar análise de crédito por CPF\n",
+                "• *Pedido* - Consultar pedido/O.S. por CPF no PAP\n",
+                "• *Vender* - Realizar venda pelo WhatsApp 🆕\n",
+                "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)",
+            ]
+            if pode_acesso_comissao_whatsapp_wpp(usuario_whatsapp):
+                linhas_menu.append(
+                    "\n• *Comissao* - Bônus, desconto, adiant. comissão/sábado (digite *COMISSAO* para ajuda)"
+                )
+            resposta = ''.join(linhas_menu)
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Mensagem livre na etapa inicial: pode ser busca de material (Record Apoia) ou dúvida (IA).
