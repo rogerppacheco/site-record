@@ -764,14 +764,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         t0 = time.time()
         sucesso, msg, extra = automacao.etapa2_viabilidade(cep, numero, ref)
 
-        # COMPLEMENTOS: marcar "Sem complemento" para evitar Posse encontrada (endereço fixo)
+        # COMPLEMENTOS: sempre opção 1 (produção; o PAP não aceita mais só "Sem complemento").
         if isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
-            ok_sel, msg_sel = automacao.etapa2_selecionar_sem_complemento()
-            if ok_sel:
-                sucesso, msg, extra = automacao.etapa2_clicar_avancar_apos_complemento(cep, numero)
-            else:
-                sucesso = False
-                msg = msg_sel or "Não foi possível marcar Sem complemento."
+            sucesso, msg, extra = automacao.etapa2_credito_selecionar_complemento_e_avancar(cep, numero, 1)
+            if not sucesso:
+                msg = msg or "Não foi possível selecionar complemento e avançar."
 
         tempos['etapa2'] = round(time.time() - t0, 1)
         logger.info("[CRÉDITO] Tempo: etapa2=%ss (acumulado=%ss)", tempos['etapa2'], round(time.time() - tempo_inicio, 1))
@@ -788,6 +785,8 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 ok_sel, _ = automacao.etapa2_selecionar_endereco_instalacao(idx)
                 if ok_sel:
                     sucesso, msg, extra = automacao.etapa2_preencher_referencia_e_continuar(cep, numero, ref)
+                    if isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
+                        sucesso, msg, extra = automacao.etapa2_credito_selecionar_complemento_e_avancar(cep, numero, 1)
             if not sucesso:
                 automacao._fechar_sessao()
                 liberar_bo(bo_usuario.id, telefone)

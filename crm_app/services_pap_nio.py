@@ -176,6 +176,13 @@ SELETORES_MATRICULA_VENDEDOR_CSS = ", ".join(SELETORES_MATRICULA_VENDEDOR)
 # Código retornado quando o modal "OPS, OCORREU UM ERRO!" aparece no PAP (erro do portal; orientar abrir chamado Nio)
 PAP_ERRO_PORTAL_NIO = "PAP_ERRO_PORTAL_NIO"
 
+# Fluxo CRÉDITO (parar_no_modal_credito): não concluir sem o modal "Resultado da análise de crédito" visível
+# (evita falso "aprovado" se a etapa de pagamento carregar antes do modal).
+MSG_CREDITO_SEM_TELA_RESULTADO = (
+    "A tela com o resultado da consulta de crédito não foi exibida. "
+    "Digite *CRÉDITO* e envie o CPF ou CNPJ novamente para repetir a consulta."
+)
+
 # Após reset do portal (ex.: modal "Ocorreu um erro" + Ok → Etapa 1), até qual subpasso reaplicar
 # para alinhar o browser com a etapa atual do WhatsApp. Ver PAPNioAutomation.tentar_recuperar_portal_reset_etapa1.
 # 0=só novo pedido (tela CEP); 1=viabilidade ok; 2=+CPF; 3=+contato; 4=+forma; 5=+débito se houver ou já em planos;
@@ -2145,6 +2152,20 @@ class PAPNioAutomation:
         ref = self.dados_pedido.get('referencia', '')
         return self._etapa2_clicar_avancar_e_tratar_modal(cep, numero, ref)
 
+    def etapa2_credito_selecionar_complemento_e_avancar(
+        self, cep: str, numero: str, indice_complemento: int
+    ) -> Tuple[bool, str, Optional[Any]]:
+        """
+        Fluxo CRÉDITO: quando o PAP lista complementos obrigatórios, o portal pode não aceitar
+        apenas "Sem complemento". Seleciona um item da lista (1 = primeiro) e avança a viabilidade.
+        """
+        if indice_complemento < 1:
+            return False, "Índice de complemento inválido (use 1, 2, 3…).", None
+        ok, msg_sel = self.etapa2_selecionar_complemento(indice_complemento)
+        if not ok:
+            return False, msg_sel or "Falha ao selecionar complemento.", None
+        return self.etapa2_clicar_avancar_apos_complemento(cep, numero)
+
     def selecionar_endereco(self, indice: int) -> Tuple[bool, str]:
         """
         Seleciona um endereço da lista quando há múltiplos.
@@ -2653,7 +2674,8 @@ class PAPNioAutomation:
         Returns:
             Tuple (sucesso, mensagem, resultado_credito, screenshot_modal_b64)
             screenshot_modal_b64: base64 da imagem do modal de resultado (quando visível), para envio no WhatsApp.
-            "TELEFONE_REJEITADO" | "EMAIL_REJEITADO" | "EMAIL_INVALIDO" | "CREDITO_NEGADO"
+            Códigos/mensagens de erro comuns: TELEFONE_REJEITADO, EMAIL_REJEITADO, EMAIL_INVALIDO, CREDITO_NEGADO,
+            MSG_CREDITO_SEM_TELA_RESULTADO (modal de resultado não exibido — repetir *CRÉDITO* com o documento).
         """
         try:
             logger.info(f"[PAP] Etapa 4 - Celular: {celular}, Email: {email}")
@@ -2829,6 +2851,18 @@ class PAPNioAutomation:
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None, None
             pagina_texto = (self.page.content() or "").lower()
+            if parar_no_modal_credito and not modal_apareceu:
+                neg_sem_modal = (
+                    "crédito negado" in pagina_texto
+                    or "credito negado" in pagina_texto
+                    or ("negado" in pagina_texto and "aprovado" not in pagina_texto)
+                )
+                if not neg_sem_modal:
+                    logger.warning(
+                        "[PAP] [CRÉDITO] Etapa4: modal 'Resultado da análise de crédito' não apareceu; "
+                        "não concluir como aprovado (etapa 5 ou texto isolado não bastam)."
+                    )
+                    return False, MSG_CREDITO_SEM_TELA_RESULTADO, None, None
             # Normalizar para comparação: acentos e variações (cartão/cartao, etc.)
             pagina_norm = unicodedata.normalize("NFD", pagina_texto)
             pagina_norm = "".join(c for c in pagina_norm if unicodedata.category(c) != "Mn")
@@ -2851,8 +2885,13 @@ class PAPNioAutomation:
                             pass
                         break
                 return False, "CREDITO_NEGADO", None, screenshot_b64
-            # Crédito aprovado (todas formas ou apenas cartão) - modal visível: capturar screenshot
+            # Crédito aprovado (todas formas ou apenas cartão): exige modal visível no fluxo CRÉDITO
             if "crédito aprovado" in pagina_texto or "credito aprovado" in pagina_texto:
+                if parar_no_modal_credito and not modal_apareceu:
+                    logger.warning(
+                        "[PAP] [CRÉDITO] Etapa4: texto de aprovado sem modal oficial; tratando como sem resultado."
+                    )
+                    return False, MSG_CREDITO_SEM_TELA_RESULTADO, None, None
                 screenshot_b64 = None
                 try:
                     screenshot_bytes = self.page.screenshot(type="png")
@@ -2897,11 +2936,16 @@ class PAPNioAutomation:
                 if celular_secundario:
                     self.dados_pedido['celular_sec'] = celular_secundario
                 return True, f"Análise de crédito: APROVADO! ({resultado_credito})", resultado_credito, screenshot_b64
-            # Etapa 5 visível sem texto de modal (fallback)
+            # Etapa 5 visível sem modal de resultado (fallback só para fluxo venda completa)
             etapa5_visivel = (
                 'pagamento' in pagina_texto and 'ofertas' in pagina_texto
             ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
             if etapa5_visivel:
+                if parar_no_modal_credito and not modal_apareceu:
+                    logger.warning(
+                        "[PAP] [CRÉDITO] Etapa4: etapa pagamento visível sem modal de resultado; não concluir como aprovado."
+                    )
+                    return False, MSG_CREDITO_SEM_TELA_RESULTADO, None, None
                 self.etapa_atual = 4
                 self.dados_pedido['celular'] = celular
                 self.dados_pedido['email'] = email

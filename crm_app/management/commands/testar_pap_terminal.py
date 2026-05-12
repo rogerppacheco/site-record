@@ -5,11 +5,14 @@ Teste: digite no terminal como no WhatsApp + veja cada etapa no site PAP.
 O navegador fica aberto em pap.niointernet.com.br. Você digita uma
 mensagem por vez no terminal e acompanha a automação executando no site.
 
-Fluxo: VENDER → SIM → CEP → Número → Referência → CPF → Celular → Cel. sec. → E-mail
+Fluxo VENDER: VENDER → SIM → CEP → Número → Referência → CPF → Celular → Cel. sec. → E-mail
        → Pagamento (1/2/3) → [Débito: Banco, Agência, Conta, Dígito]
        → Plano (1/2/3) → Fixo (1/2) → [se Fixo=1: Portabilidade 1/2 → número → operadora]
        → Streaming (1/2) → [Streaming: opções]
        → Avançar → Biometria → CONFIRMAR (agendamento etapa 7)
+
+Fluxo CRÉDITO (igual produção/WhatsApp): CRÉDITO → CPF ou CNPJ → [se CNPJ: CPF representante]
+       → consulta automática no PAP (endereço fixo da loja, complemento 1 se o site exigir).
 
 Comandos: /sair
 
@@ -22,6 +25,12 @@ import threading
 from django.core.management.base import BaseCommand
 
 logger = logging.getLogger(__name__)
+
+
+def _entrada_e_credito(entrada: str) -> bool:
+    """True se o usuário pediu o fluxo de análise de crédito (CRÉDITO / CREDITO)."""
+    u = (entrada or "").strip().upper().replace("É", "E")
+    return u == "CREDITO"
 
 
 def _salvar_pap_confirmacao_thread(celulares_registrar, protocolo_pedido=None):
@@ -152,7 +161,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("\n" + "=" * 60))
         self.stdout.write("  PAP + TERMINAL - Digite como WhatsApp, veja no site")
-        self.stdout.write("  Navegador será aberto. Comando: /sair")
+        self.stdout.write("  Início: *VENDER* (venda) ou *CRÉDITO* (análise de crédito). Comando: /sair")
         if options.get("trace"):
             self.stdout.write(self.style.WARNING("  Trace: ao encerrar, abra pap_trace_*.zip em https://trace.playwright.dev"))
         self.stdout.write("=" * 60 + "\n")
@@ -168,6 +177,8 @@ class Command(BaseCommand):
         )
 
         etapa_pap = -1
+        credito_doc_limpo = ""
+        credito_cpf_rep_limpo = ""
         cep = numero = referencia = cpf = celular = celular_sec = email = ""
         forma = "boleto"
         banco = agencia = conta = digito = ""
@@ -240,6 +251,112 @@ class Command(BaseCommand):
                 "Digite *CONSULTAR* para verificar biometria e validar."
             )
 
+        def credito_etapa3_e4():
+            """Cadastro documento + contato/análise de crédito (após viabilidade ok). Retorna (código, detalhe, meta)."""
+            from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
+
+            doc = credito_doc_limpo
+            rep = credito_cpf_rep_limpo if len(doc) == 14 else None
+            sucesso, msg, _ = pap.etapa3_cadastro_cliente(doc, cpf_representante=rep)
+            if not sucesso:
+                try:
+                    pap._fechar_sessao()
+                except Exception:
+                    pass
+                return "erro", msg, None
+
+            cel = gerar_celular_random()
+            cel_sec = gerar_celular_random()
+            email = gerar_email_credito()
+            ultimo_msg = ""
+            for _t in range(5):
+                sucesso, msg, resultado_credito, _shot = pap.etapa4_contato(
+                    cel,
+                    email,
+                    celular_secundario=cel_sec,
+                    parar_no_modal_credito=True,
+                )
+                ultimo_msg = msg
+                if sucesso:
+                    pap._fechar_sessao()
+                    return (
+                        "aprovado",
+                        resultado_credito or "Elegível para formas de pagamento disponíveis.",
+                        None,
+                    )
+                if msg in ("TELEFONE_REJEITADO",):
+                    cel = gerar_celular_random()
+                    cel_sec = gerar_celular_random()
+                    continue
+                if msg in ("EMAIL_REJEITADO", "EMAIL_INVALIDO"):
+                    email = gerar_email_credito()
+                    continue
+                if msg == "CREDITO_NEGADO":
+                    pap._fechar_sessao()
+                    return "negado", "", None
+                pap._fechar_sessao()
+                return "erro", msg, None
+
+            pap._fechar_sessao()
+            return "erro", ultimo_msg or "Falha após várias tentativas.", None
+
+        def executar_credito_terminal():
+            """Login → pedido → viabilidade fixa CRÉDITO; complemento sempre opção 1 se exigido."""
+            from django.conf import settings
+            from crm_app.whatsapp_webhook_handler import (
+                CREDITO_CEP_FIXO,
+                CREDITO_ENDERECO_ALVO,
+                CREDITO_NUMERO_FIXO,
+                CREDITO_REFERENCIA_FIXA,
+            )
+
+            pap.optimize_for_credit = getattr(settings, "PAP_CREDITO_FAST_MODE", True)
+            sucesso, msg = pap.iniciar_sessao()
+            if not sucesso:
+                try:
+                    pap._fechar_sessao()
+                except Exception:
+                    pass
+                return "erro", f"Erro ao acessar PAP: {msg}", None
+            sucesso, msg = pap.iniciar_novo_pedido(matricula_vendedor)
+            if not sucesso:
+                pap._fechar_sessao()
+                return "erro", f"Erro ao iniciar pedido: {msg}", None
+            ok_tela, msg_tela = pap.validar_tela_pronta_para_cep()
+            if not ok_tela:
+                pap._fechar_sessao()
+                return "erro", f"Página não pronta: {msg_tela}", None
+
+            cep_f = CREDITO_CEP_FIXO
+            numero_f = CREDITO_NUMERO_FIXO
+            ref_f = CREDITO_REFERENCIA_FIXA
+            sucesso, msg, extra = pap.etapa2_viabilidade(cep_f, numero_f, ref_f)
+
+            if isinstance(extra, dict) and extra.get("_codigo") == "COMPLEMENTOS":
+                sucesso, msg, extra = pap.etapa2_credito_selecionar_complemento_e_avancar(cep_f, numero_f, 1)
+
+            if not sucesso:
+                if isinstance(extra, dict) and extra.get("_codigo") == "MULTIPLOS_ENDERECOS":
+                    lista = extra.get("lista", [])
+                    idx = 1
+                    for item in lista:
+                        txt = (item.get("texto") or "").upper()
+                        if CREDITO_ENDERECO_ALVO.upper() in txt and numero_f in txt:
+                            idx = item.get("indice", 1)
+                            break
+                    ok_sel, _ = pap.etapa2_selecionar_endereco_instalacao(idx)
+                    if ok_sel:
+                        sucesso, msg, extra = pap.etapa2_preencher_referencia_e_continuar(cep_f, numero_f, ref_f)
+                        if isinstance(extra, dict) and extra.get("_codigo") == "COMPLEMENTOS":
+                            sucesso, msg, extra = pap.etapa2_credito_selecionar_complemento_e_avancar(
+                                cep_f, numero_f, 1
+                            )
+                if not sucesso:
+                    pap._fechar_sessao()
+                    return "erro", msg, None
+
+            return credito_etapa3_e4()
+
         try:
             while True:
                 self.stdout.write(self.style.HTTP_INFO(f"  [PAP etapa: {etapa_pap}]"))
@@ -250,7 +367,20 @@ class Command(BaseCommand):
 
                 if not entrada:
                     continue
-                if entrada.strip().upper() in ["/SAIR", "SAIR", "CANCELAR"]:
+
+                ent_norm = entrada.strip().upper()
+                if etapa_pap == 0 and ent_norm in ("CANCELAR", "SAIR"):
+                    responder("Cancelado.")
+                    etapa_pap = -1
+                    continue
+                if etapa_pap in (100, 101) and ent_norm == "CANCELAR":
+                    credito_doc_limpo = ""
+                    credito_cpf_rep_limpo = ""
+                    responder("Ok. Digite *VENDER* ou *CRÉDITO* para iniciar.")
+                    etapa_pap = -1
+                    continue
+
+                if ent_norm in ["/SAIR", "SAIR", "CANCELAR"]:
                     if etapa_pap >= 0:
                         try:
                             pap._fechar_sessao()
@@ -266,14 +396,79 @@ class Command(BaseCommand):
                             "Confirma? Digite SIM para continuar ou CANCELAR."
                         )
                         etapa_pap = 0
+                    elif _entrada_e_credito(entrada):
+                        responder(
+                            "🔍 *ANÁLISE DE CRÉDITO* (mesmo fluxo do WhatsApp)\n\n"
+                            "Digite o *CPF* (11 dígitos) ou *CNPJ* (14 dígitos), só números.\n"
+                            "Se for CNPJ, na próxima mensagem pedirei o CPF do representante legal.\n\n"
+                            "*CANCELAR* — voltar ao menu."
+                        )
+                        etapa_pap = 100
                     else:
-                        responder("Digite VENDER para iniciar.")
+                        responder("Digite *VENDER* (venda completa) ou *CRÉDITO* (análise de crédito).")
+                    continue
+
+                if etapa_pap == 100:
+                    from crm_app.cadastro_venda_whatsapp import validar_cpf_ou_cnpj_whatsapp
+
+                    doc_ok, err_val = validar_cpf_ou_cnpj_whatsapp(entrada)
+                    if err_val or not doc_ok:
+                        responder(f"❌ {err_val or 'Documento inválido.'}\nDigite CPF (11) ou CNPJ (14) ou *CANCELAR*.")
+                        continue
+                    credito_doc_limpo = doc_ok
+                    if len(credito_doc_limpo) == 14:
+                        responder(
+                            "📋 CNPJ registrado.\n\n"
+                            "Digite o *CPF do representante legal* (11 dígitos, só números) ou *CANCELAR*."
+                        )
+                        etapa_pap = 101
+                        continue
+
+                    responder("⏳ Consultando crédito no PAP... (observe o navegador)")
+                    codigo, detalhe, _ = executar_credito_terminal()
+                    credito_doc_limpo = ""
+                    credito_cpf_rep_limpo = ""
+                    etapa_pap = -1
+                    if codigo == "erro":
+                        responder(f"❌ {detalhe}\n\nDigite *CRÉDITO* para tentar novamente.")
+                    elif codigo == "negado":
+                        responder(
+                            "❌ *Crédito NEGADO* para este documento.\n\n"
+                            "Digite *CRÉDITO* para tentar com outro CPF/CNPJ."
+                        )
+                    else:
+                        responder(f"✅ *Crédito APROVADO!*\n\n{detalhe}")
+                    continue
+
+                if etapa_pap == 101:
+                    cpf_r = _limpar(entrada)
+                    if len(cpf_r) != 11:
+                        responder("❌ CPF do representante deve ter 11 dígitos. Tente de novo ou *CANCELAR*.")
+                        continue
+                    from crm_app.cadastro_venda_whatsapp import validar_cpf_ou_cnpj_whatsapp
+
+                    ok_cpf, err_cpf = validar_cpf_ou_cnpj_whatsapp(cpf_r)
+                    if err_cpf or not ok_cpf or len(ok_cpf) != 11:
+                        responder(f"❌ {err_cpf or 'CPF inválido.'}\nDigite novamente ou *CANCELAR*.")
+                        continue
+                    credito_cpf_rep_limpo = ok_cpf
+                    responder("⏳ Consultando crédito no PAP... (observe o navegador)")
+                    codigo, detalhe, _ = executar_credito_terminal()
+                    credito_doc_limpo = ""
+                    credito_cpf_rep_limpo = ""
+                    etapa_pap = -1
+                    if codigo == "erro":
+                        responder(f"❌ {detalhe}\n\nDigite *CRÉDITO* para tentar novamente.")
+                    elif codigo == "negado":
+                        responder(
+                            "❌ *Crédito NEGADO* para este documento.\n\n"
+                            "Digite *CRÉDITO* para tentar com outro CPF/CNPJ."
+                        )
+                    else:
+                        responder(f"✅ *Crédito APROVADO!*\n\n{detalhe}")
                     continue
 
                 if etapa_pap == 0:
-                    if entrada.upper() in ["CANCELAR", "SAIR"]:
-                        responder("Cancelado.")
-                        break
                     if entrada.upper() == "SIM":
                         sucesso, msg = pap.iniciar_sessao()
                         if not sucesso:
