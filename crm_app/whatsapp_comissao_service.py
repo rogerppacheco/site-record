@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, time as dt_time
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
+from django.db.models import Q
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -64,12 +65,23 @@ def _ultimo_sabado(d=None):
 
 
 def _fmt_reais_br(val: Decimal) -> str:
-    s = f'{Decimal(val):.2f}'
-    inteiro, frac = s.split('.')
-    inteiro = inteiro[::-1]
-    grupos = [inteiro[i : i + 3] for i in range(0, len(inteiro), 3)]
-    mil = '.'.join(g[::-1] for g in grupos)[::-1]
-    return f'{mil},{frac}'
+    """BRL estilo pt-BR (1.234,56). Evita inversão de dígitos em valores com 3 algarismos (ex.: 220,00)."""
+    q = Decimal(val)
+    q = q.quantize(Decimal('0.01'))
+    neg = q < 0
+    if neg:
+        q = -q
+    texto = format(q, 'f')
+    inteiro, frac = texto.split('.')
+    inteiro = inteiro.lstrip('0') or '0'
+    n = len(inteiro)
+    segs = []
+    for i in range(n, 0, -3):
+        start = max(0, i - 3)
+        segs.append(inteiro[start:i])
+    mil = '.'.join(reversed(segs))
+    body = f'{mil},{frac}'
+    return f'-{body}' if neg else body
 
 
 def _query_candidatas_adiantamento_sabado(ref_date):
@@ -135,6 +147,15 @@ def _montar_linhas_resumo_adiant_sabado(candidatas) -> list[dict[str, Any]]:
     return out
 
 
+def _fmt_linha_resumo_consultor_username(L: dict[str, Any]) -> str:
+    vt = Decimal(str(L['valor_total']))
+    un = (L.get('username') or '').strip() or str(L.get('vendedor_id', ''))
+    return (
+        f"{L['n']} — *[{un}]* — {L['qtd']} venda(s) — "
+        f"R$ {_fmt_reais_br(vt)}"
+    )
+
+
 def limpar_fluxo_adiant_comissao_inst_sessao(sessao) -> None:
     d = dict(sessao.dados_temp or {})
     d.pop(CHAVE_DADOS_ADIANT_COMISSAO_INST, None)
@@ -145,8 +166,9 @@ def limpar_fluxo_adiant_comissao_inst_sessao(sessao) -> None:
 
 def _query_vendas_antecip_comissao_instaladas_mes(ano: int, mes: int):
     """
-    Vendas instaladas no mês (data_instalacao), com vendedor, ainda sem antecipação de comissão,
-    com valor de adiantamento (faixa comissão) > 0. Mesmo critério base do toggle na esteira.
+    Vendas instaladas no mês (data_instalacao), com vendedor, sem adiantamento ativo:
+    sem antecipação na esteira e sem marcação de adiant. sábado (evita duplicar fluxos).
+    Valor de adiantamento (faixa comissão) > 0.
     """
     from datetime import date as date_cls
 
@@ -166,6 +188,7 @@ def _query_vendas_antecip_comissao_instaladas_mes(ano: int, mes: int):
             data_instalacao__gte=ini,
             data_instalacao__lt=fim,
             antecipacao_comissao=False,
+            adiantamento_sabado_marcado=False,
         )
         .select_related('vendedor', 'status_esteira', 'cliente', 'plano')
         .order_by('vendedor_id', 'id')
@@ -193,8 +216,8 @@ def iniciar_resumo_adiant_comissao_instaladas_whatsapp(sessao, actor, ano: int, 
         return (
             f'💼 *Adiantamento de comissão (instaladas)*\n'
             f'Mês de instalação: *{mes:02d}/{ano}*\n\n'
-            'Nenhuma venda *elegível* (instalada neste mês, sem adiantamento já marcado, '
-            'valor na faixa de comissão maior que zero).'
+            'Nenhuma venda *elegível* (instalada neste mês, sem comissão antecipada, '
+            'sem adiant. sábado marcado, valor na faixa de comissão maior que zero).'
         )
 
     d = dict(sessao.dados_temp or {})
@@ -214,12 +237,7 @@ def iniciar_resumo_adiant_comissao_instaladas_whatsapp(sessao, actor, ano: int, 
         chunk = linhas[chunk_start : chunk_start + MAX_LINHAS_RESUMO_WPP]
         linhas_txt = []
         for L in chunk:
-            nome = L['nome_exibicao'] or L['username']
-            vt = Decimal(str(L['valor_total']))
-            linhas_txt.append(
-                f"{L['n']} — *{nome}* (@{L['username']}) — {L['qtd']} venda(s) — "
-                f"R$ {_fmt_reais_br(vt)}"
-            )
+            linhas_txt.append(_fmt_linha_resumo_consultor_username(L))
         parte = f'(parte {chunk_start // MAX_LINHAS_RESUMO_WPP + 1})\n' if total_cons > MAX_LINHAS_RESUMO_WPP else ''
         blocos.append(parte + '\n'.join(linhas_txt))
 
@@ -228,6 +246,8 @@ def iniciar_resumo_adiant_comissao_instaladas_whatsapp(sessao, actor, ano: int, 
         '(primeiras N vendas da linha, na ordem).\n'
         'Ex.: `1x2 3x1`\n'
         '*DETALHE* + número — lista pedidos (#venda, O.S., instalação, valor).\n'
+        '*MARCADAS* — quem *já* tem antecipação (comissão ou sábado) neste mês; '
+        'opcional: *MARCADAS* `@login` (ou parte do username) para resumo + lista de pedidos.\n'
         '*LISTA* — repetir este resumo.\n'
         '*CANCELAR* ou *MENU* encerra.\n'
         '_Para uma venda avulsa: *ADIANT_COMISSAO* id *MARCAR* ou *DESMARCAR*._'
@@ -252,16 +272,11 @@ def _texto_lista_repeticao_comissao_inst(bloco: dict) -> str:
         return 'Lista vazia. Envie *ADIANT_COMISSAO* de novo.'
     linhas_txt = []
     for L in linhas:
-        nome = L['nome_exibicao'] or L['username']
-        vt = Decimal(str(L['valor_total']))
-        linhas_txt.append(
-            f"{L['n']} — *{nome}* (@{L['username']}) — {L['qtd']} venda(s) — "
-            f"R$ {_fmt_reais_br(vt)}"
-        )
+        linhas_txt.append(_fmt_linha_resumo_consultor_username(L))
     ref_m = f'{int(mes):02d}/{int(ano)}' if ano is not None and mes is not None else ref
     cab = f'💼 *Adiant. comissão (instaladas)* — mês *{ref_m}*\n_reenvio da lista._\n\n'
     rod = (
-        '\n\n_Use *DETALHE N*, depois *linha×quantidade* ou *CANCELAR*._'
+        '\n\n_Use *DETALHE N*, *MARCADAS* (opcional `@login`), depois *linha×quantidade* ou *CANCELAR*._'
     )
     return cab + '\n'.join(linhas_txt) + rod
 
@@ -275,7 +290,7 @@ def _texto_detalhe_linha_comissao_inst(linhas: list[dict[str, Any]], linha_n: in
     if not L:
         return f'❌ Linha *{linha_n}* inválida. Use *LISTA*.'
 
-    nome = L['nome_exibicao'] or L['username']
+    un = (L.get('username') or '').strip() or str(L.get('vendedor_id', ''))
     ids_ord = [int(x) for x in L['venda_ids']]
     vendas = (
         Venda.objects.filter(id__in=ids_ord, ativo=True)
@@ -309,12 +324,101 @@ def _texto_detalhe_linha_comissao_inst(linhas: list[dict[str, Any]], linha_n: in
         linhas_out = linhas_out[:max_itens]
 
     return (
-        f'📋 *Pedidos — linha {linha_n}* ({nome})\n'
+        f'📋 *Pedidos — linha {linha_n}* (*[{un}]*)\n'
         f'_Ordem = ordem do *linha×qtd* para marcar adiant. comissão._\n\n'
         + '\n'.join(linhas_out)
         + extra
         + '\n\n_Depois: *linha×quantidade* ou *LISTA* / *CANCELAR*._'
     )
+
+
+def _query_vendas_instaladas_mes_ja_antecipadas(
+    ano: int, mes: int, username_filtro: Optional[str] = None
+):
+    """Instaladas no mês com antecipação na esteira e/ou adiant. sábado marcado."""
+    from datetime import date as date_cls
+
+    from crm_app.models import Venda
+
+    ini = date_cls(ano, mes, 1)
+    if mes == 12:
+        fim = date_cls(ano + 1, 1, 1)
+    else:
+        fim = date_cls(ano, mes + 1, 1)
+    qs = (
+        Venda.objects.filter(
+            ativo=True,
+            vendedor_id__isnull=False,
+            status_esteira__nome__icontains='INSTALADA',
+            data_instalacao__gte=ini,
+            data_instalacao__lt=fim,
+        )
+        .filter(Q(antecipacao_comissao=True) | Q(adiantamento_sabado_marcado=True))
+        .select_related('vendedor', 'status_esteira', 'cliente', 'plano')
+        .order_by('vendedor_id', 'id')
+    )
+    uq = (username_filtro or '').strip()
+    if uq:
+        qs = qs.filter(vendedor__username__icontains=uq)
+    return list(qs)
+
+
+def _tag_tipo_antecipacao_venda(v) -> str:
+    ac = bool(getattr(v, 'antecipacao_comissao', False))
+    sb = bool(getattr(v, 'adiantamento_sabado_marcado', False))
+    if ac and sb:
+        return 'comissão + sábado'
+    if ac:
+        return 'comissão'
+    if sb:
+        return 'sábado'
+    return '—'
+
+
+def _texto_marcadas_comissao_inst_mes(ano: int, mes: int, username_filtro: Optional[str] = None) -> str:
+    from crm_app.views import _valor_adiantamento_base_comissao
+
+    ref_m = f'{mes:02d}/{ano}'
+    vendas = _query_vendas_instaladas_mes_ja_antecipadas(ano, mes, username_filtro)
+    uq = (username_filtro or '').strip()
+    if not vendas:
+        extra = f'\n_Filtro: «{uq}»._' if uq else ''
+        return (
+            f'📌 *Já antecipadas* (comissão e/ou adiant. sábado) — instalação *{ref_m}*{extra}\n'
+            '_Nenhuma venda encontrada._'
+        )
+
+    linhas = _montar_linhas_resumo_adiant_sabado(vendas)
+    filtro_txt = f'\n_Filtro: login contém «{uq}»._\n' if uq else '\n'
+    nv = len(vendas)
+    cab = (
+        f'📌 *Já antecipadas* (comissão e/ou adiant. sábado) — instalação *{ref_m}*\n'
+        f'_Total: {len(linhas)} consultor(es); {nv} venda(s)._'
+        f'{filtro_txt}\n'
+    )
+    linhas_txt = [_fmt_linha_resumo_consultor_username(L) for L in linhas]
+    out = cab + '\n'.join(linhas_txt)
+    if uq and nv <= 55:
+        bullets = []
+        for v in vendas[:55]:
+            try:
+                vu = _valor_adiantamento_base_comissao(v)
+            except Exception:
+                vu = Decimal('0')
+            os_txt = (v.ordem_servico or '-').strip() or '-'
+            di = _fmt_data_exibicao_br(v.data_instalacao) if v.data_instalacao else '-'
+            login = (v.vendedor.username if v.vendedor else '') or '?'
+            tag = _tag_tipo_antecipacao_venda(v)
+            bullets.append(
+                f'• *#{v.id}* *[{login}]* _{tag}_ | O.S. {os_txt} | Inst. {di} | '
+                f'R$ {_fmt_reais_br(Decimal(str(vu)))}'
+            )
+        out += '\n\n*Pedidos (filtro):*\n' + '\n'.join(bullets)
+    elif uq and nv > 55:
+        out += '\n_Muitas vendas; refine o filtro para ver a lista item a item (máx. 55)._'
+    if len(out) > 4000:
+        out = out[:3950] + '\n\n_(mensagem truncada)._'
+    return out
 
 
 def processar_escolha_adiant_comissao_inst_sessao(
@@ -370,10 +474,27 @@ def processar_escolha_adiant_comissao_inst_sessao(
         limpar_fluxo_adiant_comissao_inst_sessao(sessao)
         return '⏹ *Adiantamento de comissão (lista)* cancelado.'
 
-    if not raw:
-        return 'Use *linha×quantidade*, *DETALHE N*, *LISTA* ou *CANCELAR*.'
+    bloco_ctx = (sessao.dados_temp or {}).get(CHAVE_DADOS_ADIANT_COMISSAO_INST) or {}
+    ano_ctx = bloco_ctx.get('ano')
+    mes_ctx = bloco_ctx.get('mes')
 
-    bloco = (sessao.dados_temp or {}).get(CHAVE_DADOS_ADIANT_COMISSAO_INST) or {}
+    if not raw:
+        return (
+            'Use *linha×quantidade*, *DETALHE N*, *LISTA*, *MARCADAS* (opcional: `@login`) '
+            'ou *CANCELAR*.'
+        )
+
+    if toks and toks[0].upper() == 'MARCADAS':
+        if ano_ctx is None or mes_ctx is None:
+            limpar_fluxo_adiant_comissao_inst_sessao(sessao)
+            return '❌ Sessão expirada. Envie *ADIANT_COMISSAO* de novo.'
+        rest = ' '.join(toks[1:]).strip()
+        filtro_u = _strip_at(rest) if rest else ''
+        if not filtro_u:
+            filtro_u = None
+        return _texto_marcadas_comissao_inst_mes(int(ano_ctx), int(mes_ctx), filtro_u)
+
+    bloco = bloco_ctx
     linhas = bloco.get('linhas') or []
     if not linhas:
         limpar_fluxo_adiant_comissao_inst_sessao(sessao)
@@ -391,6 +512,7 @@ def processar_escolha_adiant_comissao_inst_sessao(
         return (
             '⏳ Passo *adiant. comissão (instaladas)*.\n'
             '• *LISTA* — resumo\n• *DETALHE N* — pedidos da linha\n'
+            '• *MARCADAS* — já antecipadas no mês (opcional: *MARCADAS* `@login`)\n'
             '• *linha×quantidade* — ex.: `1x2`\n• *CANCELAR*'
         )
 
@@ -480,12 +602,7 @@ def iniciar_resumo_adiant_sabado_whatsapp(sessao, actor, ref_date) -> str:
         chunk = linhas[chunk_start : chunk_start + MAX_LINHAS_RESUMO_WPP]
         linhas_txt = []
         for L in chunk:
-            nome = L['nome_exibicao'] or L['username']
-            vt = Decimal(L['valor_total'])
-            linhas_txt.append(
-                f"{L['n']} — *{nome}* (@{L['username']}) — {L['qtd']} venda(s) — "
-                f"R$ {_fmt_reais_br(vt)}"
-            )
+            linhas_txt.append(_fmt_linha_resumo_consultor_username(L))
         parte = f'(parte {chunk_start // MAX_LINHAS_RESUMO_WPP + 1})\n' if total_cons > MAX_LINHAS_RESUMO_WPP else ''
         blocos.append(parte + '\n'.join(linhas_txt))
 
@@ -519,12 +636,7 @@ def _texto_lista_repeticao_adiant_sabado(bloco: dict) -> str:
         return 'Lista vazia. Envie *ADIANT_SABADO* de novo.'
     linhas_txt = []
     for L in linhas:
-        nome = L['nome_exibicao'] or L['username']
-        vt = Decimal(str(L['valor_total']))
-        linhas_txt.append(
-            f"{L['n']} — *{nome}* (@{L['username']}) — {L['qtd']} venda(s) — "
-            f"R$ {_fmt_reais_br(vt)}"
-        )
+        linhas_txt.append(_fmt_linha_resumo_consultor_username(L))
     ref_fmt = ref_date.strftime('%d/%m/%Y') if ref_date else ref_iso
     cab = f'📅 *Adiantamento sábado* — sábado *{ref_fmt}*\n_reenvio da lista._\n\n'
     rod = (
@@ -544,7 +656,7 @@ def _texto_detalhe_linha_adiant_sabado(linhas: list[dict[str, Any]], linha_n: in
     if not L:
         return f'❌ Linha *{linha_n}* não existe nesta lista. Use *LISTA* para ver os números.'
 
-    nome = L['nome_exibicao'] or L['username']
+    un = (L.get('username') or '').strip() or str(L.get('vendedor_id', ''))
     ids_ord = [int(x) for x in L['venda_ids']]
     vendas = (
         Venda.objects.filter(id__in=ids_ord, ativo=True)
@@ -577,7 +689,7 @@ def _texto_detalhe_linha_adiant_sabado(linhas: list[dict[str, Any]], linha_n: in
         linhas_out = linhas_out[:max_itens]
 
     return (
-        f'📋 *Pedidos — linha {linha_n}* ({nome})\n'
+        f'📋 *Pedidos — linha {linha_n}* (*[{un}]*)\n'
         f'_Ordem = ordem em que o *linha×qtd* irá antecipar._\n\n'
         + '\n'.join(linhas_out)
         + extra
@@ -729,7 +841,7 @@ def texto_ajuda_comissao_whatsapp() -> str:
         "*ADIANT_COMISSAO* — modo *lista* (instaladas do mês):\n"
         "• Só *ADIANT_COMISSAO* → mês corrente (data de *instalação*).\n"
         "• *ADIANT_COMISSAO* `AAAA-MM` → mês explícito (ex.: `2026-05`).\n"
-        "Depois: *LISTA*, *DETALHE N*, *linha×quantidade* (igual ao sábado).\n\n"
+        "Depois: *LISTA*, *DETALHE N*, *MARCADAS* (opcional filtro por login), *linha×quantidade* (igual ao sábado).\n\n"
         "*ADIANT_COMISSAO* — modo *uma venda*:\n"
         "`ADIANT_COMISSAO id_venda` `MARCAR` ou `DESMARCAR`\n"
         "_(venda instalada; mesmo critério da esteira)_\n\n"
