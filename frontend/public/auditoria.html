@@ -637,16 +637,21 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="ligacao-telefones-venda" class="mb-3">
+                        <label class="form-label fw-bold mb-1">Ligar para o cliente</label>
+                        <div id="ligacao-botoes-telefones" class="d-flex flex-wrap gap-2"></div>
+                        <p class="small text-muted mb-0 mt-1" id="ligacao-telefones-vazio" style="display:none;">Nenhum telefone cadastrado na venda.</p>
+                    </div>
                     <div class="row g-2 mb-3 align-items-end">
                         <div class="col-md-4">
                             <label class="form-label fw-bold">Destino (cliente)</label>
                             <input type="text" id="ligacao-destino" class="form-control" placeholder="(DDD) 9xxxx-xxxx">
                         </div>
-                        <div class="col-md-4" id="row-ligacao-ramal" style="display:none;">
-                            <label class="form-label fw-bold">Ramal (SIP)</label>
+                        <div class="col-md-4" id="row-ligacao-ramal">
+                            <label class="form-label fw-bold">Ramal Sonax (SIP) <span class="text-danger">*</span></label>
                             <select id="ligacao-ramal" class="form-select"></select>
                         </div>
-                        <div class="col-md-4" id="row-ligacao-origem">
+                        <div class="col-md-4" id="row-ligacao-origem" style="display:none;">
                             <label class="form-label fw-bold">Origem (opcional)</label>
                             <input type="text" id="ligacao-origem" class="form-control" placeholder="Se vazio, usa o padrão do servidor">
                         </div>
@@ -719,7 +724,8 @@
         const modalAprovacao = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalLigacoesAuditoria = new bootstrap.Modal(document.getElementById('modal-ligacoes-auditoria'));
-        let auditoriaVoiceConfig = { voice_provider: 'zenvia', sonax_ramais: [] };
+        let auditoriaVoiceConfig = { voice_provider: 'sonax', sonax_ramais: [] };
+        let opcoesLigacaoCarregadas = false;
 
         // =========================================================================
         // FUNÇÃO FETCH PADRONIZADA (SUBSTITUI API CLIENT EXTERNO)
@@ -746,6 +752,12 @@
             if (!msg) return fallback;
             if (msg.includes('cliente_cpf_cnpj')) return 'CPF/CNPJ já cadastrado para outro cliente. Verifique o documento informado.';
             if (msg.toLowerCase().includes('ordem_servico')) return 'O.S inválida. Use 8 dígitos ou X-12DÍGITOS.';
+            if (msg.toLowerCase().includes('telefone2') || msg.toLowerCase().includes('telefone 2')) {
+                return 'Telefone 2 inválido. Use 11 dígitos no formato (DD) 9XXXX-XXXX ou deixe em branco.';
+            }
+            if (msg.toLowerCase().includes('obrigatório informar o.s')) {
+                return 'Não foi possível salvar a O.S. Verifique o Telefone 2 na aba Contato (11 dígitos) e tente novamente.';
+            }
             return msg;
         }
 
@@ -949,7 +961,16 @@
         }
 
         function mascaraTelefone(i) {
-            let v = i.value.replace(/\D/g, "").replace(/^(\d{2})(\d)/g, "($1) $2").replace(/(\d)(\d{4})$/, "$1-$2");
+            let v = i.value.replace(/\D/g, '').slice(0, 11);
+            if (v.length > 10) {
+                v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
+            } else if (v.length > 6) {
+                v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+            } else if (v.length > 2) {
+                v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+            } else if (v.length > 0) {
+                v = `(${v}`;
+            }
             i.value = v;
         }
 
@@ -1451,8 +1472,18 @@
             };
         }
 
+        function prepararTelefoneParaEnvio(valor) {
+            const bruto = (valor || '').trim();
+            if (!bruto) return null;
+            const digitos = normalizarTelefone(bruto);
+            if (digitos.length === 11) return bruto;
+            return undefined;
+        }
+
         async function salvarRascunhoAuditoria(dadosAdicionais = {}) {
             const d = coletarDadosAuditoria();
+            const t1 = prepararTelefoneParaEnvio(d.telefone1);
+            const t2 = prepararTelefoneParaEnvio(d.telefone2);
             const rascunho = {
                 cliente_email: d.cliente_email || null,
                 cliente_nome_razao_social: d.cliente_nome || null,
@@ -1461,8 +1492,6 @@
                 nome_mae: d.nome_mae || null,
                 data_nascimento: d.data_nascimento || null,
                 mes_nascimento_pap: d.mes_nascimento_pap != null ? d.mes_nascimento_pap : null,
-                telefone1: d.telefone1 || null,
-                telefone2: d.telefone2 || null,
                 cep: d.cep || null,
                 logradouro: d.logradouro || null,
                 numero_residencia: d.numero || null,
@@ -1479,13 +1508,11 @@
                 nome_representante_legal: d.nome_representante_legal || null,
                 ...dadosAdicionais
             };
+            if (t1 !== undefined) rascunho.telefone1 = t1;
+            if (t2 !== undefined) rascunho.telefone2 = t2;
             Object.keys(rascunho).forEach(key => { if (rascunho[key] === "") rascunho[key] = null; });
             
-            try {
-                await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify(rascunho) });
-            } catch (e) {
-                console.error("Erro ao salvar rascunho:", e);
-            }
+            await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify(rascunho) });
         }
         
         function validarAuditoriaCompleta() {
@@ -1783,7 +1810,7 @@
                 if (!os || !dt || !tr) { alert('O.S, Data e Turno obrigatórios.'); $('#loadingOverlay').hide(); return; }
                 if (!validarFormatoOs(os, 'AGUARDANDO PAGAMENTO')) { $('#loadingOverlay').hide(); return; }
                 await salvarRascunhoAuditoria({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr });
-                const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr;
+                const d = coletarDadosAuditoria(); d.ordem_servico = os; d.data_agendamento = dt; d.periodo_agendamento = tr;
                 enviarFinalizacao(stId, obs, d, true);
             } else {
                 await salvarRascunhoAuditoria();
@@ -1796,6 +1823,11 @@
             const obs = $('#agenda-obs').val();
             if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
             if(!validarFormatoOs(os, 'CADASTRADA')) return;
+            const tel2Bruto = ($('#audit-tel2').val() || '').trim();
+            if (tel2Bruto && normalizarTelefone(tel2Bruto).length !== 11) {
+                alert('Telefone 2 inválido na aba Contato. Use 11 dígitos (ex: (37) 98855-74087) ou deixe em branco.');
+                return;
+            }
             $('#loadingOverlay').show();
             try {
                 const res = await apiFetch(`${API_AUX}/status/?tipo=Esteira`);
@@ -1807,12 +1839,13 @@
                 await salvarRascunhoAuditoria({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id });
                 
                 const d = coletarDadosAuditoria(); 
+                d.ordem_servico = os;
                 d.data_agendamento = dt; 
                 d.periodo_agendamento = tr;
                 d.observacoes = obs;
                 enviarFinalizacao('CADASTRADA', obs, d, false, true);
             } catch(e) { 
-                alert('Erro: ' + e.message); 
+                alert(mensagemErroAmigavel(e, 'Erro ao confirmar agendamento.')); 
                 $('#loadingOverlay').hide(); 
             }
         }
@@ -1839,6 +1872,49 @@
             return (valor || '').replace(/\D/g, '');
         }
 
+        function obterTelefonesVendaAuditoria() {
+            const lista = [
+                { chave: 'tel1', label: 'WhatsApp', valor: ($('#audit-tel1').val() || vendaEmAuditoria?.telefone1 || '').trim(), icone: 'bi-whatsapp', classe: 'btn-outline-success' },
+                { chave: 'tel2', label: '2º telefone de contato', valor: ($('#audit-tel2').val() || vendaEmAuditoria?.telefone2 || '').trim(), icone: 'bi-telephone', classe: 'btn-outline-primary' },
+            ];
+            return lista.filter((t) => t.valor);
+        }
+
+        function montarBotoesTelefoneLigacao() {
+            const container = document.getElementById('ligacao-botoes-telefones');
+            const vazio = document.getElementById('ligacao-telefones-vazio');
+            if (!container || !vazio) return;
+            container.innerHTML = '';
+            const telefones = obterTelefonesVendaAuditoria();
+            if (!telefones.length) {
+                vazio.style.display = '';
+                return;
+            }
+            vazio.style.display = 'none';
+            telefones.forEach((t) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `btn ${t.classe}`;
+                btn.innerHTML = `<i class="bi ${t.icone}"></i> Ligar — ${t.label}: ${t.valor}`;
+                btn.onclick = () => ligarParaNumeroCliente(t.valor);
+                container.appendChild(btn);
+            });
+        }
+
+        async function ligarParaNumeroCliente(telefoneFormatado) {
+            await carregarOpcoesLigacaoAuditoria();
+            $('#ligacao-destino').val(telefoneFormatado);
+            await iniciarLigacaoGravada();
+        }
+
+        function aplicarLayoutProvedorLigacao(provider) {
+            const rowRamal = document.getElementById('row-ligacao-ramal');
+            const rowOrigem = document.getElementById('row-ligacao-origem');
+            const isSonax = provider === 'sonax';
+            if (rowRamal) rowRamal.style.display = isSonax ? '' : 'none';
+            if (rowOrigem) rowOrigem.style.display = isSonax ? 'none' : '';
+        }
+
         function formatarDataHoraLigacao(valor) {
             if (!valor) return '-';
             const dt = new Date(valor);
@@ -1851,34 +1927,34 @@
                 alert('Abra uma venda na auditoria antes de iniciar uma ligação.');
                 return;
             }
-            const telefonePreferencial = $('#audit-tel1').val() || vendaEmAuditoria.telefone1 || vendaEmAuditoria.telefone2 || '';
+            const telefones = obterTelefonesVendaAuditoria();
+            const telefonePreferencial = telefones[0]?.valor || '';
             $('#ligacao-destino').val(telefonePreferencial);
-            $('#ligacao-feedback').removeClass('text-danger text-success').addClass('text-muted').text('Pronto para iniciar ligação.');
-            modalLigacoesAuditoria.show();
+            montarBotoesTelefoneLigacao();
+            $('#ligacao-feedback').removeClass('text-danger text-success').addClass('text-muted').text('Pronto para iniciar ligação (Sonax).');
             await carregarOpcoesLigacaoAuditoria();
+            modalLigacoesAuditoria.show();
             carregarLigacoesAuditoria();
         }
 
-        async function carregarOpcoesLigacaoAuditoria() {
+        async function carregarOpcoesLigacaoAuditoria(force = false) {
+            if (opcoesLigacaoCarregadas && !force) return;
             try {
                 const r = await apiFetch(`${API_AUX}/auditoria/ligacoes/opcoes/`);
                 auditoriaVoiceConfig = r || auditoriaVoiceConfig;
-                const rowRamal = document.getElementById('row-ligacao-ramal');
-                const rowOrigem = document.getElementById('row-ligacao-origem');
-                if (r.voice_provider === 'sonax') {
-                    rowRamal.style.display = '';
-                    rowOrigem.style.display = 'none';
+                const provider = auditoriaVoiceConfig.voice_provider || 'sonax';
+                aplicarLayoutProvedorLigacao(provider);
+                if (provider === 'sonax') {
                     const sel = $('#ligacao-ramal');
                     sel.empty();
-                    const ramais = Array.isArray(r.sonax_ramais) ? r.sonax_ramais : [];
+                    const ramais = Array.isArray(auditoriaVoiceConfig.sonax_ramais) ? auditoriaVoiceConfig.sonax_ramais : [];
                     ramais.forEach((x) => sel.append(new Option(`Ramal ${x}`, String(x))));
-                    if (!ramais.length) sel.append(new Option('Configure SONAX_RAMAIS', ''));
-                } else {
-                    rowRamal.style.display = 'none';
-                    rowOrigem.style.display = '';
+                    if (!ramais.length) sel.append(new Option('Configure SONAX_RAMAIS no servidor', ''));
                 }
+                opcoesLigacaoCarregadas = true;
             } catch (e) {
                 console.warn('auditoria opcoes ligacao', e);
+                aplicarLayoutProvedorLigacao('sonax');
             }
         }
 
@@ -1887,6 +1963,7 @@
                 alert('Nenhuma venda carregada na auditoria.');
                 return;
             }
+            await carregarOpcoesLigacaoAuditoria();
 
             const destino = normalizarTelefone($('#ligacao-destino').val());
             const origem = normalizarTelefone($('#ligacao-origem').val());
@@ -1900,10 +1977,11 @@
                 consentimento_declarado: true,
                 consentimento_observacao: 'Cliente informado pelo auditor no início da chamada.'
             };
-            if (auditoriaVoiceConfig.voice_provider === 'sonax') {
+            const provider = auditoriaVoiceConfig.voice_provider || 'sonax';
+            if (provider === 'sonax') {
                 const ramal = $('#ligacao-ramal').val();
                 if (!ramal) {
-                    alert('Selecione o ramal SIP.');
+                    alert('Selecione o ramal Sonax (SIP) para iniciar a ligação.');
                     return;
                 }
                 payload.sip_extension = ramal;

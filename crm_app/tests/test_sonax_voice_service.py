@@ -11,6 +11,7 @@ from crm_app.sonax_voice_service import (
 from crm_app.auditoria_ligacoes_api import (
     _finalizada_por_status,
     _merge_webhook_payload,
+    _resolved_voice_provider,
     _webhook_call_id,
 )
 
@@ -91,3 +92,35 @@ class AuditoriaWebhookHelpersTest(SimpleTestCase):
     def test_sonax_finalizada_status(self):
         self.assertTrue(_finalizada_por_status("SONAX", "desligada"))
         self.assertFalse(_finalizada_por_status("SONAX", "discando"))
+
+
+class ResolvedVoiceProviderTest(SimpleTestCase):
+    @override_settings(AUDITORIA_VOICE_PROVIDER="sonax", SONAX_CLICK2CALL_TOKEN="")
+    def test_explicit_sonax_even_without_token(self):
+        self.assertEqual(_resolved_voice_provider(), "sonax")
+
+    @override_settings(
+        AUDITORIA_VOICE_PROVIDER="auto",
+        SONAX_CLICK2CALL_TOKEN="token",
+        ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER="5531999999999",
+    )
+    def test_auto_prefers_sonax_when_configured(self):
+        self.assertEqual(_resolved_voice_provider(), "sonax")
+
+    @override_settings(
+        AUDITORIA_VOICE_PROVIDER="auto",
+        SONAX_CLICK2CALL_TOKEN="",
+        SONAX_INTEGRATION_TOKEN="",
+        ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER="5531999999999",
+    )
+    def test_auto_uses_zenvia_only_when_sonax_absent(self):
+        self.assertEqual(_resolved_voice_provider(), "zenvia")
+
+    @override_settings(
+        AUDITORIA_VOICE_PROVIDER="auto",
+        SONAX_CLICK2CALL_TOKEN="",
+        SONAX_INTEGRATION_TOKEN="",
+        ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER="",
+    )
+    def test_auto_defaults_to_sonax(self):
+        self.assertEqual(_resolved_voice_provider(), "sonax")

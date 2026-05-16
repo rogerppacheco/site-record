@@ -49,15 +49,25 @@ def _auditoria_grupos():
     return ["Diretoria", "Admin", "BackOffice", "Supervisor", "Auditoria", "Qualidade"]
 
 
+def _sonax_configured() -> bool:
+    return bool(
+        str(getattr(settings, "SONAX_CLICK2CALL_TOKEN", "") or "").strip()
+        or str(getattr(settings, "SONAX_INTEGRATION_TOKEN", "") or "").strip()
+    )
+
+
 def _resolved_voice_provider() -> str:
-    p = getattr(settings, "AUDITORIA_VOICE_PROVIDER", "auto").strip().lower()
+    p = str(getattr(settings, "AUDITORIA_VOICE_PROVIDER", "sonax") or "sonax").strip().lower()
     if p == "sonax":
         return "sonax"
     if p == "zenvia":
         return "zenvia"
-    if getattr(settings, "SONAX_CLICK2CALL_TOKEN", ""):
+    # auto: Sonax é o provedor operacional da auditoria quando configurado
+    if _sonax_configured():
         return "sonax"
-    return "zenvia"
+    if str(getattr(settings, "ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER", "") or "").strip():
+        return "zenvia"
+    return "sonax"
 
 
 def _sonax_ramais_permitidos() -> List[str]:

@@ -267,8 +267,8 @@ ZENVIA_VOICE_WEBHOOK_SECRET = config('ZENVIA_VOICE_WEBHOOK_SECRET', default='')
 AUDITORIA_ONEDRIVE_FOLDER = config('AUDITORIA_ONEDRIVE_FOLDER', default='Auditoria_Ligacoes')
 
 # --- Sonax (auditoria: click2call + gravação pega_gravacao / webhook) ---
-# Se AUDITORIA_VOICE_PROVIDER=auto, usa Sonax quando SONAX_CLICK2CALL_TOKEN estiver definido.
-AUDITORIA_VOICE_PROVIDER = config('AUDITORIA_VOICE_PROVIDER', default='auto').strip().lower()
+# Provedor SIP da auditoria. Padrão: sonax. Use AUDITORIA_VOICE_PROVIDER=zenvia só se for fallback explícito.
+AUDITORIA_VOICE_PROVIDER = config('AUDITORIA_VOICE_PROVIDER', default='sonax').strip().lower()
 SONAX_CLICK2CALL_URL = config(
     'SONAX_CLICK2CALL_URL',
     default='https://click2call.sonax.net.br/sonax-click2call.php',
