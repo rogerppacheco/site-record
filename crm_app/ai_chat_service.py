@@ -37,6 +37,49 @@ def responder_com_ia(mensagem_usuario: str, nome_vendedor: str = "", contexto_ex
     return None
 
 
+def responder_cliente_com_contexto_pedido(
+    mensagem_usuario: str,
+    contexto_pedido: str,
+    nome_cliente: str = "",
+) -> str | None:
+    """
+    Responde ao cliente usando IA com fatos do pedido injetados (sem inventar dados).
+    """
+    mensagem_usuario = (mensagem_usuario or "").strip()
+    contexto_pedido = (contexto_pedido or "").strip()
+    if not mensagem_usuario or not contexto_pedido:
+        return None
+
+    primeiro_nome = (nome_cliente or "Cliente").split()[0]
+    system = f"""
+Você atende um cliente da Nio Fibra pelo WhatsApp (Record PAP).
+Responda em português, tom cordial e profissional (sem abreviações: use "você", não "vc").
+Use APENAS os dados do pedido abaixo. Se a informação não estiver nos dados, diga que um especialista retornará.
+Não invente datas, status nem valores. Respostas curtas (ideal para WhatsApp).
+Chame o cliente pelo primeiro nome quando possível: {primeiro_nome}.
+
+{contexto_pedido}
+""".strip()
+
+    try:
+        from crm_app.groq_service import responder_com_groq_custom
+        resposta = responder_com_groq_custom(mensagem_usuario, system)
+        if resposta:
+            return resposta
+    except Exception as e:
+        logger.warning("[IA] Groq (cliente pedido) falhou: %s", e)
+
+    try:
+        from crm_app.gemini_service import responder_com_gemini_custom
+        resposta = responder_com_gemini_custom(mensagem_usuario, system)
+        if resposta:
+            return resposta
+    except Exception as e:
+        logger.warning("[IA] Gemini (cliente pedido) falhou: %s", e)
+
+    return None
+
+
 def sugerir_status_boas_vindas(texto: str) -> str:
     """
     Sugere status para resposta do cliente às boas-vindas.

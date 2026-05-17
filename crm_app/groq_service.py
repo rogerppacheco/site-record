@@ -20,6 +20,43 @@ def _contexto_sistema(reduzido: bool = False, contexto_externo: bool = False) ->
     return get_contexto_sistema(reduzido=reduzido, contexto_externo=contexto_externo)
 
 
+def responder_com_groq_custom(mensagem_usuario: str, system_prompt: str) -> str | None:
+    """Groq com prompt de sistema customizado (ex.: atendimento ao cliente com dados do pedido)."""
+    if not GROQ_API_KEY:
+        return None
+    mensagem_usuario = (mensagem_usuario or "").strip()
+    system_prompt = (system_prompt or "").strip()
+    if not mensagem_usuario or not system_prompt:
+        return None
+    try:
+        resp = requests.post(
+            GROQ_API_URL,
+            json={
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": mensagem_usuario},
+                ],
+                "max_tokens": 512,
+                "temperature": 0.3,
+            },
+            timeout=30,
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        choices = resp.json().get("choices") or []
+        if not choices:
+            return None
+        text = (choices[0].get("message") or {}).get("content") or ""
+        return text.strip() or None
+    except Exception as e:
+        logger.warning("[Groq] Erro (custom): %s", e)
+        return None
+
+
 def responder_com_groq(mensagem_usuario: str, nome_vendedor: str = "", contexto_externo: bool = False) -> str | None:
     """
     Envia a mensagem ao Groq (Llama) e retorna a resposta em texto.

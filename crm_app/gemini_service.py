@@ -30,6 +30,38 @@ def _contexto_sistema(contexto_externo: bool = False) -> str:
     return get_contexto_sistema(contexto_externo=contexto_externo)
 
 
+def responder_com_gemini_custom(mensagem_usuario: str, system_prompt: str) -> str | None:
+    """Gemini com systemInstruction customizado."""
+    if not GEMINI_API_KEY:
+        return None
+    mensagem_usuario = (mensagem_usuario or "").strip()
+    system_prompt = (system_prompt or "").strip()
+    if not mensagem_usuario or not system_prompt:
+        return None
+
+    payload = {
+        "contents": [{"parts": [{"text": mensagem_usuario}]}],
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "generationConfig": {"maxOutputTokens": 512, "temperature": 0.3},
+    }
+    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        candidates = data.get("candidates") or []
+        if not candidates:
+            return None
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        if not parts:
+            return None
+        text = (parts[0].get("text") or "").strip()
+        return text or None
+    except Exception as e:
+        logger.warning("[Gemini] Erro (custom): %s", e)
+        return None
+
+
 def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "", contexto_externo: bool = False) -> str | None:
     """
     Envia a mensagem do usuário ao Gemini (REST) com o contexto do sistema e retorna a resposta em texto.

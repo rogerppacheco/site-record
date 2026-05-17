@@ -416,6 +416,78 @@ class MensagemClienteBoasVindas(models.Model):
         ordering = ['data_hora']
 
 
+class HistoricoAtendimentoIACliente(models.Model):
+    """Histórico de interações do atendimento automático (IA/templates) com clientes via WhatsApp."""
+
+    ORIGEM_CHOICES = [
+        ('WEBHOOK', 'WhatsApp (contato externo)'),
+        ('BOAS_VINDAS', 'Boas-vindas'),
+        ('LEMBRETE_INSTALACAO', 'Lembrete instalação'),
+    ]
+    INTENCAO_CHOICES = [
+        ('AGENDAMENTO', 'Agendamento'),
+        ('INSTALACAO', 'Instalação'),
+        ('STATUS', 'Status do pedido'),
+        ('OS', 'Ordem de serviço'),
+        ('HUMANO', 'Escalonar humano'),
+        ('OUTROS', 'Outros'),
+    ]
+    FONTE_RESPOSTA_CHOICES = [
+        ('TEMPLATE', 'Template (dados do pedido)'),
+        ('IA', 'IA (Groq/Gemini)'),
+        ('FALLBACK', 'Fallback padrão'),
+    ]
+
+    venda = models.ForeignKey(
+        Venda,
+        on_delete=models.CASCADE,
+        related_name='historico_atendimento_ia_cliente',
+    )
+    telefone = models.CharField(
+        max_length=20,
+        db_index=True,
+        help_text="Telefone do cliente normalizado (apenas dígitos)",
+    )
+    mensagem_cliente = models.TextField(verbose_name="Mensagem do cliente")
+    resposta_sistema = models.TextField(verbose_name="Resposta enviada")
+    intencao = models.CharField(
+        max_length=20,
+        choices=INTENCAO_CHOICES,
+        default='OUTROS',
+        db_index=True,
+    )
+    fonte_resposta = models.CharField(
+        max_length=20,
+        choices=FONTE_RESPOSTA_CHOICES,
+        default='TEMPLATE',
+    )
+    origem = models.CharField(
+        max_length=30,
+        choices=ORIGEM_CHOICES,
+        default='WEBHOOK',
+        db_index=True,
+    )
+    avisos_bo_enviados = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Avisos enviados (BO/Diretoria)",
+        help_text="Quantidade de destinos WhatsApp notificados nesta interação.",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_historico_atendimento_ia_cliente'
+        verbose_name = "Histórico atendimento IA (cliente)"
+        verbose_name_plural = "Históricos atendimento IA (cliente)"
+        ordering = ['-criado_em']
+        indexes = [
+            models.Index(fields=['venda', '-criado_em']),
+            models.Index(fields=['telefone', '-criado_em']),
+        ]
+
+    def __str__(self):
+        return f"Venda #{self.venda_id} — {self.get_intencao_display()} ({self.criado_em:%d/%m/%Y %H:%M})"
+
+
 class FilaEnvioBoasVindas(models.Model):
     """Fila de envio automático de boas-vindas. O scheduler processa a cada 5 min."""
     venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='fila_boas_vindas')

@@ -6833,8 +6833,19 @@ def processar_webhook_whatsapp(data, request=None):
                 venda.data_resposta_lembrete_instalacao = agora
                 venda.save(update_fields=campos_venda)
                 return {'status': 'ok', 'mensagem': 'Resposta lembrete instalação (não/suporte)'}
-            # Qualquer outra resposta: registra na venda e envia "Em breve um especialista..."
-            msg = "Em breve um especialista irá falar contigo"
+            # Qualquer outra resposta: tenta atendimento com dados do pedido; senão escalona humano
+            msg = None
+            if texto_resposta:
+                try:
+                    from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+
+                    msg = processar_mensagem_cliente_venda(
+                        telefone_formatado_usuario, texto_resposta, origem="LEMBRETE_INSTALACAO"
+                    )
+                except Exception as e_lem_ia:
+                    logger.warning("[Webhook] Resposta IA cliente (lembrete): %s", e_lem_ia)
+            if not msg:
+                msg = "Em breve um especialista irá falar contigo"
             try:
                 WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
             except Exception:
@@ -6885,6 +6896,17 @@ def processar_webhook_whatsapp(data, request=None):
             venda_bv.cliente_resposta_boas_vindas = texto_resposta[:2000] if texto_resposta else None
             venda_bv.data_resposta_boas_vindas = agora_bv
             venda_bv.save(update_fields=['cliente_resposta_boas_vindas', 'data_resposta_boas_vindas'])
+            if texto_resposta:
+                try:
+                    from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+
+                    resp_bv = processar_mensagem_cliente_venda(
+                        telefone_formatado_usuario, texto_resposta, origem="BOAS_VINDAS"
+                    )
+                    if resp_bv:
+                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, resp_bv)
+                except Exception as e_bv_ia:
+                    logger.warning("[Webhook] Resposta IA cliente (boas-vindas): %s", e_bv_ia)
             return {'status': 'ok', 'mensagem': 'Resposta boas-vindas registrada'}
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao processar resposta boas-vindas: {e}", exc_info=True)
@@ -6982,7 +7004,31 @@ def processar_webhook_whatsapp(data, request=None):
     # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)
     if not usuario_whatsapp:
-        # Contato externo: não enviar mensagem de "não cadastrado". Tentar IA acolhedora ou fallback profissional.
+        # Cliente com telefone cadastrado em venda: resposta com dados do pedido + aviso BO/Diretoria
+        if mensagem_texto and (mensagem_texto or "").strip():
+            try:
+                from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+
+                resposta_cliente = processar_mensagem_cliente_venda(
+                    telefone_formatado_usuario,
+                    (mensagem_texto or "").strip(),
+                    origem="WEBHOOK",
+                )
+                if resposta_cliente:
+                    try:
+                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, resposta_cliente)
+                    except Exception as e:
+                        logger.exception(
+                            "[Webhook] Erro ao enviar resposta atendimento cliente (venda): %s", e
+                        )
+                    return {
+                        'status': 'ok',
+                        'mensagem': 'Cliente (venda cadastrada): resposta e aviso BO/Diretoria',
+                    }
+            except Exception as e:
+                logger.warning("[Webhook] Atendimento cliente venda falhou: %s", e, exc_info=True)
+
+        # Contato externo sem venda: IA acolhedora ou fallback profissional.
         mensagem_enviar = None
         try:
             from crm_app.ai_chat_service import responder_com_ia
@@ -7038,8 +7084,78 @@ def processar_webhook_whatsapp(data, request=None):
             SessaoWhatsapp.objects.filter(id=sessao.id).update(data_ultimo_aviso_nao_autorizado=hoje)
         return {'status': 'ok', 'mensagem': 'Usuário não autorizado a chamar no bot'}
 
+    def _enviar_material_record_apoia_da_sessao():
+        """Envia imagem/PDF do Record Apoia em sessao.dados_temp['material_para_envio']."""
+        if not sessao:
+            return False
+        try:
+            sessao.refresh_from_db()
+        except Exception:
+            pass
+        material_para_envio = (sessao.dados_temp or {}).get('material_para_envio')
+        if not material_para_envio:
+            return False
+        logger.info("[Webhook] Material detectado, enviando ANTES da mensagem...")
+        enviado = False
+        try:
+            if material_para_envio.get('tipo') == 'IMAGEM':
+                caption = f"📷 {material_para_envio['titulo']}"
+                if material_para_envio.get('descricao'):
+                    caption += f"\n{material_para_envio['descricao'][:100]}"
+                if whatsapp_service.enviar_imagem_b64(
+                    telefone_formatado, material_para_envio['base64'], caption
+                ):
+                    logger.info(
+                        "[Webhook] ✅ Imagem enviada com sucesso: %s",
+                        material_para_envio.get('nome'),
+                    )
+                    enviado = True
+                else:
+                    logger.error(
+                        "[Webhook] ❌ Falha ao enviar imagem: %s",
+                        material_para_envio.get('nome'),
+                    )
+            else:
+                pdf_url = material_para_envio.get('url')
+                base64_data = material_para_envio.get('base64', '')
+                if pdf_url:
+                    logger.info("[Webhook] Enviando documento via URL")
+                    sucesso = whatsapp_service.enviar_pdf_url(
+                        telefone_formatado, pdf_url, material_para_envio['nome']
+                    )
+                elif base64_data:
+                    logger.info("[Webhook] Enviando documento via base64")
+                    sucesso = whatsapp_service.enviar_pdf_b64(
+                        telefone_formatado, base64_data, material_para_envio['nome']
+                    )
+                else:
+                    logger.error("[Webhook] ❌ Nenhum dado disponível para envio do documento")
+                    sucesso = False
+                if sucesso:
+                    logger.info(
+                        "[Webhook] ✅ Documento enviado com sucesso: %s",
+                        material_para_envio.get('nome'),
+                    )
+                    enviado = True
+                else:
+                    logger.error(
+                        "[Webhook] ❌ Falha ao enviar documento: %s",
+                        material_para_envio.get('nome'),
+                    )
+        except Exception as e:
+            logger.error("[Webhook] ❌ Erro ao enviar material: %s", e)
+            import traceback
+            traceback.print_exc()
+        if enviado:
+            dados = dict(sessao.dados_temp or {})
+            dados.pop('material_para_envio', None)
+            sessao.dados_temp = dados
+            sessao.save(update_fields=['dados_temp'])
+        return enviado
+
     def _enviar_resposta_e_retornar(resposta_texto):
-        """Envia a mensagem ao usuário via Z-API e retorna o resultado para a API."""
+        """Envia material (se houver na sessão) e a mensagem ao usuário via Z-API."""
+        _enviar_material_record_apoia_da_sessao()
         if resposta_texto and str(resposta_texto).strip():
             try:
                 # Provisório: tempo desde o recebimento da mensagem até esta resposta

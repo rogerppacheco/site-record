@@ -7,6 +7,7 @@ from .models import (
     ImportacaoEstabelecimentoCNPJ, LogImportacaoEstabelecimentoCNPJ,
     CepLocalidade,
     FunilVendaWppTentativa, FunilVendaWppEvento,
+    HistoricoAtendimentoIACliente,
 )
 
 
@@ -336,3 +337,30 @@ class FunilVendaWppTentativaAdmin(admin.ModelAdmin):
     readonly_fields = ('iniciado_em', 'atualizado_em')
     raw_id_fields = ('usuario', 'sessao_whatsapp')
     inlines = [FunilVendaWppEventoInline]
+
+
+@admin.register(HistoricoAtendimentoIACliente)
+class HistoricoAtendimentoIAClienteAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'criado_em',
+        'venda',
+        'telefone',
+        'intencao',
+        'fonte_resposta',
+        'origem',
+        'avisos_bo_enviados',
+    )
+    list_filter = ('intencao', 'fonte_resposta', 'origem', 'criado_em')
+    search_fields = (
+        'telefone',
+        'mensagem_cliente',
+        'resposta_sistema',
+        'venda__id',
+        'venda__ordem_servico',
+        'venda__cliente__nome_razao_social',
+    )
+    readonly_fields = ('criado_em',)
+    raw_id_fields = ('venda',)
+    date_hierarchy = 'criado_em'
+    ordering = ('-criado_em',)
