@@ -89,6 +89,9 @@
         .table-esteira td.esteira-col-comissao-cb { min-width: 3rem; text-align: center; }
         .table-esteira th.esteira-col-acoes,
         .table-esteira td.esteira-col-acoes { min-width: 7.5rem; white-space: nowrap; }
+        .table-esteira th.esteira-col-os,
+        .table-esteira td.esteira-col-os { min-width: 7.5rem; }
+        .table-esteira [data-esteira-col].esteira-col-oculta { display: none !important; }
 
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -376,8 +379,9 @@
             /* Cliente e identificação primeiro (ordem de leitura) */
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-cliente { order: -30; }
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-id-venda { order: -29; }
-            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-sticky-2 { order: -28; }
-            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-agenda { order: -27; }
+            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes { order: -28; }
+            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-os { order: -27; }
+            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-agenda { order: -26; }
             #esteira-scroll-main .table-esteira .esteira-col-cliente .fw-bold {
                 font-size: 1.02rem;
                 line-height: 1.3;
@@ -452,6 +456,17 @@
                         <button type="button" onclick="exportarAgendamentosDia()" class="btn btn-sm btn-outline-success" title="Baixar planilha de agendamentos do dia para envio à operadora">
                             <i class="bi bi-file-earmark-excel"></i><span class="d-none d-lg-inline ms-1">Exportar hoje</span>
                         </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="abrirModalRelatorioPendenciasIndevidas()" title="Exportar pendências indevidas por período">
+                            <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Pend. indevidas</span>
+                        </button>
+
+                        <div class="dropdown d-inline-block">
+                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Escolher colunas visíveis">
+                                <i class="bi bi-layout-three-columns"></i><span class="d-none d-lg-inline ms-1">Colunas</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end p-2" id="menu-colunas-esteira" style="min-width: 14rem; max-height: 70vh; overflow-y: auto;"></ul>
+                        </div>
 
                         <button type="button" onclick="abrirModalEnviarLembrete()" class="btn btn-sm btn-outline-success" title="Enviar mensagem de lembrete para clientes agendados na data e turno escolhidos">
                             <i class="bi bi-whatsapp"></i><span class="d-none d-lg-inline ms-1">Lembrete</span>
@@ -645,39 +660,41 @@
                     <table class="table table-esteira mb-0">
                         <thead>
                             <tr>
-                                <th class="ps-3 esteira-col-id-venda esteira-col-sticky-1">ID / Data venda</th>
-                                <th class="esteira-col-sticky-2">O.S.</th>
-                                <th class="esteira-col-agenda">Agendamento</th>
-                                <th class="esteira-col-cliente">Cliente</th>
-                                <th>Vendedor</th>
-                                <th>Adiant. CNPJ</th>
-                                <th>Adiant. Comissão</th>
-                                <th title="Adiantamento comissão (O.S. aberta em sábado, Regras por Faixa)">Adiant. sábado</th>
-                                <th>Plano</th>
-                                <th>Status Atual</th>
-                                <th class="esteira-col-motivo">Motivo Pendência</th>
-                                <th class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
-                                <th class="esteira-col-resp">Resp. Alteração</th>
-                                <th class="esteira-col-comissao-cb" title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
-                                <th class="esteira-col-acoes pe-3">Ações</th>
+                                <th data-esteira-col="id" class="ps-3 esteira-col-id-venda esteira-col-sticky-1">ID / Data venda</th>
+                                <th data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2">Ações</th>
+                                <th data-esteira-col="os" class="esteira-col-os">O.S.</th>
+                                <th data-esteira-col="agenda" class="esteira-col-agenda">Agendamento</th>
+                                <th data-esteira-col="cliente" class="esteira-col-cliente">Cliente</th>
+                                <th data-esteira-col="status">Status Atual</th>
+                                <th data-esteira-col="vendedor">Vendedor</th>
+                                <th data-esteira-col="adiant_cnpj">Adiant. CNPJ</th>
+                                <th data-esteira-col="adiant_comissao">Adiant. Comissão</th>
+                                <th data-esteira-col="adiant_sabado" title="Adiantamento comissão (O.S. aberta em sábado, Regras por Faixa)">Adiant. sábado</th>
+                                <th data-esteira-col="plano">Plano</th>
+                                <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
+                                <th data-esteira-col="conf" class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
+                                <th data-esteira-col="resp" class="esteira-col-resp">Resp. Alteração</th>
+                                <th data-esteira-col="comissao" class="esteira-col-comissao-cb" title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
                             </tr>
                             <tr id="linha-filtros-colunas" style="display:none;">
-                                <th class="esteira-col-id-venda esteira-col-sticky-1">
+                                <th data-esteira-col="id" class="esteira-col-id-venda esteira-col-sticky-1">
                                     <div class="esteira-fc-inline2">
                                         <input id="fc-id" class="form-control form-control-sm esteira-fc-input" placeholder="ID">
                                         <input id="fc-data-venda" class="form-control form-control-sm esteira-fc-input" placeholder="Dt. venda">
                                     </div>
                                 </th>
-                                <th class="esteira-col-sticky-2"><input id="fc-os" class="form-control form-control-sm esteira-fc-input" placeholder="O.S."></th>
-                                <th class="esteira-col-agenda">
+                                <th data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2"></th>
+                                <th data-esteira-col="os" class="esteira-col-os"><input id="fc-os" class="form-control form-control-sm esteira-fc-input" placeholder="O.S."></th>
+                                <th data-esteira-col="agenda" class="esteira-col-agenda">
                                     <div class="esteira-fc-inline2">
                                         <input id="fc-data-agendada" class="form-control form-control-sm esteira-fc-input" placeholder="Data">
                                         <input id="fc-turno" class="form-control form-control-sm esteira-fc-input" placeholder="Turno">
                                     </div>
                                 </th>
-                                <th class="esteira-col-cliente"><input id="fc-cliente" class="form-control form-control-sm esteira-fc-input" placeholder="Cliente / CPF"></th>
-                                <th><input id="fc-vendedor" class="form-control form-control-sm esteira-fc-input" placeholder="Vendedor"></th>
-                                <th>
+                                <th data-esteira-col="cliente" class="esteira-col-cliente"><input id="fc-cliente" class="form-control form-control-sm esteira-fc-input" placeholder="Cliente / CPF"></th>
+                                <th data-esteira-col="status"><input id="fc-status" class="form-control form-control-sm esteira-fc-input" placeholder="Status"></th>
+                                <th data-esteira-col="vendedor"><input id="fc-vendedor" class="form-control form-control-sm esteira-fc-input" placeholder="Vendedor"></th>
+                                <th data-esteira-col="adiant_cnpj">
                                     <select id="fc-adiant-cnpj" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="realizado">Realizado</option>
@@ -685,14 +702,14 @@
                                         <option value="nao elegivel">Não elegível</option>
                                     </select>
                                 </th>
-                                <th>
+                                <th data-esteira-col="adiant_comissao">
                                     <select id="fc-adiant-comissao" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="sim">Sim</option>
                                         <option value="nao">Não</option>
                                     </select>
                                 </th>
-                                <th>
+                                <th data-esteira-col="adiant_sabado">
                                     <select id="fc-adiant-sabado" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="marcado">Marcado</option>
@@ -700,13 +717,11 @@
                                         <option value="quitado">Quitado inst.</option>
                                     </select>
                                 </th>
-                                <th><input id="fc-plano" class="form-control form-control-sm esteira-fc-input" placeholder="Plano"></th>
-                                <th><input id="fc-status" class="form-control form-control-sm esteira-fc-input" placeholder="Status"></th>
-                                <th class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
-                                <th class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
-                                <th class="esteira-col-resp"><input id="fc-resp" class="form-control form-control-sm esteira-fc-input" placeholder="Resp."></th>
-                                <th class="esteira-col-comissao-cb"></th>
-                                <th class="esteira-col-acoes"></th>
+                                <th data-esteira-col="plano"><input id="fc-plano" class="form-control form-control-sm esteira-fc-input" placeholder="Plano"></th>
+                                <th data-esteira-col="motivo" class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
+                                <th data-esteira-col="conf" class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
+                                <th data-esteira-col="resp" class="esteira-col-resp"><input id="fc-resp" class="form-control form-control-sm esteira-fc-input" placeholder="Resp."></th>
+                                <th data-esteira-col="comissao" class="esteira-col-comissao-cb"></th>
                             </tr>
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
@@ -738,7 +753,7 @@
                         </div>
                         <div class="col-md-6"><label class="form-label">Plano</label><select class="form-select" id="edit-plano"></select></div>
                         <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
-                        <div class="col-12">
+                        <div class="col-12" id="wrap-edit-bloquear-osab">
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" id="edit-bloquear-osab">
                                 <label class="form-check-label fw-bold" for="edit-bloquear-osab">
@@ -865,7 +880,31 @@
                     <form id="form-pendencia">
                         <div class="mb-3"><label class="form-label fw-bold">Motivo *</label><select class="form-select" id="pendencia-motivo" required><option value="">Carregando motivos...</option></select></div>
                         <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="pendencia-obs" rows="3" placeholder="Detalhes..."></textarea></div>
-                        <div class="form-check form-switch mt-2">
+
+                        <div id="painel-pendencia-indevida" class="border rounded p-3 mb-3 bg-light" style="display:none;">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="pendencia-indevida-check" onchange="togglePainelPendenciaIndevida()">
+                                <label class="form-check-label fw-bold" for="pendencia-indevida-check">Registrar pendência indevida</label>
+                            </div>
+                            <div id="campos-pendencia-indevida" style="display:none;">
+                                <p class="small fw-bold mb-2">Possui evidência?</p>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="pendencia-tem-evidencia" id="pendencia-evid-sim" value="sim" onchange="toggleUploadPendenciaIndevida()">
+                                    <label class="form-check-label" for="pendencia-evid-sim">Sim</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="pendencia-tem-evidencia" id="pendencia-evid-nao" value="nao" onchange="toggleUploadPendenciaIndevida()">
+                                    <label class="form-check-label" for="pendencia-evid-nao">Não</label>
+                                </div>
+                                <div id="wrap-pendencia-anexos" class="mt-2" style="display:none;">
+                                    <label class="form-label small fw-bold" for="pendencia-anexos">Anexos (imagem, vídeo ou áudio)</label>
+                                    <input type="file" class="form-control form-control-sm" id="pendencia-anexos" multiple accept="image/jpeg,image/jpg,image/png,video/mp4,audio/mpeg,audio/ogg,audio/wav,.mp3,.ogg,.wav">
+                                    <div class="form-text">Imagem até 6 MB; vídeo/áudio até 20 MB. Pode selecionar vários arquivos.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="wrap-pendencia-bloquear-osab" class="form-check form-switch mt-2">
+
                             <input class="form-check-input" type="checkbox" id="pendencia-bloquear-osab">
                             <label class="form-check-label fw-bold" for="pendencia-bloquear-osab">
                                 Bloquear atualização de status pela OSAB
@@ -877,6 +916,34 @@
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPendencia()">Confirmar</button></div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade" id="modal-relatorio-pend-indevidas" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Relatório — Pendências indevidas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold" for="rel-pend-indev-data-inicio">Data início</label>
+                            <input type="date" class="form-control form-control-sm" id="rel-pend-indev-data-inicio">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold" for="rel-pend-indev-data-fim">Data fim</label>
+                            <input type="date" class="form-control form-control-sm" id="rel-pend-indev-data-fim">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="baixarRelatorioPendenciasIndevidas()"><i class="bi bi-download me-1"></i>Baixar Excel</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1028,6 +1095,166 @@
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
         const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const podeMarcarAdiantSabado = ['Diretoria', 'Admin', 'BackOffice'].includes(userProfile);
+        const podeBloquearOsab = ['Diretoria', 'Admin'].includes(userProfile);
+        let pendenciaModalEhPendencia = false;
+        const modalRelPendIndevidas = document.getElementById('modal-relatorio-pend-indevidas')
+            ? new bootstrap.Modal(document.getElementById('modal-relatorio-pend-indevidas')) : null;
+
+        const ESTEIRA_COLUNAS = [
+            { key: 'id', label: 'ID / Data venda', fixa: true },
+            { key: 'acoes', label: 'Ações', fixa: true },
+            { key: 'os', label: 'O.S.' },
+            { key: 'agenda', label: 'Agendamento' },
+            { key: 'cliente', label: 'Cliente' },
+            { key: 'status', label: 'Status Atual' },
+            { key: 'vendedor', label: 'Vendedor' },
+            { key: 'adiant_cnpj', label: 'Adiant. CNPJ' },
+            { key: 'adiant_comissao', label: 'Adiant. Comissão' },
+            { key: 'adiant_sabado', label: 'Adiant. sábado' },
+            { key: 'plano', label: 'Plano' },
+            { key: 'motivo', label: 'Motivo Pendência' },
+            { key: 'conf', label: 'Conf. cliente' },
+            { key: 'resp', label: 'Resp. Alteração' },
+            { key: 'comissao', label: 'Comissão (instaladas)' },
+        ];
+
+        function chavesColunasVisiveisEsteira() {
+            try {
+                const raw = localStorage.getItem('esteira_colunas_visiveis');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed) && parsed.length) return parsed;
+                }
+            } catch (e) { /* ignore */ }
+            return ESTEIRA_COLUNAS.map(c => c.key);
+        }
+
+        function salvarColunasVisiveisEsteira(keys) {
+            localStorage.setItem('esteira_colunas_visiveis', JSON.stringify(keys));
+        }
+
+        function aplicarVisibilidadeColunasEsteira() {
+            const visiveis = new Set(chavesColunasVisiveisEsteira());
+            document.querySelectorAll('[data-esteira-col]').forEach(el => {
+                const k = el.getAttribute('data-esteira-col');
+                el.classList.toggle('esteira-col-oculta', !visiveis.has(k));
+            });
+        }
+
+        function construirMenuColunasEsteira() {
+            const menu = document.getElementById('menu-colunas-esteira');
+            if (!menu) return;
+            const visiveis = new Set(chavesColunasVisiveisEsteira());
+            menu.innerHTML = ESTEIRA_COLUNAS.map(col => {
+                const dis = col.fixa ? ' disabled' : '';
+                const chk = visiveis.has(col.key) ? ' checked' : '';
+                return `<li><label class="dropdown-item-text small d-flex align-items-center gap-2 mb-1"><input type="checkbox" class="form-check-input m-0 esteira-col-toggle" data-col="${col.key}"${chk}${dis}> ${col.label}</label></li>`;
+            }).join('');
+            menu.querySelectorAll('.esteira-col-toggle:not(:disabled)').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const keys = ESTEIRA_COLUNAS.filter(c => {
+                        if (c.fixa) return true;
+                        const inp = menu.querySelector(`.esteira-col-toggle[data-col="${c.key}"]`);
+                        return inp && inp.checked;
+                    }).map(c => c.key);
+                    salvarColunasVisiveisEsteira(keys);
+                    aplicarVisibilidadeColunasEsteira();
+                    syncEsteiraScrollbars();
+                });
+            });
+        }
+
+        function prepararModalPendencia(statusTexto) {
+            pendenciaModalEhPendencia = statusTexto.includes('PENDEN') && !statusTexto.includes('CANCEL');
+            const painel = document.getElementById('painel-pendencia-indevida');
+            if (painel) painel.style.display = pendenciaModalEhPendencia ? 'block' : 'none';
+            limparPendenciaIndevida();
+            const wrapOsab = document.getElementById('wrap-pendencia-bloquear-osab');
+            if (wrapOsab) wrapOsab.style.display = podeBloquearOsab ? 'block' : 'none';
+        }
+
+        function limparPendenciaIndevida() {
+            const chk = document.getElementById('pendencia-indevida-check');
+            if (chk) chk.checked = false;
+            document.querySelectorAll('input[name="pendencia-tem-evidencia"]').forEach(r => { r.checked = false; });
+            const anexos = document.getElementById('pendencia-anexos');
+            if (anexos) anexos.value = '';
+            togglePainelPendenciaIndevida();
+        }
+
+        function togglePainelPendenciaIndevida() {
+            const on = !!document.getElementById('pendencia-indevida-check')?.checked;
+            const campos = document.getElementById('campos-pendencia-indevida');
+            if (campos) campos.style.display = on ? 'block' : 'none';
+            if (!on) {
+                document.querySelectorAll('input[name="pendencia-tem-evidencia"]').forEach(r => { r.checked = false; });
+                const anexos = document.getElementById('pendencia-anexos');
+                if (anexos) anexos.value = '';
+            }
+            toggleUploadPendenciaIndevida();
+        }
+
+        function toggleUploadPendenciaIndevida() {
+            const sim = document.getElementById('pendencia-evid-sim')?.checked;
+            const wrap = document.getElementById('wrap-pendencia-anexos');
+            if (wrap) wrap.style.display = sim ? 'block' : 'none';
+            if (!sim) {
+                const anexos = document.getElementById('pendencia-anexos');
+                if (anexos) anexos.value = '';
+            }
+        }
+
+        async function registrarPendenciaIndevidaApi(vendaId) {
+            const temEvid = document.getElementById('pendencia-evid-sim')?.checked;
+            const fd = new FormData();
+            fd.append('venda_id', String(vendaId));
+            fd.append('motivo_pendencia_id', getVal('pendencia-motivo') || '');
+            fd.append('observacao', getVal('pendencia-obs') || '');
+            fd.append('tem_evidencia', temEvid ? '1' : '0');
+            const input = document.getElementById('pendencia-anexos');
+            if (input && input.files) {
+                for (const f of input.files) fd.append('anexos', f);
+            }
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`${apiUrl}/api/crm/pendencia-indevida/registrar/`, {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                body: fd,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || 'Erro ao registrar pendência indevida.');
+            return data;
+        }
+
+        function abrirModalRelatorioPendenciasIndevidas() {
+            const hoje = new Date().toISOString().slice(0, 10);
+            setVal('rel-pend-indev-data-inicio', hoje);
+            setVal('rel-pend-indev-data-fim', hoje);
+            if (modalRelPendIndevidas) modalRelPendIndevidas.show();
+        }
+
+        async function baixarRelatorioPendenciasIndevidas() {
+            const di = getVal('rel-pend-indev-data-inicio');
+            const df = getVal('rel-pend-indev-data-fim');
+            if (!di || !df) { alert('Informe data início e fim.'); return; }
+            const token = localStorage.getItem('accessToken');
+            const url = `${apiUrl}/api/crm/pendencia-indevida/relatorio/?data_inicio=${encodeURIComponent(di)}&data_fim=${encodeURIComponent(df)}`;
+            const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.detail || 'Erro ao baixar relatório.');
+                return;
+            }
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `pendencias_indevidas_${di}_${df}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            if (modalRelPendIndevidas) modalRelPendIndevidas.hide();
+        }
+
+
         let envioWhatsappAtivo = true;
 
         let filtroAtual = 'TODOS';
@@ -1054,6 +1281,10 @@
             popularFiltroVendedorInstaladas();
             popularFiltroVendedorAgendados();
             popularFiltroVendedorVendasTotais();
+            construirMenuColunasEsteira();
+            aplicarVisibilidadeColunasEsteira();
+            const wrapEditOsab = document.getElementById('wrap-edit-bloquear-osab');
+            if (wrapEditOsab && !podeBloquearOsab) wrapEditOsab.style.display = 'none';
             inicializarFiltrosColunas();
             sincronizarToolbarEFiltrosColunas();
             atualizarBadgeFiltrosColunas();
@@ -2235,39 +2466,47 @@
                     }
                     if (carregarInstaladas || carregarAgendados || carregarVendasTotais) totalVisivelPosCabecalho += 1;
 
+                    const enderecoCompleto = montarEnderecoCompletoVenda(v);
+                    const enderecoEsc = String(enderecoCompleto).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    const btnCopiarEndereco = enderecoCompleto
+                        ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarEndereco(this)" data-endereco="${enderecoEsc}" title="Copiar endereço completo"><i class="bi bi-geo-alt"></i></button>`
+                        : '';
+
                     htmlContent += `
                         <tr class="esteira-row-venda" style="${rowStyle}">
-                            <td class="esteira-col-id-venda ps-md-3 esteira-col-sticky-1" data-label="ID e data da venda">
+                            <td data-esteira-col="id" class="esteira-col-id-venda ps-md-3 esteira-col-sticky-1" data-label="ID e data da venda">
                                 <div class="fw-bold text-primary">#${v.id}</div>
                                 <div class="small text-muted">${dataFmt}</div>
                             </td>
-                            <td class="esteira-col-sticky-2" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
-                            <td class="esteira-col-agenda" data-label="Agendamento">
-                                <div>${dataAgendada}</div>
-                                <div class="esteira-turno-sub">${turno}</div>
-                            </td>
-                            <td class="esteira-col-cliente" data-label="Cliente">
-                                <div class="fw-bold text-dark">${nomeCliente}</div>
-                                <div class="small text-muted text-break">${docCliente}</div>
-                            </td>
-                            <td data-label="Vendedor">${nomeVendedor}</td>
-                            <td data-label="Adiant. CNPJ">${celulaAdiantCnpj}</td>
-                            <td data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
-                            <td data-label="Adiant. sábado">${celulaAdiantSabado}</td>
-                            <td data-label="Plano"><span class="d-inline-block text-break">${nomePlano}</span></td>
-                            <td data-label="Status"><div class="d-flex align-items-center flex-wrap gap-1">${selectStatus}${btnEditar}</div></td>
-                            <td class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
-                            <td class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
-                            <td class="esteira-col-resp" data-label="Resp. alteração"><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="esteira-col-comissao-cb text-center" data-label="Comissão">${carregarInstaladas ? checkboxComissao : '-'}</td>
-                            <td class="esteira-col-acoes pe-md-4 text-md-end" data-label="Ações">
+                            <td data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2 text-md-start" data-label="Ações">
+                                ${btnCopiarEndereco}
                                 ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
                                 <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
                             </td>
+                            <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
+                            <td data-esteira-col="agenda" class="esteira-col-agenda" data-label="Agendamento">
+                                <div>${dataAgendada}</div>
+                                <div class="esteira-turno-sub">${turno}</div>
+                            </td>
+                            <td data-esteira-col="cliente" class="esteira-col-cliente" data-label="Cliente">
+                                <div class="fw-bold text-dark">${nomeCliente}</div>
+                                <div class="small text-muted text-break">${docCliente}</div>
+                            </td>
+                            <td data-esteira-col="status" data-label="Status"><div class="d-flex align-items-center flex-wrap gap-1">${selectStatus}${btnEditar}</div></td>
+                            <td data-esteira-col="vendedor" data-label="Vendedor">${nomeVendedor}</td>
+                            <td data-esteira-col="adiant_cnpj" data-label="Adiant. CNPJ">${celulaAdiantCnpj}</td>
+                            <td data-esteira-col="adiant_comissao" data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
+                            <td data-esteira-col="adiant_sabado" data-label="Adiant. sábado">${celulaAdiantSabado}</td>
+                            <td data-esteira-col="plano" data-label="Plano"><span class="d-inline-block text-break">${nomePlano}</span></td>
+                            <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
+                            <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
+                            <td data-esteira-col="resp" class="esteira-col-resp" data-label="Resp. alteração"><small class="text-muted fw-bold">${alteradoPor}</small></td>
+                            <td data-esteira-col="comissao" class="esteira-col-comissao-cb text-center" data-label="Comissão">${carregarInstaladas ? checkboxComissao : '-'}</td>
                         </tr>
                     `;
                 });
                 tbody.innerHTML = htmlContent;
+                aplicarVisibilidadeColunasEsteira();
                 requestAnimationFrame(function() {
                     requestAnimationFrame(syncEsteiraScrollbars);
                 });
@@ -2348,16 +2587,52 @@
             carregarVendas();
         }
 
-        function copiarTelefone(btn) {
-            var tel = btn && btn.getAttribute('data-telefone');
-            if (!tel) return;
+        function montarEnderecoCompletoVenda(v) {
+            function toTitleCase(str) {
+                return (str || '').toLowerCase().replace(/\b\w+/g, function(txt) {
+                    return txt.charAt(0).toUpperCase() + txt.substr(1);
+                });
+            }
+            const logradouro = toTitleCase(v.logradouro);
+            const numero = (v.numero_residencia || '').trim();
+            const complemento = toTitleCase(v.complemento);
+            const bairro = toTitleCase(v.bairro);
+            const cidade = toTitleCase(v.cidade);
+            const uf = (v.estado || '').toUpperCase();
+            const cep = (v.cep || '').trim();
+            const ref = toTitleCase(v.ponto_referencia);
+            if (!logradouro && !numero && !bairro && !cidade) return '';
+            let endereco = logradouro || '';
+            if (numero) endereco += (endereco ? ', ' : '') + numero;
+            if (complemento) endereco += `, ${complemento}`;
+            if (bairro || cidade || uf) {
+                endereco += (endereco ? ', ' : '') + [bairro, cidade].filter(Boolean).join(', ');
+                if (uf) endereco += ` - ${uf}`;
+            }
+            if (cep) endereco += (endereco ? ', ' : '') + cep;
+            if (ref) endereco += `, ${ref}`;
+            return endereco;
+        }
+
+        function copiarTextoBotao(btn, texto, tituloOk, tituloPadrao) {
+            if (!texto) return;
             try {
-                navigator.clipboard.writeText(tel).then(function() {
-                    var oldTitle = btn.title; btn.title = 'Copiado!'; setTimeout(function() { btn.title = oldTitle || 'Copiar telefone'; }, 1500);
+                navigator.clipboard.writeText(texto).then(function() {
+                    var oldTitle = btn.title;
+                    btn.title = tituloOk || 'Copiado!';
+                    setTimeout(function() { btn.title = oldTitle || tituloPadrao || ''; }, 1500);
                 });
             } catch (e) {
-                prompt('Copie o número:', tel);
+                prompt('Copie:', texto);
             }
+        }
+
+        function copiarTelefone(btn) {
+            copiarTextoBotao(btn, btn && btn.getAttribute('data-telefone'), 'Copiado!', 'Copiar telefone');
+        }
+
+        function copiarEndereco(btn) {
+            copiarTextoBotao(btn, btn && btn.getAttribute('data-endereco'), 'Endereço copiado!', 'Copiar endereço');
         }
 
         function abrirModalEnviarLembrete() {
@@ -2562,7 +2837,7 @@
                     
                     const titulo = document.getElementById('titulo-modal-pendencia');
                     if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
-                    
+                    prepararModalPendencia(statusTexto);
                     modalPendencia.show();
                 } else {
                     abrirEdicao(id);
@@ -2635,6 +2910,7 @@
                 document.getElementById('form-pendencia').reset();
                 const titulo = document.getElementById('titulo-modal-pendencia');
                 if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
+                prepararModalPendencia(statusTexto);
                 document.getElementById('pendencia-motivo').value = '';
                 document.getElementById('pendencia-obs').value = '';
                 const chkBloqOsab = document.getElementById('pendencia-bloquear-osab');
@@ -2680,13 +2956,31 @@
 
         async function salvarPendencia() {
             if (!getVal('pendencia-motivo')) { alert("Selecione o motivo."); return; }
-            const bloquearOsab = !!document.getElementById('pendencia-bloquear-osab')?.checked;
-            await salvarStatusNoBanco(tempVendaId, {
+            const indevida = pendenciaModalEhPendencia && !!document.getElementById('pendencia-indevida-check')?.checked;
+            if (indevida) {
+                const evidSim = document.getElementById('pendencia-evid-sim')?.checked;
+                const evidNao = document.getElementById('pendencia-evid-nao')?.checked;
+                if (!evidSim && !evidNao) { alert('Informe se possui evidência.'); return; }
+                if (evidSim) {
+                    const files = document.getElementById('pendencia-anexos')?.files;
+                    if (!files || !files.length) { alert('Com evidência marcada, anexe ao menos um arquivo.'); return; }
+                }
+            }
+            const payload = {
                 status_esteira: tempStatusId,
                 motivo_pendencia: getVal('pendencia-motivo'),
                 observacoes: getVal('pendencia-obs'),
-                bloquear_atualizacao_status_osab: bloquearOsab,
-            });
+            };
+            if (podeBloquearOsab) payload.bloquear_atualizacao_status_osab = !!document.getElementById('pendencia-bloquear-osab')?.checked;
+            await salvarStatusNoBanco(tempVendaId, payload);
+            if (indevida) {
+                try {
+                    const data = await registrarPendenciaIndevidaApi(tempVendaId);
+                    alert(data.detail || 'Pendência indevida registrada.');
+                } catch (e) {
+                    alert(e.message || String(e));
+                }
+            }
             modalPendencia.hide();
         }
 
@@ -2768,9 +3062,9 @@
                 cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
                 complemento: getVal('edit-complemento'), bairro: getVal('edit-bairro'), cidade: getVal('edit-cidade'),
                 estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
-                bloquear_atualizacao_status_osab: !!document.getElementById('edit-bloquear-osab')?.checked,
                 enviar_whatsapp: envioWhatsappAtivo
             };
+            if (podeBloquearOsab) body.bloquear_atualizacao_status_osab = !!document.getElementById('edit-bloquear-osab')?.checked;
             const divAgend = document.getElementById('campos-datas-agendamento');
             if (divAgend && divAgend.style.display !== 'none') {
                 body.data_agendamento = getVal('edit-data-agendamento-modal') || null;

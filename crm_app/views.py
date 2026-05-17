@@ -561,6 +561,8 @@ from .utils import (
     verificar_viabilidade_exata,
     montar_resumo_plano_para_whatsapp,
     validar_venda_para_resumo_auditoria,
+    buscar_venda_os_ja_cadastrada,
+    mensagem_os_ja_cadastrada,
     vendedor_ou_supervisor_restrito_mes,
     mes_completo_vendedor_supervisor_valido,
     q_venda_acesso_retrieve_vendedor_supervisor,
@@ -1778,6 +1780,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         acoes_gestao = [
             'retrieve', 'update', 'partial_update', 'destroy',
             'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
+            'verificar_os_cadastrada',
             'pendentes_auditoria', 'resumo_auditoria',
             'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp',
             'toggle_adiantamento_comissao',
@@ -2291,6 +2294,34 @@ class VendaViewSet(viewsets.ModelViewSet):
         venda.save()
         return Response({"detail": "Venda liberada com sucesso."})
 
+    @action(detail=False, methods=['get'], url_path='verificar-os-cadastrada', permission_classes=[permissions.IsAuthenticated])
+    def verificar_os_cadastrada(self, request):
+        """Verifica se a O.S. já está vinculada a outra venda CADASTRADA."""
+        grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
+        if not is_member(request.user, grupos_permitidos):
+            return Response({'detail': 'Permissão negada.'}, status=status.HTTP_403_FORBIDDEN)
+
+        os_val = (request.query_params.get('ordem_servico') or '').strip()
+        if not os_val:
+            return Response({'existe': False})
+
+        excluir_id = request.query_params.get('venda_id') or request.query_params.get('excluir_venda_id')
+        try:
+            excluir_id = int(excluir_id) if excluir_id not in (None, '') else None
+        except (TypeError, ValueError):
+            excluir_id = None
+
+        existente = buscar_venda_os_ja_cadastrada(os_val, excluir_venda_id=excluir_id)
+        if not existente:
+            return Response({'existe': False})
+
+        return Response({
+            'existe': True,
+            'detail': mensagem_os_ja_cadastrada(os_val, existente),
+            'venda_id': existente.id,
+            'cliente_nome': existente.cliente.nome_razao_social if existente.cliente else '',
+        })
+
     @action(detail=True, methods=['post'], url_path='finalizar_auditoria', permission_classes=[permissions.IsAuthenticated])
     def finalizar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -2335,6 +2366,14 @@ class VendaViewSet(viewsets.ModelViewSet):
                 {"detail": "Para mudar o status para CADASTRADA é obrigatório informar O.S válida."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        if status_obj.nome.upper() == 'CADASTRADA':
+            existente_os = buscar_venda_os_ja_cadastrada(os_informada, excluir_venda_id=venda.id)
+            if existente_os:
+                return Response(
+                    {"detail": mensagem_os_ja_cadastrada(os_informada, existente_os)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         try:
             with transaction.atomic():
@@ -2405,6 +2444,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                     if 'referencia' in dados_edicao: venda.ponto_referencia = (dados_edicao['referencia'] or '').upper()
                     if 'plano' in dados_edicao and dados_edicao['plano']: venda.plano_id = dados_edicao['plano']
                     if 'forma_pagamento' in dados_edicao and dados_edicao['forma_pagamento']: venda.forma_pagamento_id = dados_edicao['forma_pagamento']
+                    if 'tem_fixo' in dados_edicao:
+                        tf = dados_edicao['tem_fixo']
+                        venda.tem_fixo = tf in (True, 'true', 'True', '1', 1, 'sim', 'SIM')
                     if 'data_agendamento' in dados_edicao: 
                         dt_ag = dados_edicao['data_agendamento']
                         venda.data_agendamento = None if dt_ag == "" else dt_ag

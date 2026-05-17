@@ -1313,6 +1313,95 @@ class AnteciparInstalacaoSolicitacao(models.Model):
         return f"OS {self.ordem_servico} em {self.data_solicitacao.strftime('%d/%m/%Y %H:%M')}"
 
 
+class PendenciaIndevidaRegistro(models.Model):
+    """Marcação de pendência indevida na esteira (metadado; venda segue PENDENTE normalmente)."""
+    venda = models.ForeignKey(
+        Venda, on_delete=models.SET_NULL, null=True, related_name='pendencias_indevidas',
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='pendencias_indevidas_registradas',
+    )
+    motivo_pendencia = models.ForeignKey(
+        'MotivoPendencia', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pendencias_indevidas',
+    )
+    observacao = models.TextField(blank=True)
+    tem_evidencia = models.BooleanField(default=False)
+    mensagem_enviada = models.TextField(blank=True)
+    enviado_gc = models.BooleanField(default=False)
+    erros = models.JSONField(default=list, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Pendência indevida'
+        verbose_name_plural = 'Pendências indevidas'
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        return f'Pend. indevida venda #{self.venda_id or "—"} ({self.criado_em:%d/%m/%Y})'
+
+
+class PendenciaIndevidaAnexo(models.Model):
+    TIPO_CHOICES = [
+        ('imagem', 'Imagem'),
+        ('video', 'Vídeo'),
+        ('audio', 'Áudio'),
+    ]
+    registro = models.ForeignKey(
+        PendenciaIndevidaRegistro, on_delete=models.CASCADE, related_name='anexos',
+    )
+    arquivo = models.FileField(upload_to='pendencia_indevida/%Y/%m/')
+    nome_original = models.CharField(max_length=255, blank=True)
+    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES, default='imagem')
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Anexo pendência indevida'
+        verbose_name_plural = 'Anexos pendência indevida'
+        ordering = ['id']
+
+    def __str__(self):
+        return self.nome_original or str(self.arquivo)
+
+
+class AuditoriaSemSlotGC(models.Model):
+    """Registro de venda cadastrada sem slot de agenda compatível — comunicação ao GC e Diretoria."""
+    TURNO_CHOICES = [
+        ('MANHA', 'Manhã'),
+        ('TARDE', 'Tarde'),
+    ]
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='auditorias_sem_slot',
+    )
+    venda = models.ForeignKey(
+        Venda, on_delete=models.SET_NULL, null=True, related_name='auditorias_sem_slot',
+    )
+    ordem_servico = models.CharField(max_length=50, blank=True)
+    uf = models.CharField(max_length=2, blank=True)
+    endereco_completo = models.TextField(blank=True)
+    data_agendamento_cadastrada = models.DateField(null=True, blank=True)
+    turno_agendamento_cadastrado = models.CharField(max_length=10, choices=TURNO_CHOICES, blank=True)
+    data_desejada_cliente = models.DateField()
+    turno_desejado_cliente = models.CharField(max_length=10, choices=TURNO_CHOICES)
+    telefone_contato = models.CharField(max_length=120, blank=True)
+    imagem_anexo = models.ImageField(upload_to='auditoria_sem_slot/%Y/%m/', blank=True, null=True)
+    mensagem_enviada = models.TextField(blank=True)
+    enviado_gc = models.BooleanField(default=False)
+    enviados_diretoria = models.JSONField(default=list, blank=True)
+    erros = models.JSONField(default=list, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Auditoria Sem Slot (GC)"
+        verbose_name_plural = "Auditorias Sem Slot (GC)"
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        return f"Sem SLOT {self.ordem_servico or '—'} ({self.criado_em.strftime('%d/%m/%Y')})"
+
+
 class LancamentoFinanceiro(models.Model):
     TIPOS_CHOICES = [
         ('ADIANTAMENTO_CNPJ', 'Adiantamento CNPJ'),

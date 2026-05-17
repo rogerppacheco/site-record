@@ -28,6 +28,9 @@
         .btn-auditar { background-color: #212529; color: white; border-radius: 50px; padding: 6px 16px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; border: none; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; }
         .btn-auditar:hover { background-color: #000; transform: translateY(-1px); color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
         .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; text-align: center; padding-top: 20%; }
+        #overlay-captura-pap { display: none; position: fixed; inset: 0; z-index: 20000; background: rgba(13, 27, 62, 0.92); color: #fff; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+        #overlay-captura-pap .captura-numero { font-size: 4.5rem; font-weight: 800; line-height: 1; color: #7dd3fc; }
+        #overlay-captura-pap .captura-dica { max-width: 420px; font-size: 1.05rem; margin-top: 12px; }
         .nav-pills .nav-link { border-radius: 8px; font-weight: 600; color: #6c757d; background-color: #fff; border: 1px solid #dee2e6; margin: 0 5px; padding: 10px 20px; }
         .nav-pills .nav-link.active { background-color: var(--cor-primaria, #0d6efd); color: white; border-color: var(--cor-primaria, #0d6efd); }
         .auditor-badge { font-size: 0.75rem; background: #e9ecef; color: #495057; padding: 4px 10px; border-radius: 4px; border: 1px solid #dee2e6; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
@@ -60,7 +63,6 @@
         /* Otimização específica para seção Oferta & Pagto */
         #pills-oferta .form-label { font-size: 0.8rem; margin-bottom: 4px; }
         #pills-oferta .form-label i { margin-right: 4px; color: var(--cor-primaria, #0d6efd); }
-        #pills-oferta #audit-tem-fixo-display { padding: 0; border: 1px solid #ced4da; }
         
         /* Cards de script otimizados - máximo uso horizontal, mínimo scroll */
         #pills-oferta .script-text { font-size: 0.8rem; line-height: 1.25; margin-bottom: 0; }
@@ -81,6 +83,13 @@
     </style>
 </head>
 <body>
+
+    <div id="overlay-captura-pap" role="dialog" aria-live="polite">
+        <div class="captura-numero" id="captura-pap-contagem">5</div>
+        <p class="captura-dica mb-2" id="captura-pap-mensagem">Vá para a aba do PAP Nio agora (Alt+Tab ou clique na aba).</p>
+        <p class="small mb-3" style="opacity:0.75;">A captura será feita ao terminar a contagem.</p>
+        <button type="button" class="btn btn-outline-light btn-sm" onclick="cancelarCapturaPAP()">Cancelar captura</button>
+    </div>
 
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner-border text-primary" role="status">
@@ -117,6 +126,9 @@
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-historico-ligacoes" value="historico_ligacoes">
                         <label class="btn btn-outline-primary" for="aba-historico-ligacoes"><i class="bi bi-telephone me-1"></i> Histórico ligações</label>
                     </div>
+                    <button type="button" class="btn btn-outline-secondary fw-bold shadow-sm" id="btn-relatorio-sem-slot" onclick="abrirModalRelatorioSemSlot()" title="Exportar registros em que a agenda do PAP não atendeu o cliente">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Relatório Sem SLOT
+                    </button>
                     <button class="btn btn-outline-primary fw-bold shadow-sm" id="btn-atualizar-lista" onclick="carregarVendasPendentes()">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                     </button>
@@ -481,7 +493,7 @@
                                                 </div>
                                                 <div class="col-4" style="padding: 0 4px;">
                                                     <label class="form-label" style="font-size: 0.7rem; margin-bottom: 2px; font-weight: 600;"><i class="bi bi-telephone"></i> Telefone Fixo</label>
-                                                    <div class="form-control form-control-script bg-white d-flex align-items-center justify-content-center" id="audit-tem-fixo-display" style="min-height: 30px; height: 30px; border: 1px solid #ced4da; padding: 0;"><span class="text-muted" style="font-size: 0.75rem;">Carregando...</span></div>
+                                                    <select class="form-select form-control-script" id="audit-tem-fixo" onchange="atualizarTextoPlano()" style="font-size: 0.8rem; padding: 2px 6px; height: 30px;"><option value="false">Não</option><option value="true">Sim</option></select>
                                                 </div>
                                             </div>
                                         </div>
@@ -625,8 +637,65 @@
     </div>
 
     <div class="modal fade" id="modal-reprovacao" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog"><div class="modal-content border-danger"><div class="modal-header bg-danger text-white"><h5 class="modal-title">Reprovar / Pendenciar Venda</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Selecione o motivo:</p><div class="mb-3"><label class="form-label fw-bold">Novo Status</label><select class="form-select" id="repro-status"><option value="">Carregando...</option></select></div><div id="div-campos-aguardando-pagamento" style="display: none;" class="p-3 mb-3 bg-light border rounded"><div class="text-danger small fw-bold text-uppercase mb-2">Dados do pedido criado:</div><div class="mb-3"><label class="form-label fw-bold">O.S. *</label><input type="text" class="form-control" id="repro-os"></div><div class="row"><div class="col-6"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="repro-data"></div><div class="col-6"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="repro-turno"><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div><div class="mb-3"><label class="form-label fw-bold">Observação</label><textarea class="form-control uppercase-input" id="repro-obs" rows="4"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar</button></div></div></div></div>
-    <div class="modal fade" id="modal-aprovacao" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Venda Aprovada!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Copie a mensagem:</p><textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea><button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar</button></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
-    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog"><div class="modal-content border-primary"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div><div class="modal-body"><div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div><form id="form-agendamento"><div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div><div class="mb-3"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="agenda-obs" rows="3" placeholder="Observações da venda..."></textarea></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
+        <div class="modal fade" id="modal-relatorio-sem-slot" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Relatório — Sem SLOT</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold" for="rel-sem-slot-data-inicio">Data início</label>
+                            <input type="date" class="form-control form-control-sm" id="rel-sem-slot-data-inicio">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold" for="rel-sem-slot-data-fim">Data fim</label>
+                            <input type="date" class="form-control form-control-sm" id="rel-sem-slot-data-fim">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="baixarRelatorioSemSlot()"><i class="bi bi-download me-1"></i>Baixar Excel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+<div class="modal fade" id="modal-aprovacao" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Venda Aprovada!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Copie a mensagem:</p><textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea><button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar</button></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
+    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-lg"><div class="modal-content border-primary"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div><div class="modal-body"><div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div><form id="form-agendamento"><div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div><div class="mb-3"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="agenda-obs" rows="3" placeholder="Observações da venda..."></textarea></div>
+            <div class="border rounded p-3 mb-0 bg-light" id="painel-sem-slot">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="agenda-sem-slot-check" onchange="togglePainelSemSlot()">
+                    <label class="form-check-label fw-bold" for="agenda-sem-slot-check">Agenda disponível não atende o cliente</label>
+                </div>
+                <div id="campos-sem-slot" style="display:none;">
+                    <p class="small text-muted mb-2">Use <strong>Tela inteira</strong> no diálogo do Edge. Após Compartilhar, você terá <strong>5 segundos</strong> para ir à aba do PAP (Alt+Tab). O relógio do Windows deve aparecer na captura.</p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">Data desejada pelo cliente <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control form-control-sm" id="agenda-data-desejada">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">Turno desejado pelo cliente <span class="text-danger">*</span></label>
+                            <select class="form-select form-select-sm" id="agenda-turno-desejado">
+                                <option value="">Selecione...</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold small">Print do PAP <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control form-control-sm" id="agenda-imagem-sem-slot" accept="image/jpeg,image/jpg,image/png,image/webp">
+                        <div id="agenda-imagem-sem-slot-nome" class="small text-success mt-1" style="display:none;"></div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="capturarTelaPAP()"><i class="bi bi-display"></i> Capturar tela inteira do PAP</button>
+                    <div id="sem-slot-feedback" class="small text-muted mt-2"></div>
+                </div>
+            </div>
+            </form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
 
     <div class="modal fade" id="modal-biometria-lista" tabindex="-1"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header bg-secondary text-white"><h5 class="modal-title"><i class="bi bi-fingerprint"></i> Resultado da consulta Biometria (Br Pronto)</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>Protocolo</th><th>CPF/CNPJ</th><th>N. Linha</th><th>Data Envio</th><th>Data Conferência</th><th>Regional</th><th>Cód. PDV</th><th>Login</th><th>Tipo Serviço</th><th>Nome Fantasia</th><th>Resultado Análise</th></tr></thead><tbody id="tbody-biometria-lista"></tbody></table></div><div id="biometria-lista-vazia" class="p-4 text-center text-muted" style="display:none;">Nenhum registro encontrado.</div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
     <div class="modal fade" id="modal-ligacoes-auditoria" tabindex="-1">
@@ -1319,14 +1388,8 @@
                 if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
                 $('#audit-data-agendamento').val(v.data_agendamento || ''); $('#audit-turno-agendamento').val(v.periodo_agendamento || ''); $('#script-obs-venda').val(v.observacoes || '');
                 
-                // Exibir informação de telefone fixo
                 const temFixo = v.tem_fixo === true || v.tem_fixo === 'true' || v.tem_fixo === 1;
-                const fixoDisplay = $('#audit-tem-fixo-display');
-                if (temFixo) {
-                    fixoDisplay.html('<span style="font-size: 0.8rem; font-weight: 600; color: #198754;">Sim</span>');
-                } else {
-                    fixoDisplay.html('<span style="font-size: 0.8rem; font-weight: 600; color: #6c757d;">Não</span>');
-                }
+                $('#audit-tem-fixo').val(temFixo ? 'true' : 'false');
                 
                 $('#repro-data').val(v.data_abertura ? v.data_abertura.split('T')[0] : '');
 
@@ -1465,7 +1528,8 @@
                 telefone1: $('#audit-tel1').val(), telefone2: $('#audit-tel2').val(),
                 cep: $('#audit-cep').val(), logradouro: $('#audit-logradouro').val(), numero: $('#audit-numero').val(), complemento: $('#audit-complemento').val(),
                 bairro: $('#audit-bairro').val(), cidade: $('#audit-cidade').val(), estado: $('#audit-uf').val(), referencia: $('#audit-ref').val(),
-                plano: $('#audit-plano').val(), forma_pagamento: $('#audit-pagamento').val(), data_agendamento: $('#audit-data-agendamento').val(), periodo_agendamento: $('#audit-turno-agendamento').val(),
+                plano: $('#audit-plano').val(), forma_pagamento: $('#audit-pagamento').val(), tem_fixo: $('#audit-tem-fixo').val() === 'true',
+                data_agendamento: $('#audit-data-agendamento').val(), periodo_agendamento: $('#audit-turno-agendamento').val(),
                 observacoes: $('#script-obs-venda').val(),
                 cpf_representante_legal: $('#audit-cpf-rep').val(),
                 nome_representante_legal: $('#audit-nome-rep').val()
@@ -1502,6 +1566,7 @@
                 ponto_referencia: d.referencia || null,
                 plano: d.plano || null,
                 forma_pagamento: d.forma_pagamento || null,
+                tem_fixo: d.tem_fixo === true || d.tem_fixo === 'true',
                 data_agendamento: d.data_agendamento || null,
                 periodo_agendamento: d.periodo_agendamento || null,
                 cpf_representante_legal: d.cpf_representante_legal || null,
@@ -1773,11 +1838,325 @@
             enviarFinalizacao('AUDITADA', $('#script-obs-venda').val(), coletarDadosAuditoria()); 
         }
 
+
+        function limparCamposSemSlot() {
+            $('#agenda-sem-slot-check').prop('checked', false);
+            $('#agenda-data-desejada').val('');
+            $('#agenda-turno-desejado').val('');
+            $('#agenda-imagem-sem-slot').val('');
+            $('#agenda-imagem-sem-slot-nome').hide().text('');
+            $('#sem-slot-feedback').text('');
+            $('#campos-sem-slot').hide();
+        }
+
+        function togglePainelSemSlot() {
+            const on = $('#agenda-sem-slot-check').is(':checked');
+            $('#campos-sem-slot').toggle(on);
+            if (!on) {
+                $('#agenda-data-desejada').val('');
+                $('#agenda-turno-desejado').val('');
+                $('#agenda-imagem-sem-slot').val('');
+                $('#agenda-imagem-sem-slot-nome').hide().text('');
+                $('#sem-slot-feedback').text('');
+            }
+        }
+
+        function montarEnderecoCompletoAuditoria() {
+            function toTitleCase(str) {
+                return (str || '').toLowerCase().replace(/\b\w+/g, function(txt) {
+                    return txt.charAt(0).toUpperCase() + txt.substr(1);
+                });
+            }
+            const cep = ($('#audit-cep').val() || '').trim();
+            const logradouro = toTitleCase($('#audit-logradouro').val());
+            const numero = ($('#audit-numero').val() || '').trim();
+            const complemento = toTitleCase($('#audit-complemento').val());
+            const bairro = toTitleCase($('#audit-bairro').val());
+            const cidade = toTitleCase($('#audit-cidade').val());
+            const uf = ($('#audit-uf').val() || '').toUpperCase();
+            const ref = toTitleCase($('#audit-ref').val());
+            let endereco = `${logradouro}, ${numero}`;
+            if (complemento) endereco += `, ${complemento}`;
+            endereco += `, ${bairro}, ${cidade} - ${uf}, ${cep}`;
+            if (ref) endereco += `, ${ref}`;
+            return endereco;
+        }
+
+        function validarEnderecoCompletoAuditoria() {
+            const campos = [
+                ['CEP', $('#audit-cep').val()],
+                ['Logradouro', $('#audit-logradouro').val()],
+                ['Número', $('#audit-numero').val()],
+                ['Bairro', $('#audit-bairro').val()],
+                ['Cidade', $('#audit-cidade').val()],
+                ['UF', $('#audit-uf').val()],
+            ];
+            const faltando = campos.filter((c) => !(c[1] || '').trim()).map((c) => c[0]);
+            if (faltando.length) {
+                alert('Preencha o endereço completo na aba 3. Endereço: ' + faltando.join(', '));
+                return false;
+            }
+            return true;
+        }
+
+        function validarCamposSemSlot() {
+            const dt = $('#agenda-data-desejada').val();
+            const tr = $('#agenda-turno-desejado').val();
+            const arquivo = document.getElementById('agenda-imagem-sem-slot').files[0];
+            if (!dt || !tr) {
+                alert('Informe a data e o turno desejados pelo cliente.');
+                return false;
+            }
+            if (!arquivo) {
+                alert('Anexe ou capture o print do PAP (obrigatório).');
+                return false;
+            }
+            const tel1 = ($('#audit-tel1').val() || vendaEmAuditoria?.telefone1 || '').trim();
+            if (!tel1) {
+                alert('Informe ao menos o telefone 1 (WhatsApp) na aba Contato.');
+                return false;
+            }
+            return true;
+        }
+
+        function coletarPayloadSemSlot(os) {
+            const input = document.getElementById('agenda-imagem-sem-slot');
+            return {
+                venda_id: vendaEmAuditoria.id,
+                ordem_servico: os,
+                uf: ($('#audit-uf').val() || '').toUpperCase(),
+                endereco_completo: montarEnderecoCompletoAuditoria(),
+                data_desejada_cliente: $('#agenda-data-desejada').val(),
+                turno_desejado_cliente: $('#agenda-turno-desejado').val(),
+                telefone1: ($('#audit-tel1').val() || vendaEmAuditoria?.telefone1 || '').trim(),
+                telefone2: ($('#audit-tel2').val() || vendaEmAuditoria?.telefone2 || '').trim(),
+                imagemFile: input.files[0],
+            };
+        }
+
+        async function enviarSemSlotGC(payload) {
+            const fd = new FormData();
+            fd.append('venda_id', payload.venda_id);
+            fd.append('ordem_servico', payload.ordem_servico);
+            fd.append('uf', payload.uf);
+            fd.append('endereco_completo', payload.endereco_completo);
+            fd.append('data_desejada_cliente', payload.data_desejada_cliente);
+            fd.append('turno_desejado_cliente', payload.turno_desejado_cliente);
+            fd.append('telefone1', payload.telefone1);
+            fd.append('telefone2', payload.telefone2 || '');
+            fd.append('imagem', payload.imagemFile, payload.imagemFile.name || 'print_pap.jpg');
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`${API_AUX}/auditoria/sem-slot/enviar/`, {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                body: fd,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.detail || 'Erro ao enviar comunicação ao GC.');
+            }
+            return data;
+        }
+
+        let capturaPapStreamAtivo = null;
+        let capturaPapCancelada = false;
+
+        function cancelarCapturaPAP() {
+            capturaPapCancelada = true;
+            if (capturaPapStreamAtivo) {
+                capturaPapStreamAtivo.getTracks().forEach((t) => t.stop());
+                capturaPapStreamAtivo = null;
+            }
+            const overlay = document.getElementById('overlay-captura-pap');
+            if (overlay) overlay.style.display = 'none';
+            const feedback = document.getElementById('sem-slot-feedback');
+            if (feedback) feedback.textContent = 'Captura cancelada.';
+        }
+
+        function aplicarCarimboDataHoraNoCanvas(canvas) {
+            const ctx = canvas.getContext('2d');
+            const texto = 'Capturado em ' + new Date().toLocaleString('pt-BR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+            });
+            const barH = Math.max(32, Math.round(canvas.height * 0.04));
+            const fontSize = Math.max(14, Math.round(barH * 0.45));
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+            ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(texto, 14, canvas.height - barH / 2);
+        }
+
+        function aguardarContagemCapturaPAP(segundos, surface) {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('overlay-captura-pap');
+                const numEl = document.getElementById('captura-pap-contagem');
+                const msgEl = document.getElementById('captura-pap-mensagem');
+                if (!overlay || !numEl) {
+                    setTimeout(() => resolve(capturaPapCancelada), segundos * 1000);
+                    return;
+                }
+                const soMonitor = surface === 'monitor' || surface === 'window';
+                if (msgEl) {
+                    msgEl.textContent = 'Compartilhamento ativo! Vá para a aba do PAP Nio agora (Alt+Tab). Deixe a barra do Windows com o relógio visível.';
+                }
+                overlay.style.display = 'flex';
+                let restante = segundos;
+                numEl.textContent = String(restante);
+                const tick = () => {
+                    if (capturaPapCancelada) {
+                        overlay.style.display = 'none';
+                        resolve(true);
+                        return;
+                    }
+                    if (restante <= 0) {
+                        overlay.style.display = 'none';
+                        resolve(false);
+                        return;
+                    }
+                    numEl.textContent = String(restante);
+                    restante -= 1;
+                    setTimeout(tick, 1000);
+                };
+                setTimeout(tick, 1000);
+            });
+        }
+
+        async function capturarFrameDoStream(stream) {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            await video.play();
+            await new Promise((r) => setTimeout(r, 150));
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            return { canvas, video };
+        }
+
+        async function capturarTelaPAP() {
+            const feedback = document.getElementById('sem-slot-feedback');
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                feedback.textContent = 'Captura de tela não suportada neste navegador. Use o upload de imagem.';
+                return;
+            }
+            const ok = confirm(
+                'Captura por Tela inteira:\n\n' +
+                '1. No diálogo do Edge, clique em "Tela inteira" (não em "Guia").\n' +
+                '2. Selecione o monitor e clique em Compartilhar.\n' +
+                '3. Você terá 5 segundos para ir à aba do PAP (Alt+Tab).\n\n' +
+                'Deixe a barra do Windows (com o relógio) visível.'
+            );
+            if (!ok) return;
+
+            capturaPapCancelada = false;
+            feedback.textContent = 'Escolha "Tela inteira" no diálogo e clique em Compartilhar...';
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: 'never', displaySurface: 'monitor' },
+                    audio: false,
+                    preferCurrentTab: false,
+                });
+                capturaPapStreamAtivo = stream;
+                const track = stream.getVideoTracks()[0];
+                const surface = track && track.getSettings ? (track.getSettings().displaySurface || '') : '';
+                if (surface === 'browser') {
+                    stream.getTracks().forEach((t) => t.stop());
+                    capturaPapStreamAtivo = null;
+                    feedback.textContent = 'Você compartilhou só uma aba. Clique de novo e escolha "Tela inteira".';
+                    return;
+                }
+                const cancelou = await aguardarContagemCapturaPAP(5, surface);
+                if (cancelou || capturaPapCancelada) {
+                    if (stream) stream.getTracks().forEach((t) => t.stop());
+                    capturaPapStreamAtivo = null;
+                    return;
+                }
+                const { canvas } = await capturarFrameDoStream(stream);
+                stream.getTracks().forEach((t) => t.stop());
+                capturaPapStreamAtivo = null;
+
+                const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+                if (!blob) throw new Error('Falha ao gerar imagem.');
+                const file = new File([blob], `print_pap_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                document.getElementById('agenda-imagem-sem-slot').files = dt.files;
+                const nomeEl = document.getElementById('agenda-imagem-sem-slot-nome');
+                nomeEl.textContent = file.name + ' (tela inteira)';
+                nomeEl.style.display = 'block';
+                feedback.textContent = 'Captura salva. Confira se o PAP e o relógio do Windows aparecem na imagem.';
+            } catch (e) {
+                if (stream) stream.getTracks().forEach((t) => t.stop());
+                capturaPapStreamAtivo = null;
+                document.getElementById('overlay-captura-pap').style.display = 'none';
+                if (e && e.name === 'NotAllowedError') {
+                    feedback.textContent = 'Captura cancelada. Você pode enviar o print pelo upload.';
+                } else {
+                    feedback.textContent = 'Não foi possível capturar. Use Win+Shift+S e anexe o JPG.';
+                }
+            }
+        }
+
+        async function verificarOsJaCadastrada(os, vendaId) {
+            const qs = new URLSearchParams({ ordem_servico: os });
+            if (vendaId) qs.set('venda_id', String(vendaId));
+            return apiFetch(`${API_BASE}/verificar-os-cadastrada/?${qs.toString()}`);
+        }
+
+        const modalRelSemSlot = document.getElementById('modal-relatorio-sem-slot')
+            ? new bootstrap.Modal(document.getElementById('modal-relatorio-sem-slot')) : null;
+
+        function abrirModalRelatorioSemSlot() {
+            const hoje = new Date().toISOString().slice(0, 10);
+            document.getElementById('rel-sem-slot-data-inicio').value = hoje;
+            document.getElementById('rel-sem-slot-data-fim').value = hoje;
+            if (modalRelSemSlot) modalRelSemSlot.show();
+        }
+
+        async function baixarRelatorioSemSlot() {
+            const di = document.getElementById('rel-sem-slot-data-inicio').value;
+            const df = document.getElementById('rel-sem-slot-data-fim').value;
+            if (!di || !df) { alert('Informe data início e fim.'); return; }
+            const token = localStorage.getItem('accessToken');
+            try {
+                const qs = `data_inicio=${encodeURIComponent(di)}&data_fim=${encodeURIComponent(df)}`;
+                const res = await fetch(`${API_AUX}/auditoria/sem-slot/relatorio/?${qs}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.detail || 'Erro ao gerar relatório.');
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = di === df
+                    ? `auditoria_sem_slot_${di.replace(/-/g, '')}.xlsx`
+                    : `auditoria_sem_slot_${di.replace(/-/g, '')}_${df.replace(/-/g, '')}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                if (modalRelSemSlot) modalRelSemSlot.hide();
+            } catch (e) {
+                alert('Erro ao baixar relatório: ' + (e.message || e));
+            }
+        }
+
         function prepararAgendamento() {
             if(!validarAuditoriaCompleta()) return;
             if(!validarChecklist()) return;
             const d = coletarDadosAuditoria();
             modalAuditoria.hide(); 
+            limparCamposSemSlot();
             $('#agenda-os').val(vendaEmAuditoria.ordem_servico || '');
             $('#agenda-obs').val($('#script-obs-venda').val());
             if(d.data_agendamento) $('#agenda-data-final').val(d.data_agendamento); 
@@ -1823,19 +2202,30 @@
             const obs = $('#agenda-obs').val();
             if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
             if(!validarFormatoOs(os, 'CADASTRADA')) return;
+            const semSlot = $('#agenda-sem-slot-check').is(':checked');
+            if (semSlot) {
+                if (!validarEnderecoCompletoAuditoria()) return;
+                if (!validarCamposSemSlot()) return;
+            }
             const tel2Bruto = ($('#audit-tel2').val() || '').trim();
             if (tel2Bruto && normalizarTelefone(tel2Bruto).length !== 11) {
                 alert('Telefone 2 inválido na aba Contato. Use 11 dígitos (ex: (37) 98855-74087) ou deixe em branco.');
                 return;
             }
+            const semSlotPayload = semSlot ? coletarPayloadSemSlot(os) : null;
             $('#loadingOverlay').show();
             try {
+                const dup = await verificarOsJaCadastrada(os, vendaEmAuditoria?.id);
+                if (dup && dup.existe) {
+                    alert(dup.detail || 'Este pedido (O.S.) já foi cadastrado no sistema.');
+                    $('#loadingOverlay').hide();
+                    return;
+                }
                 const res = await apiFetch(`${API_AUX}/status/?tipo=Esteira`);
                 const lista = Array.isArray(res) ? res : (res.results || []);
                 const st = lista.find(s => s.nome.toUpperCase() === 'AGENDADO'); 
                 if(!st) throw new Error("Status AGENDADO sumiu.");
                 
-                // Salva rascunho com todos os dados antes de finalizar
                 await salvarRascunhoAuditoria({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id });
                 
                 const d = coletarDadosAuditoria(); 
@@ -1843,17 +2233,36 @@
                 d.data_agendamento = dt; 
                 d.periodo_agendamento = tr;
                 d.observacoes = obs;
-                enviarFinalizacao('CADASTRADA', obs, d, false, true);
+                enviarFinalizacao('CADASTRADA', obs, d, false, true, semSlotPayload);
             } catch(e) { 
                 alert(mensagemErroAmigavel(e, 'Erro ao confirmar agendamento.')); 
                 $('#loadingOverlay').hide(); 
             }
         }
 
-        function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false) {
+        function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false, semSlotPayload=null) {
             return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { method: 'POST', body: JSON.stringify({ status: st, observacoes: obs, dados_atualizados: dados }) })
-            .then(() => { alert('Salvo!'); if(fechaRep) modalReprovacao.hide(); modalAgendamento.hide(); modalAuditoria.hide(); if(abreZap) gerarAprovacaoMsg(dados); else carregarVendasPendentes(); })
-            .catch(e => { console.error(e); alert(mensagemErroAmigavel(e, 'Erro ao finalizar.')); })
+            .then(async () => {
+                let msg = 'Salvo!';
+                if (semSlotPayload) {
+                    try {
+                        const r = await enviarSemSlotGC(semSlotPayload);
+                        msg += ' ' + (r.detail || 'Comunicação enviada ao GC e Diretoria.');
+                        if (r.success === false) msg = 'Salvo, porém: ' + (r.detail || 'verifique o envio ao GC.');
+                    } catch (e) {
+                        msg = 'Salvo como CADASTRADA, mas falha ao notificar GC: ' + (e.message || e);
+                    }
+                    limparCamposSemSlot();
+                }
+                alert(msg);
+                if(fechaRep) modalReprovacao.hide();
+                modalAgendamento.hide();
+                modalAuditoria.hide();
+                $('#loadingOverlay').hide();
+                if(abreZap) gerarAprovacaoMsg(dados);
+                else carregarVendasPendentes();
+            })
+            .catch(e => { console.error(e); alert(mensagemErroAmigavel(e, 'Erro ao finalizar.')); $('#loadingOverlay').hide(); })
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
         }
 

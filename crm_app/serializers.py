@@ -506,6 +506,14 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'ordem_servico': 'O.S obrigatória e válida para status INSTALADA/CADASTRADA. Use 8 dígitos ou X-12DÍGITOS.'
             })
+
+        if request and 'bloquear_atualizacao_status_osab' in data:
+            if not is_member(request.user, ['Diretoria', 'Admin']):
+                if self.instance is not None:
+                    data['bloquear_atualizacao_status_osab'] = self.instance.bloquear_atualizacao_status_osab
+                else:
+                    data.pop('bloquear_atualizacao_status_osab', None)
+
         return data
 
     def _get_field_repr(self, instance_value):

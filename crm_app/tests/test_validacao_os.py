@@ -101,3 +101,36 @@ class FinalizarAuditoriaOsTests(BaseOsFixtureMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         venda.refresh_from_db()
         self.assertEqual(venda.ordem_servico, "08907507")
+
+    def test_bloqueia_cadastrada_os_ja_cadastrada_em_outra_venda(self):
+        venda1 = self.criar_venda()
+        venda2 = self.criar_venda()
+        payload1 = {
+            "status": "CADASTRADA",
+            "observacoes": "Primeira",
+            "dados_atualizados": {"ordem_servico": "08907507"},
+        }
+        r1 = self.client.post(f"/api/crm/vendas/{venda1.id}/finalizar_auditoria/", payload1, format="json")
+        self.assertEqual(r1.status_code, status.HTTP_200_OK)
+
+        payload2 = {
+            "status": "CADASTRADA",
+            "observacoes": "Duplicata",
+            "dados_atualizados": {"ordem_servico": "08907507"},
+        }
+        r2 = self.client.post(f"/api/crm/vendas/{venda2.id}/finalizar_auditoria/", payload2, format="json")
+        self.assertEqual(r2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("já foi cadastrado", str(r2.data))
+
+    def test_verificar_os_cadastrada_endpoint(self):
+        venda = self.criar_venda()
+        Venda.objects.filter(pk=venda.pk).update(ordem_servico="4-212051254235")
+        venda.status_tratamento = self.status_cadastrada
+        venda.save(update_fields=["status_tratamento"])
+
+        r = self.client.get(
+            "/api/crm/vendas/verificar-os-cadastrada/",
+            {"ordem_servico": "4-212051254235", "venda_id": 99999},
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertTrue(r.data.get("existe"))

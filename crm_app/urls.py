@@ -176,6 +176,8 @@ from .auditoria_ligacoes_api import (
     AuditoriaLigacaoStartView,
     AuditoriaLigacaoWebhookView,
 )
+from .auditoria_sem_slot_api import AuditoriaSemSlotEnviarView, AuditoriaSemSlotRelatorioView
+from .pendencia_indevida_api import PendenciaIndevidaRegistrarView, PendenciaIndevidaRelatorioView
 from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWppTentativaListView
 
 router = DefaultRouter()
@@ -396,6 +398,14 @@ urlpatterns = [
     path('antecipar-instalacao/config/', ConfigAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-config'),
     path('antecipar-instalacao/historico/', HistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico'),
     path('antecipar-instalacao/solicitacao/<int:pk>/resposta/', RespostaGCAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-resposta-gc'),
+
+    # --- Auditoria: sem slot na agenda (comunicação GC) ---
+    path('auditoria/sem-slot/enviar/', AuditoriaSemSlotEnviarView.as_view(), name='auditoria-sem-slot-enviar'),
+    path('auditoria/sem-slot/relatorio/', AuditoriaSemSlotRelatorioView.as_view(), name='auditoria-sem-slot-relatorio'),
+
+    # --- Esteira: pendência indevida ---
+    path('pendencia-indevida/registrar/', PendenciaIndevidaRegistrarView.as_view(), name='pendencia-indevida-registrar'),
+    path('pendencia-indevida/relatorio/', PendenciaIndevidaRelatorioView.as_view(), name='pendencia-indevida-relatorio'),
 
     # --- Auditoria de ligações (Sonax click2call / Zenvia Voice) ---
     path('auditoria/ligacoes/opcoes/', AuditoriaLigacaoOpcoesView.as_view(), name='auditoria-ligacao-opcoes'),

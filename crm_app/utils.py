@@ -909,3 +909,39 @@ def consultar_andamento_agendamentos(telefone_vendedor=None):
         mensagens.append("\n")
     
     return "".join(mensagens).strip()
+
+
+def buscar_venda_os_ja_cadastrada(ordem_servico, excluir_venda_id=None):
+    """
+    Retorna outra venda com a mesma O.S. já em status de tratamento CADASTRADA.
+    excluir_venda_id: venda atual (auditoria em andamento) — não conta como duplicata.
+    """
+    from .models import Venda
+
+    os_val = (ordem_servico or '').strip()
+    if not os_val:
+        return None
+    qs = Venda.objects.filter(
+        ordem_servico__iexact=os_val,
+        status_tratamento__nome__iexact='CADASTRADA',
+    ).select_related('cliente', 'vendedor', 'status_tratamento')
+    if excluir_venda_id:
+        qs = qs.exclude(pk=excluir_venda_id)
+    return qs.first()
+
+
+def mensagem_os_ja_cadastrada(ordem_servico, venda_existente):
+    """Texto padrão para bloqueio de O.S. duplicada."""
+    os_val = (ordem_servico or '').strip()
+    vid = getattr(venda_existente, 'id', None)
+    cliente = ''
+    if venda_existente and getattr(venda_existente, 'cliente', None):
+        cliente = venda_existente.cliente.nome_razao_social or ''
+    base = f'O pedido (O.S. {os_val}) já foi cadastrado no sistema'
+    if vid:
+        base += f' (venda #{vid}'
+        if cliente:
+            base += f' — {cliente}'
+        base += ')'
+    base += '.'
+    return base
