@@ -20,17 +20,21 @@ def _montar_resumo_mes(vendas_qs, inicio_mes, fim_mes):
     from crm_app.views import _filtro_data_efetiva_instalacao_intervalo_venda
 
     filtro_abertura = Q(data_abertura__date__gte=inicio_mes) & Q(data_abertura__date__lte=fim_mes)
+    filtro_inst_mes = _filtro_data_efetiva_instalacao_intervalo_venda(inicio_mes, fim_mes)
+    filtro_inst = Q(status_esteira__nome__iexact='INSTALADA')
+
     cohort = vendas_qs.filter(filtro_abertura)
     total = cohort.count()
-    instaladas = cohort.filter(
-        status_esteira__nome__iexact='INSTALADA',
-    ).filter(
-        _filtro_data_efetiva_instalacao_intervalo_venda(inicio_mes, fim_mes),
-    ).count()
+
+    # Instaladas no mês: data efetiva no período (independente do mês de abertura da O.S.)
+    instaladas = vendas_qs.filter(filtro_inst).filter(filtro_inst_mes).count()
+
+    # Aproveitamento: O.S. abertas no mês que foram instaladas (data efetiva) no mesmo mês
+    instaladas_cohort = cohort.filter(filtro_inst).filter(filtro_inst_mes).count()
     pend = cohort.filter(status_esteira__nome__icontains='PENDEN').count()
     agend = cohort.filter(status_esteira__nome__iexact='AGENDADO').count()
     canc = cohort.filter(status_esteira__nome__icontains='CANCELAD').count()
-    aprov = round((instaladas / total * 100.0), 2) if total > 0 else 0.0
+    aprov = round((instaladas_cohort / total * 100.0), 2) if total > 0 else 0.0
     return {
         'total_abertas': total,
         'instaladas': instaladas,
@@ -79,7 +83,11 @@ def _agregar_por_vendedor(users_qs, inicio_mes, fim_mes):
 
     qs = users_qs.annotate(
         total=Count('vendas', filter=filtro_os & filtro_abertura),
-        instaladas=Count('vendas', filter=filtro_os & filtro_abertura & filtro_inst_mes & filtro_inst),
+        instaladas=Count('vendas', filter=filtro_os & filtro_inst_mes & filtro_inst),
+        instaladas_cohort=Count(
+            'vendas',
+            filter=filtro_os & filtro_abertura & filtro_inst_mes & filtro_inst,
+        ),
         pend=Count(
             'vendas',
             filter=filtro_os & filtro_abertura & Q(vendas__status_esteira__nome__icontains='PENDEN'),
@@ -92,19 +100,22 @@ def _agregar_por_vendedor(users_qs, inicio_mes, fim_mes):
             'vendas',
             filter=filtro_os & filtro_abertura & Q(vendas__status_esteira__nome__icontains='CANCELAD'),
         ),
-    ).values('id', 'username', 'cluster', 'total', 'instaladas', 'pend', 'agend', 'canc').order_by('username')
+    ).values(
+        'id', 'username', 'cluster', 'total', 'instaladas', 'instaladas_cohort', 'pend', 'agend', 'canc',
+    ).order_by('username')
 
     lista = []
     for u in qs:
         tot = int(u['total'] or 0)
         inst = int(u['instaladas'] or 0)
+        inst_cohort = int(u['instaladas_cohort'] or 0)
         lista.append({
             'vendedor_id': u['id'],
             'vendedor': (u['username'] or '').upper(),
             'cluster': u.get('cluster') or '-',
             'total': tot,
             'instaladas': inst,
-            'aproveitamento': round((inst / tot * 100.0), 2) if tot > 0 else 0.0,
+            'aproveitamento': round((inst_cohort / tot * 100.0), 2) if tot > 0 else 0.0,
             'pend': int(u['pend'] or 0),
             'agend': int(u['agend'] or 0),
             'canc': int(u['canc'] or 0),
@@ -308,8 +319,8 @@ class GestaoAproveitamentoEsteiraView(APIView):
             'eventos_esteira': _metricas_eventos_esteira(user_ids, inicio_mes, fim_mes),
             'notas': {
                 'aproveitamento': (
-                    'Instaladas com data efetiva no mês ÷ O.S. abertas no mês (status atual da cohort). '
-                    'Alinhado ao Painel de Performance.'
+                    'O.S. abertas no mês e instaladas (data efetiva) no mesmo mês ÷ total abertas no mês. '
+                    'O card Instaladas conta toda instalação com data efetiva no mês, independente da abertura.'
                 ),
                 'pendencias_operacional': 'Foto atual: pedidos pendentes na esteira (status aberto).',
                 'pendencias_cohort_mes': 'O.S. abertas no mês que estão pendentes agora.',

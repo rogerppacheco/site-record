@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.utils import timezone
 from rest_framework import status
@@ -57,3 +57,27 @@ class GestaoAproveitamentoEsteiraTests(APITestCase):
         self.assertIn("resumo", r.data)
         self.assertIn("por_vendedor", r.data)
         self.assertIn("aproveitamento", r.data["resumo"])
+
+    def test_instaladas_conta_data_efetiva_mes_independente_abertura(self):
+        hoje = timezone.localdate()
+        inicio_mes = hoje.replace(day=1)
+        mes_anterior = (inicio_mes - timedelta(days=1)).replace(day=15)
+
+        Venda.objects.create(
+            vendedor=self.vendedor,
+            cliente=self.cliente,
+            status_tratamento=self.st_cad,
+            status_esteira=self.st_inst,
+            ordem_servico="87654321",
+            data_abertura=timezone.make_aware(
+                datetime.combine(mes_anterior, datetime.min.time())
+            ),
+            data_instalacao=hoje,
+            ativo=True,
+        )
+        self.client.force_authenticate(user=self.gestor)
+        mes = hoje.strftime("%Y-%m")
+        r = self.client.get(f"/api/crm/esteira/gestao-aproveitamento/?mes_referencia={mes}")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(r.data["resumo"]["instaladas"], 1)
+        self.assertEqual(r.data["resumo"]["total_abertas"], 0)
