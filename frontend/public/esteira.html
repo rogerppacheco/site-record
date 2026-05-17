@@ -707,14 +707,14 @@
                                 <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-exclamation-triangle me-1"></i> Pendências na esteira (agora)</h6>
                                 <div class="table-responsive border rounded mb-3">
                                     <table class="table table-sm table-hover table-gestao-aprov mb-0">
-                                        <thead><tr><th class="text-start ps-2">Tipo</th><th class="text-start">Motivo</th><th>Qtd</th><th>% vendas</th></tr></thead>
+                                        <thead><tr><th class="text-start ps-2">Tipo</th><th class="text-start">Motivo</th><th>Qtd</th><th>% vendas</th><th>% pend.</th></tr></thead>
                                         <tbody id="gestao-aprov-tbody-pend-op"></tbody>
                                     </table>
                                 </div>
                                 <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-calendar-month me-1"></i> Cohort do mês (abertas e pendentes)</h6>
                                 <div class="table-responsive border rounded mb-3">
                                     <table class="table table-sm table-hover table-gestao-aprov mb-0">
-                                        <thead><tr><th class="text-start ps-2">Tipo</th><th class="text-start">Motivo</th><th>Qtd</th><th>% vendas</th></tr></thead>
+                                        <thead><tr><th class="text-start ps-2">Tipo</th><th class="text-start">Motivo</th><th>Qtd</th><th>% vendas</th><th>% pend.</th></tr></thead>
                                         <tbody id="gestao-aprov-tbody-pend-cohort"></tbody>
                                     </table>
                                 </div>
@@ -2855,12 +2855,12 @@
                     .filter(u => u && u.id && u.is_active !== false)
                     .filter(u => !excluir.has(String(u.username || '').toUpperCase()))
                     .sort((a, b) => {
-                        const na = (a.nome_completo || a.username || '').toUpperCase();
-                        const nb = (b.nome_completo || b.username || '').toUpperCase();
+                        const na = String(a.username || '').toUpperCase();
+                        const nb = String(b.username || '').toUpperCase();
                         return na.localeCompare(nb, 'pt-BR');
                     })
                     .forEach(u => {
-                        const label = (u.nome_completo || u.username || '').trim();
+                        const label = String(u.username || '').trim();
                         opts.push(`<option value="${u.id}">${label.toUpperCase()}</option>`);
                     });
                 sel.innerHTML = opts.join('');
@@ -2873,21 +2873,29 @@
         function renderTabelaGestaoPendencias(tbodyId, rows, totalVendas) {
             const tb = document.getElementById(tbodyId);
             if (!tb) return;
-            const base = Number(totalVendas) || 0;
-            const pct = (qtd) => {
+            const baseVendas = Number(totalVendas) || 0;
+            const lista = rows || [];
+            const totalPend = lista.reduce((s, r) => s + (Number(r.qtd) || 0), 0);
+            const pctVendas = (qtd) => {
                 const v = Number(qtd) || 0;
-                if (!base) return '—';
-                return ((v / base) * 100).toFixed(1) + '%';
+                if (!baseVendas) return '—';
+                return ((v / baseVendas) * 100).toFixed(1) + '%';
             };
-            if (!rows || !rows.length) {
-                tb.innerHTML = '<tr><td colspan="4" class="text-muted py-2">Nenhum registro.</td></tr>';
+            const pctPendencias = (qtd) => {
+                const v = Number(qtd) || 0;
+                if (!totalPend) return '—';
+                return ((v / totalPend) * 100).toFixed(1) + '%';
+            };
+            if (!lista.length) {
+                tb.innerHTML = '<tr><td colspan="5" class="text-muted py-2">Nenhum registro.</td></tr>';
                 return;
             }
-            tb.innerHTML = rows.map(r => `<tr>
+            tb.innerHTML = lista.map(r => `<tr>
                 <td class="text-start ps-2">${r.tipo}</td>
                 <td class="text-start">${r.motivo}</td>
                 <td>${r.qtd}</td>
-                <td class="text-muted">${pct(r.qtd)}</td>
+                <td class="text-muted">${pctVendas(r.qtd)}</td>
+                <td class="text-muted">${pctPendencias(r.qtd)}</td>
             </tr>`).join('');
         }
 
