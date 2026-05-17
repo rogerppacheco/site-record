@@ -6250,7 +6250,7 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
 
             nome_arquivo = arquivo.nome_original
             if arquivo.tipo_arquivo == 'IMAGEM':
-                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}"
                 sessao.dados_temp = {
                     'material_para_envio': {
                         'tipo': 'IMAGEM',
@@ -6275,7 +6275,7 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
                         )
                     except Exception as e:
                         logger.warning("[Webhook] Erro OneDrive para material: %s", e)
-                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}"
                 material_data = {
                     'tipo': 'DOCUMENTO',
                     'nome': nome_arquivo,
@@ -8890,7 +8890,7 @@ def processar_webhook_whatsapp(data, request=None):
                                     
                                     # Preparar mensagem de resposta
                                     if arquivo.tipo_arquivo == 'IMAGEM':
-                                        resposta = f"✅ *MATERIAL SELECIONADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                        resposta = f"✅ *MATERIAL SELECIONADO*\n\n📷 {arquivo.titulo}"
                                         # Armazenar dados do arquivo para envio após a mensagem
                                         sessao.dados_temp = {
                                             'material_para_envio': {
@@ -8934,7 +8934,7 @@ def processar_webhook_whatsapp(data, request=None):
                                                 print(f"[Webhook] ❌ Erro OneDrive: {e}, usando base64")
                                                 pdf_url = None
                                         
-                                        resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                                        resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}"
                                         # Armazenar dados do arquivo para envio após a mensagem
                                         material_data = {
                                             'tipo': 'DOCUMENTO',
