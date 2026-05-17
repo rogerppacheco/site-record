@@ -6310,6 +6310,73 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
     return "\n".join(resposta_parts)
 
 
+_CAPTION_WHATSAPP_MAX = 1024
+
+
+def _truncar_caption_whatsapp(texto, max_len=_CAPTION_WHATSAPP_MAX):
+    """Limita legenda ao tamanho aceito pelo WhatsApp."""
+    if not texto:
+        return ""
+    texto = str(texto).strip()
+    if len(texto) <= max_len:
+        return texto
+    return texto[: max_len - 1].rstrip() + "…"
+
+
+def _caption_padrao_material(material_para_envio):
+    """Legenda mínima quando não há texto de resposta do bot."""
+    titulo = material_para_envio.get('titulo') or material_para_envio.get('nome') or 'Material'
+    if material_para_envio.get('tipo') == 'IMAGEM':
+        caption = f"📷 {titulo}"
+    else:
+        tipo_disp = material_para_envio.get('tipo_display') or 'Documento'
+        caption = f"📄 {titulo}\nTipo: {tipo_disp}"
+    desc = (material_para_envio.get('descricao') or '').strip()
+    if desc:
+        caption += f"\n{desc[:200]}"
+    return _truncar_caption_whatsapp(caption)
+
+
+def _enviar_material_record_apoia_whatsapp(whatsapp_service, telefone, material_para_envio, caption=None):
+    """
+    Envia material Record Apoia (imagem ou documento) com legenda no mesmo envio.
+    Retorna True se a mídia foi enviada com sucesso.
+    """
+    if not material_para_envio:
+        return False
+    legenda = _truncar_caption_whatsapp(caption) if caption else _caption_padrao_material(material_para_envio)
+    try:
+        if material_para_envio.get('tipo') == 'IMAGEM':
+            ok = whatsapp_service.enviar_imagem_b64(
+                telefone, material_para_envio['base64'], legenda
+            )
+        else:
+            pdf_url = material_para_envio.get('url')
+            base64_data = material_para_envio.get('base64', '')
+            nome = material_para_envio.get('nome') or 'documento.pdf'
+            if pdf_url:
+                ok = whatsapp_service.enviar_pdf_url(telefone, pdf_url, nome, caption=legenda)
+            elif base64_data:
+                ok = whatsapp_service.enviar_pdf_b64(telefone, base64_data, nome, caption=legenda)
+            else:
+                logger.error("[Webhook] Material sem url nem base64: %s", nome)
+                return False
+        if ok:
+            logger.info(
+                "[Webhook] ✅ Material enviado com legenda: %s",
+                material_para_envio.get('nome'),
+            )
+        else:
+            logger.error(
+                "[Webhook] ❌ Falha ao enviar material: %s",
+                material_para_envio.get('nome'),
+            )
+        return bool(ok)
+    except Exception as e:
+        logger.error("[Webhook] ❌ Erro ao enviar material com legenda: %s", e)
+        return False
+
+
 def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
     """
     Se a mensagem for do número do GC e no formato [O.S], antecipada|não antecipada|solicitado,
@@ -7082,8 +7149,8 @@ def processar_webhook_whatsapp(data, request=None):
             SessaoWhatsapp.objects.filter(id=sessao.id).update(data_ultimo_aviso_nao_autorizado=hoje)
         return {'status': 'ok', 'mensagem': 'Usuário não autorizado a chamar no bot'}
 
-    def _enviar_material_record_apoia_da_sessao():
-        """Envia imagem/PDF do Record Apoia em sessao.dados_temp['material_para_envio']."""
+    def _enviar_material_record_apoia_da_sessao(caption=None):
+        """Envia material Record Apoia da sessão com legenda (sem mensagem de texto separada)."""
         if not sessao:
             return False
         try:
@@ -7093,57 +7160,10 @@ def processar_webhook_whatsapp(data, request=None):
         material_para_envio = (sessao.dados_temp or {}).get('material_para_envio')
         if not material_para_envio:
             return False
-        logger.info("[Webhook] Material detectado, enviando ANTES da mensagem...")
-        enviado = False
-        try:
-            if material_para_envio.get('tipo') == 'IMAGEM':
-                caption = f"📷 {material_para_envio['titulo']}"
-                if material_para_envio.get('descricao'):
-                    caption += f"\n{material_para_envio['descricao'][:100]}"
-                if whatsapp_service.enviar_imagem_b64(
-                    telefone_formatado, material_para_envio['base64'], caption
-                ):
-                    logger.info(
-                        "[Webhook] ✅ Imagem enviada com sucesso: %s",
-                        material_para_envio.get('nome'),
-                    )
-                    enviado = True
-                else:
-                    logger.error(
-                        "[Webhook] ❌ Falha ao enviar imagem: %s",
-                        material_para_envio.get('nome'),
-                    )
-            else:
-                pdf_url = material_para_envio.get('url')
-                base64_data = material_para_envio.get('base64', '')
-                if pdf_url:
-                    logger.info("[Webhook] Enviando documento via URL")
-                    sucesso = whatsapp_service.enviar_pdf_url(
-                        telefone_formatado, pdf_url, material_para_envio['nome']
-                    )
-                elif base64_data:
-                    logger.info("[Webhook] Enviando documento via base64")
-                    sucesso = whatsapp_service.enviar_pdf_b64(
-                        telefone_formatado, base64_data, material_para_envio['nome']
-                    )
-                else:
-                    logger.error("[Webhook] ❌ Nenhum dado disponível para envio do documento")
-                    sucesso = False
-                if sucesso:
-                    logger.info(
-                        "[Webhook] ✅ Documento enviado com sucesso: %s",
-                        material_para_envio.get('nome'),
-                    )
-                    enviado = True
-                else:
-                    logger.error(
-                        "[Webhook] ❌ Falha ao enviar documento: %s",
-                        material_para_envio.get('nome'),
-                    )
-        except Exception as e:
-            logger.error("[Webhook] ❌ Erro ao enviar material: %s", e)
-            import traceback
-            traceback.print_exc()
+        logger.info("[Webhook] Material detectado, enviando com legenda...")
+        enviado = _enviar_material_record_apoia_whatsapp(
+            whatsapp_service, telefone_formatado, material_para_envio, caption=caption
+        )
         if enviado:
             dados = dict(sessao.dados_temp or {})
             dados.pop('material_para_envio', None)
@@ -7152,14 +7172,15 @@ def processar_webhook_whatsapp(data, request=None):
         return enviado
 
     def _enviar_resposta_e_retornar(resposta_texto):
-        """Envia material (se houver na sessão) e a mensagem ao usuário via Z-API."""
-        _enviar_material_record_apoia_da_sessao()
+        """Envia material com legenda; só manda texto separado se não houver mídia ou se o envio falhar."""
+        caption = None
         if resposta_texto and str(resposta_texto).strip():
+            _elapsed = time.monotonic() - _webhook_t0
+            caption = (resposta_texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
+        material_enviado = _enviar_material_record_apoia_da_sessao(caption=caption)
+        if not material_enviado and caption:
             try:
-                # Provisório: tempo desde o recebimento da mensagem até esta resposta
-                _elapsed = time.monotonic() - _webhook_t0
-                msg_com_tempo = (resposta_texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
-                whatsapp_service.enviar_mensagem_texto(telefone_formatado, msg_com_tempo)
+                whatsapp_service.enviar_mensagem_texto(telefone_formatado, caption)
             except Exception as e:
                 logger.exception(f"[Webhook] Erro ao enviar mensagem ao usuário: {e}")
         return {'status': 'ok', 'mensagem': resposta_texto or 'Processado com sucesso'}
@@ -9128,9 +9149,10 @@ def processar_webhook_whatsapp(data, request=None):
                 sessao.dados_temp.pop('processando_pdf', None)
                 sessao.save(update_fields=['dados_temp', 'updated_at'])
         
-        # PRIMEIRO: Verificar se há PDF para enviar e preparar caption com a resposta
+        # PRIMEIRO: Verificar se há PDF/material para enviar com legenda (resposta do bot)
         arquivo_enviado = False
         pdf_enviado_com_caption = False
+        material_enviado_com_caption = False
         
         if sessao:
             invoice_para_pdf = sessao.dados_temp.get('invoice_para_pdf')
@@ -9236,45 +9258,27 @@ def processar_webhook_whatsapp(data, request=None):
                             logger.warning(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
                     
             elif material_para_envio:
-                logger.info(f"[Webhook] Material detectado, enviando ANTES da mensagem...")
-                try:
-                    import base64
-                    if material_para_envio['tipo'] == 'IMAGEM':
-                        caption = f"📷 {material_para_envio['titulo']}"
-                        if material_para_envio.get('descricao'):
-                            caption += f"\n{material_para_envio['descricao'][:100]}"
-                        resultado_img = whatsapp_service.enviar_imagem_b64(telefone_formatado, material_para_envio['base64'], caption)
-                        if resultado_img:
-                            logger.info(f"[Webhook] ✅ Imagem enviada com sucesso: {material_para_envio['nome']}")
-                            arquivo_enviado = True
-                        else:
-                            logger.error(f"[Webhook] ❌ Falha ao enviar imagem: {material_para_envio['nome']}")
-                    else:  # DOCUMENTO
-                        logger.info(f"[Webhook] 📄 Preparando envio de DOCUMENTO")
-                        pdf_url = material_para_envio.get('url')
-                        base64_data = material_para_envio.get('base64', '')
-                        
-                        if pdf_url:
-                            logger.info(f"[Webhook] Enviando documento via URL")
-                            sucesso = whatsapp_service.enviar_pdf_url(telefone_formatado, pdf_url, material_para_envio['nome'])
-                        elif base64_data:
-                            logger.info(f"[Webhook] Enviando documento via base64")
-                            sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, base64_data, material_para_envio['nome'])
-                        else:
-                            logger.error(f"[Webhook] ❌ Nenhum dado disponível")
-                            sucesso = False
-                        
-                        if sucesso:
-                            logger.info(f"[Webhook] ✅ Documento enviado com sucesso: {material_para_envio['nome']}")
-                            arquivo_enviado = True
-                        else:
-                            logger.error(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
-                except Exception as e:
-                    logger.error(f"[Webhook] ❌ Erro ao enviar material: {e}")
-                    import traceback
-                    traceback.print_exc()
+                caption_material = None
+                if resposta and resposta.strip():
+                    _elapsed_mat = time.monotonic() - _webhook_t0
+                    caption_material = (resposta.strip() + f"\n\n⏱ _{_elapsed_mat:.1f}s_").strip()
+                logger.info("[Webhook] Material detectado, enviando com legenda...")
+                if _enviar_material_record_apoia_whatsapp(
+                    whatsapp_service,
+                    telefone_formatado,
+                    material_para_envio,
+                    caption=caption_material,
+                ):
+                    arquivo_enviado = True
+                    material_enviado_com_caption = True
+                    resposta = None
+                    if sessao:
+                        dados = dict(sessao.dados_temp or {})
+                        dados.pop('material_para_envio', None)
+                        sessao.dados_temp = dados
+                        sessao.save(update_fields=['dados_temp'])
         
-        # DEPOIS: Enviar resposta via WhatsApp (só se houver resposta para enviar E PDF não foi enviado com caption)
+        # DEPOIS: Enviar resposta via WhatsApp (só se não foi enviada como legenda do PDF/material)
         # Idempotência: não enviar duas vezes para o mesmo messageId (Z-API pode reenviar o webhook)
         message_id = (data or {}).get('messageId')
         skip_duplicate = False
@@ -9288,10 +9292,23 @@ def processar_webhook_whatsapp(data, request=None):
                 if message_id in _webhook_reply_message_ids:
                     skip_duplicate = True
                     logger.info(f"[Webhook] Resposta já enviada para messageId={message_id[:20]}..., ignorando duplicata.")
-        # IMPORTANTE: Verificar se resposta não é None, não está vazia e se PDF não foi enviado com caption
-        if resposta and resposta.strip() and not pdf_enviado_com_caption and not skip_duplicate:
-            print(f"[DEBUG] Enviando resposta final: resposta não é None={resposta is not None}, pdf_enviado_com_caption={pdf_enviado_com_caption}")
-            logger.info(f"[Webhook] Enviando resposta final: pdf_enviado_com_caption={pdf_enviado_com_caption}")
+        # IMPORTANTE: Verificar se resposta não foi enviada como legenda de PDF/material
+        if (
+            resposta
+            and resposta.strip()
+            and not pdf_enviado_com_caption
+            and not material_enviado_com_caption
+            and not skip_duplicate
+        ):
+            print(
+                f"[DEBUG] Enviando resposta final: pdf_caption={pdf_enviado_com_caption}, "
+                f"material_caption={material_enviado_com_caption}"
+            )
+            logger.info(
+                "[Webhook] Enviando resposta final (texto): pdf_caption=%s, material_caption=%s",
+                pdf_enviado_com_caption,
+                material_enviado_com_caption,
+            )
             try:
                 # Provisório: tempo desde o recebimento da mensagem até esta resposta
                 _elapsed = time.monotonic() - _webhook_t0
