@@ -2584,6 +2584,14 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         venda_atualizada = serializer.save(**extra_updates)
 
+        try:
+            from crm_app.esteira_eventos_utils import ORIGEM_MANUAL, registrar_e_salvar_eventos_venda_esteira
+            registrar_e_salvar_eventos_venda_esteira(
+                venda_antes, venda_atualizada, ORIGEM_MANUAL, self.request.user,
+            )
+        except Exception:
+            logger.exception('Erro ao registrar eventos da esteira (manual)')
+
         # Quitação do adiantamento sábado ao passar para INSTALADA (evita segundo pagamento na aba Instaladas)
         try:
             _quitar_adiantamento_sabado_na_instalacao(venda_atualizada, status_esteira_antes)
@@ -4875,7 +4883,13 @@ class ImportacaoOsabView(APIView):
                 if obj.documento:
                     osab_existentes[obj.documento] = obj
 
-            osab_criar, osab_atualizar, vendas_atualizar, historicos_criar = [], [], [], []
+            from crm_app.esteira_eventos_utils import (
+                ORIGEM_OSAB,
+                VendaEsteiraSnap,
+                registrar_eventos_venda_esteira,
+            )
+
+            osab_criar, osab_atualizar, vendas_atualizar, historicos_criar, eventos_criar = [], [], [], [], []
             fila_mensagens_whatsapp = [] 
 
             coluna_map = {
@@ -5005,6 +5019,7 @@ class ImportacaoOsabView(APIView):
                     houve_alteracao = False
                     detalhes_hist = {}
                     msg_whatsapp_desta_venda = None
+                    snap_venda_osab = VendaEsteiraSnap.from_venda(venda)
 
                     is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
                     if not sit_osab_raw or is_fraude:
@@ -5177,6 +5192,9 @@ class ImportacaoOsabView(APIView):
                         log_item["detalhe"] = "; ".join([f"{k}: {v}" for k, v in detalhes_hist.items()])
                         vendas_atualizar.append(venda)
                         historicos_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
+                        eventos_criar.extend(
+                            registrar_eventos_venda_esteira(snap_venda_osab, venda, ORIGEM_OSAB, osab_bot)
+                        )
                         if msg_whatsapp_desta_venda and flag_enviar_whatsapp:
                             fila_mensagens_whatsapp.append(msg_whatsapp_desta_venda)
                     else:
@@ -5247,6 +5265,16 @@ class ImportacaoOsabView(APIView):
                             cursor.execute("SET LOCAL statement_timeout = '120000ms'")
                         self._sincronizar_seq_historico()
                         HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
+
+                if eventos_criar:
+                    from crm_app.models import VendaEsteiraEvento
+                    LogImportacaoOSAB.objects.filter(id=log_id).update(
+                        mensagem=f'Salvando eventos esteira: {len(eventos_criar)} registros...'
+                    )
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                        VendaEsteiraEvento.objects.bulk_create(eventos_criar, batch_size=2000)
 
                 try:
                     snap = self._marcar_vendas_ausentes_na_osab(log_id, total_registros, osab_bot)

@@ -1313,6 +1313,53 @@ class AnteciparInstalacaoSolicitacao(models.Model):
         return f"OS {self.ordem_servico} em {self.data_solicitacao.strftime('%d/%m/%Y %H:%M')}"
 
 
+class VendaEsteiraEvento(models.Model):
+    """Timeline de alterações na esteira (status, pendência, agendamento, instalação)."""
+
+    TIPO_EVENTO_CHOICES = [
+        ('STATUS_ESTEIRA', 'Status esteira'),
+        ('MOTIVO_PENDENCIA', 'Motivo pendência'),
+        ('AGENDAMENTO', 'Agendamento'),
+        ('INSTALACAO', 'Instalação (OSAB)'),
+        ('INSTALACAO_FISICA', 'Instalação física'),
+    ]
+    ORIGEM_CHOICES = [
+        ('MANUAL', 'Manual (esteira)'),
+        ('OSAB', 'Importação OSAB'),
+        ('SISTEMA', 'Sistema'),
+    ]
+
+    venda = models.ForeignKey(
+        Venda, on_delete=models.CASCADE, related_name='eventos_esteira', db_index=True,
+    )
+    tipo_evento = models.CharField(max_length=32, choices=TIPO_EVENTO_CHOICES, db_index=True)
+    valor_anterior = models.CharField(max_length=500, blank=True, default='')
+    valor_novo = models.CharField(max_length=500, blank=True, default='')
+    origem = models.CharField(max_length=16, choices=ORIGEM_CHOICES, db_index=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='eventos_esteira_registrados',
+    )
+    motivo_pendencia = models.ForeignKey(
+        MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='eventos_esteira',
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_venda_esteira_evento'
+        verbose_name = 'Evento esteira'
+        verbose_name_plural = 'Eventos esteira'
+        ordering = ['criado_em']
+        indexes = [
+            models.Index(fields=['venda', 'tipo_evento', 'criado_em']),
+            models.Index(fields=['tipo_evento', 'criado_em']),
+        ]
+
+    def __str__(self):
+        return f'Venda #{self.venda_id} {self.tipo_evento} ({self.origem})'
+
+
 class PendenciaIndevidaRegistro(models.Model):
     """Marcação de pendência indevida na esteira (metadado; venda segue PENDENTE normalmente)."""
     venda = models.ForeignKey(

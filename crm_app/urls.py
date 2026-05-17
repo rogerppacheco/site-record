@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 from usuarios.views import LoginView, DefinirNovaSenhaView
 
 # Record Apoia APIs
+from .esteira_gestao_aproveitamento_api import GestaoAproveitamentoEsteiraView
 from .record_apoia_api import (
     RecordApoiaUploadView,
     RecordApoiaListView,
@@ -318,6 +319,7 @@ urlpatterns = [
     # --- Exportação e Lembrete Agendamentos (Esteira) ---
     path('esteira/exportar-agendamentos/', ExportarAgendamentosDiaView.as_view(), name='exportar-agendamentos-dia'),
     path('esteira/enviar-lembrete-instalacao/', EnviarLembreteInstalacaoView.as_view(), name='enviar-lembrete-instalacao'),
+    path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---

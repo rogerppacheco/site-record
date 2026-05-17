@@ -234,6 +234,26 @@
             white-space: normal;
         }
         .table-esteira tbody td.esteira-col-sticky-1 { z-index: 4; }
+
+        .gestao-aprov-kpi {
+            border: 1px solid #e3e6f0;
+            border-radius: 10px;
+            padding: 0.85rem 1rem;
+            background: #fff;
+            height: 100%;
+        }
+        .gestao-aprov-kpi .kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6c757d; font-weight: 600; }
+        .gestao-aprov-kpi .kpi-value { font-size: 1.45rem; font-weight: 700; color: #1e3a5f; line-height: 1.2; }
+        .gestao-aprov-kpi .kpi-pct { font-size: 0.8rem; font-weight: 600; color: #6c757d; margin-left: 0.2rem; }
+        .gestao-aprov-kpi.kpi-primary { border-left: 4px solid #0d6efd; }
+        .gestao-aprov-kpi.kpi-success { border-left: 4px solid #198754; }
+        .gestao-aprov-kpi.kpi-warning { border-left: 4px solid #fd7e14; }
+        .gestao-aprov-kpi.kpi-danger { border-left: 4px solid #dc3545; }
+        .table-gestao-aprov { font-size: 0.82rem; }
+        .table-gestao-aprov thead th { background: #4e73df; color: #fff; text-align: center; vertical-align: middle; font-size: 0.75rem; }
+        .table-gestao-aprov tbody td { text-align: center; vertical-align: middle; }
+        .table-gestao-aprov .text-start { text-align: left !important; }
+        .gestao-aprov-nota { font-size: 0.78rem; color: #6c757d; }
         .table-esteira tbody td.esteira-col-sticky-2 { z-index: 3; }
 
         /* Hover sem transform no <tr>: transform quebra position:sticky nas células */
@@ -485,6 +505,7 @@
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="INSTALADAS" onclick="filtrarStatus('INSTALADAS', this)" title="Vendas já instaladas – ajustar Data instalação (no cliente)">Instaladas</a></li>
                 <li class="nav-item" id="tab-vendas-totais-item"><a class="nav-link" href="#" data-tab="VENDAS_TOTAIS" onclick="filtrarStatus('VENDAS_TOTAIS', this)">Vendas Totais</a></li>
+                <li class="nav-item" id="tab-gestao-aproveitamento-item"><a class="nav-link" href="#" data-tab="GESTAO_APROVEITAMENTO" onclick="filtrarStatus('GESTAO_APROVEITAMENTO', this)">Gestão Aproveitamento</a></li>
             </ul>
 
             <div id="filtro-turno-container" class="mb-3" style="display: none;">
@@ -642,6 +663,79 @@
                 </div>
             </div>
 
+            <div id="painel-gestao-aproveitamento" class="mb-3" style="display: none;">
+                <div class="border rounded bg-white p-2 p-md-3 shadow-sm">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label fw-bold small mb-1" for="gestao-aprov-mes">Mês referência</label>
+                            <input type="month" id="gestao-aprov-mes" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label fw-bold small mb-1" for="gestao-aprov-vendedor">Consultor</label>
+                            <select id="gestao-aprov-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
+                        </div>
+                        <div class="col-12 col-md-3 d-grid d-md-block">
+                            <button type="button" class="btn btn-primary btn-sm w-100" onclick="carregarGestaoAproveitamento()"><i class="bi bi-graph-up me-1"></i>Atualizar indicadores</button>
+                        </div>
+                    </div>
+                    <div id="gestao-aprov-loading" class="text-center text-muted py-4" style="display: none;"><span class="spinner-border spinner-border-sm me-2"></span>Carregando…</div>
+                    <div id="gestao-aprov-conteudo" style="display: none;">
+                        <p id="gestao-aprov-periodo" class="gestao-aprov-nota mb-2"></p>
+                        <div class="row g-2 mb-3" id="gestao-aprov-kpis"></div>
+                        <div class="row g-3">
+                            <div class="col-12 col-xl-7">
+                                <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-people me-1"></i> Por vendedor (O.S. abertas no mês)</h6>
+                                <div class="table-responsive border rounded">
+                                    <table class="table table-sm table-hover table-gestao-aprov mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th class="text-start ps-2">Vendedor</th>
+                                                <th>Cluster</th>
+                                                <th>Total</th>
+                                                <th>Inst.</th>
+                                                <th>Aprov.</th>
+                                                <th>Pend.</th>
+                                                <th>Agend.</th>
+                                                <th>Canc.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="gestao-aprov-tbody-vendedor"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-5">
+                                <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-exclamation-triangle me-1"></i> Pendências na esteira (agora)</h6>
+                                <div class="table-responsive border rounded mb-3">
+                                    <table class="table table-sm table-hover table-gestao-aprov mb-0">
+                                        <thead><tr><th class="text-start ps-2">Tipo</th><th class="text-start">Motivo</th><th>Qtd</th><th>% vendas</th></tr></thead>
+                                        <tbody id="gestao-aprov-tbody-pend-op"></tbody>
+                                    </table>
+                                </div>
+                                <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-calendar-month me-1"></i> Cohort do mês (abertas e pendentes)</h6>
+                                <div class="table-responsive border rounded mb-3">
+                                    <table class="table table-sm table-hover table-gestao-aprov mb-0">
+                                        <thead><tr><th class="text-start ps-2">Tipo</th><th class="text-start">Motivo</th><th>Qtd</th><th>% vendas</th></tr></thead>
+                                        <tbody id="gestao-aprov-tbody-pend-cohort"></tbody>
+                                    </table>
+                                </div>
+                                <div class="small text-muted" id="gestao-aprov-extras"></div>
+                                <hr class="my-3">
+                                <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-clock-history me-1"></i> Timeline do mês</h6>
+                                <div id="gestao-aprov-eventos-resumo" class="row g-2 mb-2"></div>
+                                <div class="table-responsive border rounded mb-2">
+                                    <table class="table table-sm table-gestao-aprov mb-0">
+                                        <thead><tr><th class="text-start ps-2">Motivo (histórico de eventos)</th><th>Qtd</th></tr></thead>
+                                        <tbody id="gestao-aprov-tbody-pend-hist"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="gestao-aprov-nota mt-3 mb-0" id="gestao-aprov-nota"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="esteira-area-tabela">
             <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
                 <p class="small text-muted mb-0 flex-grow-1" style="min-width: 10rem;"><i class="bi bi-arrows-expand"></i> Rolagem horizontal: use a <strong>barra acima</strong> ou <strong>abaixo</strong> da tabela (ambas movem juntas).</p>
                 <div id="esteira-toolbar-filtros" class="d-none align-items-center gap-2 flex-wrap justify-content-end flex-shrink-0">
@@ -727,6 +821,7 @@
                         <tbody id="tabela-esteira-body"></tbody>
                     </table>
                 </div>
+            </div>
             </div>
         </div>
     </main>
@@ -1089,7 +1184,8 @@
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
         const podeAcessarVendasTotais = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
-        const totalAbasFixas = podeAcessarVendasTotais ? 5 : 4;
+        const podeAcessarGestaoAproveitamento = podeAcessarVendasTotais;
+        const totalAbasFixas = podeAcessarVendasTotais ? 6 : 4;
         const podeEditarAdiantamentosFinanceiros = ['Diretoria', 'Admin'].includes(userProfile);
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
@@ -1274,6 +1370,7 @@
         const modalAdiantSabadoLote = document.getElementById('modal-adiant-sabado-lote') ? new bootstrap.Modal(document.getElementById('modal-adiant-sabado-lote')) : null;
         
         document.addEventListener('DOMContentLoaded', () => {
+            sincronizarVisaoGestaoAproveitamento(false);
             const btnLoteSab = document.getElementById('btn-adiant-sabado-lote');
             if (btnLoteSab && podeMarcarAdiantSabado) btnLoteSab.style.display = 'inline-flex';
             carregarVendas();
@@ -1290,6 +1387,11 @@
             atualizarBadgeFiltrosColunas();
             const tabVendasTotais = document.getElementById('tab-vendas-totais-item');
             if (tabVendasTotais && !podeAcessarVendasTotais) tabVendasTotais.remove();
+            const tabGestaoAprov = document.getElementById('tab-gestao-aproveitamento-item');
+            if (tabGestaoAprov && !podeAcessarGestaoAproveitamento) tabGestaoAprov.remove();
+            const inpMesGestao = document.getElementById('gestao-aprov-mes');
+            if (inpMesGestao) inpMesGestao.value = new Date().toISOString().slice(0, 7);
+            popularFiltroGestaoAproveitamento();
             const btnAdiantCnpjSemana = document.getElementById('btn-marcar-adiant-cnpj-semana');
             if (btnAdiantCnpjSemana && !podeEditarAdiantamentosFinanceiros) btnAdiantCnpjSemana.style.display = 'none';
             const cbSelComissaoVisiveis = document.getElementById('selecionar-comissao-visiveis');
@@ -1395,6 +1497,7 @@
         }
 
         function filtrosColunasSuportadosNaAbaAtual() {
+            if (filtroAtual === 'GESTAO_APROVEITAMENTO') return false;
             if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') return true;
             if (filtroAtual === 'TODOS' || filtroAtual === 'PENDEN') return true;
             return /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual);
@@ -2119,6 +2222,7 @@
         }
 
         async function carregarVendas(silent = false) {
+            if (filtroAtual === 'GESTAO_APROVEITAMENTO') return;
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = (document.getElementById('filtro-busca').value || '').trim();
             const carregarInstaladas = (filtroAtual === 'INSTALADAS');
@@ -2732,16 +2836,172 @@
             }
         }
 
+        function sincronizarVisaoGestaoAproveitamento(visivel) {
+            const painel = document.getElementById('painel-gestao-aproveitamento');
+            const areaTabela = document.getElementById('esteira-area-tabela');
+            if (painel) painel.style.display = visivel ? 'block' : 'none';
+            if (areaTabela) areaTabela.style.display = visivel ? 'none' : 'block';
+        }
+
+        async function popularFiltroGestaoAproveitamento() {
+            const sel = document.getElementById('gestao-aprov-vendedor');
+            if (!sel) return;
+            const atual = sel.value;
+            try {
+                const users = await buscarTodasPaginasEsteira('/usuarios/?page_size=500&is_active=true');
+                const excluir = new Set(['OSAB_IMPORT', 'ADMIN', 'ROOT']);
+                const opts = ['<option value="">Todos</option>'];
+                users
+                    .filter(u => u && u.id && u.is_active !== false)
+                    .filter(u => !excluir.has(String(u.username || '').toUpperCase()))
+                    .sort((a, b) => {
+                        const na = (a.nome_completo || a.username || '').toUpperCase();
+                        const nb = (b.nome_completo || b.username || '').toUpperCase();
+                        return na.localeCompare(nb, 'pt-BR');
+                    })
+                    .forEach(u => {
+                        const label = (u.nome_completo || u.username || '').trim();
+                        opts.push(`<option value="${u.id}">${label.toUpperCase()}</option>`);
+                    });
+                sel.innerHTML = opts.join('');
+                if (atual) sel.value = atual;
+            } catch (e) {
+                console.warn('Filtro gestão aproveitamento:', e);
+            }
+        }
+
+        function renderTabelaGestaoPendencias(tbodyId, rows, totalVendas) {
+            const tb = document.getElementById(tbodyId);
+            if (!tb) return;
+            const base = Number(totalVendas) || 0;
+            const pct = (qtd) => {
+                const v = Number(qtd) || 0;
+                if (!base) return '—';
+                return ((v / base) * 100).toFixed(1) + '%';
+            };
+            if (!rows || !rows.length) {
+                tb.innerHTML = '<tr><td colspan="4" class="text-muted py-2">Nenhum registro.</td></tr>';
+                return;
+            }
+            tb.innerHTML = rows.map(r => `<tr>
+                <td class="text-start ps-2">${r.tipo}</td>
+                <td class="text-start">${r.motivo}</td>
+                <td>${r.qtd}</td>
+                <td class="text-muted">${pct(r.qtd)}</td>
+            </tr>`).join('');
+        }
+
+        function renderGestaoAproveitamento(data) {
+            const resumo = data.resumo || {};
+            const kpis = document.getElementById('gestao-aprov-kpis');
+            if (kpis) {
+                const totalCohort = Number(resumo.total_abertas) || 0;
+                const fmtCohort = (n) => {
+                    const v = Number(n) || 0;
+                    if (!totalCohort) return String(v);
+                    const p = ((v / totalCohort) * 100).toFixed(1);
+                    return `${v}<span class="kpi-pct">(${p}%)</span>`;
+                };
+                const cards = [
+                    { label: 'O.S. abertas no mês', valueHtml: String(resumo.total_abertas ?? 0), cls: 'kpi-primary' },
+                    { label: 'Instaladas (data efetiva)', valueHtml: String(resumo.instaladas ?? 0), cls: 'kpi-success' },
+                    { label: 'Aproveitamento', valueHtml: (resumo.aproveitamento != null ? resumo.aproveitamento + '%' : '—'), cls: 'kpi-success' },
+                    { label: 'Pendentes (cohort)', valueHtml: fmtCohort(resumo.pendentes), cls: 'kpi-warning' },
+                    { label: 'Agendadas (cohort)', valueHtml: fmtCohort(resumo.agendadas), cls: 'kpi-primary' },
+                    { label: 'Canceladas (cohort)', valueHtml: fmtCohort(resumo.canceladas), cls: 'kpi-danger' },
+                ];
+                kpis.innerHTML = cards.map(k => (
+                    `<div class="col-6 col-md-4 col-xl-2"><div class="gestao-aprov-kpi ${k.cls}">`
+                    + `<div class="kpi-label">${k.label}</div><div class="kpi-value">${k.valueHtml}</div></div></div>`
+                )).join('');
+            }
+            const per = data.periodo || {};
+            const elPer = document.getElementById('gestao-aprov-periodo');
+            if (elPer) elPer.textContent = `Período: ${per.inicio || '—'} a ${per.fim || '—'} (mês ${per.mes_referencia || '—'})`;
+            const tbV = document.getElementById('gestao-aprov-tbody-vendedor');
+            const vend = data.por_vendedor || [];
+            if (tbV) {
+                if (!vend.length) tbV.innerHTML = '<tr><td colspan="8" class="text-muted py-2">Nenhum dado.</td></tr>';
+                else tbV.innerHTML = vend.map(v => `<tr>
+                    <td class="text-start ps-2 fw-semibold">${v.vendedor}</td>
+                    <td>${v.cluster}</td><td>${v.total}</td><td>${v.instaladas}</td>
+                    <td class="fw-bold text-primary">${v.aproveitamento}%</td>
+                    <td>${v.pend}</td><td>${v.agend}</td><td>${v.canc}</td></tr>`).join('');
+            }
+            const totalVendasMes = Number(resumo.total_abertas) || 0;
+            renderTabelaGestaoPendencias('gestao-aprov-tbody-pend-op', data.pendencias_operacional, totalVendasMes);
+            renderTabelaGestaoPendencias('gestao-aprov-tbody-pend-cohort', data.pendencias_cohort_mes, totalVendasMes);
+            const pi = data.pendencias_indevidas || {};
+            const lem = data.lembrete_instalacao || {};
+            const extras = document.getElementById('gestao-aprov-extras');
+            if (extras) {
+                extras.innerHTML = `<div><strong>Pendências indevidas:</strong> ${pi.total || 0} `
+                    + `(${pi.com_evidencia || 0} com evidência, ${pi.enviadas_gc || 0} enviadas ao GC)</div>`
+                    + `<div class="mt-1"><strong>Lembrete instalação:</strong> ${lem.enviados || 0} enviados, `
+                    + `${lem.respondidos || 0} respondidos (${lem.taxa_resposta || 0}%)</div>`;
+            }
+            const nota = document.getElementById('gestao-aprov-nota');
+            const notas = data.notas || {};
+            const ev = data.eventos_esteira || {};
+            const elEv = document.getElementById('gestao-aprov-eventos-resumo');
+            if (elEv) {
+                if (!ev.tem_dados) {
+                    elEv.innerHTML = '<div class="col-12"><p class="small text-muted mb-0">Nenhum evento no período. Alterações na esteira e importações OSAB passam a ser registradas automaticamente.</p></div>';
+                } else {
+                    elEv.innerHTML = [
+                        { l: 'Entradas em pendência', v: ev.entradas_pendencia, c: 'kpi-warning' },
+                        { l: 'O.S. com 2+ pendências', v: ev.os_com_2_ou_mais_pendencias, c: 'kpi-danger' },
+                        { l: 'Reagendamentos', v: ev.reagendamentos, c: 'kpi-primary' },
+                    ].map(k => `<div class="col-12 col-md-4"><div class="gestao-aprov-kpi ${k.c} py-2"><div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v ?? 0}</div></div></div>`).join('');
+                }
+            }
+            const tbHist = document.getElementById('gestao-aprov-tbody-pend-hist');
+            const hist = ev.pendencias_por_motivo_historico || [];
+            if (tbHist) {
+                if (!hist.length) tbHist.innerHTML = '<tr><td colspan="2" class="text-muted py-2">Sem eventos de motivo no período.</td></tr>';
+                else tbHist.innerHTML = hist.map(r => `<tr><td class="text-start ps-2">${r.motivo}</td><td>${r.qtd}</td></tr>`).join('');
+            }
+            if (nota) nota.textContent = [notas.aproveitamento, notas.pendencias_operacional, notas.eventos_esteira].filter(Boolean).join(' · ');
+            if (data.aviso) alert(data.aviso);
+        }
+
+        async function carregarGestaoAproveitamento() {
+            const loading = document.getElementById('gestao-aprov-loading');
+            const conteudo = document.getElementById('gestao-aprov-conteudo');
+            const mes = document.getElementById('gestao-aprov-mes')?.value;
+            const consultor = document.getElementById('gestao-aprov-vendedor')?.value;
+            if (!mes) { alert('Selecione o mês de referência.'); return; }
+            let url = `/crm/esteira/gestao-aproveitamento/?mes_referencia=${encodeURIComponent(mes)}`;
+            if (consultor) url += `&consultor_id=${encodeURIComponent(consultor)}`;
+            if (loading) loading.style.display = 'block';
+            if (conteudo) conteudo.style.display = 'none';
+            try {
+                const data = await apiFetch(url);
+                renderGestaoAproveitamento(data);
+                if (conteudo) conteudo.style.display = 'block';
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : String(e);
+                alert('Erro ao carregar gestão: ' + msg);
+            } finally {
+                if (loading) loading.style.display = 'none';
+            }
+        }
+
         function filtrarStatus(status, element) {
             const statusAnterior = filtroAtual;
             if (status === 'VENDAS_TOTAIS' && !podeAcessarVendasTotais) {
                 alert('Acesso negado para a aba Vendas Totais.');
                 return;
             }
+            if (status === 'GESTAO_APROVEITAMENTO' && !podeAcessarGestaoAproveitamento) {
+                alert('Acesso negado para Gestão Aproveitamento.');
+                return;
+            }
             filtroAtual = status;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
             if (status === 'INSTALADAS') {
+                sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
@@ -2759,6 +3019,7 @@
                 return;
             }
             if (status === 'AGENDADO') {
+                sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
                 document.getElementById('filtro-turno-container').style.display = 'none';
@@ -2773,6 +3034,7 @@
                 return;
             }
             if (status === 'VENDAS_TOTAIS') {
+                sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 sincronizarToolbarEFiltrosColunas();
                 document.getElementById('filtro-turno-container').style.display = 'none';
@@ -2785,14 +3047,33 @@
                 while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 const tbTot = document.getElementById('tabela-esteira-body');
                 tbTot.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                sincronizarVisaoGestaoAproveitamento(false);
                 return;
             }
+            if (status === 'GESTAO_APROVEITAMENTO') {
+                if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
+                if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
+                sincronizarToolbarEFiltrosColunas();
+                document.getElementById('filtro-turno-container').style.display = 'none';
+                document.getElementById('painel-busca-instaladas').style.display = 'none';
+                document.getElementById('painel-busca-agendados').style.display = 'none';
+                document.getElementById('painel-busca-vendas-totais').style.display = 'none';
+                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) {
+                    document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                }
+                sincronizarVisaoGestaoAproveitamento(true);
+                popularFiltroGestaoAproveitamento();
+                carregarGestaoAproveitamento();
+                return;
+            }
+            sincronizarVisaoGestaoAproveitamento(false);
             sincronizarToolbarEFiltrosColunas();
             document.getElementById('painel-busca-instaladas').style.display = 'none';
             document.getElementById('painel-busca-agendados').style.display = 'none';
             document.getElementById('painel-busca-vendas-totais').style.display = 'none';
             if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
             if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
+            if (statusAnterior === 'GESTAO_APROVEITAMENTO') { /* noop */ }
             carregarVendas();
         }
 
