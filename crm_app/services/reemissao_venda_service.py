@@ -44,7 +44,7 @@ def duplicar(
         nova_os: Número da nova ordem de serviço.
         nova_data: Data do novo agendamento (date ou string ISO).
         novo_turno: Período do agendamento (ex.: MANHA, TARDE).
-        enviar_whatsapp: Se True, envia mensagem cadastrada ao vendedor após salvar.
+        enviar_whatsapp: Se True, envia mensagem de aprovação ao tel_whatsapp do vendedor.
 
     Returns:
         Instância da nova Venda já persistida (com data_criacao preservada).
@@ -86,11 +86,16 @@ def duplicar(
         )
         venda_nova.data_criacao = data_criacao_original
 
-    if enviar_whatsapp and venda_nova.vendedor and venda_nova.telefone1:
+    telefone_vendedor = (
+        getattr(venda_nova.vendedor, "tel_whatsapp", None) if venda_nova.vendedor else None
+    )
+    if enviar_whatsapp and telefone_vendedor:
         try:
             from crm_app.whatsapp_service import WhatsAppService
 
-            WhatsAppService().enviar_mensagem_cadastrada(venda_nova)
+            WhatsAppService().enviar_mensagem_cadastrada(
+                venda_nova, telefone_destino=telefone_vendedor
+            )
         except Exception as e:
             logger.warning("Erro ao enviar WhatsApp para reemissão: %s", e)
 
