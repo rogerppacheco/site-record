@@ -2661,6 +2661,11 @@ class RecordApoia(models.Model):
         default=True,
         help_text='Se False, arquivo está oculto (soft delete)'
     )
+    url_externa = models.TextField(
+        blank=True,
+        null=True,
+        help_text='URL de backup (OneDrive) para sobreviver a redeploys sem volume persistente',
+    )
     
     class Meta:
         verbose_name = "Arquivo Record Apoia"

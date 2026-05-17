@@ -6214,41 +6214,39 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
     from django.db.models import Q
     from crm_app.models import RecordApoia
 
+    from crm_app.record_apoia_api import record_apoia_disponivel, record_apoia_ler_bytes
+
     busca_texto = busca_texto.strip()
-    arquivos = RecordApoia.objects.filter(ativo=True).filter(
+    arquivos_qs = RecordApoia.objects.filter(ativo=True).filter(
         Q(tags__icontains=busca_texto) |
         Q(titulo__icontains=busca_texto) |
         Q(descricao__icontains=busca_texto) |
         Q(categoria__icontains=busca_texto)
-    ).order_by('-data_upload')[:5]
+    ).order_by('-data_upload')[:10]
 
-    if not arquivos.exists():
+    arquivos = [a for a in arquivos_qs if record_apoia_disponivel(a)]
+
+    if not arquivos:
         return None
 
-    if arquivos.count() == 1:
-        arquivo = arquivos.first()
+    if len(arquivos) == 1:
+        arquivo = arquivos[0]
         arquivo.downloads_count += 1
         arquivo.save(update_fields=['downloads_count'])
         try:
             arquivo_field = arquivo.arquivo
             if not arquivo_field or not arquivo_field.name:
                 return f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
-            arquivo_bytes = None
-            arquivo_b64 = None
             try:
-                from django.core.files.storage import default_storage
-                if default_storage.exists(arquivo_field.name):
-                    with default_storage.open(arquivo_field.name, 'rb') as f:
-                        arquivo_bytes = f.read()
-                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
-                else:
-                    arquivo_field.open('rb')
-                    arquivo_bytes = arquivo_field.read()
-                    arquivo_field.close()
-                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                arquivo_bytes = record_apoia_ler_bytes(arquivo)
+                arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
             except (FileNotFoundError, IOError, OSError) as e:
-                logger.error(f"[Webhook] Erro ao ler arquivo {arquivo_field.name}: {e}")
-                return f"❌ Erro ao acessar arquivo \"{arquivo.titulo}\": {str(e)}"
+                logger.error(f"[Webhook] Erro ao ler arquivo Record Apoia id={arquivo.id}: {e}")
+                return (
+                    f"❌ Arquivo \"{arquivo.titulo}\" não está disponível no servidor.\n\n"
+                    "Peça ao administrador para reenviar o material no Record Apoia "
+                    "(Administração → Limpar registro órfão e fazer upload novamente)."
+                )
 
             nome_arquivo = arquivo.nome_original
             if arquivo.tipo_arquivo == 'IMAGEM':
@@ -6265,8 +6263,8 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
             else:
                 tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
                 tamanho_mb = tamanho_bytes / (1024 * 1024)
-                pdf_url = None
-                if tamanho_mb > 5:
+                pdf_url = arquivo.url_externa or None
+                if tamanho_mb > 5 and not pdf_url:
                     try:
                         from crm_app.onedrive_service import OneDriveUploader
                         from io import BytesIO

@@ -1,15 +1,97 @@
 import logging
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import permissions
-from django.http import FileResponse, Http404
-from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile
-from .models import RecordApoia
 import os
+from io import BytesIO
+
+import requests
+from django.conf import settings
+from django.core.files.storage import default_storage
 from django.db.models import Q
+from django.http import FileResponse
+from rest_framework import permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import RecordApoia
 
 logger = logging.getLogger(__name__)
+
+
+def record_apoia_arquivo_existe_local(arquivo_record):
+    """Verifica se o arquivo físico existe no MEDIA_ROOT/storage."""
+    if not arquivo_record.arquivo or not arquivo_record.arquivo.name:
+        return False
+    try:
+        media_root = getattr(settings, 'MEDIA_ROOT', None)
+        if media_root:
+            return os.path.exists(os.path.join(media_root, arquivo_record.arquivo.name))
+        return default_storage.exists(arquivo_record.arquivo.name)
+    except Exception as e:
+        logger.warning("Erro ao verificar arquivo local Record Apoia %s: %s", arquivo_record.id, e)
+        return False
+
+
+def record_apoia_disponivel(arquivo_record):
+    """Arquivo utilizável: existe no disco ou possui URL de backup (OneDrive)."""
+    if arquivo_record.url_externa:
+        return True
+    return record_apoia_arquivo_existe_local(arquivo_record)
+
+
+def record_apoia_ler_bytes(arquivo_record):
+    """
+    Lê bytes do arquivo local ou baixa da url_externa (OneDrive).
+    Raises FileNotFoundError se não houver fonte disponível.
+    """
+    if record_apoia_arquivo_existe_local(arquivo_record):
+        arquivo_field = arquivo_record.arquivo
+        try:
+            if default_storage.exists(arquivo_field.name):
+                with default_storage.open(arquivo_field.name, 'rb') as f:
+                    return f.read()
+        except Exception:
+            pass
+        arquivo_field.open('rb')
+        try:
+            return arquivo_field.read()
+        finally:
+            arquivo_field.close()
+
+    if arquivo_record.url_externa:
+        resp = requests.get(arquivo_record.url_externa, timeout=90)
+        resp.raise_for_status()
+        return resp.content
+
+    raise FileNotFoundError(
+        f"Arquivo indisponível (id={arquivo_record.id}, titulo={arquivo_record.titulo})"
+    )
+
+
+def espelhar_record_apoia_onedrive(arquivo_record, conteudo_bytes):
+    """Envia cópia para OneDrive e grava url_externa no registro."""
+    if not conteudo_bytes:
+        return None
+    try:
+        from crm_app.onedrive_service import OneDriveUploader
+
+        nome = arquivo_record.nome_original or os.path.basename(arquivo_record.arquivo.name or 'arquivo')
+        uploader = OneDriveUploader()
+        url = uploader.upload_file_and_get_download_url(
+            BytesIO(conteudo_bytes),
+            folder_name='Record_Apoia',
+            filename=nome,
+        )
+        if url:
+            arquivo_record.url_externa = url
+            arquivo_record.save(update_fields=['url_externa'])
+            logger.info("[Record Apoia] Backup OneDrive salvo: %s (id=%s)", nome, arquivo_record.id)
+        return url
+    except Exception as e:
+        logger.warning(
+            "[Record Apoia] Falha ao espelhar no OneDrive (id=%s): %s",
+            arquivo_record.id,
+            e,
+        )
+        return None
 
 class RecordApoiaUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -60,6 +142,11 @@ class RecordApoiaUploadView(APIView):
                         elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
                             tipo_arquivo = 'VIDEO'
                     
+                    # Ler bytes antes do save para backup OneDrive (disco local no Railway é efêmero)
+                    arquivo.seek(0)
+                    conteudo_bytes = arquivo.read()
+                    arquivo.seek(0)
+
                     # Criar registro
                     record = RecordApoia.objects.create(
                         titulo=titulo_arquivo,
@@ -69,16 +156,18 @@ class RecordApoiaUploadView(APIView):
                         arquivo=arquivo,
                         nome_original=arquivo.name,
                         tipo_arquivo=tipo_arquivo,
+                        tamanho_bytes=len(conteudo_bytes),
                         usuario_upload=request.user
                     )
-                    
-                    # Obter tamanho de forma segura
-                    tamanho = 0
+
+                    espelhar_record_apoia_onedrive(record, conteudo_bytes)
+
+                    tamanho = len(conteudo_bytes)
                     if record.arquivo:
                         try:
-                            tamanho = record.arquivo.size
+                            tamanho = record.arquivo.size or tamanho
                         except (FileNotFoundError, IOError, OSError, AttributeError):
-                            tamanho = 0
+                            pass
                     
                     resultados.append({
                         'id': record.id,
@@ -169,43 +258,23 @@ class RecordApoiaListView(APIView):
                     arquivo_existe = False
                     tamanho = 0
                     
-                    if arq.arquivo and arq.arquivo.name:
-                        # Tentar verificar se o arquivo existe usando os.path.exists primeiro
-                        try:
-                            media_root = getattr(settings, 'MEDIA_ROOT', None)
-                            if media_root:
-                                caminho_completo = os.path.join(media_root, arq.arquivo.name)
-                                arquivo_existe = os.path.exists(caminho_completo)
-                            else:
-                                # Se não tiver MEDIA_ROOT, usar storage
-                                arquivo_existe = default_storage.exists(arq.arquivo.name)
-                            
-                            # Se existe, tentar obter tamanho
-                            if arquivo_existe:
-                                try:
-                                    tamanho = arq.arquivo.size
-                                except (FileNotFoundError, IOError, OSError, AttributeError) as size_error:
-                                    # Arquivo pode ter sido removido entre a verificação e o acesso
-                                    logger.warning(f"Arquivo {arq.id} existe mas erro ao obter tamanho: {size_error}")
-                                    arquivo_existe = False
-                                    tamanho = 0
-                        except Exception as check_error:
-                            # Erro ao verificar - considerar como não existente
-                            logger.warning(f"Erro ao verificar arquivo {arq.id}: {check_error}")
-                            arquivo_existe = False
-                            tamanho = 0
-                    
-                    # Só adicionar arquivos que existem fisicamente
-                    # IMPORTANTE: Não desativar automaticamente - apenas pular da listagem
-                    # O arquivo pode estar temporariamente indisponível (deploy, storage, etc)
-                    if arq.arquivo and arq.arquivo.name and not arquivo_existe:
-                        # Arquivo não existe no disco - apenas pular da listagem (não desativar)
-                        logger.warning(f"Arquivo {arq.id} ({arq.titulo}) não encontrado no disco - pulando da listagem (mantendo ativo no banco)")
-                        continue  # Pular este arquivo
-                    
-                    # Se não tem arquivo definido, também pular (registro inválido)
-                    if not arq.arquivo or not arq.arquivo.name:
+                    if not record_apoia_disponivel(arq):
+                        logger.warning(
+                            "Arquivo %s (%s) indisponível (sem disco e sem url_externa) - pulando listagem",
+                            arq.id,
+                            arq.titulo,
+                        )
                         continue
+
+                    arquivo_existe = record_apoia_arquivo_existe_local(arq)
+                    tamanho = arq.tamanho_bytes or 0
+                    if arquivo_existe:
+                        try:
+                            tamanho = arq.arquivo.size or tamanho
+                        except (FileNotFoundError, IOError, OSError, AttributeError):
+                            pass
+                    elif arq.url_externa and not tamanho:
+                        tamanho = arq.tamanho_bytes or 0
                     
                     # Formatar data
                     data_upload_formatada = None
@@ -545,8 +614,8 @@ class RecordApoiaAdminOrfaosView(APIView):
                         'tamanho_bytes': arquivo.tamanho_bytes or 0
                     })
                 
-                # Arquivos ativos que não têm arquivo no disco
-                if arquivo.ativo and not arquivo_existe and arquivo.arquivo and arquivo.arquivo.name:
+                # Ativos sem arquivo local e sem backup OneDrive
+                if arquivo.ativo and not record_apoia_disponivel(arquivo) and arquivo.arquivo and arquivo.arquivo.name:
                     ativos_sem_arquivo.append({
                         'id': arquivo.id,
                         'titulo': arquivo.titulo,
@@ -682,25 +751,32 @@ class RecordApoiaDownloadView(APIView):
         try:
             arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
             
-            if not arquivo.arquivo or not arquivo.arquivo.name:
+            if not record_apoia_disponivel(arquivo):
                 return Response({'error': 'Arquivo não encontrado no servidor'}, status=404)
-            
-            # Verificar se é preview (não incrementa download)
+
             is_preview = request.query_params.get('preview', 'false').lower() == 'true'
-            
+
             if not is_preview:
-                # Incrementar contador de downloads
                 arquivo.downloads_count = (arquivo.downloads_count or 0) + 1
                 arquivo.save(update_fields=['downloads_count'])
-            
+
             try:
-                # Abrir arquivo uma única vez
-                file_handle = arquivo.arquivo.open('rb')
-                file_response = FileResponse(
-                    file_handle,
-                    as_attachment=not is_preview,
-                    filename=arquivo.nome_original
-                )
+                if record_apoia_arquivo_existe_local(arquivo):
+                    file_handle = arquivo.arquivo.open('rb')
+                    file_response = FileResponse(
+                        file_handle,
+                        as_attachment=not is_preview,
+                        filename=arquivo.nome_original
+                    )
+                elif arquivo.url_externa:
+                    conteudo = record_apoia_ler_bytes(arquivo)
+                    file_response = FileResponse(
+                        BytesIO(conteudo),
+                        as_attachment=not is_preview,
+                        filename=arquivo.nome_original,
+                    )
+                else:
+                    return Response({'error': 'Arquivo não encontrado no disco'}, status=404)
                 
                 # Para imagens em preview, definir content-type apropriado
                 if is_preview and arquivo.tipo_arquivo == 'IMAGEM':
