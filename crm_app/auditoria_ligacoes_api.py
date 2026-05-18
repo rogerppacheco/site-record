@@ -1,11 +1,12 @@
 import io
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import requests
 from django.conf import settings
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
@@ -198,6 +199,78 @@ def _cliente_nome_cpf_da_venda(venda: Optional[Venda]) -> tuple[Optional[str], O
     if not cpf:
         cpf = getattr(venda, "cliente_cpf_cnpj", None)
     return nome, cpf
+
+
+def _cpf_apenas_digitos(cpf: Optional[str]) -> str:
+    return re.sub(r"\D", "", str(cpf or ""))
+
+
+def _parse_data_iso(value: Optional[str]) -> Optional[date]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _periodo_historico_padrao() -> tuple[date, date]:
+    hoje = timezone.localdate()
+    return hoje.replace(day=1), hoje
+
+
+def _pedidos_por_cliente_ids(cliente_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+    ids = [i for i in {int(x) for x in cliente_ids if x}]
+    if not ids:
+        return {}
+    out: Dict[int, List[Dict[str, Any]]] = {i: [] for i in ids}
+    vendas = (
+        Venda.objects.filter(cliente_id__in=ids)
+        .order_by("-data_criacao")
+        .values("id", "cliente_id", "ordem_servico", "data_criacao")
+    )
+    for v in vendas:
+        cid = v["cliente_id"]
+        if cid not in out:
+            out[cid] = []
+        out[cid].append(
+            {
+                "venda_id": v["id"],
+                "ordem_servico": v["ordem_servico"] or None,
+                "data_criacao": v["data_criacao"],
+            }
+        )
+    return out
+
+
+def _pedidos_por_cpf_digitos(cpfs_digitos: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    chaves = [c for c in {c for c in cpfs_digitos if c and len(c) >= 11}]
+    if not chaves:
+        return {}
+    q = Q()
+    for d in chaves:
+        q |= Q(cliente__cpf_cnpj__icontains=d)
+    out: Dict[str, List[Dict[str, Any]]] = {c: [] for c in chaves}
+    vendas = (
+        Venda.objects.filter(q)
+        .select_related("cliente")
+        .order_by("-data_criacao")
+        .values("id", "ordem_servico", "data_criacao", "cliente__cpf_cnpj")
+    )
+    for v in vendas:
+        cpf_raw = v.get("cliente__cpf_cnpj") or ""
+        dig = _cpf_apenas_digitos(cpf_raw)
+        if dig not in out:
+            continue
+        out[dig].append(
+            {
+                "venda_id": v["id"],
+                "ordem_servico": v["ordem_servico"] or None,
+                "data_criacao": v["data_criacao"],
+            }
+        )
+    return out
 
 
 class AuditoriaLigacaoOpcoesView(APIView):
@@ -526,7 +599,13 @@ class AuditoriaLigacaoHistoricoView(APIView):
         if not _is_member(request.user, _auditoria_grupos()):
             return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
 
-        rows = AuditoriaLigacao.objects.select_related("auditor", "venda", "venda__cliente").all().order_by("-criado_em")
+        rows = AuditoriaLigacao.objects.select_related(
+            "auditor",
+            "venda",
+            "venda__cliente",
+            "venda__status_tratamento",
+            "venda__status_esteira",
+        ).all().order_by("criado_em")
         q = str(request.GET.get("q", "") or "").strip()
         if q:
             rows = rows.filter(
@@ -546,33 +625,97 @@ class AuditoriaLigacaoHistoricoView(APIView):
         if auditor_q:
             rows = rows.filter(auditor__username__icontains=auditor_q)
 
-        limit = int(request.GET.get("limite", 120))
-        rows = rows[: max(10, min(limit, 300))]
-        data = [
+        status_tratamento_id = str(request.GET.get("status_tratamento_id", "") or "").strip()
+        if status_tratamento_id.isdigit():
+            rows = rows.filter(venda__status_tratamento_id=int(status_tratamento_id))
+
+        status_esteira_id = str(request.GET.get("status_esteira_id", "") or "").strip()
+        if status_esteira_id.isdigit():
+            rows = rows.filter(venda__status_esteira_id=int(status_esteira_id))
+
+        dt_ini = _parse_data_iso(request.GET.get("data_inicio"))
+        dt_fim = _parse_data_iso(request.GET.get("data_fim"))
+        if dt_ini is None and dt_fim is None:
+            dt_ini, dt_fim = _periodo_historico_padrao()
+        elif dt_ini is None:
+            dt_ini = dt_fim
+        elif dt_fim is None:
+            dt_fim = dt_ini
+        if dt_ini and dt_fim and dt_ini > dt_fim:
+            dt_ini, dt_fim = dt_fim, dt_ini
+        if dt_ini and dt_fim:
+            rows = rows.filter(criado_em__date__gte=dt_ini, criado_em__date__lte=dt_fim)
+
+        page = max(1, int(request.GET.get("page", 1) or 1))
+        page_size = min(max(1, int(request.GET.get("page_size", 25) or 25)), 100)
+        paginator = Paginator(rows, page_size)
+        page_obj = paginator.get_page(page)
+
+        cliente_ids: List[int] = []
+        cpfs_sem_cliente: List[str] = []
+        for r in page_obj.object_list:
+            venda = r.venda
+            if venda and getattr(venda, "cliente_id", None):
+                cliente_ids.append(int(venda.cliente_id))
+            else:
+                _nome, cpf = _cliente_nome_cpf_da_venda(venda)
+                dig = _cpf_apenas_digitos(cpf)
+                if dig:
+                    cpfs_sem_cliente.append(dig)
+
+        pedidos_cliente = _pedidos_por_cliente_ids(cliente_ids)
+        pedidos_cpf = _pedidos_por_cpf_digitos(cpfs_sem_cliente)
+
+        data = []
+        for r in page_obj.object_list:
+            nome, cpf = _cliente_nome_cpf_da_venda(r.venda)
+            venda = r.venda
+            if venda and getattr(venda, "cliente_id", None):
+                pedidos = pedidos_cliente.get(int(venda.cliente_id), [])
+            else:
+                pedidos = pedidos_cpf.get(_cpf_apenas_digitos(cpf), [])
+            st_trat = getattr(venda, "status_tratamento", None) if venda else None
+            st_est = getattr(venda, "status_esteira", None) if venda else None
+            data.append(
+                {
+                    "id": r.id,
+                    "venda_id": r.venda_id,
+                    "cliente_nome": nome,
+                    "cliente_cpf_cnpj": cpf,
+                    "pedidos_cpf": pedidos,
+                    "status_tratamento_id": st_trat.id if st_trat else None,
+                    "status_tratamento_nome": getattr(st_trat, "nome", None) if st_trat else None,
+                    "status_esteira_id": st_est.id if st_est else None,
+                    "status_esteira_nome": getattr(st_est, "nome", None) if st_est else None,
+                    "status": r.status,
+                    "provedor": r.provedor,
+                    "provider_call_id": r.provider_call_id,
+                    "numero_origem": r.numero_origem,
+                    "numero_destino": r.numero_destino,
+                    "numero_receptivo": r.numero_receptivo,
+                    "status_chamada_provedor": r.status_chamada_provedor,
+                    "status_atendimento": r.status_atendimento,
+                    "duracao_segundos": r.duracao_segundos,
+                    "data_inicio_chamada": r.data_inicio_chamada,
+                    "data_fim_chamada": r.data_fim_chamada,
+                    "link_gravacao_onedrive": r.link_gravacao_onedrive,
+                    "link_gravacao_provedor": r.link_gravacao_provedor,
+                    "auditor": r.auditor.username if r.auditor else None,
+                    "criado_em": r.criado_em,
+                }
+            )
+
+        return Response(
             {
-                "id": r.id,
-                "venda_id": r.venda_id,
-                "cliente_nome": _cliente_nome_cpf_da_venda(r.venda)[0],
-                "cliente_cpf_cnpj": _cliente_nome_cpf_da_venda(r.venda)[1],
-                "status": r.status,
-                "provedor": r.provedor,
-                "provider_call_id": r.provider_call_id,
-                "numero_origem": r.numero_origem,
-                "numero_destino": r.numero_destino,
-                "numero_receptivo": r.numero_receptivo,
-                "status_chamada_provedor": r.status_chamada_provedor,
-                "status_atendimento": r.status_atendimento,
-                "duracao_segundos": r.duracao_segundos,
-                "data_inicio_chamada": r.data_inicio_chamada,
-                "data_fim_chamada": r.data_fim_chamada,
-                "link_gravacao_onedrive": r.link_gravacao_onedrive,
-                "link_gravacao_provedor": r.link_gravacao_provedor,
-                "auditor": r.auditor.username if r.auditor else None,
-                "criado_em": r.criado_em,
+                "count": paginator.count,
+                "page": page_obj.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "data_inicio": dt_ini.isoformat() if dt_ini else None,
+                "data_fim": dt_fim.isoformat() if dt_fim else None,
+                "results": data,
             }
-            for r in rows
-        ]
-        return Response({"results": data})
+        )
 
 
 class AuditoriaLigacaoWebhookView(APIView):

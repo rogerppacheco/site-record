@@ -44,7 +44,9 @@
         /* Ajustes gerais de layout no modal */
         .modal-fullscreen .modal-content { display: flex; flex-direction: column; height: 100vh; }
         .modal-fullscreen .modal-body { padding: 0; overflow: hidden; flex: 1 1 auto; display: flex; flex-direction: column; }
-        .flex-grow-1 { flex: 1 1 auto; padding: 12px; overflow: auto; }
+        .auditoria-flex-fill { flex: 1 1 auto; padding: 12px; overflow: auto; min-height: 0; }
+        #painel-historico-ligacoes .historico-ligacoes-acoes { display: grid; gap: 0.35rem; }
+        #painel-historico-ligacoes .historico-ligacoes-acoes .btn { overflow: visible; white-space: nowrap; }
         .sticky-actions { position: sticky; bottom: 0; background: #f8f9fa; z-index: 1040; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
         .container.compact-container { max-width: 1200px; padding: 0; }
         .tab-pane { padding: 0; }
@@ -279,41 +281,71 @@
                 <div class="card border shadow-sm mb-3">
                     <div class="card-body">
                         <div class="row g-2 mb-2 align-items-end">
-                            <div class="col-md-8">
+                            <div class="col-md-5">
                                 <label class="form-label small fw-bold text-muted mb-1">Filtrar histórico (cliente, CPF/CNPJ, telefone, ID chamada, O.S./pedido)</label>
                                 <input type="text" id="painel-historico-ligacao-filtro" class="form-control form-control-sm" placeholder="Ex.: nome, CPF, telefone, protocolo ou nº pedido/O.S.">
                             </div>
-                            <div class="col-md-4 d-grid">
-                                <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarHistoricoLigacoesPainel()">
-                                    <i class="bi bi-arrow-clockwise"></i> Atualizar histórico
-                                </button>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold text-muted mb-1">De</label>
+                                <input type="date" id="painel-historico-ligacao-data-inicio" class="form-control form-control-sm">
                             </div>
-                                <div class="col-md-4 d-grid">
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold text-muted mb-1">Até</label>
+                                <input type="date" id="painel-historico-ligacao-data-fim" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold text-muted mb-1">Ações</label>
+                                <div class="historico-ligacoes-acoes">
+                                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="historicoLigacoesPage=1; carregarHistoricoLigacoesPainel();">
+                                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="aplicarPeriodoMesAtualHistoricoLigacoes();">
+                                        Mês atual
+                                    </button>
                                     <button class="btn btn-sm btn-outline-secondary" type="button" onclick="sincronizarHistoricoLigacoesLote()">
-                                        <i class="bi bi-arrow-repeat"></i> Sincronizar ligações
+                                        <i class="bi bi-arrow-repeat"></i> Sincronizar
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-muted mb-1">Status tratamento</label>
+                                <select id="painel-historico-status-tratamento" class="form-select form-select-sm">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-muted mb-1">Status esteira</label>
+                                <select id="painel-historico-status-esteira" class="form-select form-select-sm">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="table-responsive">
                             <table class="table table-sm table-hover align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
+                                        <th>Data</th>
                                         <th>Cliente</th>
-                                        <th>Status</th>
+                                        <th>Pedidos (CPF)</th>
+                                        <th>Status tratamento</th>
+                                        <th>Status esteira</th>
+                                        <th>Status ligação</th>
                                         <th>Status provedor</th>
                                         <th>Atendimento</th>
                                         <th>Origem</th>
                                         <th>Destino</th>
                                         <th>Duração</th>
                                         <th>Gravação</th>
-                                        <th>Data</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-historico-ligacoes-painel">
-                                    <tr><td colspan="9" class="text-center text-muted">Sem dados.</td></tr>
+                                    <tr><td colspan="12" class="text-center text-muted">Sem dados.</td></tr>
                                 </tbody>
                             </table>
                         </div>
+                        <div id="historico-ligacoes-paginacao" class="d-flex flex-wrap align-items-center gap-2 mt-2"></div>
                     </div>
                 </div>
             </div>
@@ -368,7 +400,7 @@
                         </ul>
                     </div>
 
-                    <div class="flex-grow-1 overflow-auto bg-light p-4">
+                    <div class="auditoria-flex-fill overflow-auto bg-light p-4">
                         <div class="container compact-container">
                             <div class="tab-content" id="pills-tabContent">
                                 
@@ -784,9 +816,12 @@
         let vendas = [];
         let vendaEmAuditoria = null;
         let globalStatusOptions = [];
+        let globalStatusEsteiraOptions = [];
         let planosOptions = [];
         let formasPagamentoOptions = [];
-        let debounceRepTimer; 
+        let debounceRepTimer;
+        let historicoLigacoesPage = 1;
+        const historicoLigacoesPageSize = 25;
 
         const modalAuditoria = new bootstrap.Modal(document.getElementById('modalAuditoria'));
         const modalReprovacao = new bootstrap.Modal(document.getElementById('modal-reprovacao'));
@@ -966,7 +1001,15 @@
 
             $('#filtro-pesquisa').on('keypress', function(e) { if (e.which === 13) aplicarFiltrosAuditoria(); });
             $('#painel-historico-ligacao-filtro').on('keypress', function(e) {
-                if (e.which === 13) carregarHistoricoLigacoesPainel();
+                if (e.which === 13) { historicoLigacoesPage = 1; carregarHistoricoLigacoesPainel(); }
+            });
+            $('#painel-historico-ligacao-data-inicio, #painel-historico-ligacao-data-fim').on('change', function() {
+                historicoLigacoesPage = 1;
+                carregarHistoricoLigacoesPainel();
+            });
+            $('#painel-historico-status-tratamento, #painel-historico-status-esteira').on('change', function() {
+                historicoLigacoesPage = 1;
+                carregarHistoricoLigacoesPainel();
             });
             $(document).on('change', 'input[name="aba-data-auditoria"]', function() { carregarVendasPendentes(); });
             $('#filtro-status-tratamento').on('change', function() { carregarVendasPendentes(); });
@@ -982,7 +1025,11 @@
                 $('#painel-historico-ligacoes').toggle(historicoVisible);
                 $('#btn-atualizar-lista').toggle(listVisible);
                 if (resumoVisible) carregarResumoAuditoria();
-                if (historicoVisible) carregarHistoricoLigacoesPainel();
+                if (historicoVisible) {
+                    garantirPeriodoPadraoHistoricoLigacoes();
+                    preencherFiltrosStatusHistoricoLigacoes();
+                    carregarHistoricoLigacoesPainel();
+                }
             });
             carregarAuxiliares().then(() => {
                 carregarVendasPendentes();
@@ -1066,14 +1113,17 @@
         async function carregarAuxiliares() {
             try {
                 // MUDANÇA: Usando apiFetch e page_size=1000
-                const [statusRes, planosRes, pagRes] = await Promise.all([
+                const [statusRes, statusEsteiraRes, planosRes, pagRes] = await Promise.all([
                     apiFetch(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`),
+                    apiFetch(`${API_AUX}/status/?tipo=Esteira&page_size=1000`),
                     apiFetch(`${API_AUX}/planos/?page_size=1000`),
                     apiFetch(`${API_AUX}/formas-pagamento/?page_size=1000`)
                 ]);
                 
                 // Normalização: Array direto ou objeto paginado
                 globalStatusOptions = Array.isArray(statusRes) ? statusRes : (statusRes.results || []);
+                globalStatusEsteiraOptions = Array.isArray(statusEsteiraRes) ? statusEsteiraRes : (statusEsteiraRes.results || []);
+                preencherFiltrosStatusHistoricoLigacoes();
                 planosOptions = Array.isArray(planosRes) ? planosRes : (planosRes.results || []);
                 formasPagamentoOptions = Array.isArray(pagRes) ? pagRes : (pagRes.results || []);
                 
@@ -2468,16 +2518,119 @@
             }
         }
 
-        async function carregarHistoricoLigacoesPainel() {
+        function periodoMesAtualHistoricoLigacoes() {
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+            return {
+                data_inicio: inicio.toISOString().slice(0, 10),
+                data_fim: hoje.toISOString().slice(0, 10),
+            };
+        }
+
+        function garantirPeriodoPadraoHistoricoLigacoes() {
+            const $ini = $('#painel-historico-ligacao-data-inicio');
+            const $fim = $('#painel-historico-ligacao-data-fim');
+            if (!$ini.val() || !$fim.val()) {
+                const p = periodoMesAtualHistoricoLigacoes();
+                $ini.val(p.data_inicio);
+                $fim.val(p.data_fim);
+            }
+        }
+
+        function aplicarPeriodoMesAtualHistoricoLigacoes() {
+            const p = periodoMesAtualHistoricoLigacoes();
+            $('#painel-historico-ligacao-data-inicio').val(p.data_inicio);
+            $('#painel-historico-ligacao-data-fim').val(p.data_fim);
+            historicoLigacoesPage = 1;
+            carregarHistoricoLigacoesPainel();
+        }
+
+        function preencherFiltrosStatusHistoricoLigacoes() {
+            const selTrat = $('#painel-historico-status-tratamento');
+            const selEst = $('#painel-historico-status-esteira');
+            if (!selTrat.length || !selEst.length) return;
+            const curTrat = selTrat.val();
+            const curEst = selEst.val();
+            selTrat.empty().append('<option value="">Todos</option>');
+            selEst.empty().append('<option value="">Todos</option>');
+            (globalStatusOptions || []).forEach(s => {
+                if (s && s.id != null) selTrat.append(`<option value="${s.id}">${s.nome || s.id}</option>`);
+            });
+            (globalStatusEsteiraOptions || []).forEach(s => {
+                if (s && s.id != null) selEst.append(`<option value="${s.id}">${s.nome || s.id}</option>`);
+            });
+            if (curTrat && selTrat.find(`option[value="${curTrat}"]`).length) selTrat.val(curTrat);
+            if (curEst && selEst.find(`option[value="${curEst}"]`).length) selEst.val(curEst);
+        }
+
+        function renderPedidosCpfHistorico(pedidos) {
+            const lista = Array.isArray(pedidos) ? pedidos : [];
+            if (!lista.length) return '<span class="text-muted small">—</span>';
+            return lista.map(p => {
+                const vid = p.venda_id;
+                const os = (p.ordem_servico || '').trim();
+                const label = os ? `OS ${os}` : `Venda #${vid}`;
+                return `<button type="button" class="btn btn-link btn-sm p-0 me-1 text-start" onclick="retomarAuditoria(${vid})">${label}</button>`;
+            }).join('<br>');
+        }
+
+        function renderPaginacaoHistoricoLigacoes(resp) {
+            const pagEl = $('#historico-ligacoes-paginacao');
+            const total = resp.count != null ? resp.count : 0;
+            const page = resp.page || historicoLigacoesPage;
+            const totalPages = resp.total_pages || 1;
+            historicoLigacoesPage = page;
+            if (!total) {
+                pagEl.empty();
+                return;
+            }
+            let html = `<small class="text-muted">Total: ${total} · Página ${page} de ${totalPages}</small>`;
+            if (page > 1) {
+                html += ` <button type="button" class="btn btn-sm btn-outline-primary btn-hist-lig-prev">Anterior</button>`;
+            }
+            if (page < totalPages) {
+                html += ` <button type="button" class="btn btn-sm btn-outline-primary btn-hist-lig-next">Próxima</button>`;
+            }
+            pagEl.html(html);
+            pagEl.find('.btn-hist-lig-prev').on('click', () => {
+                historicoLigacoesPage = Math.max(1, page - 1);
+                carregarHistoricoLigacoesPainel();
+            });
+            pagEl.find('.btn-hist-lig-next').on('click', () => {
+                historicoLigacoesPage = page + 1;
+                carregarHistoricoLigacoesPainel();
+            });
+        }
+
+        async function carregarHistoricoLigacoesPainel(page) {
+            if (typeof page === 'number') historicoLigacoesPage = page;
+            garantirPeriodoPadraoHistoricoLigacoes();
             const tbody = $('#tbody-historico-ligacoes-painel');
             const filtro = ($('#painel-historico-ligacao-filtro').val() || '').trim();
-            tbody.html('<tr><td colspan="9" class="text-center text-muted">Carregando...</td></tr>');
+            const dataInicio = ($('#painel-historico-ligacao-data-inicio').val() || '').trim();
+            const dataFim = ($('#painel-historico-ligacao-data-fim').val() || '').trim();
+            const statusTratamentoId = ($('#painel-historico-status-tratamento').val() || '').trim();
+            const statusEsteiraId = ($('#painel-historico-status-esteira').val() || '').trim();
+            tbody.html('<tr><td colspan="12" class="text-center text-muted">Carregando...</td></tr>');
+            $('#historico-ligacoes-paginacao').empty();
             try {
-                const url = `${API_AUX}/auditoria/ligacoes/historico/?limite=250${filtro ? `&q=${encodeURIComponent(filtro)}` : ''}`;
-                const resp = await apiFetch(url);
+                const params = new URLSearchParams({
+                    page: String(historicoLigacoesPage),
+                    page_size: String(historicoLigacoesPageSize),
+                });
+                if (dataInicio) params.set('data_inicio', dataInicio);
+                if (dataFim) params.set('data_fim', dataFim);
+                if (filtro) params.set('q', filtro);
+                if (statusTratamentoId) params.set('status_tratamento_id', statusTratamentoId);
+                if (statusEsteiraId) params.set('status_esteira_id', statusEsteiraId);
+                const resp = await apiFetch(`${API_AUX}/auditoria/ligacoes/historico/?${params.toString()}`);
                 const rows = Array.isArray(resp) ? resp : (resp.results || []);
+                if (resp.data_inicio) $('#painel-historico-ligacao-data-inicio').val(String(resp.data_inicio).slice(0, 10));
+                if (resp.data_fim) $('#painel-historico-ligacao-data-fim').val(String(resp.data_fim).slice(0, 10));
                 if (!rows.length) {
-                    tbody.html('<tr><td colspan="9" class="text-center text-muted">Nenhuma ligação encontrada.</td></tr>');
+                    tbody.html('<tr><td colspan="12" class="text-center text-muted">Nenhuma ligação encontrada.</td></tr>');
+                    renderPaginacaoHistoricoLigacoes(resp);
                     return;
                 }
                 tbody.empty();
@@ -2487,9 +2640,16 @@
                         ? `<a href="${gravacao}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill"></i> Ouvir</a>`
                         : '<span class="text-muted small">Sem gravação</span>';
                     const cliente = `${r.cliente_nome || '-'}<br><small class="text-muted">${r.cliente_cpf_cnpj || ''}</small>`;
+                    const pedidosHtml = renderPedidosCpfHistorico(r.pedidos_cpf);
+                    const statusTrat = r.status_tratamento_nome || '—';
+                    const statusEst = r.status_esteira_nome || '—';
                     tbody.append(`
                         <tr>
+                            <td class="text-nowrap small">${formatarDataHoraLigacao(r.criado_em)}</td>
                             <td>${cliente}</td>
+                            <td class="small">${pedidosHtml}</td>
+                            <td><span class="badge bg-info text-dark">${statusTrat}</span></td>
+                            <td><span class="badge bg-light text-dark border">${statusEst}</span></td>
                             <td><span class="badge bg-secondary">${r.status || '-'}</span></td>
                             <td>${r.status_chamada_provedor || '-'}</td>
                             <td>${r.status_atendimento || '-'}</td>
@@ -2497,12 +2657,13 @@
                             <td>${r.numero_destino || '-'}</td>
                             <td>${(r.duracao_segundos || 0)}s</td>
                             <td>${botaoOuvir}</td>
-                            <td>${formatarDataHoraLigacao(r.criado_em)}</td>
                         </tr>
                     `);
                 });
+                renderPaginacaoHistoricoLigacoes(resp);
             } catch (e) {
-                tbody.html('<tr><td colspan="9" class="text-center text-danger">Erro ao carregar histórico.</td></tr>');
+                tbody.html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar histórico.</td></tr>');
+                $('#historico-ligacoes-paginacao').empty();
             }
         }
 
