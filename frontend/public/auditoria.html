@@ -47,6 +47,8 @@
         .auditoria-flex-fill { flex: 1 1 auto; padding: 12px; overflow: auto; min-height: 0; }
         #painel-historico-ligacoes .historico-ligacoes-acoes { display: grid; gap: 0.35rem; }
         #painel-historico-ligacoes .historico-ligacoes-acoes .btn { overflow: visible; white-space: nowrap; }
+        #painel-historico-ligacoes .pedido-copia-item { display: inline-flex; align-items: center; gap: 0.2rem; margin: 0 0.35rem 0.25rem 0; }
+        #painel-historico-ligacoes .btn-copiar-pedido { line-height: 1; padding: 0.1rem 0.35rem; }
         .sticky-actions { position: sticky; bottom: 0; background: #f8f9fa; z-index: 1040; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
         .container.compact-container { max-width: 1200px; padding: 0; }
         .tab-pane { padding: 0; }
@@ -2564,15 +2566,41 @@
             if (curEst && selEst.find(`option[value="${curEst}"]`).length) selEst.val(curEst);
         }
 
+        function escapeHtmlHistorico(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function copiarTextoPedidoHistorico(btn) {
+            const texto = (btn.getAttribute('data-copy') || '').trim();
+            if (!texto) return;
+            navigator.clipboard.writeText(texto).then(() => {
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    const original = icon.className;
+                    icon.className = 'bi bi-check2 text-success';
+                    setTimeout(() => { icon.className = original; }, 1500);
+                }
+            }).catch(() => alert('Não foi possível copiar o número do pedido.'));
+        }
+
         function renderPedidosCpfHistorico(pedidos) {
             const lista = Array.isArray(pedidos) ? pedidos : [];
             if (!lista.length) return '<span class="text-muted small">—</span>';
             return lista.map(p => {
-                const vid = p.venda_id;
                 const os = (p.ordem_servico || '').trim();
-                const label = os ? `OS ${os}` : `Venda #${vid}`;
-                return `<button type="button" class="btn btn-link btn-sm p-0 me-1 text-start" onclick="retomarAuditoria(${vid})">${label}</button>`;
-            }).join('<br>');
+                const textoCopia = os || String(p.venda_id || '');
+                const label = os || `Venda #${p.venda_id}`;
+                return `<span class="pedido-copia-item">
+                    <span class="text-nowrap">${escapeHtmlHistorico(label)}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-copiar-pedido" title="Copiar número do pedido" data-copy="${escapeHtmlHistorico(textoCopia)}" onclick="copiarTextoPedidoHistorico(this)">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                </span>`;
+            }).join('');
         }
 
         function renderPaginacaoHistoricoLigacoes(resp) {
