@@ -339,6 +339,35 @@ class Venda(models.Model):
         ]
 
 
+class PendenciaClienteMsgEnviada(models.Model):
+    """Registro de WhatsApp enviado ao cliente ao marcar pendência tipo CLIENTE na esteira."""
+    venda = models.ForeignKey(
+        Venda, on_delete=models.CASCADE, related_name='msgs_pendencia_cliente_enviadas',
+    )
+    motivo_pendencia = models.ForeignKey(
+        MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='msgs_cliente_enviadas',
+    )
+    telefone = models.CharField(max_length=20)
+    mensagem = models.TextField()
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='msgs_pendencia_cliente_registradas',
+    )
+    sucesso = models.BooleanField(default=False)
+    erro = models.CharField(max_length=500, blank=True, default='')
+    enviado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_pendencia_cliente_msg_enviada'
+        verbose_name = 'Msg pendência cliente (enviada)'
+        verbose_name_plural = 'Msgs pendência cliente (enviadas)'
+        ordering = ['-enviado_em']
+        indexes = [
+            models.Index(fields=['venda', 'motivo_pendencia', 'sucesso']),
+        ]
+
+
 class LembreteInstalacaoEnviado(models.Model):
     """Registro de envio do lembrete de instalação (esteira) para respostas automáticas SIM/NÃO/SUPORTE."""
     telefone = models.CharField(max_length=20, db_index=True, help_text="Telefone normalizado (apenas dígitos)")
@@ -423,6 +452,7 @@ class HistoricoAtendimentoIACliente(models.Model):
         ('WEBHOOK', 'WhatsApp (contato externo)'),
         ('BOAS_VINDAS', 'Boas-vindas'),
         ('LEMBRETE_INSTALACAO', 'Lembrete instalação'),
+        ('PENDENCIA_CLIENTE', 'Pendência cliente (esteira)'),
     ]
     INTENCAO_CHOICES = [
         ('AGENDAMENTO', 'Agendamento'),
@@ -1301,6 +1331,27 @@ class GrupoDisparo(models.Model):
         return self.nome
 
 
+class EsteiraVendasConfig(models.Model):
+    """Configuração única da esteira de vendas (ex.: WhatsApp BackOffice nas msgs ao cliente)."""
+    whatsapp_backoffice = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='WhatsApp BackOffice (pendência cliente)',
+        help_text='Número usado no botão/mensagem de dúvidas ao marcar pendência tipo CLIENTE.',
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+
+    class Meta:
+        verbose_name = 'Config. Esteira de Vendas'
+        verbose_name_plural = 'Config. Esteira de Vendas'
+
+    def __str__(self):
+        return f'BackOffice: {self.whatsapp_backoffice or "não definido"}'
+
+
 class AnteciparInstalacaoConfig(models.Model):
     """Configuração única para a ferramenta Antecipar Instalação (número GC e grupo WhatsApp)."""
     nome_gc = models.CharField(max_length=100, blank=True, default='', verbose_name="Nome do GC")
@@ -1394,6 +1445,7 @@ class VendaEsteiraEvento(models.Model):
         ('AGENDAMENTO', 'Agendamento'),
         ('INSTALACAO', 'Instalação (OSAB)'),
         ('INSTALACAO_FISICA', 'Instalação física'),
+        ('MSG_CLIENTE_PENDENCIA', 'WhatsApp cliente (pendência)'),
     ]
     ORIGEM_CHOICES = [
         ('MANUAL', 'Manual (esteira)'),

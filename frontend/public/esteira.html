@@ -481,6 +481,10 @@
                             <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Pend. indevidas</span>
                         </button>
 
+                        <button type="button" id="btn-config-esteira-wpp" class="btn btn-sm btn-outline-secondary" style="display: none;" onclick="abrirModalConfigEsteira()" title="WhatsApp BackOffice nas mensagens de pendência CLIENTE ao cliente">
+                            <i class="bi bi-gear"></i><span class="d-none d-lg-inline ms-1">WPP BackOffice</span>
+                        </button>
+
                         <div class="dropdown d-inline-block">
                             <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Escolher colunas visíveis">
                                 <i class="bi bi-layout-three-columns"></i><span class="d-none d-lg-inline ms-1">Colunas</span>
@@ -1016,6 +1020,27 @@
     </div>
 
 
+    <div class="modal fade" id="modal-config-esteira" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">WhatsApp BackOffice — pendência cliente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Número usado no botão <strong>Dúvidas (BackOffice)</strong> quando uma pendência do tipo CLIENTE é registrada na esteira. Não usa mais o WhatsApp do vendedor.</p>
+                    <label class="form-label fw-bold" for="config-esteira-wpp">WhatsApp (com DDD)</label>
+                    <input type="text" class="form-control" id="config-esteira-wpp" placeholder="Ex.: 31999998888 ou 5531999998888" maxlength="20">
+                    <div id="config-esteira-msg" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="salvarConfigEsteira()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-relatorio-pend-indevidas" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -1192,6 +1217,10 @@
         const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const podeMarcarAdiantSabado = ['Diretoria', 'Admin', 'BackOffice'].includes(userProfile);
         const podeBloquearOsab = ['Diretoria', 'Admin'].includes(userProfile);
+        const podeConfigEsteiraBackoffice = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
+        const modalConfigEsteira = document.getElementById('modal-config-esteira')
+            ? new bootstrap.Modal(document.getElementById('modal-config-esteira')) : null;
+
         let pendenciaModalEhPendencia = false;
         const modalRelPendIndevidas = document.getElementById('modal-relatorio-pend-indevidas')
             ? new bootstrap.Modal(document.getElementById('modal-relatorio-pend-indevidas')) : null;
@@ -1404,11 +1433,50 @@
                 resizeEsteiraT = setTimeout(function() { syncEsteiraScrollbars(); }, 100);
             });
 
+            if (podeConfigEsteiraBackoffice) {
+                const btnCfg = document.getElementById('btn-config-esteira-wpp');
+                if (btnCfg) btnCfg.style.display = 'inline-flex';
+            }
             if (podeConfigurarZap) {
                 const btnZap = document.getElementById('btn-toggle-wpp');
                 if (btnZap) { btnZap.style.display = 'inline-flex'; atualizarBotaoZap(); }
             }
         });
+
+
+        async function abrirModalConfigEsteira() {
+            if (!podeConfigEsteiraBackoffice || !modalConfigEsteira) return;
+            const msgEl = document.getElementById('config-esteira-msg');
+            if (msgEl) { msgEl.textContent = ''; msgEl.className = 'small mt-2'; }
+            try {
+                const data = await apiFetch('/crm/esteira/config/');
+                document.getElementById('config-esteira-wpp').value = data.whatsapp_backoffice || '';
+                modalConfigEsteira.show();
+            } catch (e) {
+                alert(e.message || 'Erro ao carregar configuração.');
+            }
+        }
+
+        async function salvarConfigEsteira() {
+            const msgEl = document.getElementById('config-esteira-msg');
+            const wpp = (document.getElementById('config-esteira-wpp').value || '').trim();
+            try {
+                const data = await apiFetch('/crm/esteira/config/', {
+                    method: 'PATCH',
+                    body: JSON.stringify({ whatsapp_backoffice: wpp }),
+                });
+                if (msgEl) {
+                    msgEl.textContent = data.detail || 'Salvo.';
+                    msgEl.className = 'small mt-2 text-success';
+                }
+            } catch (e) {
+                if (msgEl) {
+                    msgEl.textContent = e.message || 'Erro ao salvar.';
+                    msgEl.className = 'small mt-2 text-danger';
+                }
+            }
+        }
+
 
         function toggleEnvioZap() {
             envioWhatsappAtivo = !envioWhatsappAtivo;

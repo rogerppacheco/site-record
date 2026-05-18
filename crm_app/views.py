@@ -578,7 +578,7 @@ from .models import (
     AgendamentoDisparo, LogEnvioPerformance, ImportacaoAgendamento, ImportacaoRecompra,
     LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
     RegraComissaoFaixa, ConfigComissaoVendedor,
-    AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
+    AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao, EsteiraVendasConfig,
     PapConfirmacaoCliente, LembreteInstalacaoEnviado,
     ControleTTDiaTratado,
     BoasVindasEnviado, MensagemClienteBoasVindas, StatusBoasVindas, FilaEnvioBoasVindas,
@@ -2696,6 +2696,33 @@ class VendaViewSet(viewsets.ModelViewSet):
 
                     except Exception as e:
                         logger.error(f"Erro ao enviar Zap Esteira: {e}")
+
+        # WhatsApp ao cliente: pendência tipo CLIENTE (reagendamento via canal oficial Nio)
+        motivo_mudou = motivo_pendencia_antes != venda_atualizada.motivo_pendencia
+        if motivo_mudou and venda_atualizada.motivo_pendencia and enviar_whatsapp:
+            try:
+                from crm_app.esteira_pendencia_cliente_service import tentar_enviar_msg_pendencia_cliente
+
+                res_cli = tentar_enviar_msg_pendencia_cliente(
+                    venda_atualizada,
+                    venda_atualizada.motivo_pendencia,
+                    usuario=self.request.user,
+                    enviar_whatsapp=True,
+                )
+                if res_cli.get('enviado'):
+                    logger.info(
+                        'Msg pendência CLIENTE enviada venda #%s motivo=%s',
+                        venda_atualizada.id,
+                        venda_atualizada.motivo_pendencia_id,
+                    )
+                elif res_cli.get('detail') and not res_cli.get('ok', True):
+                    logger.warning(
+                        'Msg pendência CLIENTE não enviada venda #%s: %s',
+                        venda_atualizada.id,
+                        res_cli.get('detail'),
+                    )
+            except Exception:
+                logger.exception('Erro ao enviar msg pendência CLIENTE ao cliente')
 
         return venda_atualizada
 
@@ -13867,6 +13894,42 @@ def _antecipar_instalacao_sync_grupos_zapi():
                 obj.save(update_fields=['nome', 'ativo'])
             continue
         GrupoDisparo.objects.create(nome=nome, chat_id=chat_id, ativo=True)
+
+
+def _esteira_vendas_get_config():
+    config = EsteiraVendasConfig.objects.first()
+    if not config:
+        config = EsteiraVendasConfig.objects.create(whatsapp_backoffice='')
+    return config
+
+
+class ConfigEsteiraVendasView(APIView):
+    """GET/PATCH: WhatsApp BackOffice para mensagem automática ao cliente (pendência tipo CLIENTE)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Supervisor']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        config = _esteira_vendas_get_config()
+        return Response({
+            'whatsapp_backoffice': config.whatsapp_backoffice or '',
+            'pode_editar': is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']),
+            'atualizado_em': config.atualizado_em.isoformat() if config.atualizado_em else None,
+        })
+
+    def patch(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({'detail': 'Sem permissão para alterar a configuração.'}, status=status.HTTP_403_FORBIDDEN)
+        config = _esteira_vendas_get_config()
+        if 'whatsapp_backoffice' in request.data:
+            val = request.data.get('whatsapp_backoffice')
+            config.whatsapp_backoffice = (val if val is not None else '').strip()[:20]
+        config.atualizado_por = request.user
+        config.save()
+        return Response({
+            'whatsapp_backoffice': config.whatsapp_backoffice or '',
+            'detail': 'Configuração salva. Próximas mensagens de pendência CLIENTE usarão este número.',
+        })
 
 
 class ConfigAnteciparInstalacaoView(APIView):
