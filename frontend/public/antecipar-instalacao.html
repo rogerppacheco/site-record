@@ -12,6 +12,7 @@
     <style>
         body { background-color: #f8f9fc; padding-top: 80px; }
         .tool-container { max-width: 820px; margin: 0 auto; padding: 20px; }
+        .tool-container.tool-container-wide { max-width: min(1400px, 96vw); }
         .card-panel { background: white; border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
         .pedido-item { border: 1px solid #e3e6f0; border-radius: 8px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
         .pedido-item:hover { border-color: #4e73df; background: #f8f9fc; }
@@ -20,8 +21,18 @@
         .btn-solicitar { min-width: 200px; }
         .nav-tabs .nav-link { font-weight: 600; color: #5a5c69; }
         .nav-tabs .nav-link.active { color: #4e73df; }
-        .historico-table { font-size: 0.9rem; }
-        .historico-table th { white-space: nowrap; }
+        .historico-table { font-size: 0.85rem; min-width: 1100px; table-layout: fixed; width: 100%; }
+        .historico-table th { white-space: nowrap; vertical-align: middle; }
+        .historico-table td { vertical-align: top; word-break: break-word; }
+        .historico-table .col-data { width: 108px; }
+        .historico-table .col-tipo { width: 88px; }
+        .historico-table .col-os { width: 88px; }
+        .historico-table .col-status { width: 92px; }
+        .historico-table .col-resp-gc { width: 200px; min-width: 180px; }
+        .historico-table .col-acoes { width: 72px; }
+        .historico-table .cell-ellipsis { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .historico-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .msg-historico-block { background: #f8f9fc; border-radius: 8px; padding: 12px; white-space: pre-wrap; font-size: 0.9rem; max-height: 320px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -39,7 +50,7 @@
         </div>
     </header>
 
-    <div class="tool-container">
+    <div class="tool-container" id="tool-container">
         <h2 class="mb-3"><i class="bi bi-lightning-charge-fill text-primary"></i> Antecipar Instalação / Reparo / Instalação Física</h2>
 
         <ul class="nav nav-tabs mb-4" id="tab-main" role="tablist">
@@ -198,29 +209,51 @@
             <!-- Aba Histórico -->
             <div class="tab-pane fade" id="tab-historico" role="tabpanel">
                 <div class="card-panel">
-                    <h6 class="fw-bold mb-3">Últimas solicitações</h6>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h6 class="fw-bold mb-0">Últimas solicitações</h6>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="btn-exportar-historico" style="display:none;">
+                            <i class="bi bi-file-earmark-excel"></i> Exportar histórico (Excel)
+                        </button>
+                    </div>
+                    <p class="text-muted small mb-3">Deslize horizontalmente se necessário. Use <strong>Ver</strong> para ler a mensagem completa enviada ao GC e o retorno do GC.</p>
                     <div id="historico-loading" class="text-muted text-center py-4">Carregando...</div>
                     <div id="historico-table-wrap" style="display:none;">
-                        <div class="table-responsive">
+                        <div class="historico-scroll table-responsive">
                             <table class="table table-sm table-hover historico-table">
                                 <thead>
                                     <tr>
-                                        <th>Data</th>
-                                        <th>Tipo</th>
+                                        <th class="col-data">Data</th>
+                                        <th class="col-tipo">Tipo</th>
                                         <th>Solicitante</th>
-                                        <th>O.S</th>
+                                        <th class="col-os">O.S</th>
                                         <th>Cliente</th>
                                         <th>Descrição</th>
-                                        <th>Status</th>
-                                        <th>Resposta GC</th>
+                                        <th class="col-status">Status</th>
+                                        <th class="col-resp-gc">Resposta GC</th>
+                                        <th class="col-acoes"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="historico-tbody"></tbody>
                             </table>
                         </div>
-                        <div id="historico-pagination" class="d-flex justify-content-between align-items-center mt-2"></div>
+                        <div id="historico-pagination" class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2"></div>
                     </div>
                     <div id="historico-vazio" class="text-center text-muted py-4" style="display:none;">Nenhuma solicitação encontrada.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-historico-detalhe" tabindex="-1" aria-labelledby="modalHistoricoDetalheLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalHistoricoDetalheLabel">Detalhes da solicitação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body" id="modal-historico-detalhe-body"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
                 </div>
             </div>
         </div>
@@ -239,6 +272,8 @@
             let pedidoSelecionado = null;
             let configData = null;
             let historicoPage = 1;
+            let historicoCache = [];
+            let modalHistoricoDetalhe = null;
 
             function getAuthHeader(useJson) {
                 const h = { 'Authorization': 'Bearer ' + token };
@@ -270,6 +305,15 @@
             function show(el, show) {
                 if (typeof el === 'string') el = document.getElementById(el);
                 if (el) el.style.display = show ? '' : 'none';
+            }
+
+            function escapeHtml(s) {
+                return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            function setToolContainerWide(wide) {
+                const el = document.getElementById('tool-container');
+                if (el) el.classList.toggle('tool-container-wide', !!wide);
             }
 
             function normalizeDateBrInput(value) {
@@ -711,9 +755,90 @@
             });
 
             // --- Aba Histórico (não passar evento do tab como page) ---
-            document.getElementById('tab-historico-btn').addEventListener('shown.bs.tab', function() { carregarHistorico(); });
+            document.getElementById('tab-historico-btn').addEventListener('shown.bs.tab', function() {
+                setToolContainerWide(true);
+                carregarHistorico();
+            });
+            document.getElementById('tab-solicitar-btn').addEventListener('shown.bs.tab', function() { setToolContainerWide(false); });
+            document.getElementById('tab-config-btn').addEventListener('shown.bs.tab', function() { setToolContainerWide(false); });
+
+            const btnExportHistorico = document.getElementById('btn-exportar-historico');
+            if (btnExportHistorico) {
+                btnExportHistorico.addEventListener('click', exportarHistorico);
+            }
 
             let podeRegistrarRespostaGc = false;
+
+            function abrirDetalheHistorico(id) {
+                const r = historicoCache.find(function(x) { return x.id === id; });
+                if (!r) return;
+                const body = document.getElementById('modal-historico-detalhe-body');
+                if (!body) return;
+                const desc = (r.descricao_solicitacao || '') + (r.observacao_reparo ? '\n\nObs. reparo: ' + r.observacao_reparo : '');
+                let html = '<dl class="row small mb-0">'
+                    + '<dt class="col-sm-3">Data</dt><dd class="col-sm-9">' + escapeHtml(r.data_solicitacao) + '</dd>'
+                    + '<dt class="col-sm-3">Tipo</dt><dd class="col-sm-9">' + escapeHtml(r.tipo_solicitacao_label || r.tipo_solicitacao) + '</dd>'
+                    + '<dt class="col-sm-3">Solicitante</dt><dd class="col-sm-9">' + escapeHtml(r.usuario_nome) + '</dd>'
+                    + '<dt class="col-sm-3">O.S</dt><dd class="col-sm-9">' + escapeHtml(r.ordem_servico) + '</dd>'
+                    + '<dt class="col-sm-3">Cliente</dt><dd class="col-sm-9">' + escapeHtml(r.cliente_nome) + '</dd>'
+                    + '<dt class="col-sm-3">Status envio</dt><dd class="col-sm-9">' + escapeHtml(r.status_envio) + '</dd>'
+                    + '</dl>';
+                if (desc.trim()) {
+                    html += '<h6 class="fw-bold mt-3">Resumo interno</h6><div class="msg-historico-block">' + escapeHtml(desc) + '</div>';
+                }
+                html += '<h6 class="fw-bold mt-3">Mensagem enviada ao GC / grupo</h6>'
+                    + '<div class="msg-historico-block">' + escapeHtml(r.mensagem_enviada || '(não registrada)') + '</div>';
+                if (r.resposta_gc) {
+                    html += '<h6 class="fw-bold mt-3">Resposta do GC</h6><p class="small mb-1"><strong>' + escapeHtml(r.resposta_gc_label || r.resposta_gc) + '</strong>'
+                        + (r.resposta_gc_em ? ' — ' + escapeHtml(r.resposta_gc_em) : '')
+                        + (r.resposta_gc_por_nome ? ' — por ' + escapeHtml(r.resposta_gc_por_nome) : '') + '</p>';
+                    if (r.resposta_gc_complemento_vendedor) {
+                        html += '<p class="small text-muted mb-1">Complemento ao vendedor:</p><div class="msg-historico-block">' + escapeHtml(r.resposta_gc_complemento_vendedor) + '</div>';
+                    }
+                    if (r.mensagem_resposta_vendedor) {
+                        html += '<p class="small text-muted mb-1 mt-2">Mensagem enviada ao vendedor:</p><div class="msg-historico-block">' + escapeHtml(r.mensagem_resposta_vendedor) + '</div>';
+                    }
+                }
+                body.innerHTML = html;
+                if (!modalHistoricoDetalhe) {
+                    modalHistoricoDetalhe = new bootstrap.Modal(document.getElementById('modal-historico-detalhe'));
+                }
+                modalHistoricoDetalhe.show();
+            }
+
+            async function exportarHistorico() {
+                const btn = document.getElementById('btn-exportar-historico');
+                if (!btn) return;
+                const oldHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Exportando...';
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/historico/exportar/', { headers: { 'Authorization': 'Bearer ' + token } });
+                    if (!res.ok) {
+                        let msg = 'Erro ao exportar.';
+                        try { const j = await res.json(); msg = j.detail || msg; } catch (e) { /* ignora */ }
+                        throw new Error(msg);
+                    }
+                    const blob = await res.blob();
+                    const disp = res.headers.get('Content-Disposition') || '';
+                    let filename = 'historico_antecipar_instalacao.xlsx';
+                    const m = /filename="?([^";]+)"?/i.exec(disp);
+                    if (m) filename = m[1];
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                } catch (e) {
+                    alert(e.message || 'Erro ao exportar histórico.');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = oldHtml;
+                }
+            }
 
             async function carregarHistorico(page) {
                 if (typeof page === 'number') historicoPage = page;
@@ -726,8 +851,10 @@
                     if (!res.ok) throw new Error(data.detail || 'Erro');
                     show('historico-loading', false);
                     const results = data.results || [];
+                    historicoCache = results;
                     const total = data.total || 0;
                     podeRegistrarRespostaGc = data.pode_registrar_resposta_gc === true;
+                    show('btn-exportar-historico', total > 0);
                     if (results.length === 0) {
                         show('historico-vazio', true);
                         return;
@@ -749,10 +876,11 @@
                         let respGcCell;
                         if (r.resposta_gc) {
                             const comp = (r.resposta_gc_complemento_vendedor || '').trim();
-                            respGcCell = '<span class="badge bg-secondary">' + (respostasLabels[r.resposta_gc] || r.resposta_gc) + '</span><br><small class="text-muted">' + (r.resposta_gc_em || '') + '</small>'
-                                + (comp ? '<br><small class="text-body">' + comp.replace(/</g, '&lt;').substring(0, 120) + (comp.length > 120 ? '…' : '') + '</small>' : '');
+                            respGcCell = '<span class="badge bg-secondary">' + escapeHtml(r.resposta_gc_label || respostasLabels[r.resposta_gc] || r.resposta_gc) + '</span>'
+                                + '<br><small class="text-muted">' + escapeHtml(r.resposta_gc_em || '') + '</small>'
+                                + (comp ? '<br><small class="text-body cell-ellipsis">' + escapeHtml(comp) + '</small>' : '');
                         } else if (podeRegistrarRespostaGc) {
-                            respGcCell = '<div class="d-flex flex-column gap-1" style="min-width:220px">'
+                            respGcCell = '<div class="d-flex flex-column gap-1">'
                                 + '<div class="d-flex flex-wrap gap-1 align-items-center">'
                                 + '<select class="form-select form-select-sm resp-gc-select" data-id="' + r.id + '" style="width:auto;min-width:120px"><option value="">—</option><option value="solicitado">Solicitado</option><option value="antecipada">Antecipada</option><option value="nao_antecipada">Não antecipada</option></select>'
                                 + '<button type="button" class="btn btn-sm btn-outline-primary btn-registrar-resp-gc" data-id="' + r.id + '">Registrar</button></div>'
@@ -761,8 +889,24 @@
                         } else {
                             respGcCell = '<span class="text-muted">—</span>';
                         }
-                        return '<tr><td>' + (r.data_solicitacao || '') + '</td><td>' + tipoLabel + '</td><td>' + (r.usuario_nome || '') + '</td><td>' + (r.ordem_servico || '') + '</td><td>' + (r.cliente_nome || '').substring(0, 25) + '</td><td>' + desc.substring(0, 50) + (desc.length > 50 ? '…' : '') + '</td><td>' + status + '</td><td>' + respGcCell + '</td></tr>';
+                        const verBtn = '<button type="button" class="btn btn-sm btn-outline-secondary btn-ver-historico" data-id="' + r.id + '" title="Ver mensagem completa">Ver</button>';
+                        return '<tr>'
+                            + '<td class="col-data">' + escapeHtml(r.data_solicitacao) + '</td>'
+                            + '<td class="col-tipo">' + tipoLabel + '</td>'
+                            + '<td><span class="cell-ellipsis">' + escapeHtml(r.usuario_nome) + '</span></td>'
+                            + '<td class="col-os">' + escapeHtml(r.ordem_servico) + '</td>'
+                            + '<td><span class="cell-ellipsis">' + escapeHtml(r.cliente_nome) + '</span></td>'
+                            + '<td><span class="cell-ellipsis" title="' + escapeHtml(desc) + '">' + escapeHtml(desc) + '</span></td>'
+                            + '<td class="col-status">' + status + '</td>'
+                            + '<td class="col-resp-gc">' + respGcCell + '</td>'
+                            + '<td class="col-acoes text-nowrap">' + verBtn + '</td>'
+                            + '</tr>';
                     }).join('');
+                    tbody.querySelectorAll('.btn-ver-historico').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            abrirDetalheHistorico(parseInt(this.getAttribute('data-id'), 10));
+                        });
+                    });
                     tbody.querySelectorAll('.btn-registrar-resp-gc').forEach(function(btn) {
                         btn.addEventListener('click', function() {
                             const id = parseInt(this.getAttribute('data-id'), 10);

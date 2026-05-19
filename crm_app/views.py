@@ -7362,6 +7362,12 @@ class PainelPerformanceView(APIView):
                 'cluster_sugerido': sug,
             })
 
+        if not filtro_cluster:
+            from crm_app.performance_helpers import ordenar_lista_performance
+            lista_hoje = ordenar_lista_performance(lista_hoje, key_cluster='cluster', key_nome='vendedor')
+            lista_semana = ordenar_lista_performance(lista_semana, key_cluster='cluster', key_nome='vendedor')
+            lista_mes = ordenar_lista_performance(lista_mes, key_cluster='cluster', key_nome='vendedor')
+
         total_hoje = sum(i['total'] for i in lista_hoje)
         total_semana = sum(i['total'] for i in lista_semana)
         total_mes = sum(i['total'] for i in lista_mes)
@@ -13982,19 +13988,91 @@ class ConfigAnteciparInstalacaoView(APIView):
         })
 
 
+def _historico_antecipar_queryset(request):
+    """Queryset de solicitações visíveis para o usuário (mesmo filtro do histórico)."""
+    base = AnteciparInstalacaoSolicitacao.objects.select_related(
+        'usuario', 'venda', 'venda__cliente', 'venda__vendedor', 'resposta_gc_por'
+    )
+    if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+        return base
+    if is_member(request.user, ['Supervisor']):
+        liderados_ids = list(request.user.liderados.values_list('id', flat=True))
+        return base.filter(Q(usuario_id=request.user.id) | Q(usuario_id__in=liderados_ids))
+    return base.filter(usuario_id=request.user.id)
+
+
+def _status_envio_antecipar_label(s):
+    partes = []
+    if s.enviado_gc:
+        partes.append('GC')
+    if s.enviado_grupo:
+        partes.append('Grupo')
+    if partes:
+        rotulo = 'Enviado (' + ', '.join(partes) + ')'
+    else:
+        rotulo = 'Erro / não enviado'
+    erros = s.erros or []
+    if erros:
+        rotulo += ' — ' + '; '.join(str(e) for e in erros)
+    return rotulo
+
+
+def _resposta_gc_label_antecipar(valor):
+    return {
+        'solicitado': 'Solicitado (encaminhada para Vtal)',
+        'antecipada': 'Antecipada',
+        'nao_antecipada': 'Não antecipada',
+    }.get(valor or '', valor or '')
+
+
+def _tipo_solicitacao_label_antecipar(valor):
+    return {
+        'antecipacao': 'Antecipação',
+        'reparo': 'Reparo',
+        'instalacao_fisica': 'Instalação física / pendência',
+    }.get(valor or 'antecipacao', valor or 'antecipacao')
+
+
+def _serializar_historico_antecipar_item(s):
+    resposta_gc = getattr(s, 'resposta_gc', None) or ''
+    tipo_sol = getattr(s, 'tipo_solicitacao', 'antecipacao') or 'antecipacao'
+    complemento = (getattr(s, 'resposta_gc_complemento_vendedor', None) or '').strip()
+    msg_vendedor = ''
+    if resposta_gc:
+        msg_vendedor = mensagem_resposta_gc_para_vendedor(
+            s.ordem_servico or '', resposta_gc, tipo_sol, complemento
+        ) or ''
+    return {
+        'id': s.id,
+        'data_solicitacao': s.data_solicitacao.strftime('%d/%m/%Y %H:%M') if s.data_solicitacao else '',
+        'usuario_nome': (s.usuario.get_full_name() or s.usuario.username) if s.usuario else '-',
+        'ordem_servico': s.ordem_servico or '-',
+        'cliente_nome': (s.venda.cliente.nome_razao_social if s.venda and s.venda.cliente else None) or '-',
+        'descricao_solicitacao': s.descricao_solicitacao or '',
+        'tipo_solicitacao': tipo_sol,
+        'tipo_solicitacao_label': _tipo_solicitacao_label_antecipar(tipo_sol),
+        'observacao_reparo': getattr(s, 'observacao_reparo', None) or '',
+        'mensagem_enviada': s.mensagem_enviada or '',
+        'status_envio': _status_envio_antecipar_label(s),
+        'enviado_gc': s.enviado_gc,
+        'enviado_grupo': s.enviado_grupo,
+        'erros': s.erros or [],
+        'sucesso': s.enviado_gc or s.enviado_grupo,
+        'resposta_gc': resposta_gc,
+        'resposta_gc_label': _resposta_gc_label_antecipar(resposta_gc),
+        'resposta_gc_em': s.resposta_gc_em.strftime('%d/%m/%Y %H:%M') if getattr(s, 'resposta_gc_em', None) else '',
+        'resposta_gc_por_nome': (s.resposta_gc_por.get_full_name() or s.resposta_gc_por.username) if getattr(s, 'resposta_gc_por', None) else '',
+        'resposta_gc_complemento_vendedor': complemento,
+        'mensagem_resposta_vendedor': msg_vendedor,
+    }
+
+
 class HistoricoAnteciparInstalacaoView(APIView):
     """GET: lista solicitações (filtrado por perfil: vendedor=só suas, supervisor=suas+liderados, gestão=todos)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        base = AnteciparInstalacaoSolicitacao.objects.select_related('usuario', 'venda', 'resposta_gc_por').order_by('-data_solicitacao')
-        if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
-            qs = base
-        elif is_member(request.user, ['Supervisor']):
-            liderados_ids = list(request.user.liderados.values_list('id', flat=True))
-            qs = base.filter(Q(usuario_id=request.user.id) | Q(usuario_id__in=liderados_ids))
-        else:
-            qs = base.filter(usuario_id=request.user.id)
+        qs = _historico_antecipar_queryset(request).order_by('-data_solicitacao')
         try:
             page = int(request.query_params.get('page', 1))
         except (TypeError, ValueError):
@@ -14007,26 +14085,7 @@ class HistoricoAnteciparInstalacaoView(APIView):
             page_size = 20
         start = (page - 1) * page_size
         lista = list(qs[start:start + page_size])
-        results = []
-        for s in lista:
-            results.append({
-                'id': s.id,
-                'data_solicitacao': s.data_solicitacao.strftime('%d/%m/%Y %H:%M') if s.data_solicitacao else '',
-                'usuario_nome': (s.usuario.get_full_name() or s.usuario.username) if s.usuario else '-',
-                'ordem_servico': s.ordem_servico or '-',
-                'cliente_nome': (s.venda.cliente.nome_razao_social if s.venda and s.venda.cliente else None) or '-',
-                'descricao_solicitacao': (s.descricao_solicitacao or '')[:200],
-                'tipo_solicitacao': getattr(s, 'tipo_solicitacao', 'antecipacao') or 'antecipacao',
-                'observacao_reparo': (getattr(s, 'observacao_reparo', None) or '')[:200],
-                'enviado_gc': s.enviado_gc,
-                'enviado_grupo': s.enviado_grupo,
-                'erros': s.erros or [],
-                'sucesso': s.enviado_gc or s.enviado_grupo,
-                'resposta_gc': getattr(s, 'resposta_gc', None) or '',
-                'resposta_gc_em': s.resposta_gc_em.strftime('%d/%m/%Y %H:%M') if getattr(s, 'resposta_gc_em', None) else '',
-                'resposta_gc_por_nome': (s.resposta_gc_por.get_full_name() or s.resposta_gc_por.username) if getattr(s, 'resposta_gc_por', None) else '',
-                'resposta_gc_complemento_vendedor': (getattr(s, 'resposta_gc_complemento_vendedor', None) or '')[:500],
-            })
+        results = [_serializar_historico_antecipar_item(s) for s in lista]
         return Response({
             'results': results,
             'total': qs.count(),
@@ -14034,15 +14093,81 @@ class HistoricoAnteciparInstalacaoView(APIView):
         })
 
 
-def _historico_antecipar_queryset(request):
-    """Queryset de solicitações visíveis para o usuário (mesmo filtro do histórico)."""
-    base = AnteciparInstalacaoSolicitacao.objects.select_related('usuario', 'venda', 'venda__vendedor', 'resposta_gc_por')
-    if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
-        return base
-    if is_member(request.user, ['Supervisor']):
-        liderados_ids = list(request.user.liderados.values_list('id', flat=True))
-        return base.filter(Q(usuario_id=request.user.id) | Q(usuario_id__in=liderados_ids))
-    return base.filter(usuario_id=request.user.id)
+class ExportarHistoricoAnteciparInstalacaoView(APIView):
+    """GET: exporta histórico visível ao usuário em Excel (mensagem enviada + status + resposta GC)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from io import BytesIO
+        from django.utils import timezone
+
+        qs = _historico_antecipar_queryset(request).order_by('-data_solicitacao')
+        limite = 5000
+        lista = list(qs[:limite])
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Histórico'
+        headers = [
+            'Data solicitação',
+            'Tipo',
+            'Solicitante',
+            'O.S',
+            'Cliente',
+            'Status envio',
+            'Descrição / resumo interno',
+            'Observação reparo',
+            'Mensagem enviada (WhatsApp GC/grupo)',
+            'Resposta GC',
+            'Data resposta GC',
+            'Resposta registrada por',
+            'Complemento ao vendedor',
+            'Mensagem enviada ao vendedor',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill(start_color='4E73DF', end_color='4E73DF', fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        for s in lista:
+            item = _serializar_historico_antecipar_item(s)
+            ws.append([
+                item['data_solicitacao'],
+                item['tipo_solicitacao_label'],
+                item['usuario_nome'],
+                item['ordem_servico'],
+                item['cliente_nome'],
+                item['status_envio'],
+                item['descricao_solicitacao'],
+                item['observacao_reparo'],
+                item['mensagem_enviada'],
+                item['resposta_gc_label'] or '',
+                item['resposta_gc_em'],
+                item['resposta_gc_por_nome'],
+                item['resposta_gc_complemento_vendedor'],
+                item['mensagem_resposta_vendedor'],
+            ])
+        for col_idx in range(1, len(headers) + 1):
+            letter = get_column_letter(col_idx)
+            if letter in ('I', 'G', 'H', 'M', 'N'):
+                ws.column_dimensions[letter].width = 48
+            elif letter in ('E', 'C'):
+                ws.column_dimensions[letter].width = 28
+            else:
+                ws.column_dimensions[letter].width = 16
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+            for cell in row:
+                cell.alignment = Alignment(vertical='top', wrap_text=True)
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        stamp = timezone.localtime(timezone.now()).strftime('%Y%m%d_%H%M')
+        nome = f'historico_antecipar_instalacao_{stamp}.xlsx'
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        resp['Content-Disposition'] = f'attachment; filename="{nome}"'
+        return resp
 
 
 class RespostaGCAnteciparInstalacaoView(APIView):

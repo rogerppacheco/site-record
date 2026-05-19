@@ -1102,13 +1102,15 @@ class WhatsAppService:
         """
         Gera imagem da tabela de performance:
         título "Performance - Hoje" (ou Semanal/Mensal), tabela com Vendedor, Cluster,
-        V. Hoje/Total, Cartão, % CC; linha TOTAL primeiro; verde/rosa por venda.
+        V. Hoje/Total, Cartão, % CC; linha TOTAL primeiro; cores por faixa de vendas.
         """
         if not Image:
             return None
 
         try:
-            lista = sorted(dados_relatorio.get('lista', []), key=lambda x: (str(x.get('nome', '')).upper()))
+            from crm_app.performance_helpers import cores_linha_performance, ordenar_lista_performance
+
+            lista = ordenar_lista_performance(dados_relatorio.get('lista', []), key_cluster='cluster', key_nome='nome')
             totais = dados_relatorio.get('totais', {})
             tipo = dados_relatorio.get('tipo', 'HOJE')
             titulo = dados_relatorio.get('titulo', 'Performance - Hoje')
@@ -1130,10 +1132,6 @@ class WhatsAppService:
             cor_fundo = (255, 255, 255)
             cor_azul_header = (78, 115, 223)   # #4e73df
             cor_azul_total = (44, 62, 80)       # #2c3e50
-            cor_verde_linha = (209, 231, 221)  # bg-green-soft
-            cor_verde_texto = (15, 81, 50)     # text green
-            cor_rosa_linha = (248, 215, 218)   # bg-red-soft
-            cor_rosa_texto = (132, 32, 41)     # text red
             cor_texto = (33, 37, 41)
             cor_borda = (227, 230, 240)        # #e3e6f0
 
@@ -1188,13 +1186,12 @@ class WhatsAppService:
                 d.text((col_x[4], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
             y += H_LINHA
 
-            # Linhas de dados (verde se vendeu, rosa se zero)
+            # Linhas de dados (cor por faixa: 0 vermelho, 1-2 amarelo, 3-5 azul, 6+ verde escuro)
             for i, item in enumerate(lista):
                 ly_top = y
                 ly_bot = y + H_LINHA
-                vendeu = (item.get('total') or 0) > 0
-                bg = cor_verde_linha if vendeu else cor_rosa_linha
-                cor_nums = cor_verde_texto if vendeu else cor_rosa_texto
+                total_v = item.get('total') or 0
+                bg, cor_nums = cores_linha_performance(total_v)
                 d.rectangle([(20, ly_top), (W - 20, ly_bot)], fill=bg)
                 d.line([(20, ly_bot), (W - 20, ly_bot)], fill=cor_borda)
 

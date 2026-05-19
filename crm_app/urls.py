@@ -163,6 +163,7 @@ from .views import (
     ConfigAnteciparInstalacaoView,
     ConfigEsteiraVendasView,
     HistoricoAnteciparInstalacaoView,
+    ExportarHistoricoAnteciparInstalacaoView,
     RespostaGCAnteciparInstalacaoView,
 )
 
@@ -400,6 +401,7 @@ urlpatterns = [
     path('antecipar-instalacao/solicitar/', SolicitarAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-solicitar'),
     path('antecipar-instalacao/config/', ConfigAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-config'),
     path('antecipar-instalacao/historico/', HistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico'),
+    path('antecipar-instalacao/historico/exportar/', ExportarHistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico-exportar'),
     path('antecipar-instalacao/solicitacao/<int:pk>/resposta/', RespostaGCAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-resposta-gc'),
 
     # --- Auditoria: sem slot na agenda (comunicação GC) ---
