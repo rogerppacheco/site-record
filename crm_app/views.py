@@ -1575,8 +1575,8 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_ma
     if venda.adiantamento_sabado_marcado:
         raise ValueError('Venda já marcada como adiantamento sábado.')
     st = (venda.status_esteira.nome if venda.status_esteira else '') or ''
-    if 'AGENDADO' not in st.upper():
-        raise ValueError('Somente vendas com status AGENDADO na esteira.')
+    if not manual and 'AGENDADO' not in st.upper():
+        raise ValueError('Somente vendas com status AGENDADO na esteira. Use marcação manual com observação.')
     if not venda.vendedor_id:
         raise ValueError('Venda sem vendedor.')
     recebe = getattr(venda.vendedor, 'recebe_adiantamento_sabado', False)

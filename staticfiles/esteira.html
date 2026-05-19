@@ -912,6 +912,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted">Valor padrão conforme <strong>Regras por Faixa</strong> (primeira faixa com finalidade <strong>Comissão</strong>). O lançamento usa a <strong>data de abertura da O.S.</strong></p>
+                    <p id="adiant-sabado-hint-manual-status" class="small text-warning mb-2" style="display: none;">Em <strong>Vendas Totais</strong>, vendas fora de <strong>Agendado</strong> exigem marcação manual com observação.</p>
                     <div class="mb-2">
                         <label class="form-label small">Valor do adiantamento (opcional)</label>
                         <input type="number" class="form-control form-control-sm" id="txt-adiant-sabado-valor" min="0.01" step="0.01" placeholder="Se vazio, usa valor da tabela de Comissão">
@@ -1647,10 +1648,17 @@
             }
         }
 
-        function abrirMarcarAdiantSabado(vendaId) {
+        function abrirMarcarAdiantSabado(vendaId, forcarManual) {
             if (!podeMarcarAdiantSabado) return;
             document.getElementById('hid-adiant-sabado-venda-id').value = String(vendaId);
-            document.getElementById('chk-adiant-sabado-manual').checked = false;
+            const chkManual = document.getElementById('chk-adiant-sabado-manual');
+            const hintManual = document.getElementById('adiant-sabado-hint-manual-status');
+            if (chkManual) {
+                chkManual.disabled = false;
+                chkManual.checked = !!forcarManual;
+                if (forcarManual) chkManual.disabled = true;
+            }
+            if (hintManual) hintManual.style.display = forcarManual ? 'block' : 'none';
             document.getElementById('txt-adiant-sabado-valor').value = '';
             document.getElementById('txt-adiant-sabado-obs').value = '';
             if (modalMarcarAdiantSabado) modalMarcarAdiantSabado.show();
@@ -2161,8 +2169,10 @@
                                 celulaAdiantSabado += ' <button type="button" class="btn btn-sm btn-outline-secondary py-0 ms-1" onclick="editarAdiantSabado(' + v.id + ', \'' + vlr + '\', \'' + obsEsc + '\')">Editar valor</button>';
                                 celulaAdiantSabado += ' <button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="desmarcarAdiantSabado(' + v.id + ')">Desmarcar</button>';
                             }
-                        } else if (agSt && podeMarcarAdiantSabado) {
-                            celulaAdiantSabado = '<button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="abrirMarcarAdiantSabado(' + v.id + ')">Marcar</button>';
+                        } else if (podeMarcarAdiantSabado && (agSt || carregarVendasTotais)) {
+                            const forcarManual = carregarVendasTotais && !agSt;
+                            const rotulo = forcarManual ? 'Marcar (manual)' : 'Marcar';
+                            celulaAdiantSabado = '<button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="abrirMarcarAdiantSabado(' + v.id + (forcarManual ? ', true' : '') + ')">' + rotulo + '</button>';
                         }
                     }
 
