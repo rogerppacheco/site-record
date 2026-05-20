@@ -6598,6 +6598,47 @@ def _pap_confirmacao_queryset_prioriza_protocolo(qs):
     ).order_by("-_prio_proto", "-criado_em")
 
 
+def _enviar_relato_roubo_para_gc(sessao, telefone_formatado_usuario, usuario_whatsapp):
+    """Consolida dados do fluxo ROUBO e envia para o telefone do GC configurado."""
+    try:
+        from crm_app.models import AnteciparInstalacaoConfig
+        from crm_app.whatsapp_service import WhatsAppService
+
+        dados = dict((sessao.dados_temp or {}).get('roubo', {}))
+        identificador = (dados.get('identificador') or '').strip()
+        tipo_id = dados.get('tipo_identificador') or 'nao_informado'
+        print_url = (dados.get('print_url') or '').strip()
+        print_tipo = (dados.get('print_tipo') or '').strip()
+
+        if not identificador or not print_url:
+            return False, "Dados incompletos para envio ao GC."
+
+        config = AnteciparInstalacaoConfig.objects.first()
+        telefone_gc = formatar_telefone((getattr(config, 'telefone_gc', '') or '').strip()) if config else ''
+        if not telefone_gc:
+            return False, "Telefone do GC nao configurado."
+
+        nome_usuario = ""
+        try:
+            nome_usuario = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip()
+        except Exception:
+            nome_usuario = ""
+
+        msg_gc = (
+            "ALERTA - ROUBO\n\n"
+            f"Solicitante: {nome_usuario or 'N/A'}\n"
+            f"Telefone: {telefone_formatado_usuario}\n"
+            f"Identificador ({tipo_id}): {identificador}\n"
+            f"Print ({print_tipo or 'arquivo'}): {print_url}"
+        )
+
+        ok, _ = WhatsAppService().enviar_mensagem_texto(telefone_gc, msg_gc)
+        return bool(ok), ("Enviado ao GC" if ok else "Falha ao enviar WhatsApp para o GC.")
+    except Exception as e:
+        logger.exception("[Webhook] Erro ao enviar relato ROUBO ao GC: %s", e)
+        return False, "Erro interno ao enviar relato ao GC."
+
+
 def processar_webhook_whatsapp(data, request=None):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
@@ -7424,6 +7465,16 @@ def processar_webhook_whatsapp(data, request=None):
                 logger.exception(f"[Webhook] Erro ao enviar VENDER (fallback texto): {e}")
             return {'status': 'ok', 'mensagem': resposta}
 
+        elif mensagem_limpa in ['ROUBO']:
+            logger.info("[Webhook] Comando ROUBO reconhecido!")
+            sessao.etapa = 'roubo_identificador'
+            sessao.dados_temp = {'roubo': {}}
+            sessao.save()
+            resposta = (
+                "Entendi. Para abrir o alerta, informe o *CPF* ou a *O.S.* (somente numeros)."
+            )
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         elif mensagem_limpa in ['PEDIDO', 'PEDIDOS']:
             logger.info(f"[Webhook] Comando PEDIDO reconhecido!")
             resposta = _iniciar_fluxo_pedido(telefone_formatado, sessao)
@@ -7514,6 +7565,71 @@ def processar_webhook_whatsapp(data, request=None):
                 logger.exception("[Webhook] Erro na busca direta Record Apoia: %s", e)
         
         # === PROCESSAMENTO POR ETAPA ===
+        elif etapa_atual.startswith('roubo_'):
+            dt = sessao.dados_temp or {}
+            dados_roubo = dict(dt.get('roubo') or {})
+
+            if etapa_atual == 'roubo_identificador':
+                ident = re.sub(r'\D', '', mensagem_texto or '')
+                if not ident:
+                    resposta = "Nao consegui identificar. Envie o *CPF* ou a *O.S.* (somente numeros)."
+                    return _enviar_resposta_e_retornar(resposta)
+
+                tipo = 'cpf' if len(ident) == 11 else 'os'
+                dados_roubo['tipo_identificador'] = tipo
+                dados_roubo['identificador'] = ident
+                sessao.etapa = 'roubo_print'
+                sessao.dados_temp = {**dt, 'roubo': dados_roubo}
+                sessao.save()
+                resposta = "Agora envie um *print da conversa do WhatsApp*."
+                return _enviar_resposta_e_retornar(resposta)
+
+            if etapa_atual == 'roubo_print':
+                url_anexo = (image_url or document_url or '').strip()
+                if not url_anexo:
+                    resposta = "Preciso do print para continuar. Envie a *imagem/arquivo* da conversa."
+                    return _enviar_resposta_e_retornar(resposta)
+
+                dados_roubo['print_url'] = url_anexo
+                dados_roubo['print_tipo'] = 'imagem' if image_url else 'documento'
+                sessao.etapa = 'roubo_tem_mais'
+                sessao.dados_temp = {**dt, 'roubo': dados_roubo}
+                sessao.save()
+                resposta = "Tem mais alguma informacao? Responda *SIM* ou *NAO*."
+                return _enviar_resposta_e_retornar(resposta)
+
+            if etapa_atual == 'roubo_tem_mais':
+                if mensagem_limpa in ['SIM', 'S']:
+                    ok_gc, detalhe = _enviar_relato_roubo_para_gc(
+                        sessao=sessao,
+                        telefone_formatado_usuario=telefone_formatado_usuario,
+                        usuario_whatsapp=usuario_whatsapp,
+                    )
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    if ok_gc:
+                        resposta = "Perfeito. Dados consolidados e enviados ao *GC*."
+                    else:
+                        resposta = f"Registro concluido, mas nao consegui enviar ao GC agora. Motivo: {detalhe}"
+                    return _enviar_resposta_e_retornar(resposta)
+
+                if mensagem_limpa in ['NAO', 'NÃO', 'N']:
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    resposta = "Certo, fluxo encerrado sem envio ao GC."
+                    return _enviar_resposta_e_retornar(resposta)
+
+                resposta = "Responda apenas *SIM* ou *NAO*."
+                return _enviar_resposta_e_retornar(resposta)
+
+            resposta = "Digite *ROUBO* para iniciar novamente."
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return _enviar_resposta_e_retornar(resposta)
+
         elif etapa_atual == 'fachada_cep':
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
             if not cep_limpo or len(cep_limpo) < 8:
