@@ -39,7 +39,10 @@ Enquanto o serviço **scheduler** não estiver no ar com **1 réplica**, estas t
 
 O site (login, CRM, webhooks) continua funcionando no serviço web.
 
-## Projeto Railway
+## Projeto Railway (produção site-record)
 
-- Projeto local linkado: **melodious-hope** (`c5f30c08-b32b-462e-9679-129064a82247`)
-- Serviço scheduler esperado: **site-record-scheduler**
+- Projeto: **pleasing-recreation** (`7171eee1-2c6e-446a-b7a9-880d3786c51a`)
+- Serviço web: **site-record**
+- Serviço scheduler: **site-record-scheduler**
+
+> **Nota:** `melodious-hope` é outro projeto (viabilidade); não usar para o site-record.

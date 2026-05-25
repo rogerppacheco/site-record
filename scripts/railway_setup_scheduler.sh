@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-PROJECT_ID="${RAILWAY_PROJECT_ID:-c5f30c08-b32b-462e-9679-129064a82247}"
+PROJECT_ID="${RAILWAY_PROJECT_ID:-7171eee1-2c6e-446a-b7a9-880d3786c51a}"
 SCHEDULER_SERVICE="${RAILWAY_SCHEDULER_SERVICE:-site-record-scheduler}"
 WEB_SERVICE="${RAILWAY_WEB_SERVICE:-}"
 GITHUB_REPO="${RAILWAY_GITHUB_REPO:-rogerppacheco/site-record}"

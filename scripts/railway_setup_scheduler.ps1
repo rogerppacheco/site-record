@@ -7,7 +7,8 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $RepoRoot
 
-$ProjectId = if ($env:RAILWAY_PROJECT_ID) { $env:RAILWAY_PROJECT_ID } else { "c5f30c08-b32b-462e-9679-129064a82247" }
+# Projeto production site-record: pleasing-recreation (nao melodious-hope/viabilidade)
+$ProjectId = if ($env:RAILWAY_PROJECT_ID) { $env:RAILWAY_PROJECT_ID } else { "7171eee1-2c6e-446a-b7a9-880d3786c51a" }
 $WebService = if ($env:RAILWAY_WEB_SERVICE) { $env:RAILWAY_WEB_SERVICE } else { "" }
 $SchedulerService = if ($env:RAILWAY_SCHEDULER_SERVICE) { $env:RAILWAY_SCHEDULER_SERVICE } else { "site-record-scheduler" }
 $GitHubRepo = "rogerppacheco/site-record"
