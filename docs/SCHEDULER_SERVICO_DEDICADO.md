@@ -11,10 +11,18 @@ O APScheduler **não** roda mais dentro do Gunicorn. Tarefas automáticas ficam 
 
 ## Railway (automático)
 
-No PowerShell, na pasta do projeto:
+Passo a passo completo (token GitHub ou terminal): **`docs/DEPLOY_RAILWAY_AUTOMATICO.md`**
+
+Resumo — GitHub Actions (recomendado):
+
+1. Token em [railway.app/account/tokens](https://railway.app/account/tokens)
+2. Secret `RAILWAY_TOKEN` no GitHub
+3. Actions → **Railway scheduler setup** → Run workflow
+
+Ou no PowerShell:
 
 ```powershell
-railway login
+$env:RAILWAY_TOKEN = "seu_token"
 powershell -ExecutionPolicy Bypass -File scripts\railway_setup_scheduler.ps1
 ```
 
