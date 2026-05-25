@@ -145,10 +145,10 @@ class WebhookWhatsAppView(APIView):
         Sempre retorna uma resposta HTTP para evitar 502 (ngrok/Z-API).
         """
         import logging
+        from django.conf import settings
+
         logger_webhook = logging.getLogger(__name__)
-        print("[WEBHOOK] >>> POST /api/crm/webhook-whatsapp/ recebido <<<", flush=True)
-        logger_webhook.info("[WebhookWhatsAppView] POST recebido (início)")
-        
+
         try:
             data = request.data
             if isinstance(request.data, dict):
@@ -159,15 +159,29 @@ class WebhookWhatsAppView(APIView):
                     data = json.loads(request.body) if request.body else {}
                 except Exception:
                     data = {}
-            logger_webhook.info(f"[WebhookWhatsAppView] Dados recebidos (keys): {list(data.keys()) if isinstance(data, dict) else type(data)}")
         except Exception as e:
             logger_webhook.exception(f"[WebhookWhatsAppView] Erro ao ler request.data: {e}")
             return Response({'status': 'ok', 'mensagem': 'Payload inválido'}, status=200)
-        
+
+        if getattr(settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
+            from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_zapi
+            rapido = avaliar_fastpath_zapi(data)
+            if rapido is not None:
+                if settings.DEBUG:
+                    logger_webhook.debug(
+                        "[WebhookWhatsAppView] fast-path: %s",
+                        rapido.get('mensagem'),
+                    )
+                return Response(rapido, status=200)
+
         try:
             from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
             resultado = processar_webhook_whatsapp(data, request=request)
-            logger_webhook.info(f"[WebhookWhatsAppView] Resultado: {resultado.get('status', '?')}")
+            if settings.DEBUG:
+                logger_webhook.debug(
+                    "[WebhookWhatsAppView] Resultado: %s",
+                    resultado.get('status', '?'),
+                )
             return Response(resultado, status=200 if resultado.get('status') == 'ok' else 500)
         except Exception as e:
             logger_webhook.exception(f"[WebhookWhatsAppView] Erro no processamento: {e}")

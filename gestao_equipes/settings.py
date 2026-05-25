@@ -252,6 +252,8 @@ MS_DRIVE_FOLDER_ROOT = "CDOI_Record_Vertical"
 ZAPI_INSTANCE_ID = config('ZAPI_INSTANCE_ID', default='')
 ZAPI_TOKEN = config('ZAPI_TOKEN', default='')
 ZAPI_CLIENT_TOKEN = config('ZAPI_CLIENT_TOKEN', default='')
+# Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
+WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
 
 # --- CONFIGURAÇÕES ZENVIA VOICE (AUDITORIA DE LIGAÇÕES) ---
 ZENVIA_VOICE_API_URL = config('ZENVIA_VOICE_API_URL', default='https://voice-api.zenvia.com')

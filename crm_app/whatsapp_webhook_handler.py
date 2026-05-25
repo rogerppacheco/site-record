@@ -6658,6 +6658,14 @@ def processar_webhook_whatsapp(data, request=None):
         "body": "Fachada"
     }
     """
+    from django.conf import settings as django_settings
+
+    if getattr(django_settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
+        from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_zapi
+        rapido = avaliar_fastpath_zapi(data)
+        if rapido is not None:
+            return rapido
+
     from crm_app.models import SessaoWhatsapp
     from crm_app.whatsapp_service import WhatsAppService
     from crm_app.utils import (
@@ -6668,11 +6676,16 @@ def processar_webhook_whatsapp(data, request=None):
         consultar_andamento_agendamentos
     )
     from crm_app.nio_api import consultar_dividas_nio
-    
-    # Log completo do payload recebido para debug
-    logger.info(f"[Webhook] Payload completo recebido: {data}")
-    logger.info(f"[Webhook] Tipo do payload: {type(data)}")
-    logger.info(f"[Webhook] Chaves disponíveis: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
+
+    if django_settings.DEBUG:
+        logger.debug("[Webhook] Payload recebido (keys): %s", list(data.keys()) if isinstance(data, dict) else type(data))
+    else:
+        logger.debug(
+            "[Webhook] type=%s phone=%s isGroup=%s",
+            (data or {}).get('type') if isinstance(data, dict) else None,
+            (data or {}).get('phone') if isinstance(data, dict) else None,
+            (data or {}).get('isGroup') if isinstance(data, dict) else None,
+        )
     
     # Ignorar mensagens enviadas pelo próprio bot (evita eco e resposta duplicada)
     from_me = data.get('fromMe') or data.get('isFromMe') or data.get('from_me')
@@ -6766,10 +6779,10 @@ def processar_webhook_whatsapp(data, request=None):
     # Ignorar webhooks só de reação (emoji) - não têm texto/anexo, evitar 500
     if not mensagem_texto and not image_url and not document_url:
         if 'reaction' in data:
-            logger.info("[Webhook] Reação (emoji) ignorada - sem texto/anexo")
+            logger.debug("[Webhook] Reação (emoji) ignorada - sem texto/anexo")
             return {'status': 'ok', 'mensagem': 'Reação ignorada'}
-        logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem vazia e sem anexo")
-        return {'status': 'erro', 'mensagem': f'Dados incompletos: telefone={telefone}, mensagem vazia'}
+        logger.debug("[Webhook] Sem texto/anexo: telefone=%s", telefone)
+        return {'status': 'ok', 'mensagem': 'Webhook sem conteúdo ignorado'}
     if not telefone:
         logger.warning(f"[Webhook] Dados incompletos: telefone vazio")
         return {'status': 'erro', 'mensagem': 'Telefone não informado'}
