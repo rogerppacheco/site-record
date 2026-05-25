@@ -1,22 +1,25 @@
 # crm_app/scheduler.py
 """
-Agendador de tarefas automáticas para busca de faturas e envio de performance
+Agendador de tarefas automáticas (faturas Nio, performance, boas-vindas, Sonax).
+
+Produção: processo dedicado — python manage.py run_scheduler
+Não iniciar junto com Gunicorn (evita competir com HTTP/webhooks).
 """
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from django.conf import settings
 from django.core.management import call_command
 import logging
+import signal
 
 logger = logging.getLogger(__name__)
 
+_scheduler_instance = None
+
 
 def buscar_faturas_automatico():
-    """
-    Executa busca automática de faturas no site da Nio
-    Processa todas as faturas disponíveis de todas as safras ativas
-    """
     try:
         logger.info("🤖 Iniciando busca automática de faturas no Nio...")
         call_command('buscar_faturas_nio_automatico')
@@ -26,10 +29,6 @@ def buscar_faturas_automatico():
 
 
 def processar_envio_performance_agendado():
-    """
-    Processa envios programados do Painel de Performance
-    Verifica regras de agendamento e envia tabelas via WhatsApp
-    """
     try:
         logger.info("📊 Verificando envios programados de Performance...")
         from crm_app.tasks import processar_envio_performance
@@ -42,10 +41,6 @@ def processar_envio_performance_agendado():
 
 
 def processar_fila_boas_vindas():
-    """
-    Processa a fila de envio de boas-vindas.
-    Envia mensagens cujo horário agendado já passou (distribuídas 8h-16h).
-    """
     try:
         call_command('processar_fila_boas_vindas', '--limite', '5')
     except Exception as e:
@@ -54,91 +49,106 @@ def processar_fila_boas_vindas():
         logger.error(f"Traceback: {traceback.format_exc()}")
 
 
-def start_scheduler():
-    """
-    Inicia o agendador de tarefas
-    - Busca de faturas: 1x por dia às 00:05
-    - Envio de Performance: A cada minuto (verifica horários programados)
-    """
-    logger.info("[OK] Iniciando agendador de tarefas...")
-    
-    scheduler = BackgroundScheduler()
-    
-    # 1. Agendamento para busca de faturas - meia-noite e cinco (00:05)
+def _processar_fallback_sonax_auditoria():
+    try:
+        from crm_app.tasks import processar_fallback_auditoria_ligacoes_sonax
+        processar_fallback_auditoria_ligacoes_sonax(
+            limite=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_LIMIT", 15)),
+            grace_seconds=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_GRACE_SECONDS", 90)),
+        )
+    except Exception as e:
+        logger.error(f"❌ Erro no fallback Sonax auditoria: {str(e)}")
+
+
+def _registrar_jobs(scheduler):
     scheduler.add_job(
         buscar_faturas_automatico,
-        trigger=CronTrigger.from_crontab('5 0 * * *'),  # Todo dia às 00:05
+        trigger=CronTrigger.from_crontab('5 0 * * *'),
         id='buscar_faturas_diario',
         name='Busca automática de faturas Nio (00:05)',
         replace_existing=True,
-        max_instances=1,  # Previne execuções simultâneas
+        max_instances=1,
     )
-    
-    # 2. Agendamento para envio de Performance - a cada minuto
-    # A função processar_envio_performance() verifica internamente se é hora de enviar
     scheduler.add_job(
         processar_envio_performance_agendado,
-        trigger=IntervalTrigger(minutes=1),  # A cada minuto
+        trigger=IntervalTrigger(minutes=1),
         id='processar_envio_performance',
         name='Processar envios programados de Performance (a cada minuto)',
         replace_existing=True,
-        max_instances=1,  # Previne execuções simultâneas
+        max_instances=1,
     )
-
-    # 3. Fila de boas-vindas - a cada 5 min (envia 1 msg a cada 20-30 min via agendamento)
     scheduler.add_job(
         processar_fila_boas_vindas,
-        trigger=IntervalTrigger(minutes=5),  # A cada 5 min
+        trigger=IntervalTrigger(minutes=5),
         id='processar_fila_boas_vindas',
         name='Processar fila de boas-vindas (a cada 5 min)',
         replace_existing=True,
         max_instances=1,
     )
-
-    # 4. Fallback Sonax (auditoria de ligações) - a cada 2 min
-    # Quando o webhook de desligamento não chega, consulta status_chamada e baixa gravação via pega_gravacao.
-    def _processar_fallback_sonax_auditoria():
-        try:
-            from crm_app.tasks import processar_fallback_auditoria_ligacoes_sonax
-            processar_fallback_auditoria_ligacoes_sonax(
-                limite=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_LIMIT", 15)),
-                grace_seconds=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_GRACE_SECONDS", 90)),
-            )
-        except Exception as e:
-            logger.error(f"❌ Erro no fallback Sonax auditoria: {str(e)}")
-
     scheduler.add_job(
         _processar_fallback_sonax_auditoria,
-        trigger=IntervalTrigger(minutes=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_INTERVAL_MINUTES", 2))),
+        trigger=IntervalTrigger(
+            minutes=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_INTERVAL_MINUTES", 2))
+        ),
         id="processar_fallback_sonax_auditoria",
         name="Fallback Sonax auditoria (status + gravação)",
         replace_existing=True,
         max_instances=1,
     )
-    
-    scheduler.start()
-    logger.info("[OK] Agendador iniciado com sucesso!")
-    
-    # Log dos jobs agendados
+
+
+def _log_jobs(scheduler):
     jobs = scheduler.get_jobs()
-    logger.info(f"[INFO] {len(jobs)} tarefa(s) agendada(s):")
+    logger.info("[OK] %s tarefa(s) agendada(s):", len(jobs))
     for job in jobs:
-        logger.info(f"  - {job.name}: {job.trigger}")
-    
+        logger.info("  - %s: %s", job.name, job.trigger)
+
+
+def create_scheduler(*, blocking=False):
+    """Cria scheduler com jobs registrados (não inicia)."""
+    cls = BlockingScheduler if blocking else BackgroundScheduler
+    scheduler = cls()
+    _registrar_jobs(scheduler)
     return scheduler
 
 
-# Scheduler global
+def start_scheduler(blocking=False):
+    """Inicia o agendador. Com blocking=True, bloqueia até encerrar o processo."""
+    global _scheduler_instance
+    scheduler = create_scheduler(blocking=blocking)
+    scheduler.start()
+    _scheduler_instance = scheduler
+    logger.info("[OK] Agendador iniciado (blocking=%s)", blocking)
+    _log_jobs(scheduler)
+    return scheduler
+
+
+def run_blocking_scheduler():
+    """Processo dedicado (manage.py run_scheduler / serviço Railway scheduler)."""
+    scheduler = create_scheduler(blocking=True)
+
+    def _shutdown(signum=None, frame=None):
+        logger.info("[SCHEDULER] Sinal %s — encerrando...", signum)
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
+    logger.info("[SCHEDULER] Processo dedicado iniciado. Ctrl+C ou SIGTERM para parar.")
+    _log_jobs(scheduler)
+    scheduler.start()
+
+
+# Compatibilidade com código legado que importava init_scheduler / scheduler global
 scheduler = None
 
 
 def init_scheduler():
-    """Inicializa o scheduler se ainda não estiver rodando"""
+    """Deprecated: use run_blocking_scheduler / manage.py run_scheduler."""
     global scheduler
-    if scheduler is None or not scheduler.running:
-        logger.info("[SCHEDULER] Inicializando scheduler...")
-        scheduler = start_scheduler()
-        logger.info(f"[SCHEDULER] Scheduler inicializado. Status: running={scheduler.running}")
-    else:
-        logger.info("[SCHEDULER] Scheduler já está rodando, pulando inicialização")
+    logger.warning(
+        "[SCHEDULER] init_scheduler() está obsoleto; use: python manage.py run_scheduler"
+    )
+    scheduler = start_scheduler(blocking=False)
     return scheduler
