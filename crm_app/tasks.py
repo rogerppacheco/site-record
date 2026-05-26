@@ -138,6 +138,16 @@ def processar_envio_performance():
                 if getattr(regra, 'cluster_alvo', None) and str(regra.cluster_alvo).strip() and str(regra.cluster_alvo).upper() != 'TODOS':
                     users = users.filter(cluster__iexact=regra.cluster_alvo.strip())
 
+                users_perf = users.select_related('perfil')
+                users_by_id = {u.id: u for u in users_perf}
+                from crm_app.performance_helpers import (
+                    carregar_contexto_faixas_comissao,
+                    dias_decorridos_semana,
+                    perfil_comissao_do_consultor,
+                )
+                dias_decorridos_zap = dias_decorridos_semana(inicio_semana, fim_semana, hoje)
+                ctx_faixas_zap = carregar_contexto_faixas_comissao(inicio_mes.year, inicio_mes.month)
+
                 filtro_os_sem_reemissao = (
                     Q(vendas__ativo=True)
                     & ~Q(vendas__ordem_servico='')
@@ -163,7 +173,7 @@ def processar_envio_performance():
 
                 if tipo_rel == 'HOJE':
                     filtro = filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje)
-                    qs = users.annotate(
+                    qs = users_perf.annotate(
                         total=Count('vendas', filter=filtro),
                         cc=Count('vendas', filter=filtro & filtro_cc)
                     ).order_by('username')
@@ -185,7 +195,7 @@ def processar_envio_performance():
                         t_cc += u.cc
 
                 elif tipo_rel == 'SEMANAL':
-                    qs_semana = users.annotate(
+                    qs_semana = users_perf.annotate(
                         seg=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[0])),
                         ter=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[1])),
                         qua=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[2])),
@@ -215,11 +225,21 @@ def processar_envio_performance():
                         t_cc += cc
 
                 else:  # MENSAL
-                    qs_mes = users.annotate(
+                    filtro_inst_m = (
+                        (Q(vendas__data_instalacao_fisica__isnull=False)
+                         & Q(vendas__data_instalacao_fisica__gte=inicio_mes)
+                         & Q(vendas__data_instalacao_fisica__lte=fim_mes))
+                        | (
+                            Q(vendas__data_instalacao_fisica__isnull=True)
+                            & Q(vendas__data_instalacao__gte=inicio_mes)
+                            & Q(vendas__data_instalacao__lte=fim_mes)
+                        )
+                    )
+                    qs_mes = users_perf.annotate(
                         total_vendas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes) & Q(vendas__data_abertura__date__lte=fim_mes)),
-                        instaladas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_instalacao__gte=inicio_mes) & Q(vendas__data_instalacao__lte=fim_mes) & filtro_inst),
+                        instaladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_inst_m & filtro_inst),
                         total_cc=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes) & Q(vendas__data_abertura__date__lte=fim_mes) & filtro_cc)
-                    ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
+                    ).order_by('username').values('id', 'username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
                     if not qs_mes.exists():
                         logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
                         continue
@@ -230,8 +250,16 @@ def processar_envio_performance():
                         cc = u['total_cc']
                         pct = int((cc / tot * 100)) if tot > 0 else 0
                         aprov = int((inst / tot * 100)) if tot > 0 else 0
+                        consultor = users_by_id.get(u['id'])
+                        config_com = ctx_faixas_zap['configs'].get(u['id']) if consultor else None
+                        perfil_com = (
+                            perfil_comissao_do_consultor(consultor, config_com)
+                            if consultor else 'Vendedor'
+                        )
                         lista_dados.append({
                             'nome': u['username'].upper(),
+                            'usuario_id': u['id'],
+                            'perfil_comissao': perfil_com,
                             'cluster': u.get('cluster') or '-',
                             'canal': u.get('canal') or '-',
                             'total': tot,
@@ -258,6 +286,8 @@ def processar_envio_performance():
                         'aprov': f"{aprov_geral}%" if tipo_rel == 'MENSAL' else None,
                     },
                     'tipo': tipo_rel,
+                    'dias_decorridos': dias_decorridos_zap,
+                    'ctx_faixas': ctx_faixas_zap if tipo_rel == 'MENSAL' else None,
                 }
 
                 # 3. Gerar Imagem no Backend (Pillow)

@@ -254,7 +254,6 @@ ZAPI_TOKEN = config('ZAPI_TOKEN', default='')
 ZAPI_CLIENT_TOKEN = config('ZAPI_CLIENT_TOKEN', default='')
 # Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
 WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
-
 # --- CONFIGURAÇÕES ZENVIA VOICE (AUDITORIA DE LIGAÇÕES) ---
 ZENVIA_VOICE_API_URL = config('ZENVIA_VOICE_API_URL', default='https://voice-api.zenvia.com')
 ZENVIA_VOICE_ACCESS_TOKEN = config('ZENVIA_VOICE_ACCESS_TOKEN', default='')

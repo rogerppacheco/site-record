@@ -7232,6 +7232,15 @@ class PainelPerformanceView(APIView):
             users = users.filter(cluster=filtro_cluster)
 
         users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.query_params.get('vendedor_ativo'))
+        users_perf = users.select_related('perfil')
+        users_by_id = {u.id: u for u in users_perf}
+        from crm_app.performance_helpers import (
+            carregar_contexto_faixas_comissao,
+            dias_decorridos_semana,
+            perfil_comissao_do_consultor,
+        )
+        ctx_faixas_comissao = carregar_contexto_faixas_comissao(inicio_mes.year, inicio_mes.month)
+        dias_semana_decorridos = dias_decorridos_semana(inicio_semana, fim_semana, hoje_ref)
 
         filtro_os_sem_reemissao = (
             Q(vendas__ativo=True)
@@ -7264,7 +7273,7 @@ class PainelPerformanceView(APIView):
             & Q(vendas__data_abertura__date__lte=fim_semana)
         )
 
-        qs_hoje = users.annotate(
+        qs_hoje = users_perf.annotate(
             vendas_total=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref)),
             vendas_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref) & filtro_cc)
         ).values('username', 'canal', 'cluster', 'vendas_total', 'vendas_cc').order_by('username')
@@ -7283,7 +7292,7 @@ class PainelPerformanceView(APIView):
                 'pct_cc': round(pct, 2)
             })
 
-        qs_semana = users.annotate(
+        qs_semana = users_perf.annotate(
             seg=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[0])),
             ter=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[1])),
             qua=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[2])),
@@ -7307,7 +7316,7 @@ class PainelPerformanceView(APIView):
                 'pct_cc': round(pct, 2)
             })
 
-        qs_mes = users.annotate(
+        qs_mes = users_perf.annotate(
             total_vendas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes),
             instaladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_data_inst_mes & filtro_inst),
             total_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & filtro_cc),
@@ -7316,7 +7325,8 @@ class PainelPerformanceView(APIView):
             agendadas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__iexact='AGENDADO')),
             canceladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
-            'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
+            'id', 'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc',
+            'pendenciadas', 'agendadas', 'canceladas',
         ).order_by('username')
 
         # Aval. Cluster: soma instaladas no MÊS DO FILTRO + no MÊS CIVIL IMEDIATAMENTE ANTERIOR
@@ -7328,7 +7338,7 @@ class PainelPerformanceView(APIView):
         base_inst_m = filtro_os_com_reemissao & filtro_inst
         f_mes_ref = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m_ref_start, m_ref_end)
         f_mes_ant = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m_ant_start, m_ant_end)
-        qs_cluster = users.annotate(
+        qs_cluster = users_perf.annotate(
             inst_aval_mes_ref=Count('vendas', filter=f_mes_ref),
             inst_aval_mes_ant=Count('vendas', filter=f_mes_ant),
         ).values('username', 'cluster', 'inst_aval_mes_ref', 'inst_aval_mes_ant')
@@ -7356,8 +7366,16 @@ class PainelPerformanceView(APIView):
             else:
                 aval_txt = '%s (%s) soma %d' % (mov, trans, soma_inst)
 
+            consultor = users_by_id.get(u['id'])
+            config_com = ctx_faixas_comissao['configs'].get(u['id']) if consultor else None
+            perfil_com = (
+                perfil_comissao_do_consultor(consultor, config_com)
+                if consultor else 'Vendedor'
+            )
             lista_mes.append({
                 'vendedor': nome_display.upper(),
+                'usuario_id': u['id'],
+                'perfil_comissao': perfil_com,
                 'cluster': u.get('cluster', '-'),
                 'total': tot,
                 'instaladas': inst,
@@ -7385,7 +7403,7 @@ class PainelPerformanceView(APIView):
         total_hoje = sum(i['total'] for i in lista_hoje)
         total_semana = sum(i['total'] for i in lista_semana)
         total_mes = sum(i['total'] for i in lista_mes)
-        payload_gestao = _perf_montar_payload_gestao(users, inicio_mes, request)
+        payload_gestao = _perf_montar_payload_gestao(users_perf, inicio_mes, request)
 
         payload = {
             'hoje': lista_hoje,
@@ -7397,6 +7415,7 @@ class PainelPerformanceView(APIView):
                 'mes_referencia': periodo['mes_referencia'],
                 'semana_segunda': periodo['semana_segunda'],
                 'semana_fim': fim_semana.isoformat(),
+                'dias_semana_decorridos': dias_semana_decorridos,
             },
             'pode_exportar_excel': is_member(user, _perf_grupos_export_excel()),
         }
@@ -7728,6 +7747,15 @@ class EnviarImagemPerformanceView(APIView):
             users = users.filter(cluster__iexact=cluster.strip())
 
         users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.data.get('vendedor_ativo'))
+        users_perf = users.select_related('perfil')
+        users_by_id = {u.id: u for u in users_perf}
+        from crm_app.performance_helpers import (
+            carregar_contexto_faixas_comissao,
+            dias_decorridos_semana,
+            perfil_comissao_do_consultor,
+        )
+        dias_decorridos_zap = dias_decorridos_semana(inicio_semana, fim_semana, hoje_ref)
+        ctx_faixas_zap = carregar_contexto_faixas_comissao(inicio_mes.year, inicio_mes.month)
 
         filtro_os_sem_reemissao = (
             Q(vendas__ativo=True)
@@ -7753,7 +7781,7 @@ class EnviarImagemPerformanceView(APIView):
 
         if tipo == 'HOJE':
             filtro = filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref)
-            qs = users.annotate(
+            qs = users_perf.annotate(
                 total=Count('vendas', filter=filtro),
                 cc=Count('vendas', filter=filtro & filtro_cc)
             ).order_by('username')
@@ -7774,7 +7802,7 @@ class EnviarImagemPerformanceView(APIView):
                 Q(vendas__data_abertura__date__gte=inicio_semana)
                 & Q(vendas__data_abertura__date__lte=fim_semana)
             )
-            qs = users.annotate(
+            qs = users_perf.annotate(
                 total_semana=Count('vendas', filter=filtro_os_sem_reemissao & filtro_sem),
                 total_cc=Count('vendas', filter=filtro_os_sem_reemissao & filtro_sem & filtro_cc)
             ).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
@@ -7798,19 +7826,27 @@ class EnviarImagemPerformanceView(APIView):
                 & Q(vendas__data_abertura__date__lte=fim_mes)
             )
             filtro_inst_m = _perf_filtro_data_efetiva_instalacao_intervalo(inicio_mes, fim_mes)
-            qs = users.annotate(
+            qs = users_perf.annotate(
                 total_vendas=Count('vendas', filter=filtro_os_com_reemissao & filtro_ab_m),
                 instaladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_inst_m & filtro_inst),
                 total_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_ab_m & filtro_cc)
-            ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
+            ).order_by('username').values('id', 'username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
             for u in qs:
                 tot = u['total_vendas']
                 inst = u['instaladas']
                 cc = u['total_cc']
                 pct = int((cc / tot * 100)) if tot > 0 else 0
                 aprov = int((inst / tot * 100)) if tot > 0 else 0
+                consultor = users_by_id.get(u['id'])
+                config_com = ctx_faixas_zap['configs'].get(u['id']) if consultor else None
+                perfil_com = (
+                    perfil_comissao_do_consultor(consultor, config_com)
+                    if consultor else 'Vendedor'
+                )
                 lista_dados.append({
                     'nome': u['username'].upper(),
+                    'usuario_id': u['id'],
+                    'perfil_comissao': perfil_com,
                     'cluster': u.get('cluster') or '-',
                     'canal': u.get('canal') or '-',
                     'total': tot,
@@ -7837,6 +7873,8 @@ class EnviarImagemPerformanceView(APIView):
                 'aprov': f"{aprov_geral}%" if tipo == 'MENSAL' else None,
             },
             'tipo': tipo,
+            'dias_decorridos': dias_decorridos_zap,
+            'ctx_faixas': ctx_faixas_zap if tipo == 'MENSAL' else None,
         }
         svc = WhatsAppService()
         img_b64 = svc.gerar_imagem_performance_b64(payload)

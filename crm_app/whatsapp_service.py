@@ -1081,11 +1081,15 @@ class WhatsAppService:
             return None
 
         try:
-            from crm_app.performance_helpers import cores_linha_performance, ordenar_lista_performance
+            from crm_app.performance_helpers import cor_linha_item_whatsapp, ordenar_lista_performance
 
             lista = ordenar_lista_performance(dados_relatorio.get('lista', []), key_cluster='cluster', key_nome='nome')
             totais = dados_relatorio.get('totais', {})
             tipo = dados_relatorio.get('tipo', 'HOJE')
+            ctx_cores = {
+                'dias_decorridos': dados_relatorio.get('dias_decorridos', 1),
+                'ctx_faixas': dados_relatorio.get('ctx_faixas'),
+            }
             titulo = dados_relatorio.get('titulo', 'Performance - Hoje')
             data_str = dados_relatorio.get('data', '')
 
@@ -1159,12 +1163,11 @@ class WhatsAppService:
                 d.text((col_x[4], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
             y += H_LINHA
 
-            # Linhas de dados (cor por faixa: 0 vermelho, 1-2 amarelo, 3-5 azul, 6+ verde escuro)
+            # Linhas de dados: Hoje = faixa diária; Semanal = média/dia; Mensal = faixa comissão
             for i, item in enumerate(lista):
                 ly_top = y
                 ly_bot = y + H_LINHA
-                total_v = item.get('total') or 0
-                bg, cor_nums = cores_linha_performance(total_v)
+                bg, cor_nums = cor_linha_item_whatsapp(item, tipo, ctx_cores)
                 d.rectangle([(20, ly_top), (W - 20, ly_bot)], fill=bg)
                 d.line([(20, ly_bot), (W - 20, ly_bot)], fill=cor_borda)
 
