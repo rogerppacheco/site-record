@@ -540,6 +540,11 @@
                                 <label class="fw-bold text-secondary">Data Criação (Local)</label>
                                 <input type="date" class="form-control" name="data_criacao" id="input-data-criacao-local">
                             </div>
+                            <div class="col-12 col-md-6 d-none" id="container-data-abertura-os">
+                                <label class="fw-bold text-secondary">Data Abertura (OS)</label>
+                                <input type="datetime-local" class="form-control" name="data_abertura" id="input-data-abertura-os" step="60">
+                                <small class="text-muted">Data e hora de abertura da O.S.</small>
+                            </div>
                             <div class="col-12 d-none" id="container-gerada-os-auto">
                                 <label class="fw-bold text-secondary">Gerada O.S automática?</label>
                                 <div class="form-check form-check-inline">
@@ -589,6 +594,19 @@
     
     <script>
         const apiUrl = '';
+
+        function isoParaDatetimeLocal(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return '';
+            const p = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+
+        function podeEditarDataAberturaOs() {
+            return ['Admin', 'Diretoria', 'BackOffice'].includes(userProfile);
+        }
+
         async function apiFetch(endpoint, options = {}) {
             const headers = { 'Content-Type': 'application/json', ...options.headers };
             const token = localStorage.getItem('accessToken');
@@ -2009,6 +2027,10 @@
                 if (inputDataCriacaoLocal) {
                     inputDataCriacaoLocal.value = venda.data_criacao ? String(venda.data_criacao).slice(0, 10) : '';
                 }
+                const inputDataAberturaOs = document.getElementById('input-data-abertura-os');
+                if (inputDataAberturaOs) {
+                    inputDataAberturaOs.value = isoParaDatetimeLocal(venda.data_abertura);
+                }
                 verificarRegraCNPJ(venda.cliente_cpf_cnpj);
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
@@ -2073,7 +2095,9 @@
                 const areaOs = document.getElementById('container-ordem-servico');
                 const areaReemissao = document.getElementById('container-reemissao-modal');
                 const areaDataCriacao = document.getElementById('container-data-criacao-local');
+                const areaDataAbertura = document.getElementById('container-data-abertura-os');
                 const podeEditarDataCriacao = ['Admin', 'Diretoria'].includes(userProfile);
+                const podeEditarDataAbertura = podeEditarDataAberturaOs();
                 
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
@@ -2082,6 +2106,7 @@
                     areaOs.classList.remove('d-none');
                     if (areaReemissao) areaReemissao.classList.remove('d-none');
                     if (areaDataCriacao) areaDataCriacao.classList.toggle('d-none', !podeEditarDataCriacao);
+                    if (areaDataAbertura) areaDataAbertura.classList.toggle('d-none', !podeEditarDataAbertura);
                 } else {
                     areaStatus.classList.add('d-none'); 
                     areaVendedor.classList.add('d-none'); 
@@ -2089,6 +2114,7 @@
                     areaOs.classList.remove('d-none');
                     if (areaReemissao) areaReemissao.classList.remove('d-none');
                     if (areaDataCriacao) areaDataCriacao.classList.add('d-none');
+                    if (areaDataAbertura) areaDataAbertura.classList.add('d-none');
                 }
 
                 // Adiciona debug simples nos selects
@@ -2144,6 +2170,14 @@
             data.ordem_servico = (data.ordem_servico || '').trim();
             if (!data.data_criacao) delete data.data_criacao;
             else data.data_criacao = `${data.data_criacao}T00:00:00`;
+            if (!podeEditarDataAberturaOs()) {
+                delete data.data_abertura;
+            } else if (!data.data_abertura) {
+                if (idEdicao) data.data_abertura = null;
+                else delete data.data_abertura;
+            } else if (data.data_abertura.length === 16) {
+                data.data_abertura = `${data.data_abertura}:00`;
+            }
             if (data.ordem_servico && !osValidaFormato(data.ordem_servico)) {
                 alert('Formato de O.S inválido. Use 8 dígitos (08907507) ou X-12DÍGITOS (4-212051254235).');
                 return;

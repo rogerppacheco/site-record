@@ -479,15 +479,32 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
                         data_criacao,
                         timezone.get_current_timezone(),
                     )
+        if request and 'data_abertura' in data:
+            if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+                data.pop('data_abertura', None)
+            else:
+                from datetime import datetime
+                from django.utils import timezone
+
+                data_abertura = data.get('data_abertura')
+                if data_abertura == '':
+                    data['data_abertura'] = None
+                elif isinstance(data_abertura, datetime) and timezone.is_naive(data_abertura):
+                    data['data_abertura'] = timezone.make_aware(
+                        data_abertura,
+                        timezone.get_current_timezone(),
+                    )
         if request and 'data_instalacao_fisica' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
             data.pop('data_instalacao_fisica', None)
         # Antecipação de comissão: somente perfis de gestão da esteira
         if request and 'antecipacao_comissao' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Supervisor']):
             data.pop('antecipacao_comissao', None)
-        # Converte para maiúsculo, exceto email e obs
+        # Converte para maiúsculo, exceto email, obs e campos de data/hora
         for key, value in data.items():
             if value is None: continue
-            if isinstance(value, str) and key not in ['cliente_email', 'observacoes', 'nome_mae']:
+            if isinstance(value, str) and key not in [
+                'cliente_email', 'observacoes', 'nome_mae', 'data_criacao', 'data_abertura',
+            ]:
                 data[key] = value.upper()
 
         ordem_servico = (data.get('ordem_servico', getattr(self.instance, 'ordem_servico', None)) or '').strip()
