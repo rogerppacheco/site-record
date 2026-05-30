@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from crm_app.esteira_posso_antecipar_service import (
+    deve_tentar_posso_antecipar,
     formatar_posso_antecipar_exibicao,
     montar_botoes_posso_antecipar,
     parse_button_id_posso_antecipar,
@@ -29,6 +30,18 @@ class FormatacaoExibicaoPossoAnteciparTests(SimpleTestCase):
 
 
 class BotaoPossoAnteciparTests(SimpleTestCase):
+    def test_nao_tenta_texto_longo_explicativo(self):
+        self.assertFalse(deve_tentar_posso_antecipar('Hoje ele nao ta disponível e domingo'))
+        self.assertFalse(deve_tentar_posso_antecipar('Status'))
+        self.assertFalse(deve_tentar_posso_antecipar('1'))
+        self.assertFalse(deve_tentar_posso_antecipar('03642021654'))
+        self.assertFalse(deve_tentar_posso_antecipar('Bom dia'))
+
+    def test_tenta_botao_pa(self):
+        self.assertTrue(deve_tentar_posso_antecipar('', button_id='pa_99_sim_manha'))
+        self.assertTrue(deve_tentar_posso_antecipar('Sim, manhã'))
+        self.assertTrue(deve_tentar_posso_antecipar('Não #6735'))
+
     def test_botoes_tres_opcoes_com_id_pedido(self):
         botoes = montar_botoes_posso_antecipar(6735)
         self.assertEqual(3, len(botoes))
@@ -79,3 +92,8 @@ class ParseRespostaPossoAnteciparTests(SimpleTestCase):
         r = parse_resposta_posso_antecipar_vendedor('Talvez depois')
         self.assertIsNone(r['pode'])
         self.assertEqual(r['resposta_completa'], 'Talvez depois')
+
+    def test_texto_longo_com_nao_no_meio_nao_e_recusa(self):
+        r = parse_resposta_posso_antecipar_vendedor('Hoje ele nao ta disponível e domingo')
+        self.assertIsNone(r['pode'])
+        self.assertIn('dispon', r['observacao'].lower())

@@ -77,6 +77,39 @@ def parse_resposta_posso_antecipar_vendedor(mensagem: str) -> dict:
     pode = None
     turno = None
 
+    # Rótulos exatos dos botões (prioridade)
+    if re.match(r'^\s*SIM\b', norm) and re.search(r'\bMANHA\b', norm):
+        return {
+            'pode': True,
+            'turno': 'MANHA',
+            'resposta_completa': original or 'Sim, manhã',
+            'observacao': '',
+        }
+    if re.match(r'^\s*SIM\b', norm) and re.search(r'\bTARDE\b', norm):
+        return {
+            'pode': True,
+            'turno': 'TARDE',
+            'resposta_completa': original or 'Sim, tarde',
+            'observacao': '',
+        }
+    if re.match(r'^\s*NAO\b', norm) and len(original) <= 8:
+        return {
+            'pode': False,
+            'turno': None,
+            'resposta_completa': original or 'Não',
+            'observacao': '',
+        }
+
+    # Texto longo com "nao"/"sim" no meio = observação, não Sim/Não estruturado
+    if len(original) > 30 and not re.match(r'^\s*(SIM|NAO)\b', norm):
+        obs = original
+        return {
+            'pode': None,
+            'turno': None,
+            'resposta_completa': original,
+            'observacao': obs[:2000] if obs else '',
+        }
+
     tem_nao = bool(re.search(r'(?:^|\b)NAO(?:\b|,|\s|$)', norm))
     tem_sim = bool(re.search(r'(?:^|\b)SIM(?:\b|,|\s|$)', norm))
 
@@ -502,11 +535,32 @@ def _parece_resposta_posso_antecipar(mensagem_texto: str, button_id: str = '') -
     if button_id and (button_id.startswith('pa_') or parse_button_id_posso_antecipar(button_id)):
         return True
     norm = _normalizar_texto_resposta(mensagem_texto)
-    if re.match(r'^\s*(SIM|NAO)\b', norm):
+    if re.match(r'^\s*SIM\b', norm) and re.search(r'\b(MANHA|TARDE)\b', norm):
         return True
-    if re.search(r'\b(MANHA|TARDE)\b', norm):
+    if re.match(r'^\s*NAO\b', norm):
+        return True
+    if re.match(r'^\s*SIM\b', norm) and len((mensagem_texto or '').strip()) <= 15:
         return True
     return False
+
+
+def deve_tentar_posso_antecipar(
+    mensagem_texto: str,
+    *,
+    button_id: str = '',
+    reference_message_id: str = '',
+    telefone: str = '',
+) -> bool:
+    """Evita consulta ao banco em mensagens do bot geral (Status, 1, O.S., etc.)."""
+    if button_id and (button_id.startswith('pa_') or parse_button_id_posso_antecipar(button_id)):
+        return True
+    ref = (reference_message_id or '').strip()
+    if ref and telefone:
+        if buscar_solicitacao_por_mensagem_whatsapp(ref, telefone):
+            return True
+    if _extrair_venda_id_da_mensagem(mensagem_texto or ''):
+        return True
+    return _parece_resposta_posso_antecipar(mensagem_texto or '', button_id)
 
 
 def processar_resposta_posso_antecipar_vendedor(
@@ -529,6 +583,14 @@ def processar_resposta_posso_antecipar_vendedor(
     parsed = None
     ref = (reference_message_id or '').strip()
 
+    if not deve_tentar_posso_antecipar(
+        mensagem_texto or '',
+        button_id=button_id,
+        reference_message_id=ref,
+        telefone=telefone_remetente,
+    ):
+        return False
+
     logger.info(
         '[PossoAntecipar] Processando tel=%s btn=%r ref=%r msg=%r',
         telefone_remetente,
@@ -536,6 +598,39 @@ def processar_resposta_posso_antecipar_vendedor(
         ref or '-',
         (mensagem_texto or '')[:80],
     )
+
+    try:
+        return _processar_resposta_posso_antecipar_vendedor_impl(
+            telefone_remetente,
+            mensagem_texto,
+            button_id=button_id,
+            reference_message_id=ref,
+            btn_parsed=btn_parsed,
+        )
+    except Exception as exc:
+        from django.db.utils import ProgrammingError
+        if isinstance(exc, ProgrammingError) and 'whatsapp_message_id' in str(exc):
+            logger.error(
+                '[PossoAntecipar] Migration 0145 pendente (coluna whatsapp_message_id). '
+                'Execute: python manage.py migrate'
+            )
+            return False
+        raise
+
+
+def _processar_resposta_posso_antecipar_vendedor_impl(
+    telefone_remetente,
+    mensagem_texto,
+    *,
+    button_id: str = '',
+    reference_message_id: str = '',
+    btn_parsed=None,
+) -> bool:
+    solicitacao = None
+    parsed = None
+    ref = (reference_message_id or '').strip()
+    if btn_parsed is None and button_id:
+        btn_parsed = parse_button_id_posso_antecipar(button_id)
 
     if ref:
         solicitacao = buscar_solicitacao_por_mensagem_whatsapp(ref, telefone_remetente)
@@ -614,12 +709,38 @@ def processar_resposta_posso_antecipar_vendedor(
                 logger.exception('[PossoAntecipar] Erro ao avisar consulta expirada')
         return False
 
-    if parsed is None and not (mensagem_texto or '').strip():
+    if parsed is None and not (mensagem_texto or '').strip() and not btn_parsed:
         return False
 
     try:
         if parsed is None:
             parsed = parse_resposta_posso_antecipar_vendedor(mensagem_texto)
+
+        # Observação em texto livre (não fecha consulta se ainda não houve Sim/Não)
+        if parsed.get('pode') is None and solicitacao.respondido_em is None:
+            obs = (parsed.get('observacao') or mensagem_texto or '').strip()
+            if obs and len(obs) > 20:
+                logger.info(
+                    '[PossoAntecipar] Texto livre ignorado como resposta (aguardando botão/Sim/Não) venda #%s',
+                    solicitacao.venda_id,
+                )
+                return False
+
+        # Complemento após resposta já registrada
+        if parsed.get('pode') is None and solicitacao.respondido_em:
+            obs = (parsed.get('observacao') or mensagem_texto or '').strip()
+            if obs:
+                venda = solicitacao.venda
+                atual = (getattr(venda, 'vendedor_obs_posso_antecipar', None) or '').strip()
+                nova = f'{atual}\n{obs}'.strip() if atual else obs
+                venda.vendedor_obs_posso_antecipar = nova[:2000]
+                venda.save(update_fields=['vendedor_obs_posso_antecipar'])
+                logger.info('[PossoAntecipar] Observação adicionada venda #%s', solicitacao.venda_id)
+            return True
+
+        if parsed.get('pode') is None:
+            return False
+
         texto_gravacao = (parsed.get('resposta_completa') or mensagem_texto or '').strip()
         registrar_resposta_posso_antecipar(solicitacao, texto_gravacao, parsed=parsed)
 

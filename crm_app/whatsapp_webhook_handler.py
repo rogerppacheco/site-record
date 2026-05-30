@@ -6497,10 +6497,23 @@ def _buscar_buttons_response_zapi(d, _depth=0):
     """Localiza resposta de botão no payload Z-API (busca recursiva)."""
     if _depth > 14 or not isinstance(d, dict):
         return None
-    for key in ("buttonsResponseMessage", "buttonResponseMessage", "buttonReply", "replyButton"):
+    for key in (
+        "buttonsResponseMessage",
+        "buttonResponseMessage",
+        "buttonActionsResponseMessage",
+        "templateButtonReplyMessage",
+        "nativeFlowResponseMessage",
+        "interactiveResponseMessage",
+        "buttonReply",
+        "replyButton",
+    ):
         br = d.get(key)
         if isinstance(br, dict):
             return br
+    # Dict plano com campos típicos de clique em botão
+    if any(d.get(k) for k in ("buttonId", "selectedButtonId", "selectedId")):
+        if any(d.get(k) for k in ("message", "selectedButtonText", "text", "selectedDisplayText")):
+            return d
     for v in d.values():
         if isinstance(v, dict):
             br = _buscar_buttons_response_zapi(v, _depth + 1)
@@ -6513,6 +6526,33 @@ def _buscar_buttons_response_zapi(d, _depth=0):
                     if br is not None:
                         return br
     return None
+
+
+def _extrair_dados_botao_zapi(data) -> tuple[str, str]:
+    """Retorna (buttonId, texto do botão) do payload Z-API."""
+    br = _buscar_buttons_response_zapi(data)
+    if not br:
+        for key in ('buttonId', 'selectedButtonId', 'selectedId'):
+            if data.get(key):
+                br = data
+                break
+    if not br:
+        return '', ''
+    bid = (
+        br.get('buttonId')
+        or br.get('selectedButtonId')
+        or br.get('selectedId')
+        or br.get('id')
+        or ''
+    ).strip()
+    msg = (
+        br.get('message')
+        or br.get('selectedButtonText')
+        or br.get('selectedDisplayText')
+        or br.get('text')
+        or ''
+    ).strip()
+    return bid, msg
 
 
 # IDs de botões Z-API (send-button-actions) → texto equivalente ao que o usuário digitaria
@@ -6807,7 +6847,12 @@ def processar_webhook_whatsapp(data, request=None):
     if not mensagem_texto:
         mensagem_texto = (_texto_efetivo_botao_zapi(data) or "").strip()
     if _buscar_buttons_response_zapi(data):
-        logger.info("[Webhook] buttonsResponseMessage presente; texto efetivo: %r", mensagem_texto)
+        bid_dbg, msg_dbg = _extrair_dados_botao_zapi(data)
+        logger.info(
+            "[Webhook] buttonsResponseMessage presente; texto efetivo: %r buttonId=%r",
+            mensagem_texto,
+            bid_dbg or '-',
+        )
 
     # Ignorar mensagens de grupo — exceto se for resposta do GC (formato [O.S], antecipada|não antecipada|solicitado)
     if is_group:
@@ -6842,7 +6887,31 @@ def processar_webhook_whatsapp(data, request=None):
     logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto!r}")
     
     # Ignorar webhooks só de reação (emoji) - não têm texto/anexo, evitar 500
-    tem_resposta_botao = bool(_buscar_buttons_response_zapi(data))
+    from crm_app.esteira_posso_antecipar_service import (
+        _extrair_reference_message_id_zapi as _ref_msg_zapi,
+        buscar_solicitacao_por_mensagem_whatsapp,
+    )
+    _bid_early, _bmsg_early = _extrair_dados_botao_zapi(data)
+    tem_resposta_botao = bool(_buscar_buttons_response_zapi(data) or _bid_early or _bmsg_early)
+    ref_early = _ref_msg_zapi(data)
+    if (
+        not mensagem_texto
+        and not image_url
+        and not document_url
+        and not tem_resposta_botao
+        and ref_early
+        and telefone_usuario
+    ):
+        tel_early = formatar_telefone(telefone_usuario)
+        if tel_early and buscar_solicitacao_por_mensagem_whatsapp(ref_early, tel_early):
+            tem_resposta_botao = True
+            if _bmsg_early:
+                mensagem_texto = _bmsg_early
+            logger.info(
+                '[Webhook] Clique em botão posso antecipar (ref=%r) texto=%r',
+                ref_early,
+                (_bmsg_early or mensagem_texto or '')[:60],
+            )
     if not mensagem_texto and not image_url and not document_url and not tem_resposta_botao:
         if 'reaction' in data:
             logger.debug("[Webhook] Reação (emoji) ignorada - sem texto/anexo")
@@ -6867,23 +6936,23 @@ def processar_webhook_whatsapp(data, request=None):
     if mensagem_texto and processar_resposta_gc_antecipar(telefone_formatado_usuario, mensagem_texto):
         return {'status': 'ok', 'mensagem': 'Resposta GC registrada'}
 
-    # --- Resposta vendedor (Posso antecipar? — esteira): botões ou texto Sim, manhã/tarde | Não
-    if mensagem_texto or _buscar_buttons_response_zapi(data):
+    # --- Resposta vendedor (Posso antecipar? — esteira): só se parecer resposta ou botão pa_*
+    button_id_pa, texto_botao_pa = _extrair_dados_botao_zapi(data)
+    if not mensagem_texto and texto_botao_pa:
+        mensagem_texto = texto_botao_pa
+    from crm_app.esteira_posso_antecipar_service import (
+        _extrair_reference_message_id_zapi,
+        deve_tentar_posso_antecipar,
+        processar_resposta_posso_antecipar_vendedor,
+    )
+    ref_msg_pa = _extrair_reference_message_id_zapi(data)
+    if deve_tentar_posso_antecipar(
+        mensagem_texto or '',
+        button_id=button_id_pa,
+        reference_message_id=ref_msg_pa,
+        telefone=telefone_formatado_usuario,
+    ):
         try:
-            br_pa = _buscar_buttons_response_zapi(data)
-            button_id_pa = ''
-            if br_pa:
-                button_id_pa = (
-                    br_pa.get('buttonId')
-                    or br_pa.get('selectedButtonId')
-                    or br_pa.get('id')
-                    or ''
-                ).strip()
-            from crm_app.esteira_posso_antecipar_service import (
-                _extrair_reference_message_id_zapi,
-                processar_resposta_posso_antecipar_vendedor,
-            )
-            ref_msg_pa = _extrair_reference_message_id_zapi(data)
             if ref_msg_pa or button_id_pa:
                 logger.info(
                     '[Webhook] Posso antecipar: ref=%r buttonId=%r texto=%r',
