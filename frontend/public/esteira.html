@@ -200,15 +200,44 @@
             margin-right: auto;
             min-width: 0;
         }
-        .esteira-scroll-wrapper { width: 100%; min-width: 0; }
+        .esteira-scroll-wrapper {
+            width: 100%;
+            min-width: 0;
+            overflow: visible;
+        }
+        .esteira-scroll-wrapper.card:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        .esteira-scroll-sentinel {
+            height: 1px;
+            margin: 0;
+            pointer-events: none;
+        }
         .esteira-scroll-top {
+            position: sticky;
+            top: 80px;
+            z-index: 1010;
             overflow-x: auto;
             overflow-y: hidden;
-            height: 14px;
+            height: 12px;
             margin-bottom: 4px;
             scrollbar-width: thin;
+            background: transparent;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .esteira-scroll-top.esteira-scroll-top--pinned {
+            background: rgba(248, 249, 250, 0.96);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
         }
         .esteira-scroll-top::-webkit-scrollbar { height: 8px; }
+        .esteira-scroll-top::-webkit-scrollbar-thumb {
+            background-color: #adb5bd;
+            border-radius: 4px;
+        }
         .esteira-scroll-top-inner { height: 1px; }
 
         /* Duas primeiras colunas fixas na rolagem horizontal (sticky) */
@@ -770,7 +799,7 @@
 
             <div id="esteira-area-tabela">
             <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
-                <p class="small text-muted mb-0 flex-grow-1" style="min-width: 10rem;"><i class="bi bi-arrows-expand"></i> Rolagem horizontal: use a <strong>barra acima</strong> ou <strong>abaixo</strong> da tabela (ambas movem juntas).</p>
+                <p class="small text-muted mb-0 flex-grow-1" style="min-width: 10rem;"><i class="bi bi-arrows-expand"></i> Rolagem horizontal: a barra <strong>permanece no topo</strong> ao descer; também há barra abaixo da tabela (ambas movem juntas).</p>
                 <div id="esteira-toolbar-filtros" class="d-none align-items-center gap-2 flex-wrap justify-content-end flex-shrink-0">
                     <button type="button" id="btn-toggle-filtros-colunas" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" onclick="togglePainelFiltrosColunas()" aria-expanded="false" title="Mostrar ou ocultar filtros por coluna na tabela">
                         <i class="bi bi-funnel"></i><span class="esteira-btn-filtros-label">Filtros na tabela</span>
@@ -780,6 +809,7 @@
                 </div>
             </div>
             <div class="card border-0 shadow-none esteira-scroll-wrapper" style="background: transparent;">
+                <div class="esteira-scroll-sentinel" id="esteira-scroll-sentinel" aria-hidden="true"></div>
                 <div class="esteira-scroll-top" id="esteira-scroll-top" aria-hidden="true">
                     <div class="esteira-scroll-top-inner" id="esteira-scroll-top-inner"></div>
                 </div>
@@ -1467,6 +1497,8 @@
             if (cbSelComissaoVisiveis && !podeEditarAdiantamentosFinanceiros) cbSelComissaoVisiveis.style.display = 'none';
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
 
+            inicializarScrollStickyEsteira();
+
             var resizeEsteiraT = null;
             window.addEventListener('resize', function() {
                 clearTimeout(resizeEsteiraT);
@@ -1598,6 +1630,21 @@
 
         var esteiraScrollSyncLock = false;
         var esteiraScrollListenersOk = false;
+        var esteiraScrollStickyOk = false;
+        function inicializarScrollStickyEsteira() {
+            if (esteiraScrollStickyOk) return;
+            var sentinel = document.getElementById('esteira-scroll-sentinel');
+            var top = document.getElementById('esteira-scroll-top');
+            if (!sentinel || !top) return;
+            if (window.matchMedia('(max-width: 767.98px)').matches) return;
+            esteiraScrollStickyOk = true;
+            var obs = new IntersectionObserver(function(entries) {
+                entries.forEach(function(e) {
+                    top.classList.toggle('esteira-scroll-top--pinned', !e.isIntersecting);
+                });
+            }, { root: null, rootMargin: '-80px 0px 0px 0px', threshold: 0 });
+            obs.observe(sentinel);
+        }
         function inicializarSyncScrollEsteira() {
             if (esteiraScrollListenersOk) return;
             var top = document.getElementById('esteira-scroll-top');
@@ -1618,12 +1665,17 @@
             });
         }
         function syncEsteiraScrollbars() {
+            inicializarScrollStickyEsteira();
             inicializarSyncScrollEsteira();
             var main = document.getElementById('esteira-scroll-main');
             var inner = document.getElementById('esteira-scroll-top-inner');
             var top = document.getElementById('esteira-scroll-top');
             if (!main || !inner) return;
             inner.style.width = main.scrollWidth + 'px';
+            if (top) {
+                var needsHScroll = main.scrollWidth > main.clientWidth + 1;
+                top.style.display = needsHScroll ? '' : 'none';
+            }
             if (top && top.scrollLeft !== main.scrollLeft) {
                 esteiraScrollSyncLock = true;
                 top.scrollLeft = main.scrollLeft;
