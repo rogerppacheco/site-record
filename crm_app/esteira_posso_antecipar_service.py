@@ -234,6 +234,21 @@ def tentar_enviar_posso_antecipar_vendedor(venda, *, usuario=None) -> dict:
 
     resultado = {'ok': True, 'enviado': False, 'detail': '', 'mensagem': ''}
 
+    st = (getattr(getattr(venda, 'status_esteira', None), 'nome', None) or '').upper()
+    if 'AGENDADO' not in st:
+        resultado['ok'] = False
+        resultado['detail'] = 'Disponível apenas para vendas com status AGENDADO.'
+        return resultado
+    if not venda.data_agendamento:
+        resultado['ok'] = False
+        resultado['detail'] = 'Venda sem data de agendamento.'
+        return resultado
+    hoje = timezone.localdate()
+    if venda.data_agendamento <= hoje:
+        resultado['ok'] = False
+        resultado['detail'] = 'Disponível apenas para agendamentos em dias futuros (após hoje).'
+        return resultado
+
     if not getattr(venda, 'vendedor_id', None):
         resultado['ok'] = False
         resultado['detail'] = 'Venda sem vendedor vinculado.'

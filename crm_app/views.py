@@ -13425,7 +13425,7 @@ class EnviarPossoAnteciparVendedorView(APIView):
 
     def post(self, request, venda_id):
         try:
-            venda = Venda.objects.select_related('vendedor', 'cliente').get(pk=venda_id, ativo=True)
+            venda = Venda.objects.select_related('vendedor', 'cliente', 'status_esteira').get(pk=venda_id, ativo=True)
         except Venda.DoesNotExist:
             return Response({'detail': 'Venda não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
 

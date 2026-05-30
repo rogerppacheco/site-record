@@ -1529,6 +1529,23 @@
             return `${dia}/${mes}/${ano}`;
         }
 
+        function dataHojeISO() {
+            const d = new Date();
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function vendaElegivelPossoAntecipar(venda, nomeStatus) {
+            if (!venda || !venda.vendedor) return false;
+            const st = String(nomeStatus || '').toUpperCase();
+            if (!st.includes('AGENDADO')) return false;
+            const ag = (venda.data_agendamento || '').trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(ag)) return false;
+            return ag > dataHojeISO();
+        }
+
         var esteiraScrollSyncLock = false;
         var esteiraScrollListenersOk = false;
         function inicializarSyncScrollEsteira() {
@@ -2731,8 +2748,8 @@
                         ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarEndereco(this)" data-endereco="${enderecoEsc}" title="Copiar endereço completo"><i class="bi bi-geo-alt"></i></button>`
                         : '';
 
-                    const btnPossoAntecip = v.vendedor
-                        ? `<button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="enviarPossoAntecipar(${v.id}, this)" title="Enviar WhatsApp ao vendedor: Posso antecipar?">Antecipar?</button>`
+                    const btnPossoAntecip = vendaElegivelPossoAntecipar(v, nomeStatus)
+                        ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="enviarPossoAntecipar(${v.id}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning"></i></button>`
                         : '';
 
                     htmlContent += `
