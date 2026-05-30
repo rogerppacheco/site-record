@@ -1588,28 +1588,42 @@ class PAPNioAutomation:
             pendencia_texto = None
             # Status agendamento
             try:
-                loc_st = self.page.get_by_text("Status agendamento", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
+                loc_st = self.page.get_by_text("Status agendamento", exact=False).locator(
+                    ".."
+                ).locator(
+                    "span.ldMRLh, span.sc-jrOYZv.ldMRLh, span.sc-gOhSNZ.fLfXPS"
+                ).first
                 if loc_st.count() > 0:
                     status_agendamento = (loc_st.inner_text() or "").strip()
             except Exception:
                 pass
-            # Agendamento
+            # Agendamento (exact=True evita casar com o rótulo "Status agendamento")
             try:
-                loc_ag = self.page.get_by_text("Agendamento", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
+                loc_ag = self.page.get_by_text("Agendamento", exact=True).locator(
+                    ".."
+                ).locator(
+                    "span.ldMRLh, span.sc-jrOYZv.ldMRLh, span.sc-gOhSNZ.fLfXPS"
+                ).first
                 if loc_ag.count() > 0:
                     agendamento_texto = (loc_ag.inner_text() or "").strip()
             except Exception:
                 pass
             # Pendência (ex.: "7029 - AGENDAMENTO DO PEDIDO")
             try:
-                loc_pend = self.page.get_by_text("Pendência", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
+                loc_pend = self.page.get_by_text("Pendência", exact=False).locator(
+                    ".."
+                ).locator(
+                    "span.ldMRLh, span.sc-jrOYZv.ldMRLh, span.sc-gOhSNZ.fLfXPS"
+                ).first
                 if loc_pend.count() > 0:
                     pendencia_texto = (loc_pend.inner_text() or "").strip()
             except Exception:
                 pass
             # Fallback: spans genéricos
             if not status_agendamento or not agendamento_texto or not pendencia_texto:
-                spans = self.page.locator('span.sc-jrOYZv.ldMRLh, span.ldMRLh').all()
+                spans = self.page.locator(
+                    'span.sc-jrOYZv.ldMRLh, span.ldMRLh, span.sc-gOhSNZ.fLfXPS'
+                ).all()
                 for s in spans:
                     t = (s.inner_text() or "").strip()
                     if not t:
