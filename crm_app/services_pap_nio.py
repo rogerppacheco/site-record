@@ -1546,6 +1546,64 @@ class PAPNioAutomation:
             return True, "ok", detalhes, list_screenshot_path
         return True, "no_results", [], list_screenshot_path
 
+    _RE_PENDENCIA_CODIGO_PAP = re.compile(r"^\d{4}\s*-\s*.+", re.I)
+
+    def _extrair_valor_rotulo_detalhe_pap(self, rotulo_exato: str) -> Optional[str]:
+        """
+        Lê o valor ao lado de um rótulo exato na tela de detalhe OS
+        (ex.: rótulo <span>Pendência</span> → valor <span>7029 - AGENDAMENTO DO PEDIDO</span>).
+        """
+        try:
+            label = self.page.get_by_text(rotulo_exato, exact=True).first
+            if label.count() == 0:
+                return None
+            candidatos = []
+            for loc in (
+                label.locator("xpath=following-sibling::span[1]"),
+                label.locator("xpath=../span[contains(@class,'fLfXPS')]"),
+                label.locator("xpath=../following-sibling::span[1]"),
+                label.locator("xpath=ancestor::*[1]//span[contains(@class,'fLfXPS')]"),
+            ):
+                try:
+                    if loc.count() > 0:
+                        t = (loc.first.inner_text() or "").strip()
+                        if t and t.lower() != rotulo_exato.lower():
+                            candidatos.append(t)
+                except Exception:
+                    pass
+            for t in candidatos:
+                if self._RE_PENDENCIA_CODIGO_PAP.match(t) or rotulo_exato != "Pendência":
+                    return t
+            return candidatos[0] if candidatos else None
+        except Exception:
+            return None
+
+    def _buscar_pendencia_codigo_detalhe_pap(self) -> Optional[str]:
+        """Busca texto de pendência com código (7029 - …), ignorando rótulos genéricos."""
+        try:
+            t_rotulo = self._extrair_valor_rotulo_detalhe_pap("Pendência")
+            if t_rotulo and self._RE_PENDENCIA_CODIGO_PAP.match(t_rotulo.strip()):
+                return t_rotulo.strip()
+        except Exception:
+            pass
+        try:
+            for s in self.page.locator("span.sc-gOhSNZ.fLfXPS, span.fLfXPS").all():
+                t = (s.inner_text() or "").strip()
+                if t and self._RE_PENDENCIA_CODIGO_PAP.match(t):
+                    return t
+        except Exception:
+            pass
+        try:
+            for s in self.page.locator(
+                "span.sc-jrOYZv.ldMRLh, span.ldMRLh, span.sc-gOhSNZ.fLfXPS"
+            ).all():
+                t = (s.inner_text() or "").strip()
+                if t and self._RE_PENDENCIA_CODIGO_PAP.match(t):
+                    return t
+        except Exception:
+            pass
+        return None
+
     def abrir_detalhe_os_e_extrair(
         self, numero_os: str, detalhe_href: Optional[str] = None
     ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -1608,18 +1666,9 @@ class PAPNioAutomation:
                     agendamento_texto = (loc_ag.inner_text() or "").strip()
             except Exception:
                 pass
-            # Pendência (ex.: "7029 - AGENDAMENTO DO PEDIDO")
-            try:
-                loc_pend = self.page.get_by_text("Pendência", exact=False).locator(
-                    ".."
-                ).locator(
-                    "span.ldMRLh, span.sc-jrOYZv.ldMRLh, span.sc-gOhSNZ.fLfXPS"
-                ).first
-                if loc_pend.count() > 0:
-                    pendencia_texto = (loc_pend.inner_text() or "").strip()
-            except Exception:
-                pass
-            # Fallback: spans genéricos
+            # Pendência (ex.: "7029 - AGENDAMENTO DO PEDIDO") — rótulo exato, não "Pendência Cliente"
+            pendencia_texto = self._buscar_pendencia_codigo_detalhe_pap()
+            # Fallback: outros spans do detalhe
             if not status_agendamento or not agendamento_texto or not pendencia_texto:
                 spans = self.page.locator(
                     'span.sc-jrOYZv.ldMRLh, span.ldMRLh, span.sc-gOhSNZ.fLfXPS'
@@ -1632,9 +1681,12 @@ class PAPNioAutomation:
                         agendamento_texto = t
                     if ("concluído" in t.lower() or "sucesso" in t.lower()) and not status_agendamento:
                         status_agendamento = t
-                    # Padrão "XXXX - TEXTO" pode ser pendência (código - descrição)
-                    if re.match(r'^\d+\s*-\s*.+', t) and not pendencia_texto:
+                    if self._RE_PENDENCIA_CODIGO_PAP.match(t) and not pendencia_texto:
                         pendencia_texto = t
+            if pendencia_texto and not self._RE_PENDENCIA_CODIGO_PAP.match(pendencia_texto):
+                codigo_ok = self._buscar_pendencia_codigo_detalhe_pap()
+                if codigo_ok:
+                    pendencia_texto = codigo_ok
             self.page.wait_for_timeout(300)
             detail_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
             self.page.go_back()
