@@ -1023,7 +1023,18 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
             headless=headless,
             capture_screenshots=capture_screenshots,
         )
-        sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(cpf_limpo)
+        os_prioridade_crm = set()
+
+        def _carregar_os_prioridade_pedido():
+            nonlocal os_prioridade_crm
+            from crm_app.utils import obter_os_prioridade_crm_por_cpf
+            os_prioridade_crm = obter_os_prioridade_crm_por_cpf(cpf_limpo)
+
+        _run_django_sync(_carregar_os_prioridade_pedido)
+
+        sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(
+            cpf_limpo, os_prioridade_crm=os_prioridade_crm
+        )
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
         automacao._fechar_sessao()
 
@@ -1127,6 +1138,7 @@ def _executar_consulta_status_online_background(
     from crm_app.whatsapp_service import WhatsAppService
     from crm_app.utils import (
         montar_legenda_pedido_status_pap,
+        obter_os_prioridade_crm_por_cpf,
         sincronizar_venda_crm_apos_status_pap,
     )
 
@@ -1195,8 +1207,16 @@ def _executar_consulta_status_online_background(
                 pass
             return
 
+        os_prioridade_crm = set()
+
+        def _carregar_os_prioridade():
+            nonlocal os_prioridade_crm
+            os_prioridade_crm = obter_os_prioridade_crm_por_cpf(cpf_limpo)
+
+        _run_django_sync(_carregar_os_prioridade)
+
         sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(
-            cpf_limpo, numero_os_filtro=os_filtro
+            cpf_limpo, numero_os_filtro=os_filtro, os_prioridade_crm=os_prioridade_crm
         )
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
         automacao._fechar_sessao()

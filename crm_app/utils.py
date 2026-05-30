@@ -687,19 +687,53 @@ def _esteira_permite_sync_status_pap(venda):
     return "AGENDADO" in st_u or "PENDENCI" in st_u
 
 
-def ordenar_detalhes_pap_crm_primeiro(cpf_limpo, detalhes_pap):
-    """Prioriza linhas cuja O.S. existe no CRM (ativo), para abrir Detalhar da venda certa primeiro."""
+def obter_os_prioridade_crm_por_cpf(cpf_limpo):
+    """O.S. de vendas ativas do CPF (normalizadas) — usar em thread sync antes do Playwright."""
+    import re
+    from crm_app.models import Venda
+
+    cpf_digits = limpar_texto(cpf_limpo)
+    if len(cpf_digits) not in (11, 14):
+        return set()
+    os_set = set()
+    for os_val in Venda.objects.filter(
+        ativo=True, cliente__cpf_cnpj__icontains=cpf_digits
+    ).values_list("ordem_servico", flat=True):
+        os_d = re.sub(r"\D", "", str(os_val or "")).strip()
+        if not os_d:
+            continue
+        os_set.add(os_d)
+        os_sem = os_d.lstrip("0") or os_d
+        if os_sem:
+            os_set.add(os_sem)
+    return os_set
+
+
+def ordenar_detalhes_pap_por_os_prioridade(detalhes_pap, os_prioridade):
+    """Prioriza linhas cuja O.S. está em os_prioridade (sem acesso ao ORM)."""
     if not detalhes_pap:
         return []
+    if not os_prioridade:
+        return list(detalhes_pap)
+    import re
+
     com_crm = []
     sem_crm = []
     for d in detalhes_pap:
-        os_raw = (d.get("numero_os") or "").strip()
-        if os_raw and buscar_venda_ativa_por_os_cpf(cpf_limpo, os_raw):
+        os_d = re.sub(r"\D", "", str(d.get("numero_os") or "")).strip()
+        os_sem = (os_d.lstrip("0") or os_d) if os_d else ""
+        if os_d and (os_d in os_prioridade or os_sem in os_prioridade):
             com_crm.append(d)
         else:
             sem_crm.append(d)
     return com_crm + sem_crm
+
+
+def ordenar_detalhes_pap_crm_primeiro(cpf_limpo, detalhes_pap):
+    """Prioriza linhas cuja O.S. existe no CRM (ativo). Só em contexto sync (não durante Playwright)."""
+    return ordenar_detalhes_pap_por_os_prioridade(
+        detalhes_pap, obter_os_prioridade_crm_por_cpf(cpf_limpo)
+    )
 
 
 def montar_legenda_pedido_status_pap(d, tempo_decorrido=None):

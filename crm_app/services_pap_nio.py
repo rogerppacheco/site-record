@@ -1313,7 +1313,10 @@ class PAPNioAutomation:
             return None
 
     def consulta_os_por_cpf_com_resultado(
-        self, cpf: str, numero_os_filtro: Optional[str] = None
+        self,
+        cpf: str,
+        numero_os_filtro: Optional[str] = None,
+        os_prioridade_crm: Optional[set] = None,
     ) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str]]:
         """
         Fluxo completo: login, Consulta OS, Filtros, CPF, período 30 dias, Filtrar.
@@ -1512,8 +1515,9 @@ class PAPNioAutomation:
                         filtrados.append(d)
                 detalhes = filtrados
 
-        from crm_app.utils import ordenar_detalhes_pap_crm_primeiro
-        detalhes = ordenar_detalhes_pap_crm_primeiro(cpf_limpo, detalhes)
+        from crm_app.utils import ordenar_detalhes_pap_por_os_prioridade
+
+        detalhes = ordenar_detalhes_pap_por_os_prioridade(detalhes, os_prioridade_crm or set())
 
         # Screenshot da lista (usado quando só 1 pedido e não pertence ao PDV)
         list_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
