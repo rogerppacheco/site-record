@@ -6,6 +6,7 @@ from crm_app.esteira_posso_antecipar_service import (
     montar_botoes_posso_antecipar,
     parse_button_id_posso_antecipar,
     parse_resposta_posso_antecipar_vendedor,
+    telefone_vendedor_para_envio_sistema,
 )
 
 
@@ -13,6 +14,35 @@ class _VendaStub:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+
+class _VendedorStub:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class TelefoneVendedorEnvioTests(SimpleTestCase):
+    def test_usa_whatsapp_1_do_vendedor(self):
+        vendedor = _VendedorStub(username='joao', tel_whatsapp='31999887766')
+        venda = _VendaStub(vendedor=vendedor, telefone1='21988887777')
+        tel, err = telefone_vendedor_para_envio_sistema(venda)
+        self.assertEqual('', err)
+        self.assertEqual('31999887766', tel)
+
+    def test_nao_usa_telefone1_da_venda(self):
+        vendedor = _VendedorStub(username='joao', tel_whatsapp='', tel_whatsapp_2='21988887777')
+        venda = _VendaStub(vendedor=vendedor, telefone1='21988887777')
+        tel, err = telefone_vendedor_para_envio_sistema(venda)
+        self.assertIsNone(tel)
+        self.assertIn('WhatsApp 1', err)
+
+    def test_rejeita_whatsapp_igual_telefone_cliente(self):
+        vendedor = _VendedorStub(username='joao', tel_whatsapp='5521988887777')
+        venda = _VendaStub(vendedor=vendedor, telefone1='21988887777')
+        tel, err = telefone_vendedor_para_envio_sistema(venda)
+        self.assertIsNone(tel)
+        self.assertIn('coincide', err.lower())
 
 
 class FormatacaoExibicaoPossoAnteciparTests(SimpleTestCase):

@@ -15,23 +15,13 @@ from crm_app.esteira_posso_antecipar_service import (
     _extrair_message_id_resposta_zapi,
     _extrair_reference_message_id_zapi,
     _normalizar_telefone_chave,
+    telefone_vendedor_para_envio_sistema,
 )
 
 logger = logging.getLogger(__name__)
 
 HORAS_LIMITE_SESSAO = 72
 PREFIXO_BOTAO = 'pr_'
-
-
-def _telefone_vendedor(venda) -> Optional[str]:
-    vendedor = getattr(venda, 'vendedor', None)
-    if not vendedor:
-        return None
-    for campo in ('tel_whatsapp', 'tel_whatsapp_2', 'tel_whatsapp_3'):
-        tel = (getattr(vendedor, campo, None) or '').strip()
-        if tel:
-            return tel
-    return None
 
 
 def _texto_pendencia(venda) -> str:
@@ -396,10 +386,10 @@ def tentar_enviar_posso_reagendar_consultor(venda, *, usuario=None) -> dict:
         resultado['detail'] = 'Venda sem consultor/vendedor vinculado.'
         return resultado
 
-    telefone = _telefone_vendedor(venda)
+    telefone, err_tel = telefone_vendedor_para_envio_sistema(venda)
     if not telefone:
         resultado['ok'] = False
-        resultado['detail'] = 'Consultor sem WhatsApp cadastrado.'
+        resultado['detail'] = err_tel or 'Consultor sem WhatsApp cadastrado.'
         return resultado
 
     mensagem = montar_mensagem_inicial_posso_reagendar(venda)
@@ -436,10 +426,14 @@ def tentar_enviar_posso_reagendar_consultor(venda, *, usuario=None) -> dict:
         venda.data_solicitacao_reagendar_consultor = agora
         venda.save(update_fields=['data_solicitacao_reagendar_consultor'])
 
+        vendedor_nome = (
+            getattr(getattr(venda, 'vendedor', None), 'username', None) or 'consultor'
+        )
         if msg_id:
             logger.info(
-                '[PossoReagendar] Enviado venda #%s tel=%s messageId=%s',
+                '[PossoReagendar] Enviado venda #%s consultor=%s tel=%s messageId=%s',
                 venda.id,
+                vendedor_nome,
                 tel_chave or telefone,
                 msg_id,
             )

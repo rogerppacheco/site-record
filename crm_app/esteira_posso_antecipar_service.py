@@ -217,15 +217,51 @@ def montar_mensagem_posso_antecipar(venda) -> str:
     ])
 
 
-def _telefone_vendedor(venda) -> Optional[str]:
+def _digitos_telefone_br(telefone: str) -> str:
+    dig = re.sub(r'\D', '', str(telefone or ''))
+    if dig.startswith('55') and len(dig) > 11:
+        dig = dig[2:]
+    return dig
+
+
+def _telefones_cliente_venda(venda) -> set[str]:
+    chaves = set()
+    for campo in ('telefone1', 'telefone2'):
+        dig = _digitos_telefone_br(getattr(venda, campo, None) or '')
+        if dig:
+            chaves.add(dig)
+            if len(dig) >= 10:
+                chaves.add(dig[-10:])
+    return chaves
+
+
+def telefone_vendedor_para_envio_sistema(venda) -> tuple[Optional[str], str]:
+    """
+    WhatsApp do vendedor/consultor para envios do sistema (esteira).
+    Usa apenas WhatsApp 1 (tel_whatsapp) — nunca telefone1/telefone2 da venda (cliente).
+    """
     vendedor = getattr(venda, 'vendedor', None)
     if not vendedor:
-        return None
-    for campo in ('tel_whatsapp', 'tel_whatsapp_2', 'tel_whatsapp_3'):
-        tel = (getattr(vendedor, campo, None) or '').strip()
-        if tel:
-            return tel
-    return None
+        return None, 'Venda sem consultor/vendedor vinculado.'
+    tel = (getattr(vendedor, 'tel_whatsapp', None) or '').strip()
+    if not tel:
+        return None, 'Consultor sem WhatsApp principal (WhatsApp 1) cadastrado.'
+    dig_v = _digitos_telefone_br(tel)
+    if not dig_v:
+        return None, 'WhatsApp do consultor inválido no cadastro.'
+    clientes = _telefones_cliente_venda(venda)
+    if dig_v in clientes or (len(dig_v) >= 10 and dig_v[-10:] in clientes):
+        nome = (getattr(vendedor, 'username', None) or 'consultor').strip()
+        return None, (
+            f'O WhatsApp 1 de {nome} coincide com o telefone do cliente nesta venda. '
+            'Corrija o cadastro do consultor antes de enviar.'
+        )
+    return tel, ''
+
+
+def _telefone_vendedor(venda) -> Optional[str]:
+    tel, _ = telefone_vendedor_para_envio_sistema(venda)
+    return tel
 
 
 def _mensagem_confirmacao_resposta(venda, parsed: dict) -> str:
@@ -470,10 +506,10 @@ def tentar_enviar_posso_antecipar_vendedor(venda, *, usuario=None) -> dict:
         resultado['detail'] = 'Venda sem vendedor vinculado.'
         return resultado
 
-    telefone = _telefone_vendedor(venda)
+    telefone, err_tel = telefone_vendedor_para_envio_sistema(venda)
     if not telefone:
         resultado['ok'] = False
-        resultado['detail'] = 'Vendedor sem WhatsApp cadastrado.'
+        resultado['detail'] = err_tel or 'Vendedor sem WhatsApp cadastrado.'
         return resultado
 
     mensagem = montar_mensagem_posso_antecipar(venda)
