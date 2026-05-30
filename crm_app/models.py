@@ -286,6 +286,43 @@ class Venda(models.Model):
         verbose_name="Data/hora resposta posso antecipar",
     )
 
+    # --- Posso reagendar? (consulta ao consultor/vendedor — pendência na esteira) ---
+    consultor_pode_reagendar = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Consultor pode reagendar?",
+        help_text="True=Sim reagendar; False=Não; null=sem resposta.",
+    )
+    consultor_reagendar_data = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Data sugerida reagendamento (consultor)",
+    )
+    consultor_reagendar_turno = models.CharField(
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        null=True,
+        blank=True,
+        verbose_name="Turno sugerido reagendamento (consultor)",
+    )
+    consultor_reagendar_resposta = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Resposta consultor (posso reagendar)",
+        help_text="Resumo da consulta posso reagendar.",
+    )
+    data_solicitacao_reagendar_consultor = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora solicitação reagendar consultor",
+    )
+    data_resposta_reagendar_consultor = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora resposta reagendar consultor",
+    )
+
     # --- Boas-vindas (mensagem pós-instalação) ---
     boas_vindas_enviado_em = models.DateTimeField(
         null=True,
@@ -455,6 +492,70 @@ class PossoAnteciparVendedorEnviado(models.Model):
         verbose_name = "Posso antecipar enviado ao vendedor"
         verbose_name_plural = "Posso antecipar enviados ao vendedor"
         ordering = ['-data_envio']
+
+
+class PossoReagendarConsultorSessao(models.Model):
+    """Fluxo WhatsApp 'Posso agendar novamente?' com o consultor (vendedor) — esteira pendente."""
+    ETAPA_SIM_NAO = 'SIM_NAO'
+    ETAPA_DATA = 'DATA'
+    ETAPA_TURNO = 'TURNO'
+    ETAPA_CONCLUIDO = 'CONCLUIDO'
+    ETAPA_RECUSADO = 'RECUSADO'
+    ETAPA_CHOICES = [
+        (ETAPA_SIM_NAO, 'Aguardando Sim/Não'),
+        (ETAPA_DATA, 'Aguardando data'),
+        (ETAPA_TURNO, 'Aguardando turno'),
+        (ETAPA_CONCLUIDO, 'Concluído'),
+        (ETAPA_RECUSADO, 'Recusado'),
+    ]
+
+    telefone = models.CharField(max_length=20, db_index=True, help_text="WhatsApp do consultor/vendedor")
+    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='reagendar_consultor_sessoes')
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reagendar_consultor_sessoes',
+    )
+    solicitado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reagendar_consultor_solicitados',
+    )
+    etapa = models.CharField(max_length=16, choices=ETAPA_CHOICES, default=ETAPA_SIM_NAO, db_index=True)
+    whatsapp_message_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="messageId Z-API da última mensagem com botões.",
+    )
+    datas_opcoes_json = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        help_text="JSON com 3 datas ISO oferecidas ao consultor.",
+    )
+    data_escolhida = models.DateField(null=True, blank=True)
+    periodo_escolhido = models.CharField(
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        null=True,
+        blank=True,
+    )
+    pode_reagendar = models.BooleanField(null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_posso_reagendar_consultor_sessao'
+        verbose_name = "Sessão posso reagendar consultor"
+        verbose_name_plural = "Sessões posso reagendar consultor"
+        ordering = ['-criado_em']
 
 
 class StatusBoasVindas(models.Model):

@@ -13440,6 +13440,34 @@ class EnviarPossoAnteciparVendedorView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class EnviarPossoReagendarConsultorView(APIView):
+    """Envia consulta 'Posso agendar novamente?' ao consultor (vendedor) — esteira pendente."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, venda_id):
+        try:
+            venda = Venda.objects.select_related(
+                'vendedor', 'cliente', 'status_esteira', 'motivo_pendencia',
+            ).get(pk=venda_id, ativo=True)
+        except Venda.DoesNotExist:
+            return Response({'detail': 'Venda não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from crm_app.esteira_posso_reagendar_service import tentar_enviar_posso_reagendar_consultor
+
+        resultado = tentar_enviar_posso_reagendar_consultor(venda, usuario=request.user)
+        if not resultado.get('ok'):
+            return Response(
+                {'detail': resultado.get('detail') or 'Erro ao enviar.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({
+            'enviado': resultado.get('enviado', False),
+            'detail': resultado.get('detail', ''),
+            'venda_id': venda.id,
+            'data_solicitacao_reagendar_consultor': venda.data_solicitacao_reagendar_consultor,
+        }, status=status.HTTP_200_OK)
+
+
 class EnviarBoasVindasView(APIView):
     """Envia mensagem de boas-vindas para clientes com venda Instalada na data de instalação informada.
     Envio em lotes com intervalo ALEATÓRIO entre mensagens (padrão diferente a cada vez) para evitar bloqueio.

@@ -1571,6 +1571,13 @@
             return ag > dataHojeISO();
         }
 
+        function vendaElegivelPossoReagendar(venda, nomeStatus) {
+            if (!venda || !venda.vendedor) return false;
+            const st = String(nomeStatus || '').toUpperCase();
+            if (!st.includes('PENDEN')) return false;
+            return !!(venda.motivo_pendencia || venda.motivo_pendencia_id || venda.motivo_pendencia_nome);
+        }
+
         function montarGridAcoesEsteira(vendaId, opts) {
             const slot = '<span class="esteira-acoes-slot" aria-hidden="true"></span>';
             const btnEnd = opts.endereco
@@ -1579,11 +1586,14 @@
             const btnTel = opts.telefone
                 ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="copiarTelefone(this)" data-telefone="${opts.telefone}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>`
                 : slot;
-            const btnAnt = opts.mostrarAntecip
-                ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning"></i></button>`
-                : slot;
+            let btnWpp = slot;
+            if (opts.mostrarReagendar) {
+                btnWpp = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="enviarPossoReagendar(${vendaId}, this)" title="Consultar consultor: posso reagendar?" aria-label="Posso reagendar?"><i class="bi bi-calendar-plus"></i></button>`;
+            } else if (opts.mostrarAntecip) {
+                btnWpp = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning"></i></button>`;
+            }
             const btnEdit = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil"></i></button>`;
-            return `<div class="esteira-acoes-grid">${btnEnd}${btnTel}${btnAnt}${btnEdit}</div>`;
+            return `<div class="esteira-acoes-grid">${btnEnd}${btnTel}${btnWpp}${btnEdit}</div>`;
         }
 
         var esteiraScrollSyncLock = false;
@@ -2787,6 +2797,7 @@
                     const gridAcoes = montarGridAcoesEsteira(v.id, {
                         endereco: enderecoCompleto ? enderecoEsc : '',
                         telefone: (v.telefone1 && v.telefone1.trim()) ? String(v.telefone1).replace(/"/g, '&quot;') : '',
+                        mostrarReagendar: vendaElegivelPossoReagendar(v, nomeStatus),
                         mostrarAntecip: vendaElegivelPossoAntecipar(v, nomeStatus),
                     });
 
@@ -2950,6 +2961,21 @@
 
         function copiarEndereco(btn) {
             copiarTextoBotao(btn, btn && btn.getAttribute('data-endereco'), 'Endereço copiado!', 'Copiar endereço');
+        }
+
+        async function enviarPossoReagendar(vendaId, btn) {
+            if (!confirm('Enviar WhatsApp ao consultor perguntando se pode agendar novamente este pedido?\n\nO fluxo usa botões: Sim/Não, depois data e turno.')) return;
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+            try {
+                const res = await apiFetch('/crm/esteira/posso-reagendar/' + vendaId + '/', { method: 'POST' });
+                alert(res.detail || 'Mensagem enviada ao consultor.');
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro: ' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+            }
         }
 
         async function enviarPossoAntecipar(vendaId, btn) {
