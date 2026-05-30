@@ -588,6 +588,20 @@ def pap_status_indica_concluido(status_tabela, status_agendamento=None):
     return False
 
 
+def pap_status_indica_pendencia_lista(status_tabela):
+    """Coluna Status da lista PAP = Pendência Cliente ou Pendência Técnica."""
+    st = (status_tabela or "").strip().lower()
+    if "penden" not in st:
+        return False
+    return "cliente" in st or "técnica" in st or "tecnica" in st
+
+
+def pap_status_indica_em_aprovisionamento(status_tabela):
+    """Coluna Status da lista PAP = Em Aprovisionamento (agendado no PAP)."""
+    st = (status_tabela or "").strip().lower()
+    return "aprovisionamento" in st
+
+
 def extrair_data_instalacao_texto_pap(agendamento_texto, status_agendamento_texto=None):
     """Extrai a data (date) do texto Agendamento (ex.: 26/03/2026 - Manhã)."""
     import re
@@ -762,8 +776,9 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
     """
     Sincroniza CRM a partir do detalhe PAP (por O.S. cadastrada, venda ativa):
     - Concluído → INSTALADA (+ data_instalacao se AGENDADO)
-    - Pendência no PAP com código cadastrado (4 dígitos) → motivo_pendencia + PENDENCIADA
-    - Agendamento com data/turno no PAP → AGENDADO (somente se não houver pendência cadastrada no detalhe)
+    - Status lista = Pendência Cliente ou Técnica + código no detalhe (cadastrado) → PENDENCIADA
+    - Status lista = Em Aprovisionamento + Agendamento com data/turno no detalhe → AGENDADO
+      (inclusive se CRM estava PENDENCIADA; limpa motivo_pendencia)
     Se o código de pendência não existir no CRM, não altera motivo/esteira.
     """
     import logging
@@ -817,17 +832,27 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
         m_cod = re.match(r"^(\d{4})", pendencia_txt) if pendencia_txt else None
         codigo = m_cod.group(1) if m_cod else None
 
-        if motivo and status_pendenciada:
+        status_pap = (d.get("status") or "").strip()
+        if motivo and status_pendenciada and pap_status_indica_pendencia_lista(status_pap):
             venda.motivo_pendencia = motivo
             venda.status_esteira = status_pendenciada
             venda.save()
             logger.info(
-                "[STATUS SYNC] OS %s: PENDENCIADA — motivo %s (PAP: %s).",
+                "[STATUS SYNC] OS %s: PENDENCIADA — motivo %s (Status PAP: %s).",
                 os_raw,
                 motivo.nome,
-                pendencia_txt[:80],
+                status_pap[:60],
             )
             continue
+
+        if motivo and status_pendenciada and not pap_status_indica_pendencia_lista(status_pap):
+            logger.info(
+                "[STATUS SYNC] OS %s: pendência %s no detalhe, mas Status PAP '%s' "
+                "não é Pendência Cliente/Técnica — não altera esteira.",
+                os_raw,
+                pendencia_txt[:50],
+                status_pap[:60],
+            )
 
         if pendencia_txt and not motivo:
             logger.info(
@@ -845,7 +870,11 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
             )
 
         agendamento_txt = (d.get("agendamento") or "").strip()
-        if status_agendado and pap_detalhe_tem_agendamento_com_data(agendamento_txt):
+        if (
+            status_agendado
+            and pap_status_indica_em_aprovisionamento(status_pap)
+            and pap_detalhe_tem_agendamento_com_data(agendamento_txt)
+        ):
             dt_ag = extrair_data_instalacao_texto_pap(agendamento_txt)
             periodo = extrair_periodo_agendamento_texto_pap(agendamento_txt)
             venda.status_esteira = status_agendado
@@ -856,9 +885,20 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
                 venda.periodo_agendamento = periodo
             venda.save()
             logger.info(
-                "[STATUS SYNC] OS %s: AGENDADO via PAP (%s).",
+                "[STATUS SYNC] OS %s: AGENDADO via PAP (Status: %s, %s).",
                 os_raw,
+                status_pap[:40],
                 agendamento_txt[:60],
+            )
+        elif pap_detalhe_tem_agendamento_com_data(agendamento_txt) and not pap_status_indica_em_aprovisionamento(
+            status_pap
+        ):
+            logger.info(
+                "[STATUS SYNC] OS %s: agendamento no detalhe (%s), mas Status PAP '%s' "
+                "não é Em Aprovisionamento — não altera para AGENDADO.",
+                os_raw,
+                agendamento_txt[:50],
+                status_pap[:60],
             )
 
 
