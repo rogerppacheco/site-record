@@ -605,58 +605,182 @@ def extrair_data_instalacao_texto_pap(agendamento_texto, status_agendamento_text
     return None
 
 
-def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
+def _mapa_motivo_pendencia_por_codigo():
+    """Mesma lógica da importação OSAB: chave = dígitos iniciais do nome (ex.: 7029, 0001)."""
+    import re
+    from crm_app.models import MotivoPendencia
+
+    mapa = {}
+    for m in MotivoPendencia.objects.all():
+        match = re.match(r"^(\d+)", (m.nome or "").strip())
+        if match:
+            mapa[match.group(1)] = m
+    return mapa
+
+
+def resolver_motivo_pendencia_por_texto_pap(pendencia_texto):
     """
-    Se o PAP indica concluído/instalado: atualiza CRM para INSTALADA e data_instalacao
-    somente quando a esteira no CRM está AGENDADO e ainda não está instalada.
+    Extrai os 4 primeiros dígitos do texto de pendência do PAP (ex.: 7029 - AGENDAMENTO…)
+    e busca MotivoPendencia cadastrado (sem motivo genérico).
     """
     import re
-    from crm_app.models import Venda, StatusCRM
+
+    if not pendencia_texto or not str(pendencia_texto).strip():
+        return None
+    m = re.match(r"^(\d{4})", str(pendencia_texto).strip())
+    if not m:
+        return None
+    codigo = m.group(1)
+    mapa = _mapa_motivo_pendencia_por_codigo()
+    return mapa.get(codigo)
+
+
+def extrair_periodo_agendamento_texto_pap(agendamento_texto):
+    """Ex.: '02/06/2026 - Tarde' → 'TARDE' ou 'MANHA'."""
+    if not agendamento_texto:
+        return None
+    t = (agendamento_texto or "").lower()
+    if "tarde" in t:
+        return "TARDE"
+    if "manh" in t:
+        return "MANHA"
+    return None
+
+
+def pap_detalhe_tem_agendamento_com_data(agendamento_texto):
+    return extrair_data_instalacao_texto_pap(agendamento_texto) is not None
+
+
+def _os_pap_coincide(os_pap_raw, os_crm_raw):
+    import re
+
+    os_p = re.sub(r"\D", "", str(os_pap_raw or "")).strip()
+    os_c = re.sub(r"\D", "", str(os_crm_raw or "")).strip()
+    if not os_p or not os_c:
+        return False
+    return os_p == os_c or (os_p.lstrip("0") or os_p) == (os_c.lstrip("0") or os_c)
+
+
+def buscar_venda_ativa_por_os_cpf(cpf_limpo, numero_os):
+    """Venda ativa cuja O.S. coincide com a do PAP (mesmo CPF)."""
+    import re
+    from crm_app.models import Venda
+
+    cpf_digits = limpar_texto(cpf_limpo)
+    if len(cpf_digits) not in (11, 14):
+        return None
+    os_digits = re.sub(r"\D", "", str(numero_os or "")).strip()
+    if not os_digits:
+        return None
+    for v in Venda.objects.filter(ativo=True, cliente__cpf_cnpj__icontains=cpf_digits).select_related(
+        "status_esteira", "motivo_pendencia"
+    ):
+        if _os_pap_coincide(os_digits, v.ordem_servico):
+            return v
+    return None
+
+
+def _esteira_permite_sync_status_pap(venda):
+    st_u = ((venda.status_esteira.nome if venda.status_esteira else "") or "").upper()
+    if "INSTALAD" in st_u:
+        return False
+    return "AGENDADO" in st_u or "PENDENCI" in st_u
+
+
+def ordenar_detalhes_pap_crm_primeiro(cpf_limpo, detalhes_pap):
+    """Prioriza linhas cuja O.S. existe no CRM (ativo), para abrir Detalhar da venda certa primeiro."""
+    if not detalhes_pap:
+        return []
+    com_crm = []
+    sem_crm = []
+    for d in detalhes_pap:
+        os_raw = (d.get("numero_os") or "").strip()
+        if os_raw and buscar_venda_ativa_por_os_cpf(cpf_limpo, os_raw):
+            com_crm.append(d)
+        else:
+            sem_crm.append(d)
+    return com_crm + sem_crm
+
+
+def montar_legenda_pedido_status_pap(d, tempo_decorrido=None):
+    """Legenda de um único pedido para envio separado no WhatsApp."""
+    st_exibir = formatar_status_pap_para_whatsapp(d.get("status", ""))
+    partes = ["📡 *Status online (PAP)*\n\n"]
+    if d.get("nao_pertence_pdv"):
+        partes.append("⚠️ Pedido emitido, porém não pertence ao seu PDV.\n\n")
+    partes.append(f"• *Status:* {st_exibir}\n")
+    partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
+    partes.append(f"• *Plano:* {d.get('plano', '')}\n")
+    partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
+    if not d.get("nao_pertence_pdv"):
+        if d.get("status_agendamento"):
+            partes.append(f"• *Status agendamento:* {d.get('status_agendamento')}\n")
+        if d.get("agendamento"):
+            partes.append(f"• *Agendamento:* {d.get('agendamento')}\n")
+        if d.get("pendencia"):
+            partes.append(f"• *Pendência:* {d.get('pendencia')}\n")
+    if tempo_decorrido is not None:
+        partes.append(f"\n⏱ _{tempo_decorrido}s_")
+    return "".join(partes)
+
+
+def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
+    """
+    Sincroniza CRM a partir do detalhe PAP (por O.S. cadastrada, venda ativa):
+    - Concluído → INSTALADA (+ data_instalacao se AGENDADO)
+    - Agendamento com data/turno no PAP → AGENDADO (+ data_agendamento, periodo)
+    - Pendência no PAP com código cadastrado (4 dígitos) → motivo_pendencia + PENDENCIADA
+    Se o código de pendência não existir no CRM, não altera motivo/esteira.
+    """
+    from crm_app.models import StatusCRM
 
     cpf_digits = limpar_texto(cpf_limpo)
     if len(cpf_digits) not in (11, 14):
         return
     status_inst = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="INSTALADA").first()
-    if not status_inst:
-        return
+    status_agendado = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="AGENDADO").first()
+    status_pendenciada = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="PENDENCIADA").first()
 
     for d in detalhes_pap or []:
         if not d or d.get("nao_pertence_pdv"):
             continue
-        if not pap_status_indica_concluido(d.get("status"), d.get("status_agendamento")):
-            continue
         os_raw = (d.get("numero_os") or "").strip()
         if not os_raw:
             continue
-        os_digits = re.sub(r"\D", "", os_raw)
-        os_sem_zero = os_digits.lstrip("0") or os_digits
-
-        vendas = (
-            Venda.objects.filter(ativo=True, cliente__cpf_cnpj__icontains=cpf_digits)
-            .select_related("status_esteira")
-        )
-        venda = None
-        for v in vendas:
-            vo = re.sub(r"\D", "", str(v.ordem_servico or ""))
-            vo_sz = vo.lstrip("0") or vo
-            if vo and (vo == os_digits or vo_sz == os_sem_zero):
-                venda = v
-                break
-        if not venda:
+        venda = buscar_venda_ativa_por_os_cpf(cpf_digits, os_raw)
+        if not venda or not _esteira_permite_sync_status_pap(venda):
             continue
 
-        st_nome = (venda.status_esteira.nome if venda.status_esteira else "") or ""
-        st_u = st_nome.upper()
-        if "INSTALAD" in st_u:
-            continue
-        if "AGENDADO" not in st_u:
+        if status_inst and pap_status_indica_concluido(d.get("status"), d.get("status_agendamento")):
+            st_u = ((venda.status_esteira.nome if venda.status_esteira else "") or "").upper()
+            if "AGENDADO" in st_u:
+                dt = extrair_data_instalacao_texto_pap(d.get("agendamento"), d.get("status_agendamento"))
+                venda.status_esteira = status_inst
+                if dt:
+                    venda.data_instalacao = dt
+                venda.save()
             continue
 
-        dt = extrair_data_instalacao_texto_pap(d.get("agendamento"), d.get("status_agendamento"))
-        venda.status_esteira = status_inst
-        if dt:
-            venda.data_instalacao = dt
-        venda.save()
+        agendamento_txt = (d.get("agendamento") or "").strip()
+        if status_agendado and pap_detalhe_tem_agendamento_com_data(agendamento_txt):
+            dt_ag = extrair_data_instalacao_texto_pap(agendamento_txt)
+            periodo = extrair_periodo_agendamento_texto_pap(agendamento_txt)
+            venda.status_esteira = status_agendado
+            venda.motivo_pendencia = None
+            if dt_ag:
+                venda.data_agendamento = dt_ag
+            if periodo:
+                venda.periodo_agendamento = periodo
+            venda.save()
+            continue
+
+        pendencia_txt = (d.get("pendencia") or "").strip()
+        if pendencia_txt:
+            motivo = resolver_motivo_pendencia_por_texto_pap(pendencia_txt)
+            if motivo and status_pendenciada:
+                venda.motivo_pendencia = motivo
+                venda.status_esteira = status_pendenciada
+                venda.save()
 
 
 def consultar_status_venda_com_decisao(tipo_busca, valor):

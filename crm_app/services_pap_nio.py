@@ -1434,11 +1434,16 @@ class PAPNioAutomation:
                     data_hora = (cells[3].inner_text() or "").strip()
                     # 5ª célula (DETALHES): se não tiver link "Detalhar" = pedido não pertence ao PDV
                     tem_detalhar = False
+                    detalhe_href = None
                     if len(cells) >= 5:
                         cell_detalhes = cells[4]
                         link = cell_detalhes.query_selector('a.detalhar-link[href*="detalhe-os"], a[href*="detalhe-os"]')
                         if link:
                             tem_detalhar = True
+                            try:
+                                detalhe_href = link.get_attribute("href")
+                            except Exception:
+                                pass
                         if not tem_detalhar and "detalhar" in (cell_detalhes.inner_text() or "").lower():
                             tem_detalhar = True
                     item = {
@@ -1447,6 +1452,7 @@ class PAPNioAutomation:
                         "numero_os": numero_os,
                         "data_hora": data_hora,
                         "nao_pertence_pdv": not tem_detalhar,
+                        "detalhe_href": detalhe_href,
                     }
                     if status or plano or numero_os or data_hora:
                         detalhes.append(item)
@@ -1466,10 +1472,18 @@ class PAPNioAutomation:
                         numero_os = (cells_direct[idx + 2].inner_text() or "").strip()
                         data_hora = (cells_direct[idx + 3].inner_text() or "").strip()
                         tem_detalhar = False
+                        detalhe_href_fb = None
                         if col_per_row >= 5 and idx + 5 <= len(cells_direct):
                             cell_d = cells_direct[idx + 4]
-                            if cell_d.query_selector('a.detalhar-link[href*="detalhe-os"], a[href*="detalhe-os"]'):
+                            link_fb = cell_d.query_selector(
+                                'a.detalhar-link[href*="detalhe-os"], a[href*="detalhe-os"]'
+                            )
+                            if link_fb:
                                 tem_detalhar = True
+                                try:
+                                    detalhe_href_fb = link_fb.get_attribute("href")
+                                except Exception:
+                                    pass
                             elif "detalhar" in (cell_d.inner_text() or "").lower():
                                 tem_detalhar = True
                         if status or plano or numero_os or data_hora:
@@ -1479,6 +1493,7 @@ class PAPNioAutomation:
                                 "numero_os": numero_os,
                                 "data_hora": data_hora,
                                 "nao_pertence_pdv": not tem_detalhar,
+                                "detalhe_href": detalhe_href_fb,
                             })
                         idx += col_per_row
         except Exception as e:
@@ -1497,6 +1512,9 @@ class PAPNioAutomation:
                         filtrados.append(d)
                 detalhes = filtrados
 
+        from crm_app.utils import ordenar_detalhes_pap_crm_primeiro
+        detalhes = ordenar_detalhes_pap_crm_primeiro(cpf_limpo, detalhes)
+
         # Screenshot da lista (usado quando só 1 pedido e não pertence ao PDV)
         list_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
 
@@ -1508,7 +1526,9 @@ class PAPNioAutomation:
                 num_os = (row.get("numero_os") or "").strip()
                 if not num_os:
                     continue
-                st_ag, ag_texto, pendencia, detail_screenshot_path = self.abrir_detalhe_os_e_extrair(num_os)
+                st_ag, ag_texto, pendencia, detail_screenshot_path = self.abrir_detalhe_os_e_extrair(
+                    num_os, detalhe_href=row.get("detalhe_href")
+                )
                 if st_ag is not None:
                     row["status_agendamento"] = st_ag
                 if ag_texto is not None:
@@ -1522,7 +1542,9 @@ class PAPNioAutomation:
             return True, "ok", detalhes, list_screenshot_path
         return True, "no_results", [], list_screenshot_path
 
-    def abrir_detalhe_os_e_extrair(self, numero_os: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    def abrir_detalhe_os_e_extrair(
+        self, numero_os: str, detalhe_href: Optional[str] = None
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
         Na tela de Consulta OS (após filtrar), abre o link Detalhar da OS e extrai na página de detalhe:
         - Status agendamento: valor ao lado do rótulo "Status agendamento"
@@ -1535,12 +1557,22 @@ class PAPNioAutomation:
         num = (numero_os or "").strip()
         num_sem_zero = num.lstrip("0") or num
         try:
-            link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{num}"]').first
+            link = None
+            href = (detalhe_href or "").strip()
+            if href:
+                link = self.page.locator(f'a.detalhar-link[href="{href}"]').first
+                if link.count() == 0:
+                    link = self.page.locator(f'a[href="{href}"]').first
+                if link.count() == 0:
+                    frag = href.split("detalhe-os/")[-1].strip("/")
+                    if frag:
+                        link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{frag}"]').first
+            if not link or link.count() == 0:
+                link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{num}"]').first
             if link.count() == 0 and num_sem_zero != num:
                 link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{num_sem_zero}"]').first
             if link.count() == 0:
-                link = self.page.locator('a.detalhar-link[href*="detalhe-os"]').first
-            if link.count() == 0:
+                logger.warning("[PAP] Link Detalhar não encontrado para OS %s (href=%s)", num, href or "-")
                 return None, None, None, None
             link.click(force=True, timeout=5000)
             self.page.wait_for_timeout(1500)
@@ -1589,6 +1621,15 @@ class PAPNioAutomation:
             detail_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
             self.page.go_back()
             self.page.wait_for_timeout(1000)
+            try:
+                self.page.wait_for_selector(
+                    'td.MuiTableCell-root.MuiTableCell-body, table tbody tr',
+                    state="visible",
+                    timeout=10000,
+                )
+            except Exception:
+                pass
+            self.page.wait_for_timeout(400)
             return (
                 status_agendamento or None,
                 agendamento_texto or None,

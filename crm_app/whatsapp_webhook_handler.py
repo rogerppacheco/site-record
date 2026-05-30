@@ -1126,7 +1126,7 @@ def _executar_consulta_status_online_background(
     )
     from crm_app.whatsapp_service import WhatsAppService
     from crm_app.utils import (
-        formatar_status_pap_para_whatsapp,
+        montar_legenda_pedido_status_pap,
         sincronizar_venda_crm_apos_status_pap,
     )
 
@@ -1231,77 +1231,86 @@ def _executar_consulta_status_online_background(
                 )
                 return
             if msg == "no_results" or not detalhes:
-                caption = (
+                whatsapp.enviar_mensagem_texto(
+                    telefone,
                     "📡 *Status online (PAP)*\n\n"
                     "Não tem pedido com 30 dias para este CPF/CNPJ.\n\n"
-                    f"⏱ _{tempo_decorrido}s_"
+                    f"⏱ _{tempo_decorrido}s_",
                 )
             else:
                 try:
                     sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes)
                 except Exception as e_sync:
                     logger.warning("[STATUS ONLINE] Sync CRM: %s", e_sync)
-                n = len(detalhes)
-                partes = ["📡 *Status online (PAP)*\n\n✅ *Existe(m) pedido(s):*\n\n"]
-                for i, d in enumerate(detalhes):
-                    st_exibir = formatar_status_pap_para_whatsapp(d.get("status", ""))
-                    if n > 1:
-                        partes.append(f"📌 *Pedido {i + 1}/{n}* (OS {d.get('numero_os', '')})\n")
-                    if d.get("nao_pertence_pdv"):
-                        partes.append("⚠️ Existe um pedido emitido, porém não pertence ao seu PDV.\n")
-                        partes.append(f"• *Status:* {st_exibir}\n")
-                        partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
-                        partes.append(f"• *Plano:* {d.get('plano', '')}\n")
-                        partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
-                    else:
-                        partes.append(f"• *Status:* {st_exibir}\n")
-                        partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
-                        partes.append(f"• *Plano:* {d.get('plano', '')}\n")
-                        partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
-                        if d.get("status_agendamento"):
-                            partes.append(f"• *Status agendamento:* {d.get('status_agendamento')}\n")
-                        if d.get("agendamento"):
-                            partes.append(f"• *Agendamento:* {d.get('agendamento')}\n")
-                        if d.get("pendencia"):
-                            partes.append(f"• *Pendência:* {d.get('pendencia')}\n")
-                    if i < n - 1:
-                        partes.append("\n")
-                    partes.append("\n")
-                partes.append(f"⏱ _{tempo_decorrido}s_")
-                caption = "".join(partes)
 
-            # Screenshots: só 1 pedido e não pertence ao PDV → lista; senão → um por OS que tem Detalhar (tela de detalhe)
-            screenshot_paths = []
-            if len(detalhes) == 1 and detalhes[0].get("nao_pertence_pdv") and list_screenshot_path and os.path.isfile(list_screenshot_path):
-                screenshot_paths = [list_screenshot_path]
-            else:
+                pedidos_com_print = []
+                pedidos_so_texto = []
                 for d in detalhes:
-                    p = d.get("detail_screenshot_path")
-                    if p and os.path.isfile(p):
-                        screenshot_paths.append(p)
-                if not screenshot_paths and list_screenshot_path and os.path.isfile(list_screenshot_path):
-                    screenshot_paths = [list_screenshot_path]
+                    path = d.get("detail_screenshot_path")
+                    if (
+                        not d.get("nao_pertence_pdv")
+                        and path
+                        and os.path.isfile(path)
+                    ):
+                        pedidos_com_print.append(d)
+                    else:
+                        pedidos_so_texto.append(d)
 
-            if screenshot_paths:
+                enviou_algo = False
                 try:
-                    enviou_imagem = False
-                    for idx, path in enumerate(screenshot_paths):
-                        with open(path, "rb") as f:
+                    for d in pedidos_com_print:
+                        legenda = montar_legenda_pedido_status_pap(d, tempo_decorrido)
+                        with open(d["detail_screenshot_path"], "rb") as f:
                             img_b64 = base64.b64encode(f.read()).decode("utf-8")
-                        cap = caption if idx == 0 else (f"Pedido {idx + 1}/{len(screenshot_paths)}\n\n⏱ _{tempo_decorrido}s_" if len(screenshot_paths) > 1 else "")
-                        resp_img = whatsapp.enviar_imagem_b64(telefone, img_b64, caption=cap)
-                        if resp_img:
-                            enviou_imagem = True
+                        if whatsapp.enviar_imagem_b64(telefone, img_b64, caption=legenda):
+                            enviou_algo = True
                         else:
-                            logger.warning("[STATUS ONLINE] Z-API não confirmou imagem (%s)", path)
-                    if not enviou_imagem:
-                        whatsapp.enviar_mensagem_texto(telefone, caption)
+                            logger.warning(
+                                "[STATUS ONLINE] Z-API não confirmou imagem OS %s",
+                                d.get("numero_os"),
+                            )
+                            whatsapp.enviar_mensagem_texto(telefone, legenda)
+                            enviou_algo = True
+
+                    if pedidos_so_texto:
+                        if (
+                            not pedidos_com_print
+                            and list_screenshot_path
+                            and os.path.isfile(list_screenshot_path)
+                        ):
+                            legenda_lista = "\n".join(
+                                montar_legenda_pedido_status_pap(d, tempo_decorrido)
+                                for d in pedidos_so_texto
+                            )
+                            with open(list_screenshot_path, "rb") as f:
+                                img_b64 = base64.b64encode(f.read()).decode("utf-8")
+                            if whatsapp.enviar_imagem_b64(
+                                telefone, img_b64, caption=legenda_lista
+                            ):
+                                enviou_algo = True
+                            else:
+                                whatsapp.enviar_mensagem_texto(telefone, legenda_lista)
+                                enviou_algo = True
+                        else:
+                            for d in pedidos_so_texto:
+                                legenda = montar_legenda_pedido_status_pap(
+                                    d, tempo_decorrido
+                                )
+                                whatsapp.enviar_mensagem_texto(telefone, legenda)
+                                enviou_algo = True
+
+                    if not enviou_algo:
+                        whatsapp.enviar_mensagem_texto(
+                            telefone,
+                            f"📡 *Status online (PAP)*\n\nPedidos encontrados, sem imagem disponível.\n\n⏱ _{tempo_decorrido}s_",
+                        )
                 except Exception as e_img:
-                    logger.warning("[STATUS ONLINE] Erro ao enviar imagem: %s", e_img)
-                    whatsapp.enviar_mensagem_texto(telefone, caption)
-            else:
-                logger.info("[STATUS ONLINE] Sem screenshot — enviando só texto.")
-                whatsapp.enviar_mensagem_texto(telefone, caption)
+                    logger.warning("[STATUS ONLINE] Erro ao enviar resultado: %s", e_img)
+                    for d in detalhes:
+                        whatsapp.enviar_mensagem_texto(
+                            telefone,
+                            montar_legenda_pedido_status_pap(d, tempo_decorrido),
+                        )
 
         _run_django_sync(_finalizar)
         logger.info("[STATUS ONLINE] Finalizado para %s em %.1fs (sucesso=%s).", telefone, tempo_decorrido, sucesso)
