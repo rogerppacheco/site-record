@@ -315,6 +315,20 @@
             filter: brightness(0.985);
         }
 
+        /* Destaque de continuidade: retângulo inteiro do próximo pedido após atualização */
+        .table-esteira tbody tr.esteira-row-venda.esteira-row-foco {
+            background: #fff8e6 !important;
+            outline: 2px solid #ffc107;
+            outline-offset: -1px;
+        }
+        .table-esteira tbody tr.esteira-row-venda.esteira-row-foco td {
+            background: transparent !important;
+        }
+        .table-esteira tbody tr.esteira-row-venda.esteira-row-foco:hover {
+            filter: none;
+            background: #fff3cd !important;
+        }
+
         /* Filtros por coluna: compactos + linha dupla horizontal (menos altura) */
         #esteira-toolbar-filtros .btn-sm {
             padding: 0.25rem 0.55rem;
@@ -408,6 +422,11 @@
                 box-shadow: 0 2px 12px rgba(26, 35, 50, 0.07) !important;
                 background: #fff !important;
                 overflow: hidden;
+            }
+            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda.esteira-row-foco {
+                background: #fff8e6 !important;
+                border-color: #ffc107 !important;
+                box-shadow: 0 2px 12px rgba(255, 193, 7, 0.25) !important;
             }
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda:hover {
                 filter: none;
@@ -1470,6 +1489,55 @@
         const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'];
         let tempVendaId = null;
         let tempStatusId = null;
+        const ESTEIRA_FOCO_POS_KEY = 'esteira_foco_pos_atualizacao';
+
+        function obterLinhasVendaVisiveisEsteira() {
+            return [...document.querySelectorAll('#tabela-esteira-body tr.esteira-row-venda')];
+        }
+
+        /** Antes de salvar: memoriza o pedido imediatamente abaixo na lista visível. */
+        function registrarFocoProximoPedidoEsteira(vendaId) {
+            if (vendaId == null || vendaId === '') return;
+            const rows = obterLinhasVendaVisiveisEsteira();
+            const ids = rows.map(function(r) { return r.dataset.vendaId; }).filter(Boolean);
+            const idx = ids.indexOf(String(vendaId));
+            if (idx < 0) return;
+            const proximoId = idx < ids.length - 1 ? ids[idx + 1] : null;
+            sessionStorage.setItem(ESTEIRA_FOCO_POS_KEY, JSON.stringify({
+                focoId: proximoId,
+                focoIdx: idx < ids.length - 1 ? idx + 1 : idx,
+                tab: filtroAtual,
+            }));
+        }
+
+        /** Após recarregar a lista: destaca o retângulo do próximo pedido e rola até ele. */
+        function aplicarFocoProximoPedidoEsteira() {
+            const raw = sessionStorage.getItem(ESTEIRA_FOCO_POS_KEY);
+            if (!raw) return;
+            sessionStorage.removeItem(ESTEIRA_FOCO_POS_KEY);
+            let cfg;
+            try { cfg = JSON.parse(raw); } catch (e) { return; }
+            if (cfg.tab && cfg.tab !== filtroAtual) return;
+
+            let row = null;
+            if (cfg.focoId) {
+                row = document.querySelector('#tabela-esteira-body tr.esteira-row-venda[data-venda-id="' + cfg.focoId + '"]');
+            }
+            if (!row) {
+                const rows = obterLinhasVendaVisiveisEsteira();
+                if (cfg.focoIdx != null && rows[cfg.focoIdx]) row = rows[cfg.focoIdx];
+            }
+            if (!row) return;
+
+            row.classList.add('esteira-row-foco');
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const removerFoco = function() {
+                row.classList.remove('esteira-row-foco');
+                document.removeEventListener('click', removerFoco, true);
+            };
+            document.addEventListener('click', removerFoco, true);
+            setTimeout(removerFoco, 15000);
+        }
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
@@ -2898,7 +2966,7 @@
                     });
 
                     htmlContent += `
-                        <tr class="esteira-row-venda" style="${rowStyle}">
+                        <tr class="esteira-row-venda" data-venda-id="${v.id}" style="${rowStyle}">
                             <td data-esteira-col="id" class="esteira-col-id-venda ps-md-3 esteira-col-sticky-1" data-label="ID e data da venda">
                                 <div class="fw-bold text-primary">#${v.id}</div>
                                 <div class="small text-muted">${dataFmt}</div>
@@ -2933,7 +3001,10 @@
                 tbody.innerHTML = htmlContent;
                 aplicarVisibilidadeColunasEsteira();
                 requestAnimationFrame(function() {
-                    requestAnimationFrame(syncEsteiraScrollbars);
+                    requestAnimationFrame(function() {
+                        syncEsteiraScrollbars();
+                        aplicarFocoProximoPedidoEsteira();
+                    });
                 });
                 if (carregarInstaladas && contadorCabecalhoEl) contadorCabecalhoEl.textContent = `${totalVisivelPosCabecalho}`;
                 if (carregarAgendados && contadorAgendadosCabecalhoEl) contadorAgendadosCabecalhoEl.textContent = `${totalVisivelPosCabecalho}`;
@@ -3625,6 +3696,7 @@
         }
 
         async function salvarStatusNoBanco(id, payload) {
+            registrarFocoProximoPedidoEsteira(id);
             const body = { ...payload, enviar_whatsapp: envioWhatsappAtivo };
             try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); carregarVendas(true); } 
             catch(e) { alert('Erro ao atualizar status: ' + e.message); carregarVendas(true); }
@@ -3717,7 +3789,13 @@
                 const dtFisica = getVal('edit-data-instalacao-fisica-modal');
                 body.data_instalacao_fisica = dtFisica && dtFisica.trim() ? dtFisica.trim() : null;
             }
-            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); modalEditar.hide(); carregarVendas(true); alert('Salvo!'); } catch(e){ alert('Erro ao salvar.'); }
+            try {
+                registrarFocoProximoPedidoEsteira(id);
+                await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });
+                modalEditar.hide();
+                carregarVendas(true);
+                alert('Salvo!');
+            } catch(e){ alert('Erro ao salvar.'); }
         }
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
