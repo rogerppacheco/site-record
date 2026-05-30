@@ -69,7 +69,7 @@
             min-width: 100%;
             table-layout: auto;
             --esteira-sticky-w1: 9rem;
-            --esteira-sticky-w2: 7.5rem;
+            --esteira-sticky-w2: 5.5rem;
         }
         .table-esteira thead th {
             white-space: nowrap;
@@ -88,7 +88,29 @@
         .table-esteira th.esteira-col-comissao-cb,
         .table-esteira td.esteira-col-comissao-cb { min-width: 3rem; text-align: center; }
         .table-esteira th.esteira-col-acoes,
-        .table-esteira td.esteira-col-acoes { min-width: 7.5rem; white-space: nowrap; }
+        .table-esteira td.esteira-col-acoes { min-width: 5.5rem; max-width: 5.5rem; white-space: normal; vertical-align: middle; }
+        .esteira-acoes-grid {
+            display: inline-grid;
+            grid-template-columns: repeat(2, 2rem);
+            grid-template-rows: repeat(2, 2rem);
+            gap: 0.2rem;
+        }
+        .esteira-acoes-grid .btn {
+            width: 2rem;
+            height: 2rem;
+            padding: 0 !important;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .esteira-acoes-grid .btn .bi {
+            font-size: 0.95rem;
+        }
+        .esteira-acoes-slot {
+            width: 2rem;
+            height: 2rem;
+        }
         .table-esteira th.esteira-col-os,
         .table-esteira td.esteira-col-os { min-width: 7.5rem; }
         .table-esteira [data-esteira-col].esteira-col-oculta { display: none !important; }
@@ -414,15 +436,18 @@
                 font-size: 0.88rem;
             }
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes {
-                flex-flow: row wrap !important;
-                justify-content: flex-end !important;
-                align-items: center !important;
-                gap: 0.35rem;
+                flex-flow: column !important;
+                justify-content: flex-start !important;
+                align-items: flex-end !important;
+                gap: 0.25rem;
                 padding-top: 0.5rem !important;
             }
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes::before {
                 flex: 1 0 100%;
                 margin-bottom: 0.15rem;
+            }
+            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes .esteira-acoes-grid {
+                margin-left: auto;
             }
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes .btn {
                 flex: 0 0 auto;
@@ -1544,6 +1569,21 @@
             const ag = (venda.data_agendamento || '').trim();
             if (!/^\d{4}-\d{2}-\d{2}$/.test(ag)) return false;
             return ag > dataHojeISO();
+        }
+
+        function montarGridAcoesEsteira(vendaId, opts) {
+            const slot = '<span class="esteira-acoes-slot" aria-hidden="true"></span>';
+            const btnEnd = opts.endereco
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="copiarEndereco(this)" data-endereco="${opts.endereco}" title="Copiar endereço completo"><i class="bi bi-geo-alt"></i></button>`
+                : slot;
+            const btnTel = opts.telefone
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="copiarTelefone(this)" data-telefone="${opts.telefone}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>`
+                : slot;
+            const btnAnt = opts.mostrarAntecip
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning"></i></button>`
+                : slot;
+            const btnEdit = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil"></i></button>`;
+            return `<div class="esteira-acoes-grid">${btnEnd}${btnTel}${btnAnt}${btnEdit}</div>`;
         }
 
         var esteiraScrollSyncLock = false;
@@ -2744,13 +2784,11 @@
 
                     const enderecoCompleto = montarEnderecoCompletoVenda(v);
                     const enderecoEsc = String(enderecoCompleto).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                    const btnCopiarEndereco = enderecoCompleto
-                        ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarEndereco(this)" data-endereco="${enderecoEsc}" title="Copiar endereço completo"><i class="bi bi-geo-alt"></i></button>`
-                        : '';
-
-                    const btnPossoAntecip = vendaElegivelPossoAntecipar(v, nomeStatus)
-                        ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="enviarPossoAntecipar(${v.id}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning"></i></button>`
-                        : '';
+                    const gridAcoes = montarGridAcoesEsteira(v.id, {
+                        endereco: enderecoCompleto ? enderecoEsc : '',
+                        telefone: (v.telefone1 && v.telefone1.trim()) ? String(v.telefone1).replace(/"/g, '&quot;') : '',
+                        mostrarAntecip: vendaElegivelPossoAntecipar(v, nomeStatus),
+                    });
 
                     htmlContent += `
                         <tr class="esteira-row-venda" style="${rowStyle}">
@@ -2759,10 +2797,7 @@
                                 <div class="small text-muted">${dataFmt}</div>
                             </td>
                             <td data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2 text-md-start" data-label="Ações">
-                                ${btnCopiarEndereco}
-                                ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
-                                ${btnPossoAntecip}
-                                <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
+                                ${gridAcoes}
                             </td>
                             <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
                             <td data-esteira-col="agenda" class="esteira-col-agenda" data-label="Agendamento">
