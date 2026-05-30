@@ -442,6 +442,13 @@ class PossoAnteciparVendedorEnviado(models.Model):
     )
     data_envio = models.DateTimeField(auto_now_add=True)
     respondido_em = models.DateTimeField(null=True, blank=True)
+    whatsapp_message_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text='messageId Z-API da mensagem com botões (para identificar clique no reenvio).',
+    )
 
     class Meta:
         db_table = 'crm_posso_antecipar_vendedor_enviado'

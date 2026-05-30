@@ -6577,6 +6577,11 @@ def _aplicar_resposta_botao_zapi(data, mensagem_texto):
         return (msg or padrao).strip()
     if bid.startswith('pa_') and msg:
         return msg.strip()
+    if bid.startswith('pa_'):
+        from crm_app.esteira_posso_antecipar_service import parse_button_id_posso_antecipar
+        pa = parse_button_id_posso_antecipar(bid)
+        if pa:
+            return pa['resposta_completa']
     if bid == "pap_confirmar_sim":
         return (msg or "SIM").strip()
     if not (mensagem_texto or "").strip() and msg:
@@ -6837,7 +6842,8 @@ def processar_webhook_whatsapp(data, request=None):
     logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto!r}")
     
     # Ignorar webhooks só de reação (emoji) - não têm texto/anexo, evitar 500
-    if not mensagem_texto and not image_url and not document_url:
+    tem_resposta_botao = bool(_buscar_buttons_response_zapi(data))
+    if not mensagem_texto and not image_url and not document_url and not tem_resposta_botao:
         if 'reaction' in data:
             logger.debug("[Webhook] Reação (emoji) ignorada - sem texto/anexo")
             return {'status': 'ok', 'mensagem': 'Reação ignorada'}
@@ -6873,11 +6879,23 @@ def processar_webhook_whatsapp(data, request=None):
                     or br_pa.get('id')
                     or ''
                 ).strip()
-            from crm_app.esteira_posso_antecipar_service import processar_resposta_posso_antecipar_vendedor
+            from crm_app.esteira_posso_antecipar_service import (
+                _extrair_reference_message_id_zapi,
+                processar_resposta_posso_antecipar_vendedor,
+            )
+            ref_msg_pa = _extrair_reference_message_id_zapi(data)
+            if ref_msg_pa or button_id_pa:
+                logger.info(
+                    '[Webhook] Posso antecipar: ref=%r buttonId=%r texto=%r',
+                    ref_msg_pa or '-',
+                    button_id_pa or '-',
+                    (mensagem_texto or '')[:60],
+                )
             if processar_resposta_posso_antecipar_vendedor(
                 telefone_formatado_usuario,
                 mensagem_texto,
                 button_id=button_id_pa,
+                reference_message_id=ref_msg_pa,
             ):
                 return {'status': 'ok', 'mensagem': 'Resposta posso antecipar vendedor'}
         except Exception as e:

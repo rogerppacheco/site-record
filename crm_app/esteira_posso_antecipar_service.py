@@ -13,6 +13,32 @@ logger = logging.getLogger(__name__)
 HORAS_LIMITE_RESPOSTA = 72
 
 
+def _extrair_message_id_resposta_zapi(resp) -> str:
+    if not resp or not isinstance(resp, dict):
+        return ''
+    for key in ('messageId', 'zaapId', 'id', 'message_id'):
+        val = resp.get(key)
+        if val:
+            return str(val).strip()
+    return ''
+
+
+def _extrair_reference_message_id_zapi(data) -> str:
+    if not isinstance(data, dict):
+        return ''
+    for key in ('referenceMessageId', 'quotedMessageId', 'quotedMsgId', 'referenceMsgId'):
+        val = data.get(key)
+        if val:
+            return str(val).strip()
+    for nested in ('message', 'data', 'payload'):
+        sub = data.get(nested)
+        if isinstance(sub, dict):
+            ref = _extrair_reference_message_id_zapi(sub)
+            if ref:
+                return ref
+    return ''
+
+
 def _normalizar_texto_resposta(texto: str) -> str:
     nfd = unicodedata.normalize('NFD', (texto or '').strip())
     return ''.join(c for c in nfd if unicodedata.category(c) != 'Mn').upper()
@@ -256,6 +282,53 @@ def buscar_solicitacao_pendente_por_telefone(telefone: str, mensagem: str = ''):
     return qs.first()
 
 
+def listar_solicitacoes_pendentes_por_telefone(telefone: str, *, limite: int = 10):
+    from datetime import timedelta
+
+    from crm_app.models import PossoAnteciparVendedorEnviado
+
+    chaves_norm = _chaves_telefone_busca(telefone)
+    if not chaves_norm:
+        return []
+
+    limite_dt = timezone.now() - timedelta(hours=HORAS_LIMITE_RESPOSTA)
+    return list(
+        PossoAnteciparVendedorEnviado.objects.filter(
+            telefone__in=chaves_norm,
+            respondido_em__isnull=True,
+            data_envio__gte=limite_dt,
+        )
+        .select_related('venda', 'venda__vendedor')
+        .order_by('-data_envio')[:limite]
+    )
+
+
+def buscar_solicitacao_por_mensagem_whatsapp(reference_message_id: str, telefone: str = ''):
+    """Localiza a consulta pelo messageId da mensagem com botões (identifica reenvios)."""
+    from datetime import timedelta
+
+    from crm_app.models import PossoAnteciparVendedorEnviado
+
+    ref = (reference_message_id or '').strip()
+    if not ref:
+        return None
+
+    limite = timezone.now() - timedelta(hours=HORAS_LIMITE_RESPOSTA)
+    qs = (
+        PossoAnteciparVendedorEnviado.objects.filter(
+            whatsapp_message_id=ref,
+            data_envio__gte=limite,
+        )
+        .select_related('venda', 'venda__vendedor')
+        .order_by('-data_envio')
+    )
+    if telefone:
+        chaves_norm = _chaves_telefone_busca(telefone)
+        if chaves_norm:
+            qs = qs.filter(telefone__in=chaves_norm)
+    return qs.first()
+
+
 def buscar_solicitacao_pendente_por_venda(venda_id: int, telefone: str):
     """Localiza solicitação pendente de um pedido específico (clique em botão)."""
     from datetime import timedelta
@@ -311,27 +384,28 @@ def registrar_resposta_posso_antecipar(solicitacao, mensagem: str = '', parsed: 
     return parsed
 
 
-def _enviar_whatsapp_posso_antecipar(telefone: str, venda) -> tuple[bool, str]:
-    """Envia com botões REPLY (id por pedido); fallback texto se API falhar."""
+def _enviar_whatsapp_posso_antecipar(telefone: str, venda) -> tuple[bool, str, str]:
+    """Envia com botões REPLY (id por pedido); fallback texto se API falhar. Retorna (ok, texto, messageId)."""
     from crm_app.whatsapp_service import WhatsAppService
 
     mensagem = montar_mensagem_posso_antecipar(venda)
     botoes = montar_botoes_posso_antecipar(venda.id)
     svc = WhatsAppService()
-    ok, _ = svc.enviar_mensagem_com_botoes_reply(
+    ok, resp = svc.enviar_mensagem_com_botoes_reply(
         telefone,
         mensagem,
         botoes,
         footer=f'Pedido #{venda.id}',
     )
     if ok:
-        return True, mensagem + '\n\n[Botões: Sim, manhã | Sim, tarde | Não]'
+        msg_id = _extrair_message_id_resposta_zapi(resp)
+        return True, mensagem + '\n\n[Botões: Sim, manhã | Sim, tarde | Não]', msg_id
     ok_txt, _ = svc.enviar_mensagem_texto(
         telefone,
         mensagem + '\n\n(Responda: Sim, manhã | Sim, tarde | Não — inclua #' + str(venda.id) + ')',
         variar=False,
     )
-    return bool(ok_txt), mensagem
+    return bool(ok_txt), mensagem, ''
 
 
 def tentar_enviar_posso_antecipar_vendedor(venda, *, usuario=None) -> dict:
@@ -373,7 +447,7 @@ def tentar_enviar_posso_antecipar_vendedor(venda, *, usuario=None) -> dict:
     resultado['mensagem'] = mensagem
 
     try:
-        ok, mensagem_enviada = _enviar_whatsapp_posso_antecipar(telefone, venda)
+        ok, mensagem_enviada, whatsapp_message_id = _enviar_whatsapp_posso_antecipar(telefone, venda)
         resultado['mensagem'] = mensagem_enviada
         if not ok:
             resultado['ok'] = False
@@ -387,7 +461,15 @@ def tentar_enviar_posso_antecipar_vendedor(venda, *, usuario=None) -> dict:
             venda=venda,
             vendedor=venda.vendedor,
             solicitado_por=usuario,
+            whatsapp_message_id=whatsapp_message_id or '',
         )
+        if whatsapp_message_id:
+            logger.info(
+                '[PossoAntecipar] Enviado venda #%s tel=%s messageId=%s',
+                venda.id,
+                tel_chave or telefone,
+                whatsapp_message_id,
+            )
         venda.data_solicitacao_posso_antecipar = agora
         venda.save(update_fields=['data_solicitacao_posso_antecipar'])
 
@@ -401,30 +483,63 @@ def tentar_enviar_posso_antecipar_vendedor(venda, *, usuario=None) -> dict:
     return resultado
 
 
+def _mensagem_orientacao_multiplas_pendencias(pendentes) -> str:
+    linhas = [
+        'Você tem *várias* consultas "Posso antecipar?" pendentes.',
+        'Toque no *botão da mensagem* do pedido correto (não digite só "Sim" ou "Não"):',
+        '',
+    ]
+    for sol in pendentes[:5]:
+        vid = sol.venda_id
+        enviado = timezone.localtime(sol.data_envio).strftime('%d/%m %H:%M')
+        linhas.append(f'• Pedido *#{vid}* — enviado em {enviado}')
+    if len(pendentes) > 5:
+        linhas.append(f'• … e mais {len(pendentes) - 5} consulta(s)')
+    return '\n'.join(linhas)
+
+
+def _parece_resposta_posso_antecipar(mensagem_texto: str, button_id: str = '') -> bool:
+    if button_id and (button_id.startswith('pa_') or parse_button_id_posso_antecipar(button_id)):
+        return True
+    norm = _normalizar_texto_resposta(mensagem_texto)
+    if re.match(r'^\s*(SIM|NAO)\b', norm):
+        return True
+    if re.search(r'\b(MANHA|TARDE)\b', norm):
+        return True
+    return False
+
+
 def processar_resposta_posso_antecipar_vendedor(
     telefone_remetente,
     mensagem_texto,
     *,
     button_id: str = '',
+    reference_message_id: str = '',
 ) -> bool:
     """
     Se o vendedor respondeu (botão ou texto) a uma consulta pendente, registra e confirma.
-    Botões usam id pa_{venda_id}_sim_manha|sim_tarde|nao para identificar o pedido.
+
+    Identificação do pedido (prioridade):
+    1. referenceMessageId — mensagem WhatsApp com botões (funciona em reenvios)
+    2. buttonId pa_{venda_id}_* — botão com id do pedido
+    3. Texto com #pedido ou única consulta pendente para o telefone
     """
     btn_parsed = parse_button_id_posso_antecipar(button_id) if button_id else None
     solicitacao = None
     parsed = None
+    ref = (reference_message_id or '').strip()
 
-    if btn_parsed:
-        solicitacao = buscar_solicitacao_pendente_por_venda(
-            btn_parsed['venda_id'], telefone_remetente,
-        )
-        parsed = btn_parsed
-    elif (mensagem_texto or '').strip():
-        solicitacao = buscar_solicitacao_pendente_por_telefone(telefone_remetente, mensagem_texto)
+    logger.info(
+        '[PossoAntecipar] Processando tel=%s btn=%r ref=%r msg=%r',
+        telefone_remetente,
+        button_id or '-',
+        ref or '-',
+        (mensagem_texto or '')[:80],
+    )
 
-    if not solicitacao:
-        if btn_parsed:
+    if ref:
+        solicitacao = buscar_solicitacao_por_mensagem_whatsapp(ref, telefone_remetente)
+        if solicitacao and solicitacao.respondido_em:
             try:
                 from crm_app.whatsapp_service import WhatsAppService
                 from crm_app.whatsapp_webhook_handler import formatar_telefone
@@ -433,8 +548,65 @@ def processar_resposta_posso_antecipar_vendedor(
                 if tel:
                     WhatsAppService().enviar_mensagem_texto(
                         tel,
-                        f'Não encontrei consulta pendente para o pedido *#{btn_parsed["venda_id"]}*. '
-                        'Pode ter expirado ou já foi respondida.',
+                        f'Este pedido *#{solicitacao.venda_id}* já foi respondido. '
+                        'Se precisar alterar, avise o backoffice.',
+                        variar=False,
+                    )
+                return True
+            except Exception:
+                logger.exception('[PossoAntecipar] Erro ao avisar pedido já respondido')
+            return True
+
+    if btn_parsed:
+        if solicitacao is None or solicitacao.venda_id != btn_parsed['venda_id']:
+            sol_btn = buscar_solicitacao_pendente_por_venda(
+                btn_parsed['venda_id'], telefone_remetente,
+            )
+            if sol_btn:
+                solicitacao = sol_btn
+        parsed = btn_parsed
+    elif solicitacao is None and (mensagem_texto or '').strip():
+        pendentes = listar_solicitacoes_pendentes_por_telefone(telefone_remetente)
+        venda_id_msg = _extrair_venda_id_da_mensagem(mensagem_texto)
+        if venda_id_msg:
+            solicitacao = next((s for s in pendentes if s.venda_id == venda_id_msg), None)
+        elif len(pendentes) == 1:
+            solicitacao = pendentes[0]
+        elif len(pendentes) > 1 and _parece_resposta_posso_antecipar(mensagem_texto, button_id):
+            try:
+                from crm_app.whatsapp_service import WhatsAppService
+                from crm_app.whatsapp_webhook_handler import formatar_telefone
+
+                tel = formatar_telefone(telefone_remetente)
+                if tel:
+                    WhatsAppService().enviar_mensagem_texto(
+                        tel,
+                        _mensagem_orientacao_multiplas_pendencias(pendentes),
+                        variar=False,
+                    )
+                return True
+            except Exception:
+                logger.exception('[PossoAntecipar] Erro ao orientar múltiplas pendências')
+            return True
+        else:
+            solicitacao = buscar_solicitacao_pendente_por_telefone(telefone_remetente, mensagem_texto)
+
+    if not solicitacao:
+        if btn_parsed or ref:
+            try:
+                from crm_app.whatsapp_service import WhatsAppService
+                from crm_app.whatsapp_webhook_handler import formatar_telefone
+
+                tel = formatar_telefone(telefone_remetente)
+                if tel:
+                    det = (
+                        f'pedido *#{btn_parsed["venda_id"]}*'
+                        if btn_parsed
+                        else 'consulta vinculada a esta mensagem'
+                    )
+                    WhatsAppService().enviar_mensagem_texto(
+                        tel,
+                        f'Não encontrei {det} pendente. Pode ter expirado ou já foi respondida.',
                         variar=False,
                     )
                 return True
@@ -459,11 +631,12 @@ def processar_resposta_posso_antecipar_vendedor(
         if tel:
             WhatsAppService().enviar_mensagem_texto(tel, msg, variar=False)
         logger.info(
-            '[PossoAntecipar] Resposta registrada venda #%s: pode=%s turno=%s botao=%s',
+            '[PossoAntecipar] Resposta registrada venda #%s: pode=%s turno=%s botao=%s ref=%s',
             solicitacao.venda_id,
             parsed.get('pode'),
             parsed.get('turno'),
             button_id or '-',
+            ref or '-',
         )
         return True
     except Exception:
