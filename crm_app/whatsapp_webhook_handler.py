@@ -592,7 +592,7 @@ def _iniciar_fluxo_credito(telefone: str, sessao) -> str:
     )
 
 
-def _run_django_sync(func):
+def _run_django_sync(func, timeout_seconds: int = 120):
     """Executa operações Django/ORM/WhatsApp em thread sem event loop (evita SynchronousOnlyOperation após Playwright)."""
     import queue
     q = queue.Queue()
@@ -606,11 +606,16 @@ def _run_django_sync(func):
             q.put(e)
     t = threading.Thread(target=worker)
     t.start()
-    t.join(timeout=60)
+    t.join(timeout=timeout_seconds)
     if not q.empty():
         exc = q.get()
         if exc is not None:
             raise exc
+    elif t.is_alive():
+        logger.error(
+            "[Webhook] _run_django_sync expirou após %ss — resposta WhatsApp pode não ter sido enviada.",
+            timeout_seconds,
+        )
 
 
 def _executar_analise_credito_background(telefone: str, usuario_id: int, documento: str, cpf_representante: str = None):
@@ -1160,6 +1165,12 @@ def _executar_consulta_status_online_background(
         except Exception:
             pass
     try:
+        logger.info(
+            "[STATUS ONLINE] Iniciando consulta PAP para %s (OS filtro=%s, CPF=%s***).",
+            telefone,
+            os_filtro or "-",
+            cpf_limpo[:3] if cpf_limpo else "",
+        )
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
         automacao = PAPNioAutomation(
@@ -1173,6 +1184,7 @@ def _executar_consulta_status_online_background(
         if not sucesso:
             liberar_bo(bo_usuario.id, telefone)
             _marcar_hist(False, msg)
+            logger.warning("[STATUS ONLINE] Falha ao iniciar sessão PAP: %s", msg)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro PAP: {msg}\n\nDigite *STATUS* para tentar novamente.")
             try:
                 s = SessaoWhatsapp.objects.get(telefone=telefone)
@@ -1272,18 +1284,27 @@ def _executar_consulta_status_online_background(
 
             if screenshot_paths:
                 try:
+                    enviou_imagem = False
                     for idx, path in enumerate(screenshot_paths):
                         with open(path, "rb") as f:
                             img_b64 = base64.b64encode(f.read()).decode("utf-8")
                         cap = caption if idx == 0 else (f"Pedido {idx + 1}/{len(screenshot_paths)}\n\n⏱ _{tempo_decorrido}s_" if len(screenshot_paths) > 1 else "")
-                        whatsapp.enviar_imagem_b64(telefone, img_b64, caption=cap)
+                        resp_img = whatsapp.enviar_imagem_b64(telefone, img_b64, caption=cap)
+                        if resp_img:
+                            enviou_imagem = True
+                        else:
+                            logger.warning("[STATUS ONLINE] Z-API não confirmou imagem (%s)", path)
+                    if not enviou_imagem:
+                        whatsapp.enviar_mensagem_texto(telefone, caption)
                 except Exception as e_img:
                     logger.warning("[STATUS ONLINE] Erro ao enviar imagem: %s", e_img)
                     whatsapp.enviar_mensagem_texto(telefone, caption)
             else:
+                logger.info("[STATUS ONLINE] Sem screenshot — enviando só texto.")
                 whatsapp.enviar_mensagem_texto(telefone, caption)
 
         _run_django_sync(_finalizar)
+        logger.info("[STATUS ONLINE] Finalizado para %s em %.1fs (sucesso=%s).", telefone, tempo_decorrido, sucesso)
     except Exception as e:
         logger.exception("[STATUS ONLINE] Erro: %s", e)
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
@@ -1321,6 +1342,12 @@ def _executar_consulta_status_online_background(
                 f"❌ Erro na consulta online (PAP): {e}\n\nDigite *STATUS* para tentar novamente.\n\n⏱ _{tempo_decorrido}s_"
             )
         _run_django_sync(_erro_cleanup)
+    finally:
+        if automacao:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
 
 
 # =============================================================================

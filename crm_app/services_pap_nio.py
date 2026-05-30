@@ -291,6 +291,7 @@ class PAPNioAutomation:
         # Estado da sessão
         self.logado = False
         self.sessao_iniciada = False
+        self._pap_slot_held = False  # slot do semáforo global (liberar mesmo se login falhar antes de sessao_iniciada)
         self._trace_started = False  # Trace Playwright para inspecionar cliques em produção
 
         # Storage state para manter cookies
@@ -523,7 +524,10 @@ class PAPNioAutomation:
         self._garantir_diretorio_sessoes()
         
         try:
-            _pap_semaphore.acquire()
+            if not _pap_semaphore.acquire(timeout=180):
+                logger.warning("[PAP] Semáforo ocupado (>180s) — outras automações podem estar travadas.")
+                return False, "Sistema PAP ocupado. Aguarde e tente novamente em instantes."
+            self._pap_slot_held = True
             logger.info(f"[PAP] Iniciando sessão para {self.vendedor_nome}")
             
             self.playwright = sync_playwright().start()
@@ -598,6 +602,7 @@ class PAPNioAutomation:
             if "login.vtal.com" in current_url or ("login" in current_url.lower() and "pap.niointernet.com.br" not in current_url) or login_form_visivel:
                 sucesso, msg = self._fazer_login()
                 if not sucesso:
+                    self._fechar_sessao()
                     return False, msg
             
             self.logado = True
@@ -621,6 +626,42 @@ class PAPNioAutomation:
             self._fechar_sessao()
             return False, f"Erro ao iniciar sessão: {str(e)}"
     
+    def _contexto_destruido(self, exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return "execution context was destroyed" in msg or "context was destroyed" in msg
+
+    def _aguardar_pagina_estavel(self, retries: int = 3, delay_ms: int = 2500) -> None:
+        """Aguarda redirects SSO terminarem antes de ler URL/DOM."""
+        if not self.page:
+            return
+        for _ in range(retries):
+            try:
+                self.page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(800 if self.optimize_for_credit else 1500)
+            try:
+                _ = self.page.url
+                return
+            except Exception as e:
+                if self._contexto_destruido(e):
+                    self.page.wait_for_timeout(delay_ms)
+                    continue
+                raise
+
+    def _ler_url_e_conteudo(self) -> Tuple[str, str]:
+        """Lê URL e HTML com retry quando o SSO ainda está redirecionando."""
+        for tentativa in range(3):
+            try:
+                return (self.page.url or ""), (self.page.content() or "")
+            except Exception as e:
+                if self._contexto_destruido(e) and tentativa < 2:
+                    logger.warning("[PAP] Página ainda navegando (login), aguardando...")
+                    self.page.wait_for_timeout(2500)
+                    continue
+                raise
+        return "", ""
+
     def _fazer_login(self) -> Tuple[bool, str]:
         """
         Realiza o login no PAP via Vtal.
@@ -633,40 +674,57 @@ class PAPNioAutomation:
         for tentativa in range(1, max_tentativas + 1):
             try:
                 logger.info(f"[PAP] Fazendo login para {self.matricula_pap} (tentativa {tentativa}/{max_tentativas})")
-                
+                self._aguardar_pagina_estavel()
+
                 # Garantir que estamos na página de login (pode ter vindo de retry após timeout)
-                if "login.vtal.com" in self.page.url and "upstream request timeout" in (self.page.content() or "").lower():
+                current_url, pagina_html = self._ler_url_e_conteudo()
+                if "login.vtal.com" in current_url and "upstream request timeout" in pagina_html.lower():
                     logger.warning("[PAP] Erro upstream timeout detectado, recarregando página de login...")
                     self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+                    self._aguardar_pagina_estavel()
                 
-                # Aguardar formulário de login estar visível
-                matricula_sel = self.page.query_selector('#inputMatricula') or self.page.query_selector('input[placeholder*="Login"]') or self.page.query_selector('input[name*="matricula"]') or self.page.query_selector('input[type="text"]')
-                if not matricula_sel:
-                    self.page.wait_for_selector('#inputMatricula, input[placeholder*="Login"], input[name*="matricula"]', state="visible", timeout=15000)
-                senha_sel = self.page.query_selector('#passwordInput') or self.page.query_selector('input[type="password"]')
-                if not senha_sel:
-                    self.page.wait_for_selector('#passwordInput, input[type="password"]', state="visible", timeout=10000)
+                # Aguardar formulário (evita query_selector durante redirect SSO)
+                self.page.wait_for_selector(
+                    '#inputMatricula, input[placeholder*="Login"], input[name*="matricula"], input[type="text"]',
+                    state="visible",
+                    timeout=15000,
+                )
+                self.page.wait_for_selector(
+                    '#passwordInput, input[type="password"], input[placeholder*="Senha"]',
+                    state="visible",
+                    timeout=10000,
+                )
                 
                 # Preencher matrícula e senha (tentar vários seletores)
                 for sel in ['#inputMatricula', 'input[placeholder*="Login"]', 'input[name*="matricula"]', 'input[name*="username"]']:
                     try:
-                        self.page.fill(sel, self.matricula_pap)
+                        self.page.fill(sel, self.matricula_pap, timeout=5000)
                         break
                     except Exception:
                         continue
                 for sel in ['#passwordInput', 'input[type="password"]', 'input[placeholder*="Senha"]']:
                     try:
-                        self.page.fill(sel, self.senha_pap)
+                        self.page.fill(sel, self.senha_pap, timeout=5000)
                         break
                     except Exception:
                         continue
                 
-                # Clicar no botão de login
-                btn = self.page.query_selector('button:has-text("EFETUAR")') or self.page.query_selector('button:has-text("Login")') or self.page.query_selector('button[type="submit"]')
-                if btn:
-                    btn.click()
-                else:
-                    self.page.click(SELETORES['login']['btn_login'])
+                # Clicar no botão de login (sem query_selector — mesmo problema de contexto)
+                clicou = False
+                for sel_btn in [
+                    'button:has-text("EFETUAR")',
+                    'button:has-text("Login")',
+                    'button[type="submit"]',
+                    SELETORES['login']['btn_login'],
+                ]:
+                    try:
+                        self.page.click(sel_btn, timeout=5000)
+                        clicou = True
+                        break
+                    except Exception:
+                        continue
+                if not clicou:
+                    return False, "Botão de login não encontrado no PAP."
 
                 # Aguardar a página reagir (redirecionamento ou mensagem de erro).
                 # Tempo suficiente para o redirect do SSO evitar "Execution context was destroyed".
@@ -689,8 +747,8 @@ class PAPNioAutomation:
                     logger.info(f"[PAP] Login bem-sucedido para {self.matricula_pap}")
                     return True, "Login realizado com sucesso!"
                 except Exception:
-                    current_url = self.page.url
-                    pagina = (self.page.content() or "").lower()
+                    current_url, pagina = self._ler_url_e_conteudo()
+                    pagina = pagina.lower()
                     # Se a tela mostra erro de login, falhar de forma clara
                     if self._pagina_tem_erro_login():
                         return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
@@ -709,9 +767,14 @@ class PAPNioAutomation:
                 
             except Exception as e:
                 logger.error(f"[PAP] Erro no login (tentativa {tentativa}): {e}")
+                if self._contexto_destruido(e) and tentativa < max_tentativas:
+                    logger.warning("[PAP] Contexto destruído no login — aguardando redirect e tentando de novo...")
+                    self.page.wait_for_timeout(3000)
+                    continue
                 if tentativa < max_tentativas:
                     try:
                         self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+                        self._aguardar_pagina_estavel()
                         self.page.wait_for_selector(SELETORES['login']['matricula'], state="visible", timeout=15000)
                     except Exception:
                         pass
@@ -5827,9 +5890,10 @@ class PAPNioAutomation:
 
     def _fechar_sessao(self):
         """Fecha a sessão do navegador e libera recursos. Clica em Sair antes para não travar login."""
-        if not self.sessao_iniciada:
-            return
+        tinha_sessao = self.sessao_iniciada
         try:
+            if not tinha_sessao:
+                return
             # Salvar trace antes de fechar (permite ver cada clique no https://trace.playwright.dev)
             if getattr(self, '_trace_started', False) and self.context:
                 try:
@@ -5875,9 +5939,15 @@ class PAPNioAutomation:
                 except Exception:
                     pass
                 self.playwright = None
-            _pap_semaphore.release()
+            if self._pap_slot_held:
+                try:
+                    _pap_semaphore.release()
+                except ValueError:
+                    pass
+                self._pap_slot_held = False
             self.sessao_iniciada = False
-            logger.info(f"[PAP] Sessão encerrada para {self.vendedor_nome}")
+            if tinha_sessao or self.vendedor_nome:
+                logger.info(f"[PAP] Sessão encerrada para {self.vendedor_nome}")
     
     def __del__(self):
         """Destrutor para garantir limpeza de recursos"""

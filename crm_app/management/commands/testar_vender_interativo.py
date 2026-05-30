@@ -27,6 +27,7 @@ def _mock_enviar(telefone, mensagem, **kwargs):
     """Substitui envio real. Guarda para exibir quando enviado por thread."""
     if mensagem:
         _mensagens_async.append(mensagem)
+    return True, "mock"
 
 
 class Command(BaseCommand):
