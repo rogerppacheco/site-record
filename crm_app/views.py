@@ -13177,8 +13177,10 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
             'Plano',
             'Motivo Pendência',
             'Posso Antecipar?',
-            'Turno Antecipação',
-            'Obs. Antecipação',
+            'Obs. Posso Antecipar',
+            'Resposta completa vendedor',
+            'Data solicitação Posso Antecipar',
+            'Data resposta Posso Antecipar',
             'Conf. Cliente (lembrete)',
             'Cidade',
             'UF',
@@ -13198,23 +13200,14 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        def _fmt_posso_antecipar(v):
-            if v.vendedor_pode_antecipar is True:
-                return 'Sim'
-            if v.vendedor_pode_antecipar is False:
-                return 'Não'
-            if v.data_solicitacao_posso_antecipar and not v.data_resposta_posso_antecipar:
-                return 'Aguardando'
-            if v.vendedor_resposta_posso_antecipar:
-                return 'Ver resposta'
-            return ''
-
         def _fmt_conf_cliente(v):
             if v.cliente_confirmou_lembrete_instalacao is True:
                 return 'Sim'
             if v.cliente_confirmou_lembrete_instalacao is False:
                 return 'Não'
             return ''
+
+        from crm_app.esteira_posso_antecipar_service import formatar_posso_antecipar_exibicao
 
         total = vendas.count()
         agendados = vendas.filter(status_esteira__nome__icontains='AGENDADO').count()
@@ -13228,11 +13221,14 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 if v.data_criacao else ''
             )
             dt_agenda = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else ''
-            turno_ant = ''
-            if v.vendedor_pode_antecipar_turno == 'MANHA':
-                turno_ant = 'Manhã'
-            elif v.vendedor_pode_antecipar_turno == 'TARDE':
-                turno_ant = 'Tarde'
+            dt_sol_ant = (
+                timezone.localtime(v.data_solicitacao_posso_antecipar).strftime('%d/%m/%Y %H:%M')
+                if v.data_solicitacao_posso_antecipar else ''
+            )
+            dt_resp_ant = (
+                timezone.localtime(v.data_resposta_posso_antecipar).strftime('%d/%m/%Y %H:%M')
+                if v.data_resposta_posso_antecipar else ''
+            )
 
             ws.append([
                 v.id,
@@ -13248,9 +13244,11 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 v.telefone2 or '',
                 v.plano.nome if v.plano else '',
                 v.motivo_pendencia.nome if v.motivo_pendencia else '',
-                _fmt_posso_antecipar(v),
-                turno_ant,
-                (v.vendedor_obs_posso_antecipar or v.vendedor_resposta_posso_antecipar or '')[:500],
+                formatar_posso_antecipar_exibicao(v),
+                (v.vendedor_obs_posso_antecipar or '')[:500],
+                (v.vendedor_resposta_posso_antecipar or '')[:2000],
+                dt_sol_ant,
+                dt_resp_ant,
                 _fmt_conf_cliente(v),
                 v.cidade or '',
                 (v.estado or '').upper()[:2],
@@ -13262,7 +13260,7 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 v.observacoes or '',
             ])
 
-        column_widths = [10, 18, 14, 16, 14, 10, 14, 28, 16, 14, 14, 18, 22, 14, 14, 30, 16, 18, 6, 18, 28, 8, 14, 12, 30]
+        column_widths = [10, 18, 14, 16, 14, 10, 14, 28, 16, 14, 14, 18, 22, 18, 24, 36, 22, 22, 16, 18, 6, 18, 28, 8, 14, 12, 30]
         for i, width in enumerate(column_widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = width
 

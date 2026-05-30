@@ -6575,6 +6575,8 @@ def _aplicar_resposta_botao_zapi(data, mensagem_texto):
     if bid in _BTN_ZAPI_ID_PARA_COMANDO:
         padrao = _BTN_ZAPI_ID_PARA_COMANDO[bid]
         return (msg or padrao).strip()
+    if bid.startswith('pa_') and msg:
+        return msg.strip()
     if bid == "pap_confirmar_sim":
         return (msg or "SIM").strip()
     if not (mensagem_texto or "").strip() and msg:
@@ -6859,11 +6861,24 @@ def processar_webhook_whatsapp(data, request=None):
     if mensagem_texto and processar_resposta_gc_antecipar(telefone_formatado_usuario, mensagem_texto):
         return {'status': 'ok', 'mensagem': 'Resposta GC registrada'}
 
-    # --- Resposta vendedor (Posso antecipar? — esteira): Sim, manhã/tarde | Não
-    if mensagem_texto:
+    # --- Resposta vendedor (Posso antecipar? — esteira): botões ou texto Sim, manhã/tarde | Não
+    if mensagem_texto or _buscar_buttons_response_zapi(data):
         try:
+            br_pa = _buscar_buttons_response_zapi(data)
+            button_id_pa = ''
+            if br_pa:
+                button_id_pa = (
+                    br_pa.get('buttonId')
+                    or br_pa.get('selectedButtonId')
+                    or br_pa.get('id')
+                    or ''
+                ).strip()
             from crm_app.esteira_posso_antecipar_service import processar_resposta_posso_antecipar_vendedor
-            if processar_resposta_posso_antecipar_vendedor(telefone_formatado_usuario, mensagem_texto):
+            if processar_resposta_posso_antecipar_vendedor(
+                telefone_formatado_usuario,
+                mensagem_texto,
+                button_id=button_id_pa,
+            ):
                 return {'status': 'ok', 'mensagem': 'Resposta posso antecipar vendedor'}
         except Exception as e:
             logger.warning('[Webhook] Erro posso antecipar vendedor: %s', e, exc_info=True)
