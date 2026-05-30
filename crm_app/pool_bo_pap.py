@@ -177,6 +177,7 @@ def obter_login_bo(
     vendedor_telefone: str,
     sessao_whatsapp_id: Optional[int] = None,
     tipo_automacao: Optional[str] = None,
+    contador_uso_por_bo: Optional[dict] = None,
 ) -> Tuple[Optional["Usuario"], Optional[str]]:
     """
     Obtém um login BackOffice disponível para uso na automação PAP.
@@ -189,6 +190,7 @@ def obter_login_bo(
         sessao_whatsapp_id: ID da SessaoWhatsapp (opcional, para rastreamento)
         tipo_automacao: 'vender' | 'credito' | 'pedido' | 'status'. Se None, considera
             qualquer BO com login_pap_disponivel_para_automacao (comportamento legado).
+        contador_uso_por_bo: opcional — dict {bo_id: n}; prioriza BOs com menor uso (sync noturno).
 
     Returns:
         (bo_usuario, None) em sucesso
@@ -239,33 +241,62 @@ def obter_login_bo(
             return (None, _msg_nenhum_bo_para_automacao(tipo_automacao))
         return (None, MSG_TODOS_ACESSOS_EM_USO)
 
-    # Seleção randômica
-    bo_usuario = random.choice(bo_list)
+    if contador_uso_por_bo:
+        bo_list.sort(key=lambda b: contador_uso_por_bo.get(b.id, 0))
+    else:
+        random.shuffle(bo_list)
 
-    try:
-        with transaction.atomic():
-            PapBoEmUso.objects.create(
-                bo_usuario=bo_usuario,
-                vendedor_telefone=vendedor_telefone,
-                sessao_whatsapp_id=sessao_whatsapp_id,
-                tipo_automacao=tipo_automacao or '',
+    for bo_usuario in bo_list:
+        try:
+            with transaction.atomic():
+                PapBoEmUso.objects.create(
+                    bo_usuario=bo_usuario,
+                    vendedor_telefone=vendedor_telefone,
+                    sessao_whatsapp_id=sessao_whatsapp_id,
+                    tipo_automacao=tipo_automacao or '',
+                )
+            logger.info(
+                f"[POOL BO] BO {bo_usuario.username} (matricula {bo_usuario.matricula_pap}) "
+                f"alocado para {vendedor_telefone} (automação={tipo_automacao or 'qualquer'})"
             )
-        logger.info(
-            f"[POOL BO] BO {bo_usuario.username} (matricula {bo_usuario.matricula_pap}) "
-            f"alocado para {vendedor_telefone} (automação={tipo_automacao or 'qualquer'})"
-        )
-        _registrar_historico_consulta_pap(
-            vendedor_telefone=vendedor_telefone,
-            bo_usuario=bo_usuario,
-            tipo_automacao=tipo_automacao,
-        )
-        return bo_usuario, None
-    except Exception as e:
-        logger.exception(f"[POOL BO] Erro ao alocar BO: {e}")
-        return (
+            _registrar_historico_consulta_pap(
+                vendedor_telefone=vendedor_telefone,
+                bo_usuario=bo_usuario,
+                tipo_automacao=tipo_automacao,
+            )
+            return bo_usuario, None
+        except Exception as e:
+            logger.debug(f"[POOL BO] BO {bo_usuario.id} indisponível: {e}")
+            continue
+
+    return (None, MSG_TODOS_ACESSOS_EM_USO)
+
+
+def aguardar_login_bo(
+    vendedor_telefone: str,
+    tipo_automacao: str = TIPO_AUTOMACAO_STATUS,
+    *,
+    timeout_seg: int = 600,
+    intervalo_seg: int = 45,
+    contador_uso_por_bo: Optional[dict] = None,
+) -> Tuple[Optional["Usuario"], Optional[str]]:
+    """Espera até um login BO ficar livre ou estourar o timeout."""
+    import time
+
+    deadline = time.time() + max(30, timeout_seg)
+    while time.time() < deadline:
+        bo, err = obter_login_bo(
+            vendedor_telefone,
             None,
-            "❌ Erro ao alocar acesso. Tente novamente em instantes.",
+            tipo_automacao=tipo_automacao,
+            contador_uso_por_bo=contador_uso_por_bo,
         )
+        if bo:
+            return bo, None
+        if err and "Nenhum login BackOffice" in (err or ""):
+            return None, err
+        time.sleep(max(15, intervalo_seg))
+    return None, MSG_TODOS_ACESSOS_EM_USO
 
 
 def adicionar_a_fila_pap(

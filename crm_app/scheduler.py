@@ -60,6 +60,14 @@ def _processar_fallback_sonax_auditoria():
         logger.error(f"❌ Erro no fallback Sonax auditoria: {str(e)}")
 
 
+def sync_status_esteira_pap_automatico():
+    try:
+        logger.info("🌙 Verificando sync automático da esteira (PAP)...")
+        call_command('sync_status_esteira_pap', '--modo', 'automatico')
+    except Exception as e:
+        logger.error(f"❌ Erro no sync automático da esteira: {str(e)}")
+
+
 def _registrar_jobs(scheduler):
     scheduler.add_job(
         buscar_faturas_automatico,
@@ -92,6 +100,14 @@ def _registrar_jobs(scheduler):
         ),
         id="processar_fallback_sonax_auditoria",
         name="Fallback Sonax auditoria (status + gravação)",
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        sync_status_esteira_pap_automatico,
+        trigger=CronTrigger.from_crontab('0 22 * * *'),
+        id='sync_status_esteira_pap_noturno',
+        name='Sync esteira PAP — início 22:00 (America/Sao_Paulo)',
         replace_existing=True,
         max_instances=1,
     )

@@ -365,6 +365,15 @@ PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS = config('PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS', 
 PAP_CREDITO_FAST_MODE = config('PAP_CREDITO_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 PAP_STATUS_FAST_MODE = config('PAP_STATUS_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 
+# Sync noturno da esteira (AGENDADO/PENDENCIADA) via PAP
+SYNC_ESTEIRA_HORA_INICIO = config('SYNC_ESTEIRA_HORA_INICIO', default=22, cast=int)
+SYNC_ESTEIRA_HORA_FIM = config('SYNC_ESTEIRA_HORA_FIM', default=7, cast=int)
+SYNC_ESTEIRA_MAX_POR_HORA = config('SYNC_ESTEIRA_MAX_POR_HORA', default=40, cast=int)
+SYNC_ESTEIRA_INTERVALO_CURTO_MIN_SEG = config('SYNC_ESTEIRA_INTERVALO_CURTO_MIN_SEG', default=120, cast=int)
+SYNC_ESTEIRA_INTERVALO_CURTO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_CURTO_MAX_SEG', default=300, cast=int)
+SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG', default=300, cast=int)
+SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG', default=600, cast=int)
+
 # Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
 PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_Selfies')
 # Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)

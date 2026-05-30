@@ -185,6 +185,7 @@ from .auditoria_ligacoes_api import (
 from .auditoria_sem_slot_api import AuditoriaSemSlotEnviarView, AuditoriaSemSlotRelatorioView
 from .pendencia_indevida_api import PendenciaIndevidaRegistrarView, PendenciaIndevidaRelatorioView
 from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWppTentativaListView
+from .esteira_sync_status_pap_api import SyncStatusEsteiraIniciarView, SyncStatusEsteiraStatusView
 
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
@@ -327,6 +328,8 @@ urlpatterns = [
     path('esteira/enviar-lembrete-instalacao/', EnviarLembreteInstalacaoView.as_view(), name='enviar-lembrete-instalacao'),
     path('esteira/posso-antecipar/<int:venda_id>/', EnviarPossoAnteciparVendedorView.as_view(), name='esteira-posso-antecipar'),
     path('esteira/posso-reagendar/<int:venda_id>/', EnviarPossoReagendarConsultorView.as_view(), name='esteira-posso-reagendar'),
+    path('esteira/sync-status-pap/iniciar/', SyncStatusEsteiraIniciarView.as_view(), name='esteira-sync-status-pap-iniciar'),
+    path('esteira/sync-status-pap/status/', SyncStatusEsteiraStatusView.as_view(), name='esteira-sync-status-pap-status'),
     path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     

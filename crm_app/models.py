@@ -1896,6 +1896,60 @@ class LogEnvioPerformance(models.Model):
     def __str__(self):
         return f"{self.regra_nome} @ {self.data_hora} - {'OK' if self.sucesso else 'Falha'}"
 
+
+class SyncStatusEsteiraExecucao(models.Model):
+    """Execução do job de sincronização noturna/manual da esteira via PAP (comando STATUS)."""
+
+    MODO_AUTOMATICO = 'automatico'
+    MODO_MANUAL = 'manual'
+    MODOS = (
+        (MODO_AUTOMATICO, 'Automático'),
+        (MODO_MANUAL, 'Manual'),
+    )
+
+    STATUS_PENDENTE = 'pendente'
+    STATUS_EM_ANDAMENTO = 'em_andamento'
+    STATUS_CONCLUIDO = 'concluido'
+    STATUS_INTERROMPIDO = 'interrompido'
+    STATUS_ERRO = 'erro'
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, 'Pendente'),
+        (STATUS_EM_ANDAMENTO, 'Em andamento'),
+        (STATUS_CONCLUIDO, 'Concluído'),
+        (STATUS_INTERROMPIDO, 'Interrompido'),
+        (STATUS_ERRO, 'Erro'),
+    )
+
+    modo = models.CharField(max_length=16, choices=MODOS, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDENTE, db_index=True)
+    iniciado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sync_status_esteira_iniciados',
+    )
+    iniciado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+    total_pedidos = models.PositiveIntegerField(default=0)
+    processados = models.PositiveIntegerField(default=0)
+    atualizados = models.PositiveIntegerField(default=0)
+    sem_alteracao = models.PositiveIntegerField(default=0)
+    erros = models.PositiveIntegerField(default=0)
+    ignorados_sem_cpf = models.PositiveIntegerField(default=0)
+    relatorio_json = models.JSONField(default=dict, blank=True)
+    mensagem_erro = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'crm_sync_status_esteira_execucao'
+        verbose_name = 'Sync status esteira (PAP)'
+        verbose_name_plural = 'Sync status esteira (PAP)'
+        ordering = ['-iniciado_em']
+
+    def __str__(self):
+        return f"Sync esteira #{self.id} ({self.modo}) — {self.status}"
+
+
 # No arquivo site-record/crm_app/models.py
 
 class CdoiSolicitacao(models.Model):

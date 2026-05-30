@@ -554,6 +554,11 @@
                             <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Agend. / Pend.</span>
                         </button>
 
+                        <button type="button" id="btn-sync-status-pap" class="btn btn-sm btn-outline-primary" style="display: none;" onclick="iniciarSyncStatusPap()" title="Consultar PAP e atualizar pedidos AGENDADO/PENDENCIADA (com intervalos anti-bloqueio)">
+                            <i class="bi bi-cloud-arrow-down"></i><span class="d-none d-lg-inline ms-1">Sync PAP</span>
+                        </button>
+                        <span id="sync-status-pap-badge" class="badge bg-secondary ms-1" style="display: none; font-size: 0.7rem;"></span>
+
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="abrirModalRelatorioPendenciasIndevidas()" title="Exportar pendências indevidas por período">
                             <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Pend. indevidas</span>
                         </button>
@@ -1586,6 +1591,9 @@
             if (podeConfigEsteiraBackoffice) {
                 const btnCfg = document.getElementById('btn-config-esteira-wpp');
                 if (btnCfg) btnCfg.style.display = 'inline-flex';
+                const btnSync = document.getElementById('btn-sync-status-pap');
+                if (btnSync) btnSync.style.display = 'inline-flex';
+                pollSyncStatusPap();
             }
             if (podeConfigurarZap) {
                 const btnZap = document.getElementById('btn-toggle-wpp');
@@ -1593,6 +1601,67 @@
             }
         });
 
+        let syncStatusPapPollTimer = null;
+
+        function atualizarBadgeSyncStatusPap(info) {
+            const badge = document.getElementById('sync-status-pap-badge');
+            const btn = document.getElementById('btn-sync-status-pap');
+            if (!badge || !btn) return;
+            if (!info || !info.em_andamento) {
+                badge.style.display = 'none';
+                btn.disabled = false;
+                return;
+            }
+            badge.style.display = 'inline-block';
+            badge.className = 'badge bg-primary ms-1';
+            badge.textContent = `${info.processados || 0}/${info.total_pedidos || '?'}`;
+            btn.disabled = true;
+        }
+
+        async function pollSyncStatusPap() {
+            if (!podeConfigEsteiraBackoffice) return;
+            try {
+                const data = await apiFetch('/crm/esteira/sync-status-pap/status/');
+                if (data.em_andamento) {
+                    atualizarBadgeSyncStatusPap(data);
+                } else {
+                    atualizarBadgeSyncStatusPap(null);
+                    if (data.ultima && data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
+                        const badge = document.getElementById('sync-status-pap-badge');
+                        if (badge) {
+                            badge.style.display = 'inline-block';
+                            badge.className = 'badge bg-success ms-1';
+                            badge.textContent = `+${data.ultima.atualizados}`;
+                            setTimeout(() => { badge.style.display = 'none'; }, 15000);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Sync PAP status:', e);
+            }
+            clearTimeout(syncStatusPapPollTimer);
+            syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 30000);
+        }
+
+        async function iniciarSyncStatusPap() {
+            if (!podeConfigEsteiraBackoffice) return;
+            if (!confirm(
+                'Iniciar sincronização PAP dos pedidos AGENDADO/PENDENCIADA?\n\n'
+                + 'O processo consulta o PAP pedido a pedido, com pausas aleatórias para evitar bloqueio de login.\n'
+                + 'Vendedores recebem WhatsApp apenas quando houver alteração.\n\n'
+                + 'Se já houver um processo em andamento, não será possível iniciar outro.'
+            )) return;
+            const btn = document.getElementById('btn-sync-status-pap');
+            if (btn) btn.disabled = true;
+            try {
+                await apiFetch('/crm/esteira/sync-status-pap/iniciar/', { method: 'POST' });
+                alert('Sincronização iniciada. Acompanhe o progresso no badge ao lado do botão.');
+                pollSyncStatusPap();
+            } catch (e) {
+                alert(e.message || 'Não foi possível iniciar a sincronização.');
+                if (btn) btn.disabled = false;
+            }
+        }
 
         async function abrirModalConfigEsteira() {
             if (!podeConfigEsteiraBackoffice || !modalConfigEsteira) return;

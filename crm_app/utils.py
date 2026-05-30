@@ -781,14 +781,102 @@ def montar_legenda_pedido_status_pap(d, tempo_decorrido=None):
     return "".join(partes)
 
 
-def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
+def _snapshot_venda_sync_pap(venda):
+    """Estado da venda antes/depois da sincronização PAP."""
+    return {
+        "status_esteira_id": venda.status_esteira_id,
+        "status_esteira_nome": (venda.status_esteira.nome if venda.status_esteira else "") or "",
+        "motivo_pendencia_id": venda.motivo_pendencia_id,
+        "data_agendamento": venda.data_agendamento,
+        "periodo_agendamento": venda.periodo_agendamento or "",
+        "data_instalacao": venda.data_instalacao,
+    }
+
+
+def _venda_sync_pap_alterou(antes, depois):
+    return (
+        antes["status_esteira_id"] != depois["status_esteira_id"]
+        or antes["motivo_pendencia_id"] != depois["motivo_pendencia_id"]
+        or antes["data_agendamento"] != depois["data_agendamento"]
+        or antes["periodo_agendamento"] != (depois["periodo_agendamento"] or "")
+        or antes["data_instalacao"] != depois["data_instalacao"]
+    )
+
+
+def montar_mensagem_whatsapp_esteira_vendedor(venda, *, prefixo_atualizacao=False):
+    """Mensagem ao vendedor quando a esteira muda (mesmo padrão da API de vendas)."""
+    from datetime import date
+
+    if not venda or not venda.status_esteira:
+        return ""
+    novo_status_nome = (venda.status_esteira.nome or "").upper()
+    if not (
+        ("PENDEN" in novo_status_nome or "AGENDADO" in novo_status_nome or "INSTALADA" in novo_status_nome)
+        and "CANCEL" not in novo_status_nome
+    ):
+        return ""
+
+    prefixo = "🔄 *ATUALIZAÇÃO - " if prefixo_atualizacao else ""
+    cliente_nome = venda.cliente.nome_razao_social if venda.cliente else "Cliente"
+    os_num = venda.ordem_servico or "Não informada"
+    status_label = venda.status_esteira.nome
+    obs = venda.observacoes or "Sem observações"
+
+    if "PENDEN" in novo_status_nome:
+        motivo = venda.motivo_pendencia.nome if venda.motivo_pendencia else "Não informado"
+        titulo = f"{prefixo}VENDA PENDENCIADA*" if prefixo else "⚠️ *VENDA PENDENCIADA*"
+        return (
+            f"{titulo}\n\n"
+            f"*Nome do cliente:* {cliente_nome}\n"
+            f"*O.S:* {os_num}\n"
+            f"*Status:* {status_label}\n"
+            f"*Motivo pendência:* {motivo}\n"
+            f"*Observação:* {obs}"
+        )
+    if "AGENDADO" in novo_status_nome:
+        data_ag = venda.data_agendamento.strftime("%d/%m/%Y") if venda.data_agendamento else "Não informada"
+        turno = venda.get_periodo_agendamento_display() if venda.periodo_agendamento else "Não informado"
+        titulo = f"{prefixo}VENDA AGENDADA*" if prefixo else "📅 *VENDA AGENDADA*"
+        return (
+            f"{titulo}\n\n"
+            f"*Nome do cliente:* {cliente_nome}\n"
+            f"*O.S:* {os_num}\n"
+            f"*Status:* {status_label}\n"
+            f"*Data e turno agendado:* {data_ag} - {turno}\n"
+            f"*Observação:* {obs}\n\n"
+            "Lembrete: Peça ao seu cliente que salve o número 21 4040-1810, o técnico toda vez que coloca uma "
+            "pendência o CO Digital faz uma ligação automática ao cliente para confirmar. Salvando o número ele "
+            "atende e evita pendências indevidas!"
+        )
+    if "INSTALADA" in novo_status_nome:
+        data_inst = (
+            venda.data_instalacao.strftime("%d/%m/%Y")
+            if venda.data_instalacao
+            else date.today().strftime("%d/%m/%Y")
+        )
+        titulo = f"{prefixo}VENDA INSTALADA*" if prefixo else "✅ *VENDA INSTALADA*"
+        return (
+            f"{titulo}\n\n"
+            f"*Nome do cliente:* {cliente_nome}\n"
+            f"*O.S:* {os_num}\n"
+            f"*Status:* {status_label}\n"
+            f"*Data instalada:* {data_inst}\n"
+            f"*Observação:* {obs}"
+        )
+    return ""
+
+
+def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=None):
     """
     Sincroniza CRM a partir do detalhe PAP (por O.S. cadastrada, venda ativa):
     - Concluído → INSTALADA (+ data_instalacao se AGENDADO)
     - Status lista = Pendência Cliente ou Técnica + código no detalhe (cadastrado) → PENDENCIADA
+      (limpa data_agendamento e periodo_agendamento)
     - Status lista = Em Aprovisionamento + Agendamento com data/turno no detalhe → AGENDADO
       (inclusive se CRM estava PENDENCIADA; limpa motivo_pendencia)
     Se o código de pendência não existir no CRM, não altera motivo/esteira.
+
+    Retorna lista de dicts: venda_id, alterou, status_anterior, status_novo, os.
     """
     import logging
     import re
@@ -796,12 +884,15 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
     from crm_app.models import StatusCRM
 
     logger = logging.getLogger(__name__)
+    alteracoes = []
     cpf_digits = limpar_texto(cpf_limpo)
     if len(cpf_digits) not in (11, 14):
-        return
+        return alteracoes
     status_inst = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="INSTALADA").first()
     status_agendado = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="AGENDADO").first()
     status_pendenciada = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="PENDENCIADA").first()
+
+    os_filtro_digits = re.sub(r"\D", "", str(os_filtro or "")).strip() if os_filtro else ""
 
     for d in detalhes_pap or []:
         if not d or d.get("nao_pertence_pdv"):
@@ -809,6 +900,12 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
         os_raw = (d.get("numero_os") or "").strip()
         if not os_raw:
             continue
+        if os_filtro_digits:
+            os_d = re.sub(r"\D", "", os_raw).strip()
+            os_sem = os_d.lstrip("0") or os_d
+            filtro_sem = os_filtro_digits.lstrip("0") or os_filtro_digits
+            if os_d not in (os_filtro_digits, filtro_sem) and os_sem not in (os_filtro_digits, filtro_sem):
+                continue
         venda = buscar_venda_ativa_por_os_cpf(cpf_digits, os_raw)
         if not venda:
             logger.info(
@@ -825,6 +922,9 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
             )
             continue
 
+        antes = _snapshot_venda_sync_pap(venda)
+        status_anterior = antes["status_esteira_nome"]
+
         if status_inst and pap_status_indica_concluido(d.get("status"), d.get("status_agendamento")):
             st_u = esteira_nome.upper()
             if "AGENDADO" in st_u:
@@ -834,6 +934,17 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
                     venda.data_instalacao = dt
                 venda.save()
                 logger.info("[STATUS SYNC] OS %s: marcada INSTALADA (PAP concluído).", os_raw)
+                depois = _snapshot_venda_sync_pap(venda)
+                if _venda_sync_pap_alterou(antes, depois):
+                    alteracoes.append(
+                        {
+                            "venda_id": venda.id,
+                            "alterou": True,
+                            "status_anterior": status_anterior,
+                            "status_novo": depois["status_esteira_nome"],
+                            "os": os_raw,
+                        }
+                    )
             continue
 
         pendencia_txt = (d.get("pendencia") or "").strip()
@@ -845,6 +956,8 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
         if motivo and status_pendenciada and pap_status_indica_pendencia_lista(status_pap):
             venda.motivo_pendencia = motivo
             venda.status_esteira = status_pendenciada
+            venda.data_agendamento = None
+            venda.periodo_agendamento = None
             venda.save()
             logger.info(
                 "[STATUS SYNC] OS %s: PENDENCIADA — motivo %s (Status PAP: %s).",
@@ -852,6 +965,17 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
                 motivo.nome,
                 status_pap[:60],
             )
+            depois = _snapshot_venda_sync_pap(venda)
+            if _venda_sync_pap_alterou(antes, depois):
+                alteracoes.append(
+                    {
+                        "venda_id": venda.id,
+                        "alterou": True,
+                        "status_anterior": status_anterior,
+                        "status_novo": depois["status_esteira_nome"],
+                        "os": os_raw,
+                    }
+                )
             continue
 
         if motivo and status_pendenciada and not pap_status_indica_pendencia_lista(status_pap):
@@ -900,6 +1024,17 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
                 status_pap[:40],
                 agendamento_txt[:60],
             )
+            depois = _snapshot_venda_sync_pap(venda)
+            if _venda_sync_pap_alterou(antes, depois):
+                alteracoes.append(
+                    {
+                        "venda_id": venda.id,
+                        "alterou": True,
+                        "status_anterior": status_anterior,
+                        "status_novo": depois["status_esteira_nome"],
+                        "os": os_raw,
+                    }
+                )
         elif pap_detalhe_tem_agendamento_com_data(agendamento_txt) and not pap_status_indica_em_aprovisionamento(
             status_pap
         ):
@@ -910,6 +1045,8 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
                 agendamento_txt[:50],
                 status_pap[:60],
             )
+
+    return alteracoes
 
 
 def consultar_status_venda_com_decisao(tipo_busca, valor):

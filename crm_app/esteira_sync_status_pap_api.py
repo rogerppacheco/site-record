@@ -1,0 +1,67 @@
+"""API para sincronização noturna/manual da esteira via PAP."""
+from rest_framework import permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from crm_app.models import SyncStatusEsteiraExecucao
+from crm_app.utils import is_member
+
+
+class SyncStatusEsteiraIniciarView(APIView):
+    """Inicia sincronização manual (BackOffice/Diretoria/Admin)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'BackOffice', 'Admin']):
+            return Response({'detail': 'Acesso negado.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from crm_app.esteira_sync_status_pap_service import criar_e_iniciar_execucao_manual
+
+        exec_id, err = criar_e_iniciar_execucao_manual(usuario=request.user)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_409_CONFLICT)
+        return Response({'execucao_id': exec_id, 'status': 'em_andamento'}, status=status.HTTP_202_ACCEPTED)
+
+
+class SyncStatusEsteiraStatusView(APIView):
+    """Status da execução em andamento ou da última concluída."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['Diretoria', 'BackOffice', 'Admin', 'Supervisor']):
+            return Response({'detail': 'Acesso negado.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from crm_app.esteira_sync_status_pap_service import execucao_em_andamento
+
+        em_andamento = execucao_em_andamento()
+        if em_andamento:
+            return Response(_serializar_execucao(em_andamento, em_andamento=True))
+
+        ultima = (
+            SyncStatusEsteiraExecucao.objects.order_by('-iniciado_em').first()
+        )
+        if not ultima:
+            return Response({'em_andamento': False, 'ultima': None})
+        return Response({
+            'em_andamento': False,
+            'ultima': _serializar_execucao(ultima, em_andamento=False),
+        })
+
+
+def _serializar_execucao(execucao, *, em_andamento: bool) -> dict:
+    return {
+        'em_andamento': em_andamento,
+        'id': execucao.id,
+        'modo': execucao.modo,
+        'status': execucao.status,
+        'iniciado_em': execucao.iniciado_em.isoformat() if execucao.iniciado_em else None,
+        'finalizado_em': execucao.finalizado_em.isoformat() if execucao.finalizado_em else None,
+        'total_pedidos': execucao.total_pedidos,
+        'processados': execucao.processados,
+        'atualizados': execucao.atualizados,
+        'sem_alteracao': execucao.sem_alteracao,
+        'erros': execucao.erros,
+        'ignorados_sem_cpf': execucao.ignorados_sem_cpf,
+        'iniciado_por': execucao.iniciado_por.username if execucao.iniciado_por else None,
+        'mensagem_erro': execucao.mensagem_erro or '',
+    }
