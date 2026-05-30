@@ -1171,20 +1171,32 @@ class PAPNioAutomation:
         Clica no item do menu lateral "Consulta OS" (ou navega para a URL).
         Retorna True se encontrou e acessou a tela, False caso contrário.
         """
+        rapido = self.optimize_for_credit
         # Tentar navegação direta primeiro
         try:
             ok_sessao, _ = self.garantir_sessao_ativa()
             if not ok_sessao:
                 return False
             self.page.goto(PAP_CONSULTA_OS_URL, wait_until="domcontentloaded", timeout=30000)
-            self.page.wait_for_timeout(1500)
-            try:
-                self.page.wait_for_load_state("networkidle", timeout=6000)
-            except Exception:
+            self.page.wait_for_timeout(400 if rapido else 1500)
+            if rapido:
                 try:
-                    self.page.wait_for_load_state("load", timeout=15000)
+                    self.page.wait_for_selector(
+                        'input.input-text-filter[placeholder*="CPF"], '
+                        'button:has-text("Filtros"), button.btn-filters-new',
+                        state="visible",
+                        timeout=8000,
+                    )
                 except Exception:
                     pass
+            else:
+                try:
+                    self.page.wait_for_load_state("networkidle", timeout=6000)
+                except Exception:
+                    try:
+                        self.page.wait_for_load_state("load", timeout=15000)
+                    except Exception:
+                        pass
             if "consulta-os" in (self.page.url or "").lower() or "pap.niointernet.com.br" in (self.page.url or ""):
                 logger.info("[PAP] Navegação para Consulta OS OK (URL direta)")
                 return True
@@ -1286,13 +1298,15 @@ class PAPNioAutomation:
             logger.exception(f"[PAP] abrir_consulta_os_e_filtrar_cpf: {e}")
             return False, str(e)
 
-    def _screenshot_consulta_os_return_path(self, full_page: bool = True) -> Optional[str]:
+    def _screenshot_consulta_os_return_path(self, full_page: Optional[bool] = None) -> Optional[str]:
         """
         Tira screenshot da tela atual (Consulta OS) e retorna o caminho do arquivo.
         Usado para enviar a imagem no WhatsApp. Sempre salva, independente de capture_screenshots.
         """
         if not self.page:
             return None
+        if full_page is None:
+            full_page = not self.optimize_for_credit
         try:
             from django.conf import settings
             base_dir = getattr(settings, 'BASE_DIR', None)
@@ -1304,7 +1318,7 @@ class PAPNioAutomation:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"consulta_os_{safe_run}_{ts}.png"
             filepath = os.path.join(downloads_dir, filename)
-            self.page.wait_for_timeout(300)
+            self.page.wait_for_timeout(100 if self.optimize_for_credit else 300)
             self.page.screenshot(path=filepath, full_page=full_page)
             logger.info(f"[PAP] Screenshot Consulta OS salvo: {filepath}")
             return filepath
@@ -1343,20 +1357,22 @@ class PAPNioAutomation:
             if not ok_sessao:
                 return False, msg_sessao, [], None
 
+        rapido = self.optimize_for_credit
         ok_menu = self._clicar_menu_consulta_os()
         if not ok_menu:
             return False, "Não foi possível acessar a tela Consulta OS.", [], None
-        self.page.wait_for_timeout(1000)
+        self.page.wait_for_timeout(350 if rapido else 1000)
 
         # No PAP, o painel de Filtros abre ao PASSAR O MOUSE em cima de "Filtros" (hover), não ao clicar.
         input_selector = 'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
+        hover_wait = 250 if rapido else 400
         try:
             self.page.locator('button:has-text("Filtros"), a:has-text("Filtros"), [role="button"]:has-text("Filtros")').first.hover(timeout=5000)
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(hover_wait)
         except Exception:
             try:
                 self.page.locator('text=Filtros').first.hover(timeout=5000)
-                self.page.wait_for_timeout(400)
+                self.page.wait_for_timeout(hover_wait)
             except Exception as e:
                 logger.debug(f"[PAP] Hover em Filtros: {e}")
         try:
@@ -1416,12 +1432,12 @@ class PAPNioAutomation:
             self.page.wait_for_selector(
                 'td.MuiTableCell-root.MuiTableCell-body, table tbody td, [class*="MuiTableCell-body"]',
                 state="visible",
-                timeout=12000
+                timeout=12000 if not rapido else 10000,
             )
-            self.page.wait_for_timeout(800)
+            self.page.wait_for_timeout(250 if rapido else 800)
         except Exception as e:
             logger.debug(f"[PAP] Espera da tabela Consulta OS: {e}")
-        self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(200 if rapido else 500)
 
         # Ler tabela: 4 colunas de dados (0=STATUS, 1=PLANO, 2=NÚMERO DA OS, 3=DATA E HORA); 5ª coluna = DETALHES (link "Detalhar" ou vazio)
         detalhes: List[Dict[str, Any]] = []
@@ -1519,8 +1535,7 @@ class PAPNioAutomation:
 
         detalhes = ordenar_detalhes_pap_por_os_prioridade(detalhes, os_prioridade_crm or set())
 
-        # Screenshot da lista (usado quando só 1 pedido e não pertence ao PDV)
-        list_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
+        list_screenshot_path = None
 
         # Para cada OS que tem link Detalhar: abrir detalhe, extrair dados + Pendência e tirar screenshot da tela de detalhe
         if detalhes:
@@ -1542,8 +1557,18 @@ class PAPNioAutomation:
                 if detail_screenshot_path:
                     row["detail_screenshot_path"] = detail_screenshot_path
 
+        # Screenshot da lista só quando necessário (sem print de detalhe / não pertence ao PDV)
+        if detalhes:
+            precisa_lista = any(
+                row.get("nao_pertence_pdv") or not row.get("detail_screenshot_path")
+                for row in detalhes
+            )
+            if precisa_lista:
+                list_screenshot_path = self._screenshot_consulta_os_return_path()
+
         if detalhes:
             return True, "ok", detalhes, list_screenshot_path
+        list_screenshot_path = self._screenshot_consulta_os_return_path()
         return True, "no_results", [], list_screenshot_path
 
     _RE_PENDENCIA_CODIGO_PAP = re.compile(r"^\d{4}\s*-\s*.+", re.I)
@@ -1636,11 +1661,22 @@ class PAPNioAutomation:
             if link.count() == 0:
                 logger.warning("[PAP] Link Detalhar não encontrado para OS %s (href=%s)", num, href or "-")
                 return None, None, None, None
+            rapido = self.optimize_for_credit
             link.click(force=True, timeout=5000)
-            self.page.wait_for_timeout(1500)
-            url_atual = self.page.url
-            if "detalhe-os" not in (url_atual or ""):
-                self.page.wait_for_load_state("domcontentloaded", timeout=5000)
+            if rapido:
+                try:
+                    self.page.wait_for_url(re.compile(r"detalhe-os", re.I), timeout=8000)
+                except Exception:
+                    try:
+                        self.page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+                self.page.wait_for_timeout(200)
+            else:
+                self.page.wait_for_timeout(1500)
+                url_atual = self.page.url
+                if "detalhe-os" not in (url_atual or ""):
+                    self.page.wait_for_load_state("domcontentloaded", timeout=5000)
             status_agendamento = None
             agendamento_texto = None
             pendencia_texto = None
@@ -1687,19 +1723,31 @@ class PAPNioAutomation:
                 codigo_ok = self._buscar_pendencia_codigo_detalhe_pap()
                 if codigo_ok:
                     pendencia_texto = codigo_ok
-            self.page.wait_for_timeout(300)
-            detail_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
+            self.page.wait_for_timeout(150 if rapido else 300)
+            detail_screenshot_path = self._screenshot_consulta_os_return_path()
             self.page.go_back()
-            self.page.wait_for_timeout(1000)
-            try:
-                self.page.wait_for_selector(
-                    'td.MuiTableCell-root.MuiTableCell-body, table tbody tr',
-                    state="visible",
-                    timeout=10000,
-                )
-            except Exception:
-                pass
-            self.page.wait_for_timeout(400)
+            if rapido:
+                self.page.wait_for_timeout(400)
+                try:
+                    self.page.wait_for_selector(
+                        'td.MuiTableCell-root.MuiTableCell-body, table tbody tr',
+                        state="visible",
+                        timeout=5000,
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(150)
+            else:
+                self.page.wait_for_timeout(1000)
+                try:
+                    self.page.wait_for_selector(
+                        'td.MuiTableCell-root.MuiTableCell-body, table tbody tr',
+                        state="visible",
+                        timeout=10000,
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(400)
             return (
                 status_agendamento or None,
                 agendamento_texto or None,

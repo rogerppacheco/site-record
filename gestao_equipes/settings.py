@@ -361,6 +361,10 @@ PAP_WHATSAPP_AUTO_SIM_CLIENTE_LOCAL = config(
 # Após "Abrir OS", tempo máximo (ms) aguardando a UI de agendamento (portal pode demorar nas validações).
 PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS = config('PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS', default=120000, cast=int)
 
+# Reduz esperas fixas no Playwright (login, consulta crédito, STATUS online). PAP_STATUS_FAST_MODE=false restaura waits longos.
+PAP_CREDITO_FAST_MODE = config('PAP_CREDITO_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
+PAP_STATUS_FAST_MODE = config('PAP_STATUS_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
+
 # Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
 PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_Selfies')
 # Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)

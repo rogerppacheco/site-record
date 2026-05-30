@@ -1185,12 +1185,14 @@ def _executar_consulta_status_online_background(
         )
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+        optimize_fast = getattr(settings, 'PAP_STATUS_FAST_MODE', True)
         automacao = PAPNioAutomation(
             matricula_pap=bo_usuario.matricula_pap,
             senha_pap=bo_usuario.senha_pap,
             vendedor_nome="Status-Online",
             headless=headless,
             capture_screenshots=capture_screenshots,
+            optimize_for_credit=optimize_fast,
         )
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
