@@ -577,9 +577,18 @@ def formatar_status_pap_para_whatsapp(status_texto):
     return s
 
 
+def _normalizar_texto_status_pap(status_tabela):
+    """Remove acentos/combinações Unicode para comparar status do PAP (ex.: Técnica vs Técnica NFC)."""
+    import unicodedata
+
+    st = (status_tabela or "").strip().lower()
+    st = unicodedata.normalize("NFKD", st)
+    return "".join(c for c in st if not unicodedata.combining(c))
+
+
 def pap_status_indica_concluido(status_tabela, status_agendamento=None):
     """Indica instalação concluída no PAP (coluna Status ou detalhe Status agendamento)."""
-    st = (status_tabela or "").strip().lower()
+    st = _normalizar_texto_status_pap(status_tabela)
     if "concluí" in st or "concluido" in st:
         return True
     sa = (status_agendamento or "").strip().lower()
@@ -590,15 +599,15 @@ def pap_status_indica_concluido(status_tabela, status_agendamento=None):
 
 def pap_status_indica_pendencia_lista(status_tabela):
     """Coluna Status da lista PAP = Pendência Cliente ou Pendência Técnica."""
-    st = (status_tabela or "").strip().lower()
+    st = _normalizar_texto_status_pap(status_tabela)
     if "penden" not in st:
         return False
-    return "cliente" in st or "técnica" in st or "tecnica" in st
+    return "cliente" in st or "tecnica" in st
 
 
 def pap_status_indica_em_aprovisionamento(status_tabela):
     """Coluna Status da lista PAP = Em Aprovisionamento (agendado no PAP)."""
-    st = (status_tabela or "").strip().lower()
+    st = _normalizar_texto_status_pap(status_tabela)
     return "aprovisionamento" in st
 
 
@@ -848,10 +857,11 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
         if motivo and status_pendenciada and not pap_status_indica_pendencia_lista(status_pap):
             logger.info(
                 "[STATUS SYNC] OS %s: pendência %s no detalhe, mas Status PAP '%s' "
-                "não é Pendência Cliente/Técnica — não altera esteira.",
+                "(norm: %s) não é Pendência Cliente/Técnica — não altera esteira.",
                 os_raw,
                 pendencia_txt[:50],
                 status_pap[:60],
+                _normalizar_texto_status_pap(status_pap)[:60],
             )
 
         if pendencia_txt and not motivo:
