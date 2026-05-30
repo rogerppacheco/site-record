@@ -290,11 +290,6 @@ def _etapa_sim_nao(sessao, parsed_btn: dict, telefone: str) -> bool:
         return False
 
     datas = gerar_tres_datas_opcao()
-    sessao.pode_reagendar = True
-    sessao.datas_opcoes_json = json.dumps([d.isoformat() for d in datas])
-    sessao.etapa = PossoReagendarConsultorSessao.ETAPA_DATA
-    sessao.save(update_fields=['pode_reagendar', 'datas_opcoes_json', 'etapa', 'atualizado_em'])
-
     msg = (
         f'Pedido *#{sessao.venda_id}*: em qual dia podemos tentar o reagendamento?\n\n'
         'Escolha uma das opções:'
@@ -305,10 +300,33 @@ def _etapa_sim_nao(sessao, parsed_btn: dict, telefone: str) -> bool:
         montar_botoes_datas(sessao.venda_id, datas),
         footer=f'Pedido #{sessao.venda_id}',
     )
+    if not ok:
+        logger.error(
+            '[PossoReagendar] Falha ao enviar opções de data venda #%s tel=%s',
+            sessao.venda_id,
+            telefone,
+        )
+        _enviar_texto(
+            telefone,
+            f'Não consegui enviar as opções de data para o pedido *#{sessao.venda_id}*. '
+            'Avise o backoffice ou tente novamente.',
+        )
+        return True
+
+    sessao.pode_reagendar = True
+    sessao.datas_opcoes_json = json.dumps([d.isoformat() for d in datas])
+    sessao.etapa = PossoReagendarConsultorSessao.ETAPA_DATA
+    update_fields = ['pode_reagendar', 'datas_opcoes_json', 'etapa', 'atualizado_em']
     if msg_id:
         sessao.whatsapp_message_id = msg_id
-        sessao.save(update_fields=['whatsapp_message_id', 'atualizado_em'])
-    return bool(ok)
+        update_fields.append('whatsapp_message_id')
+    sessao.save(update_fields=update_fields)
+    logger.info(
+        '[PossoReagendar] Sim → datas enviadas venda #%s messageId=%s',
+        sessao.venda_id,
+        msg_id or '-',
+    )
+    return True
 
 
 def _etapa_data(sessao, parsed_btn: dict, telefone: str) -> bool:
@@ -363,8 +381,8 @@ def deve_tentar_posso_reagendar(
     if ref and telefone and buscar_sessao_por_mensagem_whatsapp(ref, telefone):
         return True
     norm = (mensagem_texto or '').strip().upper()
-    if norm in ('SIM', 'NÃO', 'NAO'):
-        return True
+    if norm in ('SIM', 'NÃO', 'NAO', 'S', 'N') and telefone:
+        return _sessao_ativa_qs(telefone).exists()
     return False
 
 

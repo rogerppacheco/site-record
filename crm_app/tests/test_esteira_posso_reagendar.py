@@ -6,6 +6,7 @@ from crm_app.esteira_posso_reagendar_service import (
     gerar_tres_datas_opcao,
     montar_botoes_sim_nao,
     parse_button_id_posso_reagendar,
+    deve_tentar_posso_reagendar,
 )
 
 
@@ -34,3 +35,6 @@ class BotoesPossoReagendarTests(SimpleTestCase):
         datas = gerar_tres_datas_opcao(a_partir_de=date(2026, 6, 1))
         self.assertEqual(3, len(datas))
         self.assertEqual(date(2026, 6, 1), datas[0])
+
+    def test_deve_tentar_botao_pr(self):
+        self.assertTrue(deve_tentar_posso_reagendar('', button_id='pr_100_sim'))

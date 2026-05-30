@@ -108,6 +108,37 @@ def _parece_resposta_gc(texto: str) -> bool:
     return bool(_RE_POSSIVEL_RESPOSTA_GC.search(primeira_linha))
 
 
+def _tem_referencia_ou_clique_botao(data: Any, _depth: int = 0) -> bool:
+    """
+    Clique em botão Z-API (send-button-actions) costuma chegar sem texto no payload.
+    Não descartar no fastpath — o handler completo extrai buttonId/referenceMessageId.
+    """
+    if _depth > 8 or not isinstance(data, dict):
+        return False
+    for key in ('referenceMessageId', 'quotedMessageId', 'quotedMsgId', 'referenceMsgId'):
+        if data.get(key):
+            return True
+    for key in (
+        'buttonsResponseMessage',
+        'buttonResponseMessage',
+        'buttonActionsResponseMessage',
+        'templateButtonReplyMessage',
+        'nativeFlowResponseMessage',
+        'interactiveResponseMessage',
+        'buttonReply',
+        'replyButton',
+    ):
+        if isinstance(data.get(key), dict):
+            return True
+    if any(data.get(k) for k in ('buttonId', 'selectedButtonId', 'selectedId')):
+        return True
+    for nested in ('message', 'data', 'payload', 'text'):
+        sub = data.get(nested)
+        if isinstance(sub, dict) and _tem_referencia_ou_clique_botao(sub, _depth + 1):
+            return True
+    return False
+
+
 def avaliar_fastpath_zapi(data: Any) -> Optional[Dict[str, str]]:
     """
     Retorna resposta HTTP (status/mensagem) para encerrar sem o handler completo.
@@ -148,6 +179,8 @@ def avaliar_fastpath_zapi(data: Any) -> Optional[Dict[str, str]]:
         return {'status': 'ok', 'mensagem': 'Webhook sem telefone/mídia ignorado'}
 
     if not texto and not tem_midia:
+        if _tem_referencia_ou_clique_botao(data):
+            return None
         return {'status': 'ok', 'mensagem': 'Webhook sem conteúdo ignorado'}
 
     return None

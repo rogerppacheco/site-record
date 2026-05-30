@@ -42,3 +42,25 @@ class WhatsappWebhookFastpathTests(SimpleTestCase):
             'text': {'message': 'Fachada'},
         }
         self.assertIsNone(avaliar_fastpath_zapi(payload))
+
+    def test_clique_botao_sem_texto_nao_ignora(self):
+        """Clique em Sim/Não (posso reagendar/antecipar) chega sem texto — não descartar."""
+        payload = {
+            'phone': '553187970208',
+            'type': 'ReceivedCallback',
+            'referenceMessageId': '3EB02CC8F0B3F6DF9796D1',
+            'buttonsResponseMessage': {
+                'buttonId': 'pr_6695_sim',
+                'message': 'Sim',
+            },
+        }
+        self.assertIsNone(avaliar_fastpath_zapi(payload))
+
+    def test_webhook_vazio_sem_botao_ignora(self):
+        payload = {
+            'phone': '553187970208',
+            'type': 'ReceivedCallback',
+        }
+        out = avaliar_fastpath_zapi(payload)
+        self.assertEqual('ok', out['status'])
+        self.assertIn('conteúdo', out['mensagem'].lower())
