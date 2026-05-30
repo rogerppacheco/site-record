@@ -477,6 +477,10 @@
                             <i class="bi bi-file-earmark-excel"></i><span class="d-none d-lg-inline ms-1">Exportar hoje</span>
                         </button>
 
+                        <button type="button" onclick="exportarAgendadosPendentesEsteira()" class="btn btn-sm btn-outline-success" title="Baixar relatório Excel com todas as vendas agendadas e pendentes na esteira">
+                            <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Agend. / Pend.</span>
+                        </button>
+
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="abrirModalRelatorioPendenciasIndevidas()" title="Exportar pendências indevidas por período">
                             <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Pend. indevidas</span>
                         </button>
@@ -771,6 +775,7 @@
                                 <th data-esteira-col="plano">Plano</th>
                                 <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
                                 <th data-esteira-col="conf" class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
+                                <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip" title="Resposta do vendedor à consulta Posso antecipar?">Posso antecipar?</th>
                                 <th data-esteira-col="resp" class="esteira-col-resp">Resp. Alteração</th>
                                 <th data-esteira-col="comissao" class="esteira-col-comissao-cb" title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
                             </tr>
@@ -818,6 +823,14 @@
                                 <th data-esteira-col="plano"><input id="fc-plano" class="form-control form-control-sm esteira-fc-input" placeholder="Plano"></th>
                                 <th data-esteira-col="motivo" class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
                                 <th data-esteira-col="conf" class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
+                                <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip">
+                                    <select id="fc-posso-antecip" class="form-select form-select-sm esteira-fc-select">
+                                        <option value="">Todos</option>
+                                        <option value="sim">Sim</option>
+                                        <option value="nao">Não</option>
+                                        <option value="aguardando">Aguardando</option>
+                                    </select>
+                                </th>
                                 <th data-esteira-col="resp" class="esteira-col-resp"><input id="fc-resp" class="form-control form-control-sm esteira-fc-input" placeholder="Resp."></th>
                                 <th data-esteira-col="comissao" class="esteira-col-comissao-cb"></th>
                             </tr>
@@ -1240,6 +1253,7 @@
             { key: 'plano', label: 'Plano' },
             { key: 'motivo', label: 'Motivo Pendência' },
             { key: 'conf', label: 'Conf. cliente' },
+            { key: 'posso_antecip', label: 'Posso antecipar?' },
             { key: 'resp', label: 'Resp. Alteração' },
             { key: 'comissao', label: 'Comissão (instaladas)' },
         ];
@@ -2210,6 +2224,45 @@
             carregarVendas(true);
         }
 
+        async function exportarAgendadosPendentesEsteira() {
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                alert('Você precisa estar logado para exportar.');
+                return;
+            }
+            const btn = document.querySelector('[onclick="exportarAgendadosPendentesEsteira()"]');
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+            try {
+                const response = await fetch('/api/crm/esteira/exportar-agendados-pendentes/', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!response.ok) {
+                    let erro = 'Erro ao exportar';
+                    try {
+                        const j = await response.json();
+                        erro = j.detail || erro;
+                    } catch (e) { /* ignore */ }
+                    throw new Error(erro);
+                }
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                const cd = response.headers.get('Content-Disposition') || '';
+                const m = cd.match(/filename=([^;]+)/i);
+                link.download = m ? m[1].replace(/"/g, '') : 'esteira_agendados_pendentes.xlsx';
+                document.body.appendChild(link);
+                link.click();
+                window.URL.revokeObjectURL(link.href);
+                document.body.removeChild(link);
+            } catch (error) {
+                console.error('Erro ao exportar agendados/pendentes:', error);
+                alert('Erro ao exportar: ' + error.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+            }
+        }
+
         async function exportarAgendamentosDia() {
             // Exporta planilha de agendamentos do dia para envio à operadora
             try {
@@ -2330,13 +2383,13 @@
             );
 
             if (carregarInstaladas && !temFiltroInstaladas) {
-                tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
                 const paEmpty = document.getElementById('painel-instaladas-antecipacao');
                 if (paEmpty) paEmpty.style.display = 'none';
                 return;
             }
             if (carregarVendasTotais && !temFiltroVendasTotais) {
-                tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 return;
             }
 
@@ -2344,7 +2397,7 @@
                 var inp = document.getElementById('filtro-busca');
                 if (inp) inp.placeholder = 'Buscar CPF ou OS...';
             }
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
 
             try {
                 const timestamp = new Date().getTime();
@@ -2463,7 +2516,7 @@
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
-                    tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     const pa = document.getElementById('painel-instaladas-antecipacao');
                     if (pa) pa.style.display = 'none';
                     return;
@@ -2608,12 +2661,35 @@
                         confCliente = '<span class="badge bg-secondary" title="' + respTitle + '">Não' + (respShort ? ': ' + respShort + (v.cliente_resposta_lembrete_instalacao && v.cliente_resposta_lembrete_instalacao.length > 30 ? '…' : '') : '') + '</span>';
                     }
 
+                    let possoAntecip = '-';
+                    const possoAntecipTitle = [
+                        v.vendedor_resposta_posso_antecipar,
+                        v.vendedor_obs_posso_antecipar ? ('Obs: ' + v.vendedor_obs_posso_antecipar) : ''
+                    ].filter(Boolean).join(' | ').replace(/"/g, '&quot;');
+                    if (v.vendedor_pode_antecipar === true) {
+                        const turnoAnt = v.vendedor_pode_antecipar_turno === 'MANHA' ? 'Manhã' : (v.vendedor_pode_antecipar_turno === 'TARDE' ? 'Tarde' : '');
+                        possoAntecip = '<span class="badge bg-success" title="' + possoAntecipTitle + '">Sim' + (turnoAnt ? ', ' + turnoAnt : '') + '</span>';
+                    } else if (v.vendedor_pode_antecipar === false) {
+                        possoAntecip = '<span class="badge bg-secondary" title="' + possoAntecipTitle + '">Não</span>';
+                    } else if (v.data_solicitacao_posso_antecipar && !v.data_resposta_posso_antecipar) {
+                        possoAntecip = '<span class="badge bg-warning text-dark" title="Aguardando resposta do vendedor">Aguardando</span>';
+                    } else if (v.vendedor_resposta_posso_antecipar) {
+                        const respPa = (v.vendedor_resposta_posso_antecipar || '').substring(0, 40);
+                        possoAntecip = '<span class="badge bg-info text-dark" title="' + possoAntecipTitle + '">' + respPa + (v.vendedor_resposta_posso_antecipar.length > 40 ? '…' : '') + '</span>';
+                    }
+
                     {
                         const adCnpjTexto = v.flag_adiant_cnpj
                             ? 'realizado'
                             : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel');
                         const adComissaoTexto = v.antecipacao_comissao ? 'sim' : 'nao';
                         const confTexto = (v.cliente_confirmou_lembrete_instalacao === true) ? 'sim' : (v.cliente_confirmou_lembrete_instalacao === false ? 'nao' : '-');
+                        const possoAntecipTexto = (function() {
+                            if (v.vendedor_pode_antecipar === true) return 'sim';
+                            if (v.vendedor_pode_antecipar === false) return 'nao';
+                            if (v.data_solicitacao_posso_antecipar && !v.data_resposta_posso_antecipar) return 'aguardando';
+                            return '-';
+                        })();
                         const passa =
                             incluiTexto(v.id, getFiltroColuna('fc-id')) &&
                             incluiTexto(dataFmt, getFiltroColuna('fc-data-venda')) &&
@@ -2636,6 +2712,7 @@
                             incluiTexto(nomeStatus, getFiltroColuna('fc-status')) &&
                             incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
                             incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
+                            incluiTexto(possoAntecipTexto, getFiltroColuna('fc-posso-antecip')) &&
                             incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
                         if (carregarAgendados) {
                             if (filtroAgendadosAplicado.vendedor_id && String(v.vendedor || '') !== String(filtroAgendadosAplicado.vendedor_id)) return;
@@ -2654,6 +2731,10 @@
                         ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarEndereco(this)" data-endereco="${enderecoEsc}" title="Copiar endereço completo"><i class="bi bi-geo-alt"></i></button>`
                         : '';
 
+                    const btnPossoAntecip = v.vendedor
+                        ? `<button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="enviarPossoAntecipar(${v.id}, this)" title="Enviar WhatsApp ao vendedor: Posso antecipar?">Antecipar?</button>`
+                        : '';
+
                     htmlContent += `
                         <tr class="esteira-row-venda" style="${rowStyle}">
                             <td data-esteira-col="id" class="esteira-col-id-venda ps-md-3 esteira-col-sticky-1" data-label="ID e data da venda">
@@ -2663,6 +2744,7 @@
                             <td data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2 text-md-start" data-label="Ações">
                                 ${btnCopiarEndereco}
                                 ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
+                                ${btnPossoAntecip}
                                 <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
                             </td>
                             <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
@@ -2682,6 +2764,7 @@
                             <td data-esteira-col="plano" data-label="Plano"><span class="d-inline-block text-break">${nomePlano}</span></td>
                             <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
                             <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
+                            <td data-esteira-col="posso_antecip" class="esteira-col-posso-antecip small" data-label="Posso antecipar?">${possoAntecip}</td>
                             <td data-esteira-col="resp" class="esteira-col-resp" data-label="Resp. alteração"><small class="text-muted fw-bold">${alteradoPor}</small></td>
                             <td data-esteira-col="comissao" class="esteira-col-comissao-cb text-center" data-label="Comissão">${carregarInstaladas ? checkboxComissao : '-'}</td>
                         </tr>
@@ -2722,7 +2805,7 @@
                     }
                 }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="15" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                if(!silent) tbody.innerHTML = '<tr><td colspan="16" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
                 var paErr = document.getElementById('painel-instaladas-antecipacao');
                 if (paErr) paErr.style.display = 'none';
             }
@@ -2815,6 +2898,21 @@
 
         function copiarEndereco(btn) {
             copiarTextoBotao(btn, btn && btn.getAttribute('data-endereco'), 'Endereço copiado!', 'Copiar endereço');
+        }
+
+        async function enviarPossoAntecipar(vendaId, btn) {
+            if (!confirm('Enviar WhatsApp ao vendedor perguntando se pode antecipar este pedido?\n\nLembrete: é só uma consulta — não prometer ao cliente.')) return;
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+            try {
+                const res = await apiFetch('/crm/esteira/posso-antecipar/' + vendaId + '/', { method: 'POST' });
+                alert(res.detail || 'Mensagem enviada ao vendedor.');
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro: ' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+            }
         }
 
         function abrirModalEnviarLembrete() {
@@ -3100,7 +3198,7 @@
                 if (pa) pa.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                tb.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
                 return;
             }
@@ -3132,7 +3230,7 @@
                 if (paTot) paTot.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 const tbTot = document.getElementById('tabela-esteira-body');
-                tbTot.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                tbTot.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 sincronizarVisaoGestaoAproveitamento(false);
                 return;
             }

@@ -248,6 +248,44 @@ class Venda(models.Model):
         verbose_name="Data/hora resposta ao lembrete",
     )
 
+    # --- Posso antecipar? (consulta ao vendedor via WhatsApp, esteira) ---
+    vendedor_pode_antecipar = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Vendedor pode antecipar?",
+        help_text="True=Sim; False=Não; null=ainda não respondeu ou resposta não identificada.",
+    )
+    vendedor_pode_antecipar_turno = models.CharField(
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        null=True,
+        blank=True,
+        verbose_name="Turno antecipação (vendedor)",
+    )
+    vendedor_resposta_posso_antecipar = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Resposta vendedor (posso antecipar)",
+        help_text="Texto completo recebido do vendedor.",
+    )
+    vendedor_obs_posso_antecipar = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Observação vendedor (posso antecipar)",
+        help_text="Texto extra além de Sim/Não e turno.",
+    )
+    data_solicitacao_posso_antecipar = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora solicitação posso antecipar",
+    )
+    data_resposta_posso_antecipar = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora resposta posso antecipar",
+    )
+
     # --- Boas-vindas (mensagem pós-instalação) ---
     boas_vindas_enviado_em = models.DateTimeField(
         null=True,
@@ -381,6 +419,34 @@ class LembreteInstalacaoEnviado(models.Model):
         db_table = 'crm_lembrete_instalacao_enviado'
         verbose_name = "Lembrete instalação enviado"
         verbose_name_plural = "Lembretes instalação enviados"
+        ordering = ['-data_envio']
+
+
+class PossoAnteciparVendedorEnviado(models.Model):
+    """Registro de envio da consulta 'Posso antecipar?' ao vendedor (esteira)."""
+    telefone = models.CharField(max_length=20, db_index=True, help_text="WhatsApp do vendedor (dígitos normalizados)")
+    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='posso_antecipar_enviados')
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posso_antecipar_enviados',
+    )
+    solicitado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posso_antecipar_solicitados',
+    )
+    data_envio = models.DateTimeField(auto_now_add=True)
+    respondido_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_posso_antecipar_vendedor_enviado'
+        verbose_name = "Posso antecipar enviado ao vendedor"
+        verbose_name_plural = "Posso antecipar enviados ao vendedor"
         ordering = ['-data_envio']
 
 

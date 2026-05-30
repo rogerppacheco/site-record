@@ -146,7 +146,9 @@ from .views import (
     AtualizarFaturasView,
     ExportarM10View,
     ExportarAgendamentosDiaView,
+    ExportarAgendadosPendentesEsteiraView,
     EnviarLembreteInstalacaoView,
+    EnviarPossoAnteciparVendedorView,
     EnviarBoasVindasView,
     BoasVindasInstalacoesView,
     BoasVindasRetornosView,
@@ -320,7 +322,9 @@ urlpatterns = [
     
     # --- Exportação e Lembrete Agendamentos (Esteira) ---
     path('esteira/exportar-agendamentos/', ExportarAgendamentosDiaView.as_view(), name='exportar-agendamentos-dia'),
+    path('esteira/exportar-agendados-pendentes/', ExportarAgendadosPendentesEsteiraView.as_view(), name='exportar-agendados-pendentes-esteira'),
     path('esteira/enviar-lembrete-instalacao/', EnviarLembreteInstalacaoView.as_view(), name='enviar-lembrete-instalacao'),
+    path('esteira/posso-antecipar/<int:venda_id>/', EnviarPossoAnteciparVendedorView.as_view(), name='esteira-posso-antecipar'),
     path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     

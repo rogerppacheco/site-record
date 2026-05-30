@@ -6859,6 +6859,15 @@ def processar_webhook_whatsapp(data, request=None):
     if mensagem_texto and processar_resposta_gc_antecipar(telefone_formatado_usuario, mensagem_texto):
         return {'status': 'ok', 'mensagem': 'Resposta GC registrada'}
 
+    # --- Resposta vendedor (Posso antecipar? — esteira): Sim, manhã/tarde | Não
+    if mensagem_texto:
+        try:
+            from crm_app.esteira_posso_antecipar_service import processar_resposta_posso_antecipar_vendedor
+            if processar_resposta_posso_antecipar_vendedor(telefone_formatado_usuario, mensagem_texto):
+                return {'status': 'ok', 'mensagem': 'Resposta posso antecipar vendedor'}
+        except Exception as e:
+            logger.warning('[Webhook] Erro posso antecipar vendedor: %s', e, exc_info=True)
+
     # --- Resposta do CLIENTE (SIM/CONFIRMAR) antes de exigir usuário ativo ---
     # Quando o sistema envia "RESUMO DO PEDIDO... responda SIM" ao cliente (fluxo PAP ou
     # resumo enviado da auditoria), a resposta vem do número do cliente, que não é usuário interno.
