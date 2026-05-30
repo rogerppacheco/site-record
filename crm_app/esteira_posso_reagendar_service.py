@@ -148,6 +148,31 @@ def formatar_reagendar_consultor_exibicao(venda) -> str:
     return '-'
 
 
+def _nome_consultor_venda(venda) -> str:
+    vendedor = getattr(venda, 'vendedor', None)
+    if vendedor:
+        return (getattr(vendedor, 'username', None) or '').strip()
+    return (getattr(venda, 'vendedor_nome', None) or '').strip()
+
+
+def formatar_reagendar_consultor_exibicao_com_consultor(venda) -> str:
+    """Resumo para coluna/Excel: consultor + resposta (ex.: FERNANDA: Sim — 01/06 Manhã)."""
+    resumo = formatar_reagendar_consultor_exibicao(venda)
+    if resumo == '-':
+        return resumo
+    nome = _nome_consultor_venda(venda)
+    if nome:
+        return f'{nome}: {resumo}'
+    return resumo
+
+
+def consultor_respondeu_reagendar(venda) -> str:
+    """Username do consultor quando já houve resposta ao fluxo."""
+    if not getattr(venda, 'data_resposta_reagendar_consultor', None):
+        return ''
+    return _nome_consultor_venda(venda)
+
+
 def _sessao_ativa_qs(telefone: str = ''):
     from crm_app.models import PossoReagendarConsultorSessao
 

@@ -13181,6 +13181,11 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
             'Resposta completa vendedor',
             'Data solicitação Posso Antecipar',
             'Data resposta Posso Antecipar',
+            'Posso Reagendar?',
+            'Consultor respondeu',
+            'Resposta completa reagendar',
+            'Data solicitação Posso Reagendar',
+            'Data resposta Posso Reagendar',
             'Conf. Cliente (lembrete)',
             'Cidade',
             'UF',
@@ -13208,6 +13213,10 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
             return ''
 
         from crm_app.esteira_posso_antecipar_service import formatar_posso_antecipar_exibicao
+        from crm_app.esteira_posso_reagendar_service import (
+            consultor_respondeu_reagendar,
+            formatar_reagendar_consultor_exibicao_com_consultor,
+        )
 
         total = vendas.count()
         agendados = vendas.filter(status_esteira__nome__icontains='AGENDADO').count()
@@ -13229,6 +13238,14 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 timezone.localtime(v.data_resposta_posso_antecipar).strftime('%d/%m/%Y %H:%M')
                 if v.data_resposta_posso_antecipar else ''
             )
+            dt_sol_reag = (
+                timezone.localtime(v.data_solicitacao_reagendar_consultor).strftime('%d/%m/%Y %H:%M')
+                if v.data_solicitacao_reagendar_consultor else ''
+            )
+            dt_resp_reag = (
+                timezone.localtime(v.data_resposta_reagendar_consultor).strftime('%d/%m/%Y %H:%M')
+                if v.data_resposta_reagendar_consultor else ''
+            )
 
             ws.append([
                 v.id,
@@ -13249,6 +13266,11 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 (v.vendedor_resposta_posso_antecipar or '')[:2000],
                 dt_sol_ant,
                 dt_resp_ant,
+                formatar_reagendar_consultor_exibicao_com_consultor(v),
+                consultor_respondeu_reagendar(v),
+                (v.consultor_reagendar_resposta or '')[:2000],
+                dt_sol_reag,
+                dt_resp_reag,
                 _fmt_conf_cliente(v),
                 v.cidade or '',
                 (v.estado or '').upper()[:2],
@@ -13260,7 +13282,12 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 v.observacoes or '',
             ])
 
-        column_widths = [10, 18, 14, 16, 14, 10, 14, 28, 16, 14, 14, 18, 22, 18, 24, 36, 22, 22, 16, 18, 6, 18, 28, 8, 14, 12, 30]
+        column_widths = [
+            10, 18, 14, 16, 14, 10, 14, 28, 16, 14, 14, 18, 22,
+            18, 24, 36, 22, 22,
+            24, 16, 36, 22, 22,
+            16, 18, 6, 18, 28, 8, 14, 12, 30,
+        ]
         for i, width in enumerate(column_widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = width
 

@@ -831,6 +831,7 @@
                                 <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
                                 <th data-esteira-col="conf" class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip" title="Resposta do vendedor à consulta Posso antecipar?">Posso antecipar?</th>
+                                <th data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar" title="Resposta do consultor à consulta Posso reagendar?">Posso reagendar?</th>
                                 <th data-esteira-col="resp" class="esteira-col-resp">Resp. Alteração</th>
                                 <th data-esteira-col="comissao" class="esteira-col-comissao-cb" title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
                             </tr>
@@ -880,6 +881,14 @@
                                 <th data-esteira-col="conf" class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip">
                                     <select id="fc-posso-antecip" class="form-select form-select-sm esteira-fc-select">
+                                        <option value="">Todos</option>
+                                        <option value="sim">Sim</option>
+                                        <option value="nao">Não</option>
+                                        <option value="aguardando">Aguardando</option>
+                                    </select>
+                                </th>
+                                <th data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar">
+                                    <select id="fc-posso-reagendar" class="form-select form-select-sm esteira-fc-select">
                                         <option value="">Todos</option>
                                         <option value="sim">Sim</option>
                                         <option value="nao">Não</option>
@@ -1309,6 +1318,7 @@
             { key: 'motivo', label: 'Motivo Pendência' },
             { key: 'conf', label: 'Conf. cliente' },
             { key: 'posso_antecip', label: 'Posso antecipar?' },
+            { key: 'posso_reagendar', label: 'Posso reagendar?' },
             { key: 'resp', label: 'Resp. Alteração' },
             { key: 'comissao', label: 'Comissão (instaladas)' },
         ];
@@ -2797,6 +2807,33 @@
                         possoAntecip = '<span class="badge bg-info text-dark" title="' + possoAntecipTitle + '">' + respPa + (v.vendedor_resposta_posso_antecipar.length > 40 ? '…' : '') + '</span>';
                     }
 
+                    let possoReagendar = '-';
+                    const consultorReagNome = v.vendedor_nome || getNomeUsuario(v.vendedor) || '';
+                    const possoReagendarTitle = [
+                        consultorReagNome ? ('Consultor: ' + consultorReagNome) : '',
+                        v.consultor_reagendar_resposta,
+                        v.data_resposta_reagendar_consultor
+                            ? ('Respondido em ' + new Date(v.data_resposta_reagendar_consultor).toLocaleString('pt-BR'))
+                            : ''
+                    ].filter(Boolean).join(' | ').replace(/"/g, '&quot;');
+                    const prefixoConsultor = consultorReagNome ? (consultorReagNome + ': ') : '';
+                    if (v.consultor_pode_reagendar === true) {
+                        let turnoReag = v.consultor_reagendar_turno === 'MANHA' ? 'Manhã' : (v.consultor_reagendar_turno === 'TARDE' ? 'Tarde' : '');
+                        let dataReag = v.consultor_reagendar_data ? formatarDataSemFuso(v.consultor_reagendar_data) : '';
+                        let txtReag = 'Sim';
+                        if (dataReag && turnoReag) txtReag += ' — ' + dataReag + ' ' + turnoReag;
+                        else if (dataReag) txtReag += ' — ' + dataReag;
+                        else if (turnoReag) txtReag += ' — ' + turnoReag;
+                        possoReagendar = '<span class="badge bg-success" title="' + possoReagendarTitle + '">' + prefixoConsultor + txtReag + '</span>';
+                    } else if (v.consultor_pode_reagendar === false) {
+                        possoReagendar = '<span class="badge bg-secondary" title="' + possoReagendarTitle + '">' + prefixoConsultor + 'Não</span>';
+                    } else if (v.data_solicitacao_reagendar_consultor && !v.data_resposta_reagendar_consultor) {
+                        possoReagendar = '<span class="badge bg-warning text-dark" title="' + possoReagendarTitle + '">' + prefixoConsultor + 'Aguardando</span>';
+                    } else if (v.consultor_reagendar_resposta) {
+                        const respReag = (v.consultor_reagendar_resposta || '').substring(0, 40);
+                        possoReagendar = '<span class="badge bg-info text-dark" title="' + possoReagendarTitle + '">' + prefixoConsultor + respReag + (v.consultor_reagendar_resposta.length > 40 ? '…' : '') + '</span>';
+                    }
+
                     {
                         const adCnpjTexto = v.flag_adiant_cnpj
                             ? 'realizado'
@@ -2807,6 +2844,12 @@
                             if (v.vendedor_pode_antecipar === true) return 'sim';
                             if (v.vendedor_pode_antecipar === false) return 'nao';
                             if (v.data_solicitacao_posso_antecipar && !v.data_resposta_posso_antecipar) return 'aguardando';
+                            return '-';
+                        })();
+                        const possoReagendarTexto = (function() {
+                            if (v.consultor_pode_reagendar === true) return 'sim';
+                            if (v.consultor_pode_reagendar === false) return 'nao';
+                            if (v.data_solicitacao_reagendar_consultor && !v.data_resposta_reagendar_consultor) return 'aguardando';
                             return '-';
                         })();
                         const passa =
@@ -2832,6 +2875,7 @@
                             incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
                             incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
                             incluiTexto(possoAntecipTexto, getFiltroColuna('fc-posso-antecip')) &&
+                            incluiTexto(possoReagendarTexto, getFiltroColuna('fc-posso-reagendar')) &&
                             incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
                         if (carregarAgendados) {
                             if (filtroAgendadosAplicado.vendedor_id && String(v.vendedor || '') !== String(filtroAgendadosAplicado.vendedor_id)) return;
@@ -2880,6 +2924,7 @@
                             <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
                             <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
                             <td data-esteira-col="posso_antecip" class="esteira-col-posso-antecip small" data-label="Posso antecipar?">${possoAntecip}</td>
+                            <td data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar small" data-label="Posso reagendar?">${possoReagendar}</td>
                             <td data-esteira-col="resp" class="esteira-col-resp" data-label="Resp. alteração"><small class="text-muted fw-bold">${alteradoPor}</small></td>
                             <td data-esteira-col="comissao" class="esteira-col-comissao-cb text-center" data-label="Comissão">${carregarInstaladas ? checkboxComissao : '-'}</td>
                         </tr>
