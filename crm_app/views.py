@@ -1730,7 +1730,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
-        data_tipo = (self.request.query_params.get('data_tipo') or 'criacao').strip().lower()
+        data_tipo = (self.request.query_params.get('data_tipo') or '').strip().lower()
         status_filter_raw = (self.request.query_params.get('status') or '').strip().upper()
         
         # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
@@ -1758,7 +1758,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                         _filtro_data_efetiva_instalacao_intervalo_venda(inicio_mes.date(), hoje_d)
                     )
                 else:
-                    queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
+                    queryset = queryset.filter(
+                        _filtro_vendas_crm_periodo_listagem(inicio_mes.date(), hoje_d)
+                    )
 
         # --- FILTRO DE STATUS ---
         status_filter = self.request.query_params.get('status')
@@ -6886,10 +6888,12 @@ def _filtro_data_efetiva_instalacao_intervalo_venda(d_ini, d_fim):
 
 def _filtro_vendas_crm_periodo_listagem(dt_ini, dt_fim):
     """Vendas criadas no período (venda bruta) OU instaladas (data efetiva) no período."""
-    return (
-        Q(data_criacao__date__gte=dt_ini, data_criacao__date__lte=dt_fim)
-        | _filtro_data_efetiva_instalacao_intervalo_venda(dt_ini, dt_fim)
+    vendas_mes = Q(data_criacao__date__gte=dt_ini, data_criacao__date__lte=dt_fim)
+    instaladas_mes = (
+        Q(status_esteira__nome__iexact='INSTALADA')
+        & _filtro_data_efetiva_instalacao_intervalo_venda(dt_ini, dt_fim)
     )
+    return vendas_mes | instaladas_mes
 
 
 def _perf_resolver_periodos_performance(request, user, hoje_d):
