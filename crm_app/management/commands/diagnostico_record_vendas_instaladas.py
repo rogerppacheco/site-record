@@ -99,7 +99,7 @@ class Command(BaseCommand):
         # - ativo=True
         # - status_tratamento preenchido
         # - status_esteira != CANCELADA (ou nulo)
-        # - total_mes_instalado: data_pedido >= inicio_mes e status_esteira == INSTALADA
+        # - total_mes_instalado: status INSTALADA + data efetiva no mês (física ou OSAB)
         filtro_base_equipe = (
             Q(ativo=True)
             & Q(status_tratamento__isnull=False)

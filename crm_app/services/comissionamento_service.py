@@ -11,12 +11,13 @@ Centraliza as regras de negócio de:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum
 
+from crm_app.views import _filtro_data_efetiva_instalacao_intervalo_venda
 from crm_app.models import (
     Campanha,
     CicloPagamento,
@@ -146,13 +147,18 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
     relatorio: list[dict[str, Any]] = []
 
     for consultor in consultores:
-        vendas = Venda.objects.filter(
-            vendedor=consultor,
-            ativo=True,
-            status_esteira__nome__iexact="INSTALADA",
-            data_instalacao__gte=data_inicio,
-            data_instalacao__lt=data_fim,
-        ).select_related("plano", "forma_pagamento", "cliente")
+        di = data_inicio.date()
+        df = (data_fim - timedelta(days=1)).date()
+
+        vendas = (
+            Venda.objects.filter(
+                vendedor=consultor,
+                ativo=True,
+                status_esteira__nome__iexact="INSTALADA",
+            )
+            .filter(_filtro_data_efetiva_instalacao_intervalo_venda(di, df))
+            .select_related("plano", "forma_pagamento", "cliente")
+        )
 
         qtd_instaladas = vendas.count()
         meta = consultor.meta_comissao or 0

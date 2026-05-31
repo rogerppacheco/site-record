@@ -81,3 +81,49 @@ class GestaoAproveitamentoEsteiraTests(APITestCase):
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(r.data["resumo"]["instaladas"], 1)
         self.assertEqual(r.data["resumo"]["total_abertas"], 0)
+
+    def test_aproveitamento_usa_instaladas_mes_nao_só_cohort(self):
+        """Instaladas no mês (qualquer abertura) entram no aproveitamento, não só abertas+instaladas no mês."""
+        hoje = timezone.localdate()
+        inicio_mes = hoje.replace(day=1)
+        mes_anterior = (inicio_mes - timedelta(days=1)).replace(day=15)
+        dt_abertura_mes = timezone.make_aware(datetime.combine(inicio_mes, datetime.min.time()))
+        dt_abertura_ant = timezone.make_aware(datetime.combine(mes_anterior, datetime.min.time()))
+
+        Venda.objects.create(
+            vendedor=self.vendedor,
+            cliente=self.cliente,
+            status_tratamento=self.st_cad,
+            status_esteira=self.st_inst,
+            ordem_servico="11111111",
+            data_abertura=dt_abertura_mes,
+            data_instalacao=hoje,
+            ativo=True,
+        )
+        Venda.objects.create(
+            vendedor=self.vendedor,
+            cliente=Cliente.objects.create(cpf_cnpj="99988877766", nome_razao_social="CLIENTE B"),
+            status_tratamento=self.st_cad,
+            status_esteira=self.st_inst,
+            ordem_servico="22222222",
+            data_abertura=dt_abertura_ant,
+            data_instalacao=hoje,
+            ativo=True,
+        )
+        Venda.objects.create(
+            vendedor=self.vendedor,
+            cliente=Cliente.objects.create(cpf_cnpj="88877766655", nome_razao_social="CLIENTE C"),
+            status_tratamento=self.st_cad,
+            status_esteira=self.st_agend,
+            ordem_servico="33333333",
+            data_abertura=dt_abertura_mes,
+            ativo=True,
+        )
+        self.client.force_authenticate(user=self.gestor)
+        mes = hoje.strftime("%Y-%m")
+        r = self.client.get(f"/api/crm/esteira/gestao-aproveitamento/?mes_referencia={mes}")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        resumo = r.data["resumo"]
+        self.assertEqual(resumo["total_abertas"], 2)
+        self.assertGreaterEqual(resumo["instaladas"], 2)
+        self.assertEqual(resumo["aproveitamento"], 100.0)

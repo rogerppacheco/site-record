@@ -5749,10 +5749,16 @@ class PerformanceVendasView(APIView):
             (Q(status_esteira__isnull=True) | ~Q(status_esteira__nome__iexact='CANCELADA'))
         )
 
+        filtro_instalado_mes = (
+            Q(status_esteira__nome__iexact='INSTALADA')
+            & ~Q(ordem_servico='')
+            & Q(ordem_servico__isnull=False)
+            & _filtro_data_efetiva_instalacao_intervalo_venda(start_of_month, hoje)
+        )
         vendas = Venda.objects.filter(base_filters).values('vendedor_id').annotate(
             total_dia=Count('id', filter=Q(data_pedido__date=hoje)),
             total_mes=Count('id', filter=Q(data_pedido__date__gte=start_of_month)),
-            total_mes_instalado=Count('id', filter=Q(data_pedido__date__gte=start_of_month, status_esteira__nome__iexact='Instalada')),
+            total_mes_instalado=Count('id', filter=filtro_instalado_mes),
             # Semanal
             vendas_segunda=Count('id', filter=Q(data_pedido__date=start_of_week)),
             vendas_terca=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=1))),
@@ -6863,6 +6869,7 @@ def _perf_filtro_data_efetiva_instalacao_intervalo(d_ini, d_fim):
 
 
 def _filtro_data_efetiva_instalacao_intervalo_venda(d_ini, d_fim):
+    """Instaladas no período: data_instalacao_fisica se houver, senão data_instalacao (OSAB)."""
     return (
         (Q(data_instalacao_fisica__isnull=False)
          & Q(data_instalacao_fisica__gte=d_ini)

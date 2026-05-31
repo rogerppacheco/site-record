@@ -102,14 +102,16 @@ def gerar_painel_semana(semana_inicio: date) -> list[dict[str, Any]]:
             "fim_bonus": c.data_fim_bonus,
         }
 
-    # Vendas instaladas na semana (para CNPJ, cartão e total receita operadora)
+    # Vendas instaladas na semana (data efetiva: física se houver, senão OSAB)
+    from crm_app.views import _filtro_data_efetiva_instalacao_intervalo_venda
+
     status_instalada = Q(status_esteira__nome__iexact="INSTALADA")
     vendas_semana = (
         Venda.objects.filter(
             ativo=True,
-            data_instalacao__range=(seg, sab),
         )
         .filter(status_instalada)
+        .filter(_filtro_data_efetiva_instalacao_intervalo_venda(seg, sab))
         .select_related("vendedor", "cliente", "forma_pagamento", "plano")
     )
 
