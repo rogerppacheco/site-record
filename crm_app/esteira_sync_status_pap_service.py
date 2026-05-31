@@ -21,6 +21,34 @@ logger = logging.getLogger(__name__)
 TELEFONE_JOB = 'SYNC-ESTEIRA-PAP'
 
 
+def _run_django_sync(func, timeout_seconds: int = 120):
+    """Executa ORM Django em thread dedicada (evita SynchronousOnlyOperation após Playwright)."""
+    import queue
+
+    import django.db
+
+    q = queue.Queue()
+
+    def worker():
+        try:
+            django.db.close_old_connections()
+            q.put(('ok', func()))
+        except Exception as e:
+            q.put(('err', e))
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout=timeout_seconds)
+    if not q.empty():
+        kind, payload = q.get()
+        if kind == 'err':
+            raise payload
+        return payload
+    if t.is_alive():
+        logger.error('[SYNC ESTEIRA] _run_django_sync expirou após %ss.', timeout_seconds)
+        raise TimeoutError('django_sync_timeout')
+
+
 def _cfg(nome: str, default):
     return getattr(settings, nome, default)
 
@@ -252,6 +280,8 @@ def _consultar_pap_pedido(
         return False, 'sem_cpf', [], None
 
     os_num = (venda.ordem_servico or '').strip()
+    os_prioridade = obter_os_prioridade_crm_por_cpf(cpf)
+
     bo_usuario, msg_erro = aguardar_login_bo(
         TELEFONE_JOB,
         tipo_automacao=TIPO_AUTOMACAO_STATUS,
@@ -265,6 +295,9 @@ def _consultar_pap_pedido(
     contador_uso_bo[bo_usuario.id] = contador_uso_bo.get(bo_usuario.id, 0) + 1
     automacao = None
     tempo_inicio = time.time()
+    sucesso = False
+    msg = ''
+    detalhes: list = []
     try:
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
@@ -279,16 +312,17 @@ def _consultar_pap_pedido(
         )
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
-            atualizar_historico_consulta_pap_resultado(
-                vendedor_telefone=TELEFONE_JOB,
-                bo_usuario=bo_usuario,
-                tipo_automacao=TIPO_AUTOMACAO_STATUS,
-                sucesso=False,
-                mensagem_resultado=msg,
+            _run_django_sync(
+                lambda: atualizar_historico_consulta_pap_resultado(
+                    vendedor_telefone=TELEFONE_JOB,
+                    bo_usuario=bo_usuario,
+                    tipo_automacao=TIPO_AUTOMACAO_STATUS,
+                    sucesso=False,
+                    mensagem_resultado=msg,
+                )
             )
             return False, msg, [], None
 
-        os_prioridade = obter_os_prioridade_crm_por_cpf(cpf)
         sucesso, msg, detalhes, _ = automacao.consulta_os_por_cpf_com_resultado(
             cpf,
             numero_os_filtro=os_num,
@@ -297,12 +331,15 @@ def _consultar_pap_pedido(
         tempo = round(time.time() - tempo_inicio, 1)
         if automacao:
             automacao._fechar_sessao()
-        atualizar_historico_consulta_pap_resultado(
-            vendedor_telefone=TELEFONE_JOB,
-            bo_usuario=bo_usuario,
-            tipo_automacao=TIPO_AUTOMACAO_STATUS,
-            sucesso=sucesso,
-            mensagem_resultado=f'{msg} ({tempo}s)',
+            automacao = None
+        _run_django_sync(
+            lambda: atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=TELEFONE_JOB,
+                bo_usuario=bo_usuario,
+                tipo_automacao=TIPO_AUTOMACAO_STATUS,
+                sucesso=sucesso,
+                mensagem_resultado=f'{msg} ({tempo}s)',
+            )
         )
         return sucesso, msg, detalhes or [], None
     except Exception as e:
@@ -312,16 +349,19 @@ def _consultar_pap_pedido(
                 automacao._fechar_sessao()
             except Exception:
                 pass
-        atualizar_historico_consulta_pap_resultado(
-            vendedor_telefone=TELEFONE_JOB,
-            bo_usuario=bo_usuario,
-            tipo_automacao=TIPO_AUTOMACAO_STATUS,
-            sucesso=False,
-            mensagem_resultado=str(e)[:500],
+        err_msg = str(e)[:500]
+        _run_django_sync(
+            lambda: atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=TELEFONE_JOB,
+                bo_usuario=bo_usuario,
+                tipo_automacao=TIPO_AUTOMACAO_STATUS,
+                sucesso=False,
+                mensagem_resultado=err_msg,
+            )
         )
         return False, str(e), [], None
     finally:
-        liberar_bo(bo_usuario.id, TELEFONE_JOB)
+        _run_django_sync(lambda: liberar_bo(bo_usuario.id, TELEFONE_JOB))
 
 
 def _processar_um_pedido(
@@ -351,20 +391,26 @@ def _processar_um_pedido(
     if msg == 'no_results' or not detalhes:
         return {**base, 'sem_alteracao': True, 'detalhe': 'sem_resultado_pap'}
 
-    alteracoes = sincronizar_venda_crm_apos_status_pap(cpf, detalhes, os_filtro=os_num)
-    if not alteracoes:
-        return {**base, 'sem_alteracao': True}
+    pos_pap: dict = {}
 
-    item = alteracoes[0]
-    venda_atual = Venda.objects.select_related(
-        'cliente', 'vendedor', 'status_esteira', 'motivo_pendencia'
-    ).get(pk=venda.id)
-    wpp = _enviar_whatsapp_vendedor(venda_atual)
-    return {
-        **base,
-        **item,
-        'whatsapp_vendedor': wpp,
-    }
+    def _pos_pap():
+        alteracoes = sincronizar_venda_crm_apos_status_pap(cpf, detalhes, os_filtro=os_num)
+        if not alteracoes:
+            pos_pap['resultado'] = {**base, 'sem_alteracao': True}
+            return
+        item = alteracoes[0]
+        venda_atual = Venda.objects.select_related(
+            'cliente', 'vendedor', 'status_esteira', 'motivo_pendencia'
+        ).get(pk=venda.id)
+        wpp = _enviar_whatsapp_vendedor(venda_atual)
+        pos_pap['resultado'] = {
+            **base,
+            **item,
+            'whatsapp_vendedor': wpp,
+        }
+
+    _run_django_sync(_pos_pap)
+    return pos_pap.get('resultado', {**base, 'sem_alteracao': True})
 
 
 def _atualizar_execucao(execucao, **kwargs):
