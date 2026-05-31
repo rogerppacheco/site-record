@@ -1914,7 +1914,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                         data_criacao__date__lte=dt_fim
                     )
                 else:
-                    dt_fim_plus = dt_fim + timedelta(days=1)
                     if data_tipo == 'criacao':
                         queryset = queryset.filter(
                             data_criacao__date__gte=dt_ini,
@@ -1937,8 +1936,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                         )
                     else:
                         queryset = queryset.filter(
-                            Q(data_criacao__range=(dt_ini, dt_fim_plus))
-                            | Q(data_instalacao__range=(dt_ini, dt_fim_plus))
+                            _filtro_vendas_crm_periodo_listagem(dt_ini, dt_fim)
                         )
             except Exception:
                 pass
@@ -2777,7 +2775,11 @@ class VendaViewSet(viewsets.ModelViewSet):
                 'motivo_pendencia',
             ).order_by('-data_criacao')
         else:
-            vendas = self.filter_queryset(self.get_queryset())
+            vendas = self.filter_queryset(self.get_queryset()).select_related(
+                'vendedor', 'vendedor__supervisor', 'cliente', 'plano', 'forma_pagamento',
+                'status_tratamento', 'status_esteira', 'status_comissionamento',
+                'motivo_pendencia',
+            ).order_by('-data_criacao')
 
         headers = [
             'ID', 'Reemissão', 'Data Criação', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
@@ -6879,6 +6881,14 @@ def _filtro_data_efetiva_instalacao_intervalo_venda(d_ini, d_fim):
             & Q(data_instalacao__gte=d_ini)
             & Q(data_instalacao__lte=d_fim)
         )
+    )
+
+
+def _filtro_vendas_crm_periodo_listagem(dt_ini, dt_fim):
+    """Vendas criadas no período (venda bruta) OU instaladas (data efetiva) no período."""
+    return (
+        Q(data_criacao__date__gte=dt_ini, data_criacao__date__lte=dt_fim)
+        | _filtro_data_efetiva_instalacao_intervalo_venda(dt_ini, dt_fim)
     )
 
 

@@ -205,7 +205,10 @@
                     <p class="text-muted mb-0 small">Gerencie vendas e acompanhe o status.</p>
                 </div>
                 <div class="crm-vendas-toolbar-acoes ms-md-auto">
-                    <button type="button" id="btn-exportar-excel" class="btn btn-sm btn-success d-none" onclick="exportarExcelDiretoria()" title="Exportar planilha (Diretoria/Admin/BackOffice)">
+                    <button type="button" id="btn-exportar-excel-filtro" class="btn btn-sm btn-outline-success d-none" onclick="exportarExcelFiltrado()" title="Exportar vendas do filtro (vendas do mês + instaladas no mês)">
+                        <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-md-inline ms-1">Excel filtro</span>
+                    </button>
+                    <button type="button" id="btn-exportar-excel" class="btn btn-sm btn-success d-none" onclick="exportarExcelDiretoria()" title="Exportar todas as vendas ativas (base completa, ignora filtros)">
                         <i class="bi bi-file-earmark-excel-fill"></i><span class="d-none d-md-inline ms-1">Baixar Base</span>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-success" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
@@ -1739,6 +1742,7 @@
                 }
                 if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
+                    document.getElementById('btn-exportar-excel-filtro').classList.remove('d-none');
                     const wAtivo = document.getElementById('filtro-dash-vendedor-ativo-wrap');
                     if (wAtivo) wAtivo.classList.remove('d-none');
                 }
@@ -1838,8 +1842,66 @@
             modalDetalhe.show();
         }
 
+        function montarParamsExportVendasFiltrado() {
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
+            const vendedor = document.getElementById('filtro-vendedor').value;
+            const busca = document.getElementById('filtro-busca').value;
+            const tabLista = document.querySelector('#abas-navegacao .nav-link.active');
+            const tabView = tabLista ? tabLista.getAttribute('data-view') : 'minhas_vendas';
+            const view = tabView === 'minhas_vendas' ? 'minhas_vendas' : 'geral';
+            const params = new URLSearchParams();
+            params.set('view', view);
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            if (busca) params.set('search', busca);
+            if (view === 'geral' && vendedor) params.set('consultor_id', vendedor);
+            if (statusEsteiraAtual) params.set('status', statusEsteiraAtual);
+            return params.toString();
+        }
+
+        function exportarExcelFiltrado() {
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
+            if (!inicio || !fim) {
+                alert('Informe data início e fim para exportar o filtro.');
+                return;
+            }
+            const msg = `Exportar Excel com o filtro da tela?\n\nPeríodo: ${inicio} a ${fim}\n`
+                + 'Inclui: vendas criadas no mês + instaladas no mês (data efetiva, venda pode ser de outro mês).';
+            if (!confirm(msg)) return;
+            const btn = document.getElementById('btn-exportar-excel-filtro');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...';
+            btn.disabled = true;
+            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/?${montarParamsExportVendasFiltrado()}`, {
+                method: 'GET',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') },
+            })
+            .then(response => {
+                if (response.status === 403) throw new Error('Acesso negado. Apenas Diretoria, Admin ou BackOffice.');
+                if (!response.ok) throw new Error('Erro ao gerar arquivo.');
+                const cd = response.headers.get('Content-Disposition');
+                const m = cd && /filename="([^"]+)"/.exec(cd);
+                const filename = (m && m[1]) ? m[1] : `Base_Vendas_Filtrada_${inicio}_${fim}.xlsx`;
+                return response.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => { alert(err.message); })
+            .finally(() => { btn.innerHTML = originalText; btn.disabled = false; });
+        }
+
         function exportarExcelDiretoria() {
-            if(!confirm("Deseja baixar a base completa de vendas em Excel (todas as vendas ativas, com Data Criação e Data Instalação)?")) return;
+            if(!confirm("Deseja baixar a BASE COMPLETA de vendas em Excel?\n\nTodas as vendas ativas — ignora os filtros da tela.")) return;
             const btn = document.getElementById('btn-exportar-excel');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...'; btn.disabled = true;
