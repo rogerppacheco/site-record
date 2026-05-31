@@ -557,6 +557,9 @@
                         <button type="button" id="btn-sync-status-pap" class="btn btn-sm btn-outline-primary" style="display: none;" onclick="iniciarSyncStatusPap()" title="Consultar PAP e atualizar pedidos AGENDADO/PENDENCIADA (com intervalos anti-bloqueio)">
                             <i class="bi bi-cloud-arrow-down"></i><span class="d-none d-lg-inline ms-1">Sync PAP</span>
                         </button>
+                        <button type="button" id="btn-cancel-sync-status-pap" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="cancelarSyncStatusPap()" title="Cancelar sincronização em andamento">
+                            <i class="bi bi-x-circle"></i><span class="d-none d-lg-inline ms-1">Cancelar sync</span>
+                        </button>
                         <span id="sync-status-pap-badge" class="badge bg-secondary ms-1" style="display: none; font-size: 0.7rem;"></span>
 
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="abrirModalRelatorioPendenciasIndevidas()" title="Exportar pendências indevidas por período">
@@ -1606,16 +1609,35 @@
         function atualizarBadgeSyncStatusPap(info) {
             const badge = document.getElementById('sync-status-pap-badge');
             const btn = document.getElementById('btn-sync-status-pap');
+            const btnCancel = document.getElementById('btn-cancel-sync-status-pap');
             if (!badge || !btn) return;
             if (!info || !info.em_andamento) {
                 badge.style.display = 'none';
                 btn.disabled = false;
+                if (btnCancel) btnCancel.style.display = 'none';
                 return;
             }
             badge.style.display = 'inline-block';
-            badge.className = 'badge bg-primary ms-1';
+            const stale = info.stale_minutos && info.minutos_sem_progresso >= info.stale_minutos * 0.8;
+            badge.className = stale ? 'badge bg-warning text-dark ms-1' : 'badge bg-primary ms-1';
             badge.textContent = `${info.processados || 0}/${info.total_pedidos || '?'}`;
+            badge.title = stale
+                ? `Sem progresso há ${info.minutos_sem_progresso} min — pode estar travado (deploy?). Use Cancelar sync.`
+                : 'Sincronização PAP em andamento';
             btn.disabled = true;
+            if (btnCancel) btnCancel.style.display = 'inline-flex';
+        }
+
+        async function cancelarSyncStatusPap() {
+            if (!podeConfigEsteiraBackoffice) return;
+            if (!confirm('Cancelar a sincronização PAP em andamento?')) return;
+            try {
+                await apiFetch('/crm/esteira/sync-status-pap/cancelar/', { method: 'POST', body: {} });
+                alert('Sincronização cancelada.');
+                pollSyncStatusPap();
+            } catch (e) {
+                alert(e.message || 'Não foi possível cancelar.');
+            }
         }
 
         async function pollSyncStatusPap() {

@@ -9,7 +9,7 @@ import re
 import threading
 import time
 from collections import deque
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from django.conf import settings
@@ -76,6 +76,7 @@ def _dentro_janela_horario(agora=None) -> bool:
 
 
 def job_em_andamento() -> bool:
+    encerrar_execucoes_orfas()
     from crm_app.models import SyncStatusEsteiraExecucao
 
     return SyncStatusEsteiraExecucao.objects.filter(
@@ -84,6 +85,7 @@ def job_em_andamento() -> bool:
 
 
 def execucao_em_andamento() -> Optional['SyncStatusEsteiraExecucao']:
+    encerrar_execucoes_orfas()
     from crm_app.models import SyncStatusEsteiraExecucao
 
     return (
@@ -414,9 +416,88 @@ def _processar_um_pedido(
 
 
 def _atualizar_execucao(execucao, **kwargs):
+    rj = kwargs.get('relatorio_json')
+    if rj is None:
+        rj = dict(execucao.relatorio_json or {})
+    else:
+        rj = dict(rj)
+    rj['_heartbeat'] = timezone.now().isoformat()
+    kwargs['relatorio_json'] = rj
     for k, v in kwargs.items():
         setattr(execucao, k, v)
     execucao.save(update_fields=list(kwargs.keys()))
+
+
+def _minutos_sem_progresso(execucao) -> Optional[float]:
+    hb = (execucao.relatorio_json or {}).get('_heartbeat')
+    ref = execucao.iniciado_em
+    if hb:
+        try:
+            parsed = datetime.fromisoformat(hb.replace('Z', '+00:00'))
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed)
+            ref = parsed
+        except (TypeError, ValueError):
+            pass
+    if not ref:
+        return None
+    return (timezone.now() - ref).total_seconds() / 60.0
+
+
+def _stale_minutos() -> int:
+    return int(_cfg('SYNC_ESTEIRA_STALE_MINUTES', 75))
+
+
+def encerrar_execucoes_orfas(*, motivo: str = '') -> int:
+    """Marca como interrompido jobs em_andamento sem heartbeat recente (ex.: deploy matou a thread)."""
+    from crm_app.models import SyncStatusEsteiraExecucao
+
+    limite_min = _stale_minutos()
+    encerradas = 0
+    msg = motivo or (
+        f'Encerrado automaticamente — sem progresso há mais de {limite_min} min '
+        '(possível reinício do servidor ou travamento).'
+    )
+    for execucao in SyncStatusEsteiraExecucao.objects.filter(
+        status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO,
+    ):
+        minutos = _minutos_sem_progresso(execucao)
+        if minutos is None or minutos < limite_min:
+            continue
+        _atualizar_execucao(
+            execucao,
+            status=SyncStatusEsteiraExecucao.STATUS_INTERROMPIDO,
+            finalizado_em=timezone.now(),
+            mensagem_erro=msg[:2000],
+        )
+        encerradas += 1
+        logger.warning(
+            '[SYNC ESTEIRA] Execução órfã #%s encerrada (%.0f min sem progresso).',
+            execucao.id,
+            minutos,
+        )
+    return encerradas
+
+
+def cancelar_execucao(execucao_id: int, *, usuario=None) -> Tuple[bool, str]:
+    from crm_app.models import SyncStatusEsteiraExecucao
+
+    encerrar_execucoes_orfas()
+    try:
+        execucao = SyncStatusEsteiraExecucao.objects.get(pk=execucao_id)
+    except SyncStatusEsteiraExecucao.DoesNotExist:
+        return False, 'Execução não encontrada.'
+    if execucao.status != SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
+        return False, 'Execução não está em andamento.'
+    quem = getattr(usuario, 'username', None) or 'sistema'
+    _atualizar_execucao(
+        execucao,
+        status=SyncStatusEsteiraExecucao.STATUS_INTERROMPIDO,
+        finalizado_em=timezone.now(),
+        mensagem_erro=f'Cancelado por {quem}.',
+    )
+    logger.info('[SYNC ESTEIRA] Execução #%s cancelada por %s.', execucao_id, quem)
+    return True, ''
 
 
 def executar_job(execucao_id: int) -> None:

@@ -1,4 +1,6 @@
 """API para sincronização noturna/manual da esteira via PAP."""
+from typing import Optional
+
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,6 +23,26 @@ class SyncStatusEsteiraIniciarView(APIView):
         if err:
             return Response({'detail': err}, status=status.HTTP_409_CONFLICT)
         return Response({'execucao_id': exec_id, 'status': 'em_andamento'}, status=status.HTTP_202_ACCEPTED)
+
+
+class SyncStatusEsteiraCancelarView(APIView):
+    """Cancela execução em andamento (BackOffice/Diretoria/Admin)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'BackOffice', 'Admin']):
+            return Response({'detail': 'Acesso negado.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from crm_app.esteira_sync_status_pap_service import cancelar_execucao, execucao_em_andamento
+
+        execucao = execucao_em_andamento()
+        exec_id = request.data.get('execucao_id') or (execucao.id if execucao else None)
+        if not exec_id:
+            return Response({'detail': 'Nenhuma sincronização em andamento.'}, status=status.HTTP_404_NOT_FOUND)
+        ok, err = cancelar_execucao(int(exec_id), usuario=request.user)
+        if not ok:
+            return Response({'detail': err}, status=status.HTTP_409_CONFLICT)
+        return Response({'execucao_id': exec_id, 'status': 'interrompido'})
 
 
 class SyncStatusEsteiraStatusView(APIView):
@@ -49,6 +71,10 @@ class SyncStatusEsteiraStatusView(APIView):
 
 
 def _serializar_execucao(execucao, *, em_andamento: bool) -> dict:
+    from crm_app.esteira_sync_status_pap_service import _minutos_sem_progresso, _stale_minutos
+
+    minutos = _minutos_sem_progresso(execucao)
+    stale_lim = _stale_minutos()
     return {
         'em_andamento': em_andamento,
         'id': execucao.id,
@@ -64,4 +90,6 @@ def _serializar_execucao(execucao, *, em_andamento: bool) -> dict:
         'ignorados_sem_cpf': execucao.ignorados_sem_cpf,
         'iniciado_por': execucao.iniciado_por.username if execucao.iniciado_por else None,
         'mensagem_erro': execucao.mensagem_erro or '',
+        'minutos_sem_progresso': round(minutos, 1) if minutos is not None else None,
+        'stale_minutos': stale_lim,
     }
