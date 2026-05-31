@@ -1261,7 +1261,7 @@ def _executar_consulta_status_online_background(
                 )
             else:
                 try:
-                    sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes)
+                    sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes, os_filtro=os_filtro)
                 except Exception as e_sync:
                     logger.warning("[STATUS ONLINE] Sync CRM: %s", e_sync)
 

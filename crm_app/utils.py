@@ -869,7 +869,7 @@ def montar_mensagem_whatsapp_esteira_vendedor(venda, *, prefixo_atualizacao=Fals
 def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=None):
     """
     Sincroniza CRM a partir do detalhe PAP (por O.S. cadastrada, venda ativa):
-    - Concluído → INSTALADA (+ data_instalacao se AGENDADO)
+    - Concluído → INSTALADA (de AGENDADO ou PENDENCIADA; mantém data/turno agendado; + data_instalacao do PAP)
     - Status lista = Pendência Cliente ou Técnica + código no detalhe (cadastrado) → PENDENCIADA
       (limpa data_agendamento e periodo_agendamento)
     - Status lista = Em Aprovisionamento + Agendamento com data/turno no detalhe → AGENDADO
@@ -927,13 +927,18 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
 
         if status_inst and pap_status_indica_concluido(d.get("status"), d.get("status_agendamento")):
             st_u = esteira_nome.upper()
-            if "AGENDADO" in st_u:
+            if "AGENDADO" in st_u or "PENDENCI" in st_u:
                 dt = extrair_data_instalacao_texto_pap(d.get("agendamento"), d.get("status_agendamento"))
                 venda.status_esteira = status_inst
+                venda.motivo_pendencia = None
                 if dt:
                     venda.data_instalacao = dt
                 venda.save()
-                logger.info("[STATUS SYNC] OS %s: marcada INSTALADA (PAP concluído).", os_raw)
+                logger.info(
+                    "[STATUS SYNC] OS %s: marcada INSTALADA (PAP concluído, era %s).",
+                    os_raw,
+                    esteira_nome,
+                )
                 depois = _snapshot_venda_sync_pap(venda)
                 if _venda_sync_pap_alterou(antes, depois):
                     alteracoes.append(
@@ -945,6 +950,12 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                             "os": os_raw,
                         }
                     )
+            else:
+                logger.info(
+                    "[STATUS SYNC] OS %s: PAP concluído, mas esteira '%s' não é AGENDADO/PENDENCIADA — não altera.",
+                    os_raw,
+                    esteira_nome,
+                )
             continue
 
         pendencia_txt = (d.get("pendencia") or "").strip()
