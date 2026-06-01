@@ -584,6 +584,8 @@
                             ${log.ja_corretos > 0 ? `<span class="badge bg-secondary">${log.ja_corretos} já corretos</span>` : ''}
                             ${whatsapp}
                             ${log.download_url ? `<button class="btn btn-sm btn-outline-primary ms-2" onclick="baixarRelatorioOSAB(${log.id})">Baixar relatório</button>` : ''}
+                            ${log.pode_reverter ? `<button class="btn btn-sm btn-outline-warning ms-2" onclick="reverterImportacaoOSAB(${log.id}, ${log.atualizados || 0})" title="Restaura o estado das vendas antes desta importação">Reverter importação</button>` : ''}
+                            ${log.status === 'REVERTIDO' && log.revertido_em ? `<small class="text-muted d-block mt-1">Revertido em ${log.revertido_em}</small>` : ''}
                             ${log.status === 'PROCESSANDO' ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="cancelarImportacaoOSAB(${log.id})">Cancelar</button>` : ''}
                         </td>
                     </tr>
@@ -603,7 +605,8 @@
                 'PROCESSANDO': '<span class="badge bg-primary"><i class="spinner-border spinner-border-sm me-1"></i> Processando</span>',
                 'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Sucesso</span>',
                 'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Erro</span>',
-                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>'
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>',
+                'REVERTIDO': '<span class="badge bg-dark"><i class="bi bi-arrow-counterclockwise me-1"></i> Revertido</span>'
             };
             return badges[status] || `<span class="badge bg-secondary">${display}</span>`;
         }
@@ -671,6 +674,38 @@
             } catch (error) {
                 console.error('Erro ao baixar relatório:', error);
                 alert('Erro ao baixar relatório: ' + error.message);
+            }
+        }
+
+        async function reverterImportacaoOSAB(logId, qtdAtualizadas) {
+            const msg = (
+                `Deseja reverter esta importação?\n\n` +
+                `Será restaurado o estado anterior das vendas alteradas ` +
+                `(cerca de ${qtdAtualizadas || '?'} registro(s)).\n\n` +
+                `Vendas editadas manualmente depois da importação também serão sobrescritas. ` +
+                `Esta ação não desfaz mensagens WhatsApp já enviadas.`
+            );
+            if (!confirm(msg)) return;
+            try {
+                const accessToken = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/crm/logs-osab/${logId}/reverter/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha ao reverter importação.');
+                }
+
+                alert(data.message || 'Importação revertida com sucesso.');
+                carregarHistoricoImportacoes();
+            } catch (error) {
+                console.error('Erro ao reverter importação:', error);
+                alert(error.message || 'Erro ao reverter importação.');
             }
         }
 

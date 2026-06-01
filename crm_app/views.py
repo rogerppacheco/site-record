@@ -4618,7 +4618,32 @@ class ImportacaoOsabView(APIView):
         except Exception as e:
             print(f"Aviso: não foi possível sincronizar sequence da OSAB: {e}")
 
-    def _marcar_vendas_ausentes_na_osab(self, log_id, total_registros_import, osab_bot):
+    def _salvar_snapshots_reversao_osab(self, log_id, snapshots_list):
+        """Persiste snapshots (um por venda) para permitir reversão da importação."""
+        if not snapshots_list:
+            return 0
+        from crm_app.models import LogImportacaoOSABSnapshotVenda
+
+        by_venda = {}
+        for item in snapshots_list:
+            vid = item.get('venda_id')
+            if vid:
+                by_venda[vid] = item
+
+        objs = [
+            LogImportacaoOSABSnapshotVenda(
+                log_id=log_id,
+                venda_id=item['venda_id'],
+                ordem_servico=(item.get('ordem_servico') or '')[:50],
+                origem=item.get('origem', LogImportacaoOSABSnapshotVenda.ORIGEM_PLANILHA),
+                valores_antes=item.get('valores_antes') or {},
+            )
+            for item in by_venda.values()
+        ]
+        LogImportacaoOSABSnapshotVenda.objects.bulk_create(objs, batch_size=2000, ignore_conflicts=True)
+        return len(objs)
+
+    def _marcar_vendas_ausentes_na_osab(self, log_id, total_registros_import, osab_bot, snapshots_reversao=None):
         """
         Após gravar a importação: vendas ativas com O.S. que não existem em ImportacaoOsab.
         - Só considera pedidos com data de abertura (ou criação, se sem abertura) **antes do dia atual**
@@ -4631,6 +4656,12 @@ class ImportacaoOsabView(APIView):
         from django.db.models import Q
         from django.utils import timezone
         from crm_app.models import LogImportacaoOSAB, ImportacaoOsab, Venda, StatusCRM, HistoricoAlteracaoVenda
+
+        from crm_app.osab_revert_utils import serializar_venda_snapshot_osab
+        from crm_app.models import LogImportacaoOSABSnapshotVenda
+
+        if snapshots_reversao is None:
+            snapshots_reversao = []
 
         out = {
             'crm_sem_osab_nao_consta': 0,
@@ -4711,6 +4742,12 @@ class ImportacaoOsabView(APIView):
                 continue
 
             old_nome = se.nome if se else '(vazio)'
+            snapshots_reversao.append({
+                'venda_id': venda.id,
+                'ordem_servico': os_str,
+                'origem': LogImportacaoOSABSnapshotVenda.ORIGEM_AUSENTE_OSAB,
+                'valores_antes': serializar_venda_snapshot_osab(venda),
+            })
             venda.status_esteira = target
             vendas_atualizar.append(venda)
             historicos_criar.append(
@@ -5131,7 +5168,10 @@ class ImportacaoOsabView(APIView):
             )
 
             osab_criar, osab_atualizar, vendas_atualizar, historicos_criar, eventos_criar = [], [], [], [], []
-            fila_mensagens_whatsapp = [] 
+            fila_mensagens_whatsapp = []
+            from crm_app.osab_revert_utils import serializar_venda_snapshot_osab
+            from crm_app.models import LogImportacaoOSABSnapshotVenda
+            snapshots_reversao = []
 
             coluna_map = {
                 'PRODUTO': 'produto', 'UF': 'uf', 'DT_REF': 'dt_ref', 'PEDIDO': 'documento',
@@ -5249,6 +5289,7 @@ class ImportacaoOsabView(APIView):
                     
                     log_item["consta_crm"] = "SIM"
                     report["vendas_encontradas"] += 1
+                    valores_antes_reversao = serializar_venda_snapshot_osab(venda)
                     sit_osab_raw = str(row.get('SITUACAO', '')).strip().upper()
                     if sit_osab_raw in ["NONE", "NAN"]: sit_osab_raw = ""
 
@@ -5431,6 +5472,12 @@ class ImportacaoOsabView(APIView):
                     if houve_alteracao:
                         log_item["resultado_crm"] = "ATUALIZADO_CRM"
                         log_item["detalhe"] = "; ".join([f"{k}: {v}" for k, v in detalhes_hist.items()])
+                        snapshots_reversao.append({
+                            'venda_id': venda.id,
+                            'ordem_servico': doc_chave or (venda.ordem_servico or ''),
+                            'origem': LogImportacaoOSABSnapshotVenda.ORIGEM_PLANILHA,
+                            'valores_antes': valores_antes_reversao,
+                        })
                         vendas_atualizar.append(venda)
                         historicos_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
                         eventos_criar.extend(
@@ -5518,10 +5565,14 @@ class ImportacaoOsabView(APIView):
                         VendaEsteiraEvento.objects.bulk_create(eventos_criar, batch_size=2000)
 
                 try:
-                    snap = self._marcar_vendas_ausentes_na_osab(log_id, total_registros, osab_bot)
+                    snap = self._marcar_vendas_ausentes_na_osab(
+                        log_id, total_registros, osab_bot, snapshots_reversao=snapshots_reversao,
+                    )
                     report.update(snap)
                 except Exception as e_snap:
                     print(f"Aviso: etapa CRM sem OSAB não concluída (importação OSAB segue válida): {e_snap}")
+
+                self._salvar_snapshots_reversao_osab(log_id, snapshots_reversao)
 
             except Exception as e:
                 log.status = 'ERRO'
@@ -12236,8 +12287,24 @@ class LogsImportacaoOSABView(APIView):
         else:
             logs = LogImportacaoOSAB.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
         
+        from django.db.models import Count
+        from crm_app.models import LogImportacaoOSABSnapshotVenda
+
+        log_ids = [log.id for log in logs]
+        counts_snap = {
+            row['log_id']: row['c']
+            for row in LogImportacaoOSABSnapshotVenda.objects.filter(log_id__in=log_ids)
+            .values('log_id')
+            .annotate(c=Count('id'))
+        }
+
         logs_data = []
         for log in logs:
+            snap_count = counts_snap.get(log.id, 0)
+            pode_reverter = (
+                log.status in ('SUCESSO', 'PARCIAL')
+                and snap_count > 0
+            )
             logs_data.append({
                 'id': log.id,
                 'nome_arquivo': log.nome_arquivo,
@@ -12245,6 +12312,7 @@ class LogsImportacaoOSABView(APIView):
                 'status_display': log.get_status_display(),
                 'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
                 'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'revertido_em': log.revertido_em.strftime('%d/%m/%Y %H:%M:%S') if log.revertido_em else None,
                 'duracao_segundos': log.duracao_segundos,
                 'total_registros': log.total_registros,
                 'total_processadas': log.total_processadas,
@@ -12259,6 +12327,8 @@ class LogsImportacaoOSABView(APIView):
                 'usuario_username': log.usuario.username if log.usuario else '-',
                 'enviar_whatsapp': log.enviar_whatsapp,
                 'download_url': f"/api/crm/logs-osab/{log.id}/relatorio/",
+                'snapshots_count': snap_count,
+                'pode_reverter': pode_reverter,
             })
         
         return Response({
@@ -12641,6 +12711,132 @@ class CancelarImportacaoOSABView(APIView):
         log.calcular_duracao()
 
         return Response({'success': True, 'message': 'Importação cancelada.'})
+
+
+class ReverterImportacaoOSABView(APIView):
+    """Reverte alterações de vendas CRM feitas por uma importação OSAB concluída."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, log_id):
+        from django.db import connection, transaction
+        from crm_app.models import (
+            LogImportacaoOSAB,
+            LogImportacaoOSABSnapshotVenda,
+            Venda,
+            HistoricoAlteracaoVenda,
+        )
+        from crm_app.osab_revert_utils import aplicar_snapshot_venda_osab
+
+        log = LogImportacaoOSAB.objects.filter(id=log_id).first()
+        if not log:
+            return Response({'error': 'Log não encontrado.'}, status=404)
+
+        if not is_member(request.user, ['Admin', 'Diretoria', 'BackOffice']) and log.usuario != request.user:
+            return Response({'error': 'Sem permissão para reverter esta importação.'}, status=403)
+
+        if log.status == 'REVERTIDO':
+            return Response({'error': 'Esta importação já foi revertida.'}, status=400)
+
+        if log.status not in ('SUCESSO', 'PARCIAL'):
+            return Response(
+                {'error': 'Só é possível reverter importações concluídas com sucesso ou parcial.'},
+                status=400,
+            )
+
+        snapshots = list(
+            LogImportacaoOSABSnapshotVenda.objects.filter(log_id=log_id).select_related('venda')
+        )
+        if not snapshots:
+            return Response(
+                {
+                    'error': (
+                        'Não há snapshot de reversão para esta importação '
+                        '(importações anteriores ao recurso de reversão não podem ser desfeitas automaticamente).'
+                    ),
+                },
+                status=400,
+            )
+
+        vendas_por_id = {
+            v.id: v
+            for v in Venda.objects.filter(
+                id__in=[s.venda_id for s in snapshots],
+                ativo=True,
+            )
+        }
+
+        vendas_restaurar = []
+        historicos = []
+        nao_encontradas = 0
+        sem_mudanca = 0
+
+        for snap in snapshots:
+            venda = vendas_por_id.get(snap.venda_id)
+            if not venda:
+                nao_encontradas += 1
+                continue
+            campos = aplicar_snapshot_venda_osab(venda, snap.valores_antes or {})
+            if campos:
+                vendas_restaurar.append(venda)
+                historicos.append(
+                    HistoricoAlteracaoVenda(
+                        venda=venda,
+                        usuario=request.user,
+                        alteracoes={
+                            'reversao_importacao_osab': (
+                                f"Revertido log OSAB #{log_id} ({log.nome_arquivo}): "
+                                f"{', '.join(campos)}"
+                            ),
+                        },
+                    )
+                )
+            else:
+                sem_mudanca += 1
+
+        if not vendas_restaurar:
+            return Response(
+                {
+                    'error': 'Nenhuma venda precisava ser restaurada (dados já estão como antes da importação).',
+                    'nao_encontradas': nao_encontradas,
+                    'sem_mudanca': sem_mudanca,
+                },
+                status=400,
+            )
+
+        campos_venda = [
+            'status_esteira', 'status_tratamento', 'data_instalacao',
+            'data_agendamento', 'forma_pagamento', 'motivo_pendencia', 'data_abertura',
+        ]
+        agora = timezone.now()
+
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL statement_timeout = '300000ms'")
+                Venda.objects.bulk_update(vendas_restaurar, campos_venda, batch_size=500)
+                if historicos:
+                    HistoricoAlteracaoVenda.objects.bulk_create(historicos, batch_size=500)
+                log.status = 'REVERTIDO'
+                log.revertido_em = agora
+                log.revertido_por = request.user
+                log.mensagem = (
+                    f"{log.mensagem or ''}\n"
+                    f"[REVERTIDO em {agora.strftime('%d/%m/%Y %H:%M')} por {request.user.username}] "
+                    f"{len(vendas_restaurar)} venda(s) restaurada(s)."
+                ).strip()
+                log.save(update_fields=['status', 'revertido_em', 'revertido_por', 'mensagem'])
+        except Exception as e:
+            return Response({'error': f'Erro ao reverter importação: {e}'}, status=500)
+
+        return Response({
+            'success': True,
+            'message': f'Importação revertida: {len(vendas_restaurar)} venda(s) restaurada(s).',
+            'vendas_restauradas': len(vendas_restaurar),
+            'nao_encontradas': nao_encontradas,
+            'sem_mudanca': sem_mudanca,
+            'total_snapshots': len(snapshots),
+        })
 
 
 class LogsImportacaoDFVView(APIView):

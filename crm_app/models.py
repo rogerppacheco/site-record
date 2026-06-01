@@ -2575,6 +2575,7 @@ class LogImportacaoOSAB(models.Model):
         ('SUCESSO', 'Sucesso'),
         ('ERRO', 'Erro'),
         ('PARCIAL', 'Parcial'),
+        ('REVERTIDO', 'Revertido'),
     ]
     
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
@@ -2600,6 +2601,14 @@ class LogImportacaoOSAB(models.Model):
     
     # Flags de controle
     enviar_whatsapp = models.BooleanField(default=True)
+    revertido_em = models.DateTimeField(blank=True, null=True)
+    revertido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='importacoes_osab_revertidas',
+    )
     
     class Meta:
         verbose_name = "Log Importação OSAB"
@@ -2615,6 +2624,40 @@ class LogImportacaoOSAB(models.Model):
     
     def __str__(self):
         return f"{self.nome_arquivo} - {self.status} ({self.iniciado_em.strftime('%d/%m/%Y %H:%M')})"
+
+
+class LogImportacaoOSABSnapshotVenda(models.Model):
+    """Estado da venda antes das alterações de uma importação OSAB (para reversão)."""
+
+    ORIGEM_PLANILHA = 'PLANILHA'
+    ORIGEM_AUSENTE_OSAB = 'AUSENTE_OSAB'
+    ORIGEM_CHOICES = [
+        (ORIGEM_PLANILHA, 'Planilha OSAB'),
+        (ORIGEM_AUSENTE_OSAB, 'CRM ausente na base OSAB'),
+    ]
+
+    log = models.ForeignKey(
+        LogImportacaoOSAB,
+        on_delete=models.CASCADE,
+        related_name='snapshots_vendas',
+    )
+    venda = models.ForeignKey('Venda', on_delete=models.CASCADE, related_name='snapshots_importacao_osab')
+    ordem_servico = models.CharField(max_length=50, blank=True, default='')
+    origem = models.CharField(max_length=20, choices=ORIGEM_CHOICES)
+    valores_antes = models.JSONField(default=dict)
+
+    class Meta:
+        verbose_name = "Snapshot reversão OSAB"
+        verbose_name_plural = "Snapshots reversão OSAB"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['log', 'venda'],
+                name='uniq_osab_snapshot_log_venda',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Log OSAB #{self.log_id} — venda #{self.venda_id}"
 
 
 class LogImportacaoLegado(models.Model):

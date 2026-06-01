@@ -7,6 +7,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuToggle = document.getElementById('menu-toggle');
     const mainNav = document.querySelector('.main-nav');
     const userDisplay = document.getElementById('welcome-user');
+    const currentPath = window.location.pathname;
+    const isLandingPage = currentPath === '/' || currentPath === '/login/';
+    const isInternalHome = currentPath === '/area-interna/';
+
+    function normalizeInternalBackButton() {
+        if (!mainNav) return;
+
+        const navList = mainNav.querySelector('ul');
+        if (!navList) return;
+
+        const areaInternaLinks = Array.from(navList.querySelectorAll('a[href="/area-interna/"]'));
+
+        if (isLandingPage || isInternalHome) {
+            areaInternaLinks.forEach(link => {
+                if (link.classList.contains('nav-back-button')) {
+                    link.closest('li')?.remove();
+                }
+            });
+            return;
+        }
+
+        areaInternaLinks.forEach(link => {
+            link.textContent = 'Voltar para área interna';
+            link.classList.add('nav-back-button');
+        });
+
+        const hasBackButton = areaInternaLinks.some(link => link.classList.contains('nav-back-button'));
+        if (hasBackButton) return;
+
+        const li = document.createElement('li');
+        const backLink = document.createElement('a');
+        backLink.href = '/area-interna/';
+        backLink.className = 'nav-back-button';
+        backLink.innerHTML = '<i class="bi bi-arrow-left-short"></i> Voltar para área interna';
+        li.appendChild(backLink);
+        navList.prepend(li);
+    }
+
+    normalizeInternalBackButton();
 
     // ===== LÓGICA DO BOTÃO HAMBÚRGUER =====
     if (menuToggle && mainNav) {
@@ -99,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Verifica token expirado em páginas internas
-    if (window.location.pathname !== '/' && window.location.pathname !== '/login/') {
+    if (!isLandingPage) {
         if (!isTokenValid()) {
             console.log('Token inválido ou expirado, redirecionando...');
             logout();
@@ -108,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== ADICIONAR INDICADOR DE TOKEN NO HEADER =====
     const sairButton = document.querySelector('.logout-button');
-    if (sairButton && token && window.location.pathname !== '/' && window.location.pathname !== '/login/') {
+    if (sairButton && token && !isLandingPage) {
         // Verifica se já existe um indicador
         if (!document.getElementById('token-indicator')) {
             const tokenIndicator = document.createElement('div');

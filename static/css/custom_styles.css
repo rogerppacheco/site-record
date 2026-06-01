@@ -1689,3 +1689,194 @@ h6 {
 .card-dark .card-body {
     color: rgba(255, 255, 255, 0.95);
 }
+
+/* ==========================================================================
+   PADRONIZACAO GLOBAL DE BOTOES E ACOES - v14.0
+   ========================================================================== */
+
+:root {
+    --btn-height: 40px;
+    --btn-radius: 10px;
+    --btn-font-size: 0.9rem;
+    --btn-font-weight: 600;
+    --btn-padding-x: 1rem;
+    --btn-border-neutral: #d0d7e2;
+    --btn-bg-neutral: #ffffff;
+    --btn-bg-neutral-hover: #f5f7fb;
+    --btn-text-neutral: #2f3d4f;
+}
+
+/* Base mais minimalista e consistente para TODOS os botoes */
+.btn,
+button.btn,
+a.btn,
+input[type="button"].btn,
+input[type="submit"].btn {
+    min-height: var(--btn-height);
+    padding: 0.5rem var(--btn-padding-x);
+    border-radius: var(--btn-radius);
+    font-size: var(--btn-font-size);
+    font-weight: var(--btn-font-weight);
+    line-height: 1.2;
+    border: 1px solid var(--btn-border-neutral);
+    box-shadow: 0 1px 3px rgba(20, 31, 55, 0.08);
+    transform: none !important;
+    filter: none !important;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn::before {
+    display: none;
+}
+
+.btn:focus-visible,
+button:focus-visible,
+a.btn:focus-visible {
+    outline: 2px solid rgba(0, 102, 255, 0.32);
+    outline-offset: 2px;
+}
+
+.btn:hover,
+button.btn:hover,
+a.btn:hover {
+    box-shadow: 0 4px 12px rgba(20, 31, 55, 0.12);
+}
+
+.btn.btn-primary,
+.btn-primary,
+.btn-confirmar,
+.btn-action-edit,
+.btn-editar {
+    background: #0d6efd !important;
+    border-color: #0d6efd !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-primary:hover,
+.btn-primary:hover,
+.btn-confirmar:hover,
+.btn-action-edit:hover,
+.btn-editar:hover {
+    background: #0b5ed7 !important;
+    border-color: #0b5ed7 !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-danger,
+.btn-danger,
+.btn-action-delete,
+.btn-excluir {
+    background: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-danger:hover,
+.btn-danger:hover,
+.btn-action-delete:hover,
+.btn-excluir:hover {
+    background: #bb2d3b !important;
+    border-color: #bb2d3b !important;
+}
+
+.btn.btn-success,
+.btn-success {
+    background: #198754 !important;
+    border-color: #198754 !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-success:hover,
+.btn-success:hover {
+    background: #157347 !important;
+    border-color: #157347 !important;
+}
+
+.btn.btn-warning,
+.btn-warning {
+    background: #ffc107 !important;
+    border-color: #ffc107 !important;
+    color: #1f2937 !important;
+}
+
+.btn.btn-warning:hover,
+.btn-warning:hover {
+    background: #e0a800 !important;
+    border-color: #d39e00 !important;
+}
+
+.btn.btn-light,
+.btn-cancelar,
+.btn-outline-secondary {
+    background: var(--btn-bg-neutral) !important;
+    border-color: var(--btn-border-neutral) !important;
+    color: var(--btn-text-neutral) !important;
+}
+
+.btn.btn-light:hover,
+.btn-cancelar:hover,
+.btn-outline-secondary:hover {
+    background: var(--btn-bg-neutral-hover) !important;
+    border-color: #bec8d8 !important;
+    color: #1f2b3a !important;
+}
+
+/* Botao padrao de voltar para area interna */
+.main-nav a.nav-back-button {
+    background: var(--btn-bg-neutral);
+    color: var(--btn-text-neutral) !important;
+    border: 1px solid var(--btn-border-neutral);
+    border-radius: 999px;
+    padding: 0.55rem 1rem;
+    font-weight: 600;
+}
+
+.main-nav a.nav-back-button:hover {
+    background: var(--btn-bg-neutral-hover);
+    color: #0d6efd !important;
+    border-color: #9eb0ca;
+}
+
+/* Colunas de acoes e grupos de botoes sempre alinhados */
+.actions-group,
+.action-buttons,
+.acoes-group,
+.acoes-buttons,
+.btn-group-actions,
+.table-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.table th:last-child,
+.table td:last-child,
+th[data-label="Acoes"],
+th[data-label="Ações"],
+td[data-label="Acoes"],
+td[data-label="Ações"] {
+    text-align: center !important;
+    vertical-align: middle !important;
+    white-space: nowrap;
+}
+
+.table td:last-child .btn,
+.table td:last-child button,
+.table td:last-child a.btn,
+td[data-label="Acoes"] .btn,
+td[data-label="Ações"] .btn {
+    min-width: 96px;
+    justify-content: center;
+}
+
+@media (max-width: 768px) {
+    .table td:last-child .btn,
+    .table td:last-child button,
+    .table td:last-child a.btn,
+    td[data-label="Acoes"] .btn,
+    td[data-label="Ações"] .btn {
+        width: 100%;
+    }
+}
