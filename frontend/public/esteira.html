@@ -595,6 +595,7 @@
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="INSTALADAS" onclick="filtrarStatus('INSTALADAS', this)" title="Vendas já instaladas – ajustar Data instalação (no cliente)">Instaladas</a></li>
                 <li class="nav-item" id="tab-vendas-totais-item"><a class="nav-link" href="#" data-tab="VENDAS_TOTAIS" onclick="filtrarStatus('VENDAS_TOTAIS', this)">Vendas Totais</a></li>
                 <li class="nav-item" id="tab-gestao-aproveitamento-item"><a class="nav-link" href="#" data-tab="GESTAO_APROVEITAMENTO" onclick="filtrarStatus('GESTAO_APROVEITAMENTO', this)">Gestão Aproveitamento</a></li>
+                <li class="nav-item" id="tab-churn-tratamento-item"><a class="nav-link" href="#" data-tab="CHURN_TRATAMENTO" onclick="filtrarStatus('CHURN_TRATAMENTO', this)">Churn / Cancelamentos</a></li>
             </ul>
 
             <div id="filtro-turno-container" class="mb-3" style="display: none;">
@@ -820,6 +821,104 @@
                             </div>
                         </div>
                         <p class="gestao-aprov-nota mt-3 mb-0" id="gestao-aprov-nota"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="painel-churn-tratamento" class="mb-3" style="display: none;">
+                <div class="border rounded bg-white p-2 p-md-3 shadow-sm">
+                    <div class="row g-2 align-items-end mb-2">
+                        <div class="col-6 col-md-2">
+                            <label class="form-label fw-bold small mb-1" for="churn-trat-mes">Mês referência</label>
+                            <input type="month" id="churn-trat-mes" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label fw-bold small mb-1" for="churn-trat-campo-mes">Filtrar mês por</label>
+                            <select id="churn-trat-campo-mes" class="form-select form-select-sm">
+                                <option value="retirada">Data retirada (churn)</option>
+                                <option value="gross">Safra instalação (ANOMES_GROSS)</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label fw-bold small mb-1" for="churn-trat-vendedor">Consultor</label>
+                            <select id="churn-trat-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label fw-bold small mb-1" for="churn-trat-tipo">TP retirada</label>
+                            <input type="text" id="churn-trat-tipo" class="form-control form-control-sm" placeholder="Filtrar tipo">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-bold small mb-1" for="churn-trat-busca">Busca</label>
+                            <input type="text" id="churn-trat-busca" class="form-control form-control-sm" placeholder="OS, CPF, cliente, vendedor…">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label fw-bold small mb-1" for="churn-trat-motivo">Motivo retirada</label>
+                            <input type="text" id="churn-trat-motivo" class="form-control form-control-sm" placeholder="DS_MOTIVO_RETIRADA">
+                        </div>
+                        <div class="col-6 col-md-2 d-flex align-items-center pt-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="churn-trat-somente-venda" checked>
+                                <label class="form-check-label small" for="churn-trat-somente-venda">Só com venda no CRM</label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-2 d-grid">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="churnTratamentoPagina=1; carregarChurnTratamento()"><i class="bi bi-arrow-repeat me-1"></i>Atualizar</button>
+                        </div>
+                    </div>
+                    <ul class="nav nav-pills nav-fill small mb-3" id="churn-trat-subabas">
+                        <li class="nav-item"><a class="nav-link active" href="#" id="churn-trat-sub-lista" onclick="alternarSubabaChurnTratamento('lista', this); return false;">Lista para tratamento</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" id="churn-trat-sub-ranking" onclick="alternarSubabaChurnTratamento('ranking', this); return false;">Ranking consultores</a></li>
+                    </ul>
+                    <div id="churn-trat-loading" class="text-center text-muted py-4" style="display: none;"><span class="spinner-border spinner-border-sm me-2"></span>Carregando…</div>
+                    <div id="churn-trat-conteudo" style="display: none;">
+                        <p id="churn-trat-periodo" class="gestao-aprov-nota mb-2"></p>
+                        <p id="churn-trat-totais" class="small text-muted mb-2"></p>
+                        <div id="churn-trat-pane-lista">
+                            <div class="table-responsive border rounded">
+                                <table class="table table-sm table-hover table-gestao-aprov mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>ID venda</th>
+                                            <th class="text-start">Consultor</th>
+                                            <th>Pedido</th>
+                                            <th>Instalação</th>
+                                            <th class="text-start">Cliente</th>
+                                            <th>CPF</th>
+                                            <th>TP_RETIRADA</th>
+                                            <th class="text-start">DS_MOTIVO_RETIRADA</th>
+                                            <th>cd_tr_vdd_original</th>
+                                            <th>ANOMES_GROSS</th>
+                                            <th>Retirada</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="churn-trat-tbody-lista"></tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+                                <span class="small text-muted" id="churn-trat-paginacao-info"></span>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="churnTratamentoMudarPagina(-1)">Anterior</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="churnTratamentoMudarPagina(1)">Próxima</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="churn-trat-pane-ranking" style="display: none;">
+                            <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-trophy me-1"></i> Ranking — mais churn no período</h6>
+                            <div class="table-responsive border rounded">
+                                <table class="table table-sm table-hover table-gestao-aprov mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th class="text-start">Consultor</th>
+                                            <th>cd_tr_vdd_original</th>
+                                            <th>Qtd churn</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="churn-trat-tbody-ranking"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <p class="gestao-aprov-nota mt-3 mb-0" id="churn-trat-nota"></p>
                     </div>
                 </div>
             </div>
@@ -1315,7 +1414,11 @@
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
         const podeAcessarVendasTotais = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const podeAcessarGestaoAproveitamento = podeAcessarVendasTotais;
-        const totalAbasFixas = podeAcessarVendasTotais ? 6 : 4;
+        const podeAcessarChurnTratamento = podeAcessarVendasTotais;
+        const totalAbasFixas = podeAcessarVendasTotais ? 7 : 4;
+        let churnTratamentoPagina = 1;
+        let churnTratamentoSubaba = 'lista';
+        let churnTratamentoUltimoTotalPaginas = 1;
         const podeEditarAdiantamentosFinanceiros = ['Diretoria', 'Admin'].includes(userProfile);
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
@@ -1574,9 +1677,14 @@
             if (tabVendasTotais && !podeAcessarVendasTotais) tabVendasTotais.remove();
             const tabGestaoAprov = document.getElementById('tab-gestao-aproveitamento-item');
             if (tabGestaoAprov && !podeAcessarGestaoAproveitamento) tabGestaoAprov.remove();
+            const tabChurnTrat = document.getElementById('tab-churn-tratamento-item');
+            if (tabChurnTrat && !podeAcessarChurnTratamento) tabChurnTrat.remove();
             const inpMesGestao = document.getElementById('gestao-aprov-mes');
             if (inpMesGestao) inpMesGestao.value = new Date().toISOString().slice(0, 7);
             popularFiltroGestaoAproveitamento();
+            const inpMesChurn = document.getElementById('churn-trat-mes');
+            if (inpMesChurn) inpMesChurn.value = new Date().toISOString().slice(0, 7);
+            popularFiltroChurnTratamento();
             const btnAdiantCnpjSemana = document.getElementById('btn-marcar-adiant-cnpj-semana');
             if (btnAdiantCnpjSemana && !podeEditarAdiantamentosFinanceiros) btnAdiantCnpjSemana.style.display = 'none';
             const cbSelComissaoVisiveis = document.getElementById('selecionar-comissao-visiveis');
@@ -3514,6 +3622,161 @@
             }
         }
 
+        function sincronizarVisaoChurnTratamento(visivel) {
+            const painel = document.getElementById('painel-churn-tratamento');
+            const areaTabela = document.getElementById('esteira-area-tabela');
+            const painelGestao = document.getElementById('painel-gestao-aproveitamento');
+            if (painel) painel.style.display = visivel ? 'block' : 'none';
+            if (areaTabela) areaTabela.style.display = visivel ? 'none' : 'block';
+            if (painelGestao && visivel) painelGestao.style.display = 'none';
+        }
+
+        async function popularFiltroChurnTratamento() {
+            const sel = document.getElementById('churn-trat-vendedor');
+            if (!sel) return;
+            const atual = sel.value;
+            try {
+                const users = await buscarTodasPaginasEsteira('/usuarios/?page_size=500&is_active=true');
+                const excluir = new Set(['OSAB_IMPORT', 'ADMIN', 'ROOT']);
+                const opts = ['<option value="">Todos</option>'];
+                users
+                    .filter(u => u && u.id && u.is_active !== false)
+                    .filter(u => !excluir.has(String(u.username || '').toUpperCase()))
+                    .sort((a, b) => String(a.username || '').localeCompare(String(b.username || ''), 'pt-BR'))
+                    .forEach(u => {
+                        opts.push(`<option value="${u.id}">${String(u.username || '').toUpperCase()}</option>`);
+                    });
+                sel.innerHTML = opts.join('');
+                if (atual) sel.value = atual;
+            } catch (e) {
+                console.warn('Filtro churn tratamento:', e);
+            }
+        }
+
+        function alternarSubabaChurnTratamento(qual, el) {
+            churnTratamentoSubaba = qual;
+            document.querySelectorAll('#churn-trat-subabas .nav-link').forEach(l => l.classList.remove('active'));
+            if (el) el.classList.add('active');
+            const paneLista = document.getElementById('churn-trat-pane-lista');
+            const paneRank = document.getElementById('churn-trat-pane-ranking');
+            if (paneLista) paneLista.style.display = qual === 'lista' ? 'block' : 'none';
+            if (paneRank) paneRank.style.display = qual === 'ranking' ? 'block' : 'none';
+        }
+
+        function formatarDataBr(iso) {
+            if (!iso) return '—';
+            const s = String(iso).slice(0, 10);
+            const p = s.split('-');
+            if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+            return iso;
+        }
+
+        function renderChurnTratamento(data) {
+            const per = data.periodo || {};
+            const tot = data.totais || {};
+            const elPer = document.getElementById('churn-trat-periodo');
+            if (elPer) {
+                const campo = per.campo_mes === 'gross' ? 'safra instalação (ANOMES_GROSS)' : 'data retirada';
+                elPer.textContent = `Período ${per.mes_referencia || ''} (${per.inicio || ''} a ${per.fim || ''}) · filtro por ${campo}`;
+            }
+            const elTot = document.getElementById('churn-trat-totais');
+            if (elTot) {
+                elTot.textContent = `Base churn: ${tot.churn_base ?? 0} · Linhas na lista: ${tot.linhas_lista ?? 0} · Consultores no ranking: ${tot.consultores_ranking ?? 0}`;
+            }
+            const pag = data.paginacao || {};
+            churnTratamentoUltimoTotalPaginas = pag.total_pages || 1;
+            const tbLista = document.getElementById('churn-trat-tbody-lista');
+            const lista = data.lista || [];
+            if (tbLista) {
+                if (!lista.length) {
+                    tbLista.innerHTML = '<tr><td colspan="11" class="text-muted py-3 text-center">Nenhum registro para os filtros.</td></tr>';
+                } else {
+                    tbLista.innerHTML = lista.map(r => {
+                        const linkVenda = r.venda_id
+                            ? `<a href="#" onclick="abrirEdicao(${r.venda_id}); return false;">${r.venda_id}</a>`
+                            : '<span class="text-muted">—</span>';
+                        return `<tr>
+                            <td>${linkVenda}</td>
+                            <td class="text-start">${r.vendedor || '—'}</td>
+                            <td>${r.pedido || '—'}</td>
+                            <td>${formatarDataBr(r.data_instalacao)}</td>
+                            <td class="text-start">${r.nome_cliente || '—'}</td>
+                            <td><small>${r.cpf_cliente || '—'}</small></td>
+                            <td><small>${r.TP_RETIRADA || '—'}</small></td>
+                            <td class="text-start"><small>${r.DS_MOTIVO_RETIRADA || '—'}</small></td>
+                            <td><small>${r.cd_tr_vdd_original || '—'}</small></td>
+                            <td>${r.ANOMES_GROSS || '—'}</td>
+                            <td><small>${formatarDataBr(r.dt_retirada)}</small></td>
+                        </tr>`;
+                    }).join('');
+                }
+            }
+            const elPagInfo = document.getElementById('churn-trat-paginacao-info');
+            if (elPagInfo) {
+                elPagInfo.textContent = `Página ${pag.page || 1} de ${pag.total_pages || 1} · ${pag.total ?? 0} registro(s)`;
+            }
+            const tbRank = document.getElementById('churn-trat-tbody-ranking');
+            const ranking = data.ranking || [];
+            if (tbRank) {
+                if (!ranking.length) {
+                    tbRank.innerHTML = '<tr><td colspan="4" class="text-muted py-2 text-center">Sem dados.</td></tr>';
+                } else {
+                    tbRank.innerHTML = ranking.map(r => `<tr>
+                        <td>${r.posicao}</td>
+                        <td class="text-start fw-semibold">${r.vendedor}</td>
+                        <td><small>${r.cd_tr_vdd_original || '—'}</small></td>
+                        <td><span class="badge bg-danger">${r.total_churn}</span></td>
+                    </tr>`).join('');
+                }
+            }
+            const nota = document.getElementById('churn-trat-nota');
+            if (nota && data.notas && data.notas.cruzamento) nota.textContent = data.notas.cruzamento;
+            alternarSubabaChurnTratamento(churnTratamentoSubaba, document.getElementById(
+                churnTratamentoSubaba === 'ranking' ? 'churn-trat-sub-ranking' : 'churn-trat-sub-lista'
+            ));
+        }
+
+        function churnTratamentoMudarPagina(delta) {
+            const nova = churnTratamentoPagina + delta;
+            if (nova < 1 || nova > churnTratamentoUltimoTotalPaginas) return;
+            churnTratamentoPagina = nova;
+            carregarChurnTratamento();
+        }
+
+        async function carregarChurnTratamento() {
+            const loading = document.getElementById('churn-trat-loading');
+            const conteudo = document.getElementById('churn-trat-conteudo');
+            const mes = document.getElementById('churn-trat-mes')?.value;
+            if (!mes) { alert('Selecione o mês de referência.'); return; }
+            const params = new URLSearchParams();
+            params.set('mes_referencia', mes);
+            params.set('page', String(churnTratamentoPagina));
+            params.set('page_size', '50');
+            const campoMes = document.getElementById('churn-trat-campo-mes')?.value;
+            if (campoMes) params.set('campo_mes', campoMes);
+            const consultor = document.getElementById('churn-trat-vendedor')?.value;
+            if (consultor) params.set('consultor_id', consultor);
+            const busca = document.getElementById('churn-trat-busca')?.value?.trim();
+            if (busca) params.set('busca', busca);
+            const tipo = document.getElementById('churn-trat-tipo')?.value?.trim();
+            if (tipo) params.set('tipo_retirada', tipo);
+            const motivo = document.getElementById('churn-trat-motivo')?.value?.trim();
+            if (motivo) params.set('motivo_retirada', motivo);
+            const somenteVenda = document.getElementById('churn-trat-somente-venda')?.checked;
+            params.set('somente_com_venda', somenteVenda ? '1' : '0');
+            if (loading) loading.style.display = 'block';
+            if (conteudo) conteudo.style.display = 'none';
+            try {
+                const data = await apiFetch(`/crm/esteira/churn-tratamento/?${params.toString()}`);
+                renderChurnTratamento(data);
+                if (conteudo) conteudo.style.display = 'block';
+            } catch (e) {
+                alert('Erro ao carregar churn: ' + ((e && e.message) ? e.message : String(e)));
+            } finally {
+                if (loading) loading.style.display = 'none';
+            }
+        }
+
         function filtrarStatus(status, element) {
             const statusAnterior = filtroAtual;
             if (status === 'VENDAS_TOTAIS' && !podeAcessarVendasTotais) {
@@ -3524,10 +3787,15 @@
                 alert('Acesso negado para Gestão Aproveitamento.');
                 return;
             }
+            if (status === 'CHURN_TRATAMENTO' && !podeAcessarChurnTratamento) {
+                alert('Acesso negado para Churn / Cancelamentos.');
+                return;
+            }
             filtroAtual = status;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
             if (status === 'INSTALADAS') {
+                sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
@@ -3546,6 +3814,7 @@
                 return;
             }
             if (status === 'AGENDADO') {
+                sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
@@ -3561,6 +3830,7 @@
                 return;
             }
             if (status === 'VENDAS_TOTAIS') {
+                sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 sincronizarToolbarEFiltrosColunas();
@@ -3580,6 +3850,7 @@
             if (status === 'GESTAO_APROVEITAMENTO') {
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
+                sincronizarVisaoChurnTratamento(false);
                 sincronizarToolbarEFiltrosColunas();
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
@@ -3593,6 +3864,25 @@
                 carregarGestaoAproveitamento();
                 return;
             }
+            if (status === 'CHURN_TRATAMENTO') {
+                if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
+                if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
+                sincronizarVisaoGestaoAproveitamento(false);
+                sincronizarToolbarEFiltrosColunas();
+                document.getElementById('filtro-turno-container').style.display = 'none';
+                document.getElementById('painel-busca-instaladas').style.display = 'none';
+                document.getElementById('painel-busca-agendados').style.display = 'none';
+                document.getElementById('painel-busca-vendas-totais').style.display = 'none';
+                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) {
+                    document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                }
+                sincronizarVisaoChurnTratamento(true);
+                churnTratamentoPagina = 1;
+                popularFiltroChurnTratamento();
+                carregarChurnTratamento();
+                return;
+            }
+            sincronizarVisaoChurnTratamento(false);
             sincronizarVisaoGestaoAproveitamento(false);
             sincronizarToolbarEFiltrosColunas();
             document.getElementById('painel-busca-instaladas').style.display = 'none';

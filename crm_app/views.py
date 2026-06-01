@@ -4643,14 +4643,17 @@ class ImportacaoOsabView(APIView):
         LogImportacaoOSABSnapshotVenda.objects.bulk_create(objs, batch_size=2000, ignore_conflicts=True)
         return len(objs)
 
-    def _marcar_vendas_ausentes_na_osab(self, log_id, total_registros_import, osab_bot, snapshots_reversao=None):
+    def _marcar_vendas_ausentes_na_osab(
+        self, log_id, total_registros_import, osab_bot, snapshots_reversao=None, pedidos_validos_planilha=0,
+    ):
         """
         Após gravar a importação: vendas ativas com O.S. que não existem em ImportacaoOsab.
         - Só considera pedidos com data de abertura (ou criação, se sem abertura) **antes do dia atual**
           (base OSAB costuma refletir até o dia anterior).
         - Esteira contendo INSTALADA e não sendo já 'INSTALADA OUTRO PDV' -> INSTALADA OUTRO PDV.
         - Demais -> NÃO CONSTA NA OSAB.
-        Não envia WhatsApp. Não executa se a planilha tiver 0 linhas (evita marcar o CRM inteiro).
+        Não envia WhatsApp. Não executa se a planilha tiver 0 linhas ou 0 pedidos válidos
+        (evita marcar o CRM inteiro quando o arquivo não trouxe PEDIDO utilizável).
         """
         from django.db import connection, transaction
         from django.db.models import Q
@@ -4667,8 +4670,20 @@ class ImportacaoOsabView(APIView):
             'crm_sem_osab_nao_consta': 0,
             'crm_sem_osab_outro_pdv': 0,
             'crm_sem_osab_ignoradas_mesmo_dia': 0,
+            'pos_processamento_ausentes_pulado': False,
+            'pos_processamento_ausentes_motivo': '',
         }
         if not total_registros_import:
+            out['pos_processamento_ausentes_pulado'] = True
+            out['pos_processamento_ausentes_motivo'] = 'Planilha sem linhas de dados.'
+            return out
+
+        if not pedidos_validos_planilha:
+            out['pos_processamento_ausentes_pulado'] = True
+            out['pos_processamento_ausentes_motivo'] = (
+                'Nenhum pedido válido na planilha; cruzamento CRM×OSAB '
+                '(INSTALADA OUTRO PDV / NÃO CONSTA NA OSAB) não executado.'
+            )
             return out
 
         LogImportacaoOSAB.objects.filter(id=log_id).update(
@@ -5200,9 +5215,12 @@ class ImportacaoOsabView(APIView):
             }
             
             report = {
-                "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, 
+                "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0,
                 "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [],
-                "ignorados_dt_ref": 0, "bloqueados_flag_osab": 0, "arquivo_excel_b64": None
+                "ignorados_dt_ref": 0, "bloqueados_flag_osab": 0, "arquivo_excel_b64": None,
+                "pedidos_validos_planilha": 0,
+                "pos_processamento_ausentes_pulado": False,
+                "pos_processamento_ausentes_motivo": "",
             }
 
             def _normalize_dt_ref(val):
@@ -5246,8 +5264,11 @@ class ImportacaoOsabView(APIView):
                     if not doc_chave: 
                         log_item["resultado_osab"] = "IGNORADO"
                         log_item["resultado_crm"] = "IGNORADO"
+                        log_item["detalhe"] = "PEDIDO vazio ou inválido"
                         report["logs_detalhados"].append(log_item)
                         continue
+
+                    report["pedidos_validos_planilha"] += 1
 
                     if doc_chave in osab_existentes:
                         obj = osab_existentes[doc_chave]
@@ -5564,11 +5585,18 @@ class ImportacaoOsabView(APIView):
                             cursor.execute("SET LOCAL statement_timeout = '120000ms'")
                         VendaEsteiraEvento.objects.bulk_create(eventos_criar, batch_size=2000)
 
+                pedidos_validos = report.get('pedidos_validos_planilha', 0)
                 try:
                     snap = self._marcar_vendas_ausentes_na_osab(
-                        log_id, total_registros, osab_bot, snapshots_reversao=snapshots_reversao,
+                        log_id,
+                        total_registros,
+                        osab_bot,
+                        snapshots_reversao=snapshots_reversao,
+                        pedidos_validos_planilha=pedidos_validos,
                     )
                     report.update(snap)
+                    if snap.get('pos_processamento_ausentes_pulado'):
+                        print(f"[OSAB] Pós-processamento ausentes pulado: {snap.get('pos_processamento_ausentes_motivo')}")
                 except Exception as e_snap:
                     print(f"Aviso: etapa CRM sem OSAB não concluída (importação OSAB segue válida): {e_snap}")
 
@@ -5606,8 +5634,25 @@ class ImportacaoOsabView(APIView):
             else:
                 duracao = None
             
+            pedidos_validos = report.get('pedidos_validos_planilha', 0)
+            status_final = 'SUCESSO'
+            if report['total_registros'] > 0 and pedidos_validos == 0:
+                status_final = 'PARCIAL'
+
+            msg_partes = [
+                f"Processados {report['total_registros']} registros "
+                f"({pedidos_validos} com PEDIDO válido).",
+                f"{report['atualizados']} vendas atualizadas no CRM "
+                f"({report.get('atualizados_planilha_osab', report['atualizados'])} pela planilha; "
+                f"{report.get('crm_sem_osab_nao_consta', 0)} NÃO CONSTA OSAB; "
+                f"{report.get('crm_sem_osab_outro_pdv', 0)} INSTALADA OUTRO PDV; "
+                f"{report.get('bloqueados_flag_osab', 0)} bloqueadas pela flag OSAB).",
+            ]
+            if report.get('pos_processamento_ausentes_pulado'):
+                msg_partes.append(report.get('pos_processamento_ausentes_motivo', ''))
+
             LogImportacaoOSAB.objects.filter(id=log_id).update(
-                status='SUCESSO',
+                status=status_final,
                 total_registros=report['total_registros'],
                 total_processadas=report['total_registros'],  # Total processadas deve ser total_registros
                 criados=report['criados'],
@@ -5615,14 +5660,7 @@ class ImportacaoOsabView(APIView):
                 vendas_encontradas=report['vendas_encontradas'],
                 ja_corretos=report['ja_corretos'],
                 erros_count=len(report['erros']),
-                mensagem=(
-                    f"Processados {report['total_registros']} registros. "
-                    f"{report['atualizados']} vendas atualizadas no CRM "
-                    f"({report.get('atualizados_planilha_osab', report['atualizados'])} pela planilha; "
-                    f"{report.get('crm_sem_osab_nao_consta', 0)} NÃO CONSTA OSAB; "
-                    f"{report.get('crm_sem_osab_outro_pdv', 0)} INSTALADA OUTRO PDV; "
-                    f"{report.get('bloqueados_flag_osab', 0)} bloqueadas pela flag OSAB)."
-                ),
+                mensagem=' '.join(p for p in msg_partes if p),
                 detalhes_json=report,
                 finalizado_em=finalizado_agora,
                 duracao_segundos=duracao
@@ -12406,12 +12444,20 @@ class DownloadRelatorioOSABView(APIView):
 
             resumo = [
                 {'metrica': 'Total registros planilha', 'valor': report.get('total_registros', len(df))},
+                {'metrica': 'Pedidos válidos planilha', 'valor': report.get('pedidos_validos_planilha', 0)},
                 {'metrica': 'Vendas encontradas CRM', 'valor': report.get('vendas_encontradas', 0)},
                 {'metrica': 'Atualizados CRM', 'valor': report.get('atualizados', 0)},
+                {'metrica': 'INSTALADA OUTRO PDV (pós-import.)', 'valor': report.get('crm_sem_osab_outro_pdv', 0)},
+                {'metrica': 'NÃO CONSTA OSAB (pós-import.)', 'valor': report.get('crm_sem_osab_nao_consta', 0)},
                 {'metrica': 'Criados OSAB', 'valor': report.get('criados', 0)},
                 {'metrica': 'Ignorados DT_REF', 'valor': report.get('ignorados_dt_ref', 0)},
                 {'metrica': 'Erros', 'valor': len(report.get('erros', []))},
             ]
+            if report.get('pos_processamento_ausentes_pulado'):
+                resumo.append({
+                    'metrica': 'Pós-processamento ausentes',
+                    'valor': report.get('pos_processamento_ausentes_motivo', 'Pulado'),
+                })
             df_resumo = pd.DataFrame(resumo)
             
             # Tratar caso de DataFrame vazio
@@ -13067,6 +13113,44 @@ class ImportarChurnView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser)
 
+    def _defaults_importacao_churn_row(self, row):
+        """Mapeia colunas da planilha churn (inclui aliases TP_/DS_/CD_TR_VDD_ORIGINAL)."""
+        from crm_app.churn_os_utils import valor_planilha_churn
+
+        tipo = valor_planilha_churn(row, 'TP_RETIRADA', 'TIPO_RETIRADA')
+        motivo = valor_planilha_churn(row, 'DS_MOTIVO_RETIRADA', 'MOTIVO_RETIRADA')
+        submotivo = valor_planilha_churn(row, 'SUBMOTIVO_RETIRADA')
+        cd_vdd = valor_planilha_churn(row, 'CD_TR_VDD_ORIGINAL', 'CD_TR_VDD')
+        matricula = valor_planilha_churn(row, 'MATRICULA_VENDEDOR') or cd_vdd
+        return {
+            'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
+            'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
+            'matricula_vendedor': matricula,
+            'cd_tr_vdd_original': cd_vdd or matricula,
+            'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
+            'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
+            'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
+            'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
+            'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
+            'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
+            'anomes_gross': _normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
+            'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
+            'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
+            'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
+            'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
+            'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
+            'tipo_retirada': tipo,
+            'motivo_retirada': motivo,
+            'submotivo_retirada': submotivo,
+            'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
+            'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+            'nr_velocidade': (
+                str(row.get('NR_VELOCIDADE', '') or row.get('VELOCIDADE', ''))[:50]
+                if pd.notna(row.get('NR_VELOCIDADE', row.get('VELOCIDADE')))
+                else None
+            ),
+        }
+
     def post(self, request):
         from .models import ImportacaoChurn, ContratoM10, LogImportacaoChurn
         
@@ -13159,32 +13243,11 @@ class ImportarChurnView(APIView):
                         # Mas como numero_pedido tem unique=True, não podemos usar None
                         # Vamos usar uma chave composta ou tratar de outra forma
                         if numero_pedido_val:
+                            defaults_churn = self._defaults_importacao_churn_row(row)
+                            defaults_churn['nr_ordem'] = nr_ordem
                             obj, created = ImportacaoChurn.objects.update_or_create(
                                 numero_pedido=numero_pedido_val,
-                                defaults={
-                                    'nr_ordem': nr_ordem,
-                                    'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
-                                    'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
-                                    'matricula_vendedor': str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
-                                    'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
-                                    'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
-                                    'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
-                                    'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
-                                    'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
-                                    'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                    'anomes_gross': _normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
-                                    'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
-                                    'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
-                                    'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
-                                    'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
-                                    'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
-                                    'tipo_retirada': str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
-                                    'motivo_retirada': str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
-                                    'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
-                                    'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
-                                    'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
-                                    'nr_velocidade': str(row.get('NR_VELOCIDADE', '') or row.get('VELOCIDADE', ''))[:50] if pd.notna(row.get('NR_VELOCIDADE', row.get('VELOCIDADE'))) else None,
-                                }
+                                defaults=defaults_churn,
                             )
                             if created:
                                 criados_churn += 1
@@ -13195,59 +13258,16 @@ class ImportarChurnView(APIView):
                             # Buscar por nr_ordem se numero_pedido não estiver disponível
                             try:
                                 obj_existente = ImportacaoChurn.objects.get(nr_ordem=nr_ordem)
-                                # Atualizar campos
-                                for campo, valor in {
-                                    'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
-                                    'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
-                                    'matricula_vendedor': str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
-                                    'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
-                                    'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
-                                    'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
-                                    'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
-                                    'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
-                                    'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                    'anomes_gross': _normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
-                                    'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
-                                    'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
-                                    'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
-                                    'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
-                                    'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
-                                    'tipo_retirada': str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
-                                    'motivo_retirada': str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
-                                    'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
-                                    'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
-                                    'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
-                                }.items():
+                                for campo, valor in self._defaults_importacao_churn_row(row).items():
                                     setattr(obj_existente, campo, valor)
                                 obj_existente.save()
                                 atualizados_churn += 1
                             except ImportacaoChurn.DoesNotExist:
                                 # Criar novo registro sem numero_pedido (permitido pelo modelo)
-                                ImportacaoChurn.objects.create(
-                                    numero_pedido=None,
-                                    nr_ordem=nr_ordem,
-                                    uf=str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
-                                    produto=str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
-                                    matricula_vendedor=str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
-                                    gv=str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
-                                    sap_principal_fim=str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
-                                    gestao=str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
-                                    st_regional=str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
-                                    gc=str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
-                                    dt_gross=pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                    anomes_gross=_normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
-                                    dt_retirada=pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
-                                    anomes_retirada=str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
-                                    grupo_unidade=str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
-                                    codigo_sap=str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
-                                    municipio=str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
-                                    tipo_retirada=str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
-                                    motivo_retirada=str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
-                                    submotivo_retirada=str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
-                                    classificacao=str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
-                                    desc_apelido=str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
-                                    nr_velocidade=str(row.get('NR_VELOCIDADE', '') or row.get('VELOCIDADE', ''))[:50] if pd.notna(row.get('NR_VELOCIDADE', row.get('VELOCIDADE'))) else None,
-                                )
+                                defaults_create = self._defaults_importacao_churn_row(row)
+                                defaults_create['numero_pedido'] = None
+                                defaults_create['nr_ordem'] = nr_ordem
+                                ImportacaoChurn.objects.create(**defaults_create)
                                 criados_churn += 1
                     except Exception as e:
                         erros += 1

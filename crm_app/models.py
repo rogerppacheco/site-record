@@ -2761,6 +2761,12 @@ class ImportacaoChurn(models.Model):
     
     # Vendedor
     matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
+    cd_tr_vdd_original = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name="CD TR VDD original (planilha churn)",
+    )
     
     # Gestão
     gv = models.CharField(max_length=255, null=True, blank=True)

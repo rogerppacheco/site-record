@@ -7,6 +7,7 @@ from usuarios.views import LoginView, DefinirNovaSenhaView
 
 # Record Apoia APIs
 from .esteira_gestao_aproveitamento_api import GestaoAproveitamentoEsteiraView
+from .esteira_churn_tratamento_api import EsteiraChurnTratamentoView
 from .record_apoia_api import (
     RecordApoiaUploadView,
     RecordApoiaListView,
@@ -342,6 +343,7 @@ urlpatterns = [
     path('esteira/sync-status-pap/cancelar/', SyncStatusEsteiraCancelarView.as_view(), name='esteira-sync-status-pap-cancelar'),
     path('esteira/sync-status-pap/status/', SyncStatusEsteiraStatusView.as_view(), name='esteira-sync-status-pap-status'),
     path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
+    path('esteira/churn-tratamento/', EsteiraChurnTratamentoView.as_view(), name='esteira-churn-tratamento'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---
