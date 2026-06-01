@@ -18,7 +18,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 BRASILAPI_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1/{cnpj}'
-CACHE_KEY_PREFIX = 'cnpj_mei:v2:'
+CACHE_KEY_PREFIX = 'cnpj_mei:v3:'
 CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 dias
 REQUEST_TIMEOUT_SECONDS = 12
 
@@ -119,6 +119,42 @@ def _mei_excluido(data_exclusao: Any) -> bool:
     return dt <= timezone.now().date()
 
 
+def _porte_micro_empresa(payload: dict) -> bool:
+    porte = (payload.get('porte') or '').upper()
+    return 'MICRO' in porte
+
+
+def _empresario_individual_micro(payload: dict, codigo_nj_int: Optional[int]) -> bool:
+    """Cartão CNPJ típico de MEI: 213-5 Empresário (Individual) + porte micro."""
+    return codigo_nj_int == 2135 and _porte_micro_empresa(payload)
+
+
+def _saida_definitiva_mei(payload: dict, codigo_nj_int: Optional[int]) -> bool:
+    """
+    Exclusão que deve classificar como NMEI.
+
+    Para 213-5 + micro, a BrasilAPI costuma trazer data_exclusao_do_mei em 31/12
+    (fim de exercício), com opcao_pelo_mei=False mesmo com MEI ativo no cartão.
+    """
+    excl = payload.get('data_exclusao_do_mei')
+    if not _mei_excluido(excl):
+        return False
+
+    if _empresario_individual_micro(payload, codigo_nj_int):
+        from datetime import date
+
+        try:
+            dt_excl = date.fromisoformat(str(excl).strip()[:10])
+        except ValueError:
+            return False
+        # Fim de ano civil no cadastro — não tratar como desenquadramento.
+        if dt_excl.month == 12 and dt_excl.day == 31:
+            return False
+        return False
+
+    return True
+
+
 def _opcao_mei_ativa_no_payload(payload: dict) -> bool:
     """
     BrasilAPI envia opcao_pelo_mei como bool ou string.
@@ -143,12 +179,13 @@ def _interpretar_resposta_brasilapi(payload: dict, cnpj_limpo: str) -> Resultado
     excluido = payload.get('data_exclusao_do_mei')
     opcao_raw = payload.get('opcao_pelo_mei')
 
-    if _mei_excluido(excluido):
+    if _opcao_mei_ativa_no_payload(payload):
+        classificacao = CLASSIFICACAO_MEI
+    elif _saida_definitiva_mei(payload, codigo_nj_int):
         classificacao = CLASSIFICACAO_NMEI
-    elif _opcao_mei_ativa_no_payload(payload):
+    elif _empresario_individual_micro(payload, codigo_nj_int):
         classificacao = CLASSIFICACAO_MEI
     elif codigo_nj_int == 2135:
-        # 213-5 Empresário (Individual) sem exclusão do MEI → MEI (comum no cartão CNPJ)
         classificacao = CLASSIFICACAO_MEI
     else:
         classificacao = CLASSIFICACAO_NMEI

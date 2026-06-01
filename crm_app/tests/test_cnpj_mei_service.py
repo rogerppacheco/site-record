@@ -41,16 +41,20 @@ class InterpretarBrasilApiTest(SimpleTestCase):
         )
         self.assertEqual(r.classificacao, CLASSIFICACAO_MEI)
 
-    def test_nmei_2135_com_exclusao_mei(self):
+    def test_mei_2135_micro_exclusao_31_dez(self):
+        """Exclusão em 31/12 + micro: fim de exercício, não saída do MEI."""
         r = _interpretar_resposta_brasilapi(
             {
                 'codigo_natureza_juridica': 2135,
+                'natureza_juridica': 'Empresário (Individual)',
                 'opcao_pelo_mei': False,
+                'data_opcao_pelo_mei': '2021-09-25',
                 'data_exclusao_do_mei': '2025-12-31',
+                'porte': 'MICRO EMPRESA',
             },
             '43655857000152',
         )
-        self.assertEqual(r.classificacao, CLASSIFICACAO_NMEI)
+        self.assertEqual(r.classificacao, CLASSIFICACAO_MEI)
 
     def test_mei_opcao_boolean_true(self):
         r = _interpretar_resposta_brasilapi(
@@ -74,14 +78,28 @@ class InterpretarBrasilApiTest(SimpleTestCase):
         )
         self.assertEqual(r.classificacao, CLASSIFICACAO_NMEI)
 
-    def test_nmei_apos_exclusao_mei(self):
+    def test_mei_2135_micro_mesmo_com_exclusao_antiga(self):
         r = _interpretar_resposta_brasilapi(
             {
                 'codigo_natureza_juridica': 2135,
-                'opcao_pelo_mei': 'Sim',
-                'data_exclusao_do_mei': '2020-01-01',
+                'opcao_pelo_mei': False,
+                'data_opcao_pelo_mei': '2018-04-02',
+                'data_exclusao_do_mei': '2024-12-31',
+                'porte': 'MICRO EMPRESA',
             },
-            '12345678000199',
+            '30082212000126',
+        )
+        self.assertEqual(r.classificacao, CLASSIFICACAO_MEI)
+
+    def test_nmei_ltda_micro(self):
+        r = _interpretar_resposta_brasilapi(
+            {
+                'codigo_natureza_juridica': 2062,
+                'natureza_juridica': 'Sociedade Empresária Limitada',
+                'opcao_pelo_mei': False,
+                'porte': 'MICRO EMPRESA',
+            },
+            '08194694000157',
         )
         self.assertEqual(r.classificacao, CLASSIFICACAO_NMEI)
 
