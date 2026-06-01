@@ -257,6 +257,7 @@ class VendaSerializer(serializers.ModelSerializer):
     cliente_id = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), source='cliente', write_only=False)
 
     vendedor_recebe_adiantamento_sabado = serializers.SerializerMethodField()
+    classificacao_mei = serializers.SerializerMethodField()
     classificacao_mei_descricao = serializers.SerializerMethodField()
 
     class Meta:
@@ -307,10 +308,14 @@ class VendaSerializer(serializers.ModelSerializer):
             return False
         return bool(getattr(obj.vendedor, 'recebe_adiantamento_sabado', False))
 
+    def get_classificacao_mei(self, obj):
+        from crm_app.services.cnpj_mei_service import classificacao_mei_venda
+        return classificacao_mei_venda(obj)
+
     def get_classificacao_mei_descricao(self, obj):
-        from crm_app.services.cnpj_mei_service import rotulo_classificacao_mei
+        from crm_app.services.cnpj_mei_service import classificacao_mei_venda, rotulo_classificacao_mei
         doc = obj.cliente.cpf_cnpj if obj.cliente_id else ''
-        return rotulo_classificacao_mei(obj.classificacao_mei, documento=doc)
+        return rotulo_classificacao_mei(classificacao_mei_venda(obj), documento=doc)
 
 class VendaDetailSerializer(serializers.ModelSerializer):
     """

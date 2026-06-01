@@ -324,10 +324,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             'adiantamento_esteira_instalados': {'quantidade': 0, 'valor_total': 0.0},
             'adiantamento_nao_classificado': {'quantidade': 0, 'valor_total': 0.0},
         }
+        from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
         for v in vendas:
-            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+            tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
             if getattr(v, 'antecipacao_comissao', False):
@@ -488,9 +488,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             if not v.ordem_servico or getattr(v, 'desconto_churn_aplicado_em', None) is not None:
                 continue
             variantes = _norm_os_variantes(v.ordem_servico)
-            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+            from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+            tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
             if not chave:
@@ -509,9 +509,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             variantes = _norm_os_variantes(v.ordem_servico)
             if not (variantes & set_os_churn_m1):
                 continue
-            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+            from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+            tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
             if not chave:
@@ -614,13 +614,15 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             ajustes['adiantar_cnpj'] = float(config.adiantar_cnpj or 0)
             ajustes['instalacao'] = float(config.desconto_instalacao or 0)
 
+        from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
         extrato = []
         for v in vendas:
             doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
             doc_limpo = ''.join(filter(str.isdigit, doc))
             eh_cnpj = len(doc_limpo) > 11
             plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
+            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(v))
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             churn_status = 'SIM' if _norm_os_variantes(v.ordem_servico) & set_os_churn_mes_extrato else 'NÃO'
@@ -654,7 +656,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             doc_limpo = ''.join(filter(str.isdigit, doc))
             eh_cnpj = len(doc_limpo) > 11
             plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
+            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(v))
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             dt_inst_m1 = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
@@ -690,7 +692,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             doc_limpo = ''.join(filter(str.isdigit, doc))
             eh_cnpj = len(doc_limpo) > 11
             plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
+            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(v))
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             status_nome = (

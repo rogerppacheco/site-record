@@ -1557,9 +1557,10 @@ def _valor_adiantamento_base_comissao(venda):
     Valor base do adiantamento pela primeira faixa de COMISSAO.
     Fallback: plano.comissao_base.
     """
+    from crm_app.services.cnpj_mei_service import usa_tabela_cnpj_comissao
+
     faixa = _get_primeira_faixa_comissao()
-    doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
-    is_cnpj_venda = len(doc) == 14
+    is_cnpj_venda = usa_tabela_cnpj_comissao(venda)
     return Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa, is_cnpj_venda)))
 
 
@@ -3000,6 +3001,11 @@ class VendaViewSet(viewsets.ModelViewSet):
             if len(doc) != 14:
                 ignoradas += 1
                 continue
+            from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
+
+            if not elegivel_adiantamento_cnpj(v):
+                ignoradas += 1
+                continue
             if not v.data_criacao:
                 ignoradas += 1
                 continue
@@ -3223,6 +3229,15 @@ class VendaViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         'detail': 'Adiantamento CNPJ só se aplica a cliente CNPJ (14 dígitos).'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
+
+            if not elegivel_adiantamento_cnpj(venda):
+                return Response(
+                    {
+                        'detail': 'Adiantamento CNPJ não se aplica a clientes classificados como MEI.'
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -3830,9 +3845,9 @@ class DashboardResumoView(APIView):
                 comissao_vendedor = 0.0
                 for v in vendas_instaladas:
                     valor_item = 0.0 
-                    doc = v.cliente.cpf_cnpj if v.cliente else ''
-                    doc_limpo = ''.join(filter(str.isdigit, doc))
-                    tipo_cliente_venda = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+                    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+                    tipo_cliente_venda = tipo_cliente_comissao(v)
                     
                     regra_encontrada = None
                     for r in regras:
@@ -8282,7 +8297,12 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
                 digits = re.sub(r'\D', '', v.cliente.cpf_cnpj or '')
                 if len(digits) != 14:  # CNPJ tem 14 dígitos
                     continue
-            is_cnpj_venda = v.cliente and len(re.sub(r'\D', '', v.cliente.cpf_cnpj or '')) == 14
+            from crm_app.services.cnpj_mei_service import (
+                elegivel_adiantamento_cnpj,
+                usa_tabela_cnpj_comissao,
+            )
+
+            is_cnpj_venda = usa_tabela_cnpj_comissao(v)
             valor_est = self._valor_comissao_estimado_venda(v, faixa_adiantamento, is_cnpj_venda)
             status_adiantamento = 'ELEGIVEL'
             motivo_nao_elegivel = ''
@@ -8292,7 +8312,17 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
             elif not getattr(v.vendedor, 'recebe_adiantamento_cnpj', True):
                 status_adiantamento = 'NAO_ELEGIVEL'
                 motivo_nao_elegivel = 'Vendedor não habilitado para adiantamento de CNPJ'
-            elif not is_cnpj_venda:
+            elif not elegivel_adiantamento_cnpj(v):
+                mei = getattr(v, 'classificacao_mei', None) or (
+                    v.cliente.classificacao_mei if v.cliente else None
+                )
+                if mei == 'MEI':
+                    status_adiantamento = 'NAO_ELEGIVEL'
+                    motivo_nao_elegivel = 'Cliente CNPJ classificado como MEI'
+                else:
+                    status_adiantamento = 'NAO_ELEGIVEL'
+                    motivo_nao_elegivel = 'Cliente não é CNPJ elegível'
+            elif not (v.cliente and len(re.sub(r'\D', '', v.cliente.cpf_cnpj or '')) == 14):
                 status_adiantamento = 'NAO_ELEGIVEL'
                 motivo_nao_elegivel = 'Cliente não é CNPJ'
             elif not (v.data_criacao and semana_ini <= v.data_criacao.date() <= semana_fim):
@@ -8419,11 +8449,9 @@ class PendenciasDescontoView(APIView):
             consultor = v.vendedor
             if not consultor: continue
 
-            doc = v.cliente.cpf_cnpj if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            eh_cnpj = len(doc_limpo) > 11
+            from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
 
-            if eh_cnpj and not v.flag_adiant_cnpj:
+            if elegivel_adiantamento_cnpj(v) and not v.flag_adiant_cnpj:
                 val = float(consultor.adiantamento_cnpj or 0)
                 if val > 0: pendencias.append(self._montar_obj(v, 'CNPJ', val, 'Adiantamento CNPJ'))
 

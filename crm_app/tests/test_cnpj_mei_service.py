@@ -7,11 +7,14 @@ from crm_app.models import Cliente, Venda
 from crm_app.services.cnpj_mei_service import (
     CLASSIFICACAO_MEI,
     CLASSIFICACAO_NMEI,
-    CLASSIFICACAO_MEI,
     classificar_cnpj_mei,
+    elegivel_adiantamento_cnpj,
     queryset_clientes_cnpj,
+    tipo_cliente_comissao,
+    usa_tabela_cnpj_comissao,
     _interpretar_resposta_brasilapi,
 )
+from unittest.mock import MagicMock
 
 
 class InterpretarBrasilApiTest(SimpleTestCase):
@@ -102,6 +105,30 @@ class InterpretarBrasilApiTest(SimpleTestCase):
             '08194694000157',
         )
         self.assertEqual(r.classificacao, CLASSIFICACAO_NMEI)
+
+
+class RegrasComissaoMeiTest(SimpleTestCase):
+    def _venda(self, doc, mei=None):
+        cliente = MagicMock(cpf_cnpj=doc, classificacao_mei=mei)
+        venda = MagicMock(cliente=cliente, classificacao_mei=mei)
+        return venda
+
+    def test_cpf_usa_pap(self):
+        v = self._venda('12345678901')
+        self.assertEqual(tipo_cliente_comissao(v), 'CPF')
+        self.assertFalse(usa_tabela_cnpj_comissao(v))
+
+    def test_cnpj_mei_usa_pap(self):
+        v = self._venda('43655857000152', mei=CLASSIFICACAO_MEI)
+        self.assertEqual(tipo_cliente_comissao(v), 'CPF')
+        self.assertFalse(usa_tabela_cnpj_comissao(v))
+        self.assertFalse(elegivel_adiantamento_cnpj(v))
+
+    def test_cnpj_nmei_usa_cnpj(self):
+        v = self._venda('08194694000157', mei=CLASSIFICACAO_NMEI)
+        self.assertEqual(tipo_cliente_comissao(v), 'CNPJ')
+        self.assertTrue(usa_tabela_cnpj_comissao(v))
+        self.assertTrue(elegivel_adiantamento_cnpj(v))
 
 
 class ClassificarCnpjMeiTest(SimpleTestCase):

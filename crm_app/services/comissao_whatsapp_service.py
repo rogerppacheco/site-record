@@ -87,7 +87,9 @@ def _calcular_resumo_card_consultor(
             val = float(consultor.desconto_instalacao_antecipada or 0)
             if val > 0:
                 stats_descontos["Antecipação"] += val
-        if len(doc_limpo) > 11:
+        from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
+
+        if elegivel_adiantamento_cnpj(v):
             val = float(consultor.adiantamento_cnpj or 0)
             if val > 0:
                 stats_descontos["Adiant. CNPJ"] += val

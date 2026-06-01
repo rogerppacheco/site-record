@@ -2868,7 +2868,12 @@
                         } else {
                             const doc = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
                             const cnpj = doc.length === 14;
-                            statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
+                            const mei = v.classificacao_mei === 'MEI';
+                            if (mei) {
+                                statusAdiantCnpj = '<span class="badge bg-light text-dark border" title="CNPJ MEI não recebe adiantamento CNPJ">MEI — N/A</span>';
+                            } else {
+                                statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
+                            }
                         }
                         celulaAdiantCnpj = statusAdiantCnpj;
                         statusAdiantComissao = v.antecipacao_comissao ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-light text-dark border">Não</span>';
@@ -2881,11 +2886,14 @@
                             `;
                             checkboxComissao = `<input type="checkbox" class="comissao-select-cb" data-venda-id="${v.id}" ${v.antecipacao_comissao ? 'checked' : ''} onchange="alternarComissaoPorCheckbox(this)">`;
                             const docCnpjCol = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
-                            if (docCnpjCol.length === 14) {
+                            const meiCol = v.classificacao_mei === 'MEI';
+                            if (docCnpjCol.length === 14 && !meiCol) {
                                 celulaAdiantCnpj = `<select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoCnpj(${v.id}, this)" title="Sim/Não fora da regra automática da semana">
                                     <option value="false" ${v.flag_adiant_cnpj ? '' : 'selected'}>Não</option>
                                     <option value="true" ${v.flag_adiant_cnpj ? 'selected' : ''}>Sim</option>
                                 </select>`;
+                            } else if (meiCol) {
+                                celulaAdiantCnpj = '<span class="text-muted small" title="CNPJ MEI">—</span>';
                             }
                         } else {
                             seletorComissao = statusAdiantComissao;

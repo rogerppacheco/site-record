@@ -63,6 +63,65 @@ def rotulo_classificacao_mei(codigo: Optional[str], *, documento: str = '') -> s
     return '-'
 
 
+def classificacao_mei_venda(venda) -> Optional[str]:
+    """MEI/NMEI efetivo: snapshot na venda ou cadastro do cliente."""
+    cod = getattr(venda, 'classificacao_mei', None)
+    if cod:
+        return cod
+    cliente = getattr(venda, 'cliente', None)
+    if cliente:
+        return getattr(cliente, 'classificacao_mei', None)
+    return None
+
+
+def tipo_cliente_comissao(
+    venda=None,
+    *,
+    documento: str = '',
+    classificacao_mei: Optional[str] = None,
+) -> str:
+    """
+    Tipo para tabelas de comissão (REGRAS_FAIXAS / RegraComissao).
+    CNPJ classificado como MEI usa colunas PAP (mesmo critério que CPF).
+    """
+    doc = _limpar_documento(documento)
+    if not doc and venda is not None and getattr(venda, 'cliente', None):
+        doc = _limpar_documento(venda.cliente.cpf_cnpj or '')
+    if len(doc) != 14:
+        return 'CPF'
+    mei = classificacao_mei
+    if mei is None and venda is not None:
+        mei = classificacao_mei_venda(venda)
+    if mei == CLASSIFICACAO_MEI:
+        return 'CPF'
+    return 'CNPJ'
+
+
+def usa_tabela_cnpj_comissao(
+    venda=None,
+    *,
+    documento: str = '',
+    classificacao_mei: Optional[str] = None,
+) -> bool:
+    """True se deve usar colunas 500/700/1GB CNPJ (e não PAP)."""
+    return tipo_cliente_comissao(
+        venda, documento=documento, classificacao_mei=classificacao_mei
+    ) == 'CNPJ'
+
+
+def elegivel_adiantamento_cnpj(venda) -> bool:
+    """Adiantamento CNPJ: somente CNPJ não MEI (NMEI ou sem classificação)."""
+    if venda is None:
+        return False
+    cliente = getattr(venda, 'cliente', None)
+    if not cliente:
+        return False
+    doc = _limpar_documento(cliente.cpf_cnpj or '')
+    if len(doc) != 14:
+        return False
+    return classificacao_mei_venda(venda) != CLASSIFICACAO_MEI
+
+
 def _normalizar_resultado_cnpj(resultado: ResultadoClassificacaoMei) -> ResultadoClassificacaoMei:
     if resultado.classificacao is None:
         return resultado

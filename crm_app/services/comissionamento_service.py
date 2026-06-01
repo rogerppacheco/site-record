@@ -39,10 +39,10 @@ def _obter_intervalo_mes(ano: int, mes: int) -> tuple[datetime, datetime]:
 
 
 def _tipo_cliente_e_canal(venda: Venda, consultor: Any) -> tuple[str, str]:
-    """Deriva tipo_cliente (CPF/CNPJ) e canal do vendedor a partir da venda e do consultor."""
-    doc = venda.cliente.cpf_cnpj if venda.cliente else ""
-    doc_limpo = "".join(filter(str.isdigit, doc))
-    tipo_cliente = "CNPJ" if len(doc_limpo) > 11 else "CPF"
+    """Deriva tipo_cliente (CPF/CNPJ para tabela) e canal do vendedor."""
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+    tipo_cliente = tipo_cliente_comissao(venda)
     canal_vendedor = getattr(consultor, "canal", "PAP") or "PAP"
     return tipo_cliente, canal_vendedor
 
@@ -211,7 +211,9 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
                     if val > 0:
                         stats_descontos["Desc. Antecipação (Previsto)"] += val
 
-            if len(doc_limpo) > 11:
+            from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
+
+            if elegivel_adiantamento_cnpj(v):
                 if not v.flag_adiant_cnpj:
                     val = float(consultor.adiantamento_cnpj or 0)
                     if val > 0:
