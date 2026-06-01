@@ -146,6 +146,11 @@ def cadastrar_venda_crm(dados: Dict[str, Any], vendedor) -> Tuple[Optional[int],
             observacoes=(dados.get("observacoes") or "").strip() or None,
             ativo=True,
         )
+        try:
+            from crm_app.services.cnpj_mei_service import persistir_classificacao_mei
+            persistir_classificacao_mei(cliente, venda)
+        except Exception:
+            logger.exception('[CRM WhatsApp] Erro ao classificar MEI/NMEI venda #%s', venda.id)
         logger.info(f"[CRM WhatsApp] Venda #{venda.id} cadastrada para vendedor {vendedor.username}")
         return venda.id, None
     except Exception as e:

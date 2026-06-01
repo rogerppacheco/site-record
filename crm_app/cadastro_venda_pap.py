@@ -198,6 +198,11 @@ def cadastrar_venda_pap_no_crm(dados: dict, numero_os: str, matricula_vendedor: 
             observacoes=obs_texto,
             ativo=True,
         )
+        try:
+            from crm_app.services.cnpj_mei_service import persistir_classificacao_mei
+            persistir_classificacao_mei(cliente, venda)
+        except Exception:
+            logger.exception('[CRM] Erro ao classificar MEI/NMEI venda PAP #%s', venda.id)
 
         logger.info(f"[CRM] Venda cadastrada com sucesso! ID: {venda.id}, OS: {numero_os}")
         return True

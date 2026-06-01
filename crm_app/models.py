@@ -84,9 +84,29 @@ class RegraComissao(models.Model):
         unique_together = ('consultor', 'plano', 'tipo_venda', 'tipo_cliente')
 
 class Cliente(models.Model):
+    CLASSIFICACAO_MEI_CHOICES = [
+        ('MEI', 'MEI'),
+        ('NMEI', 'NMEI'),
+    ]
+
     nome_razao_social = models.CharField(max_length=255)
     cpf_cnpj = models.CharField(max_length=18, unique=True)
     email = models.EmailField(max_length=255, blank=True, null=True)
+    classificacao_mei = models.CharField(
+        max_length=20,
+        choices=CLASSIFICACAO_MEI_CHOICES,
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name='Classificação MEI',
+        help_text='MEI, NMEI (não MEI), INDETERMINADO ou CPF.',
+    )
+    classificacao_mei_consultada_em = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Classificação MEI consultada em',
+    )
+
     def __str__(self): return self.nome_razao_social
     class Meta:
         db_table = 'crm_cliente'
@@ -340,6 +360,16 @@ class Venda(models.Model):
         null=True,
         blank=True,
         verbose_name="Data/hora resposta boas-vindas",
+    )
+
+    classificacao_mei = models.CharField(
+        max_length=20,
+        choices=Cliente.CLASSIFICACAO_MEI_CHOICES,
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name='Classificação MEI na venda',
+        help_text='Snapshot MEI/NMEI no momento do cadastro da venda.',
     )
 
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---

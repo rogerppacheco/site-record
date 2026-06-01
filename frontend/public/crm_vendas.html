@@ -211,6 +211,9 @@
                     <button type="button" id="btn-exportar-excel" class="btn btn-sm btn-success d-none" onclick="exportarExcelDiretoria()" title="Exportar todas as vendas ativas (base completa, ignora filtros)">
                         <i class="bi bi-file-earmark-excel-fill"></i><span class="d-none d-md-inline ms-1">Baixar Base</span>
                     </button>
+                    <button type="button" id="btn-classificar-mei-historico" class="btn btn-sm btn-outline-primary d-none" onclick="classificarMeiHistorico()" title="Classificar MEI/NMEI de todos os cadastros com CNPJ ainda sem classificação">
+                        <i class="bi bi-building-check"></i><span class="d-none d-md-inline ms-1">Classificar CNPJs</span>
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-success" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
                         <i class="bi bi-chat-heart"></i><span class="d-none d-md-inline ms-1">Boas Vindas</span>
                     </button>
@@ -1746,6 +1749,10 @@
                     const wAtivo = document.getElementById('filtro-dash-vendedor-ativo-wrap');
                     if (wAtivo) wAtivo.classList.remove('d-none');
                 }
+                if (['Diretoria', 'Admin'].includes(userProfile)) {
+                    const btnMei = document.getElementById('btn-classificar-mei-historico');
+                    if (btnMei) btnMei.classList.remove('d-none');
+                }
             } catch(e) {}
         }
 
@@ -1898,6 +1905,90 @@
             })
             .catch(err => { alert(err.message); })
             .finally(() => { btn.innerHTML = originalText; btn.disabled = false; });
+        }
+
+        let classificarMeiHistoricoEmAndamento = false;
+
+        async function classificarMeiHistorico() {
+            if (classificarMeiHistoricoEmAndamento) return;
+            if (!['Diretoria', 'Admin'].includes(userProfile)) {
+                alert('Acesso negado. Apenas Diretoria ou Admin.');
+                return;
+            }
+            if (!confirm(
+                'Serão classificados todos os clientes com CNPJ (14 dígitos) que ainda não têm MEI/NMEI.\n\n' +
+                'CPF não será consultado. A consulta usa a BrasilAPI e pode levar vários minutos.\n\n' +
+                'Deseja continuar?'
+            )) return;
+
+            const btn = document.getElementById('btn-classificar-mei-historico');
+            const textoOriginal = btn ? btn.innerHTML : '';
+            classificarMeiHistoricoEmAndamento = true;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Classificando...';
+            }
+
+            let totalMei = 0;
+            let totalNmei = 0;
+            let totalIndet = 0;
+            let totalErros = 0;
+            let totalVendas = 0;
+            let totalProcessados = 0;
+            let totalPendentesInicial = null;
+
+            try {
+                while (true) {
+                    const r = await apiFetch(
+                        '/crm/vendas/classificar-mei-historico/?limite=20',
+                        { method: 'POST', body: JSON.stringify({ limite: 20 }) }
+                    );
+                    if (!r) break;
+                    if (totalPendentesInicial === null) {
+                        totalPendentesInicial = r.total_pendentes || 0;
+                    }
+                    totalMei += r.mei || 0;
+                    totalNmei += r.nmei || 0;
+                    totalIndet += r.indeterminado || 0;
+                    totalErros += r.erros || 0;
+                    totalVendas += r.vendas_atualizadas || 0;
+                    totalProcessados += r.processados_lote || 0;
+                    if (btn && totalPendentesInicial > 0) {
+                        const feitos = totalPendentesInicial - (r.restantes ?? 0);
+                        const pct = Math.min(100, Math.round((feitos / totalPendentesInicial) * 100));
+                        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${pct}% (${feitos}/${totalPendentesInicial})`;
+                    }
+                    if (r.concluido || (r.processados_lote || 0) === 0) break;
+                }
+                const pendentesAgora = (typeof totalPendentesInicial === 'number')
+                    ? Math.max(0, totalPendentesInicial - totalProcessados)
+                    : null;
+                alert(
+                    'Classificação concluída!\n\n' +
+                    `CNPJs processados nesta execução: ${totalProcessados}\n` +
+                    (totalPendentesInicial != null
+                        ? `Pendentes no início: ${totalPendentesInicial}\n` +
+                          (pendentesAgora === 0
+                              ? 'Nenhum CNPJ pendente restante.\n'
+                              : `Ainda pendentes: ${pendentesAgora} (rode novamente se necessário).\n`)
+                        : '') +
+                    `MEI: ${totalMei}\n` +
+                    `NMEI (não MEI): ${totalNmei}\n` +
+                    `Vendas atualizadas: ${totalVendas}\n` +
+                    (totalErros ? `Erros: ${totalErros}` : '')
+                );
+                aplicarFiltros();
+            } catch (e) {
+                let msg = 'Erro ao classificar CNPJs.';
+                if (e && e.detail) msg = e.detail;
+                alert(msg);
+            } finally {
+                classificarMeiHistoricoEmAndamento = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = textoOriginal;
+                }
+            }
         }
 
         function exportarExcelDiretoria() {
@@ -2309,11 +2400,16 @@
             }
 
             try {
-                await apiFetch(url, { method: method, body: JSON.stringify(data) });
+                const resposta = await apiFetch(url, { method: method, body: JSON.stringify(data) });
                 modalNovaVenda.hide(); form.reset(); document.getElementById('id-venda-edicao').value = '';
                 document.getElementById('titulo-modal-venda').innerHTML = 'Registrar Venda';
-                aplicarFiltros(); 
-                alert(idEdicao ? 'Venda atualizada!' : 'Venda registrada!');
+                aplicarFiltros();
+                let msgSucesso = idEdicao ? 'Venda atualizada!' : 'Venda registrada!';
+                if (!idEdicao && resposta && resposta.classificacao_mei) {
+                    const rotulo = resposta.classificacao_mei_descricao || resposta.classificacao_mei;
+                    msgSucesso += `\n\nClassificação CNPJ: ${rotulo}`;
+                }
+                alert(msgSucesso);
             } catch (error) { 
                 let msg = "Erro ao salvar.";
                 if (error && typeof error === 'object') {

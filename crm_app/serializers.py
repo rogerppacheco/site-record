@@ -185,12 +185,19 @@ class ClienteSerializer(serializers.ModelSerializer):
     nome_mae = serializers.SerializerMethodField()
     data_nascimento = serializers.SerializerMethodField()
 
+    classificacao_mei_descricao = serializers.SerializerMethodField()
+
     class Meta:
         model = Cliente
         fields = [
             'id', 'cpf_cnpj', 'nome_razao_social', 'email', 'vendas_count',
-            'telefone1', 'telefone2', 'nome_mae', 'data_nascimento'
+            'telefone1', 'telefone2', 'nome_mae', 'data_nascimento',
+            'classificacao_mei', 'classificacao_mei_consultada_em', 'classificacao_mei_descricao',
         ]
+
+    def get_classificacao_mei_descricao(self, obj):
+        from crm_app.services.cnpj_mei_service import rotulo_classificacao_mei
+        return rotulo_classificacao_mei(obj.classificacao_mei, documento=obj.cpf_cnpj)
 
     def get_last_sale(self, obj):
         if not hasattr(obj, '_last_sale_cache'):
@@ -250,12 +257,14 @@ class VendaSerializer(serializers.ModelSerializer):
     cliente_id = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), source='cliente', write_only=False)
 
     vendedor_recebe_adiantamento_sabado = serializers.SerializerMethodField()
+    classificacao_mei_descricao = serializers.SerializerMethodField()
 
     class Meta:
         model = Venda
         fields = [
             'id', 'vendedor', 'vendedor_nome', 'vendedor_recebe_adiantamento_sabado', 'cliente_id',
             'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
+            'classificacao_mei', 'classificacao_mei_descricao',
             'plano_nome', 'forma_pagamento_nome',
             'status_tratamento', 'status_tratamento_nome',
             'status_esteira', 'status_esteira_nome',
@@ -298,6 +307,11 @@ class VendaSerializer(serializers.ModelSerializer):
             return False
         return bool(getattr(obj.vendedor, 'recebe_adiantamento_sabado', False))
 
+    def get_classificacao_mei_descricao(self, obj):
+        from crm_app.services.cnpj_mei_service import rotulo_classificacao_mei
+        doc = obj.cliente.cpf_cnpj if obj.cliente_id else ''
+        return rotulo_classificacao_mei(obj.classificacao_mei, documento=doc)
+
 class VendaDetailSerializer(serializers.ModelSerializer):
     """
     Serializer COMPLETO para visualizar detalhes (retrieve/PUT)
@@ -320,12 +334,14 @@ class VendaDetailSerializer(serializers.ModelSerializer):
     
     # Histórico (apenas em detail, NÃO em list)
     historico_alteracoes = HistoricoAlteracaoVendaSerializer(many=True, read_only=True)
+    classificacao_mei_descricao = serializers.SerializerMethodField()
 
     class Meta:
         model = Venda
         fields = [
             'id', 'vendedor', 'vendedor_detalhes', 'cliente',
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
+            'classificacao_mei', 'classificacao_mei_descricao',
             'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira',
             'status_comissionamento', 'motivo_pendencia',
             'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2',
@@ -350,6 +366,11 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'adiantamento_sabado_marcado_por', 'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual',
             'adiantamento_sabado_quitado_em', 'flag_desc_adiantamento_sabado',
         ]
+
+    def get_classificacao_mei_descricao(self, obj):
+        from crm_app.services.cnpj_mei_service import rotulo_classificacao_mei
+        doc = obj.cliente.cpf_cnpj if obj.cliente_id else ''
+        return rotulo_classificacao_mei(obj.classificacao_mei, documento=doc)
 
 class VendaCreateSerializer(serializers.ModelSerializer):
     # Campos de Plano e Pagamento opcionais para criação flexível
@@ -421,11 +442,14 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     observacoes = serializers.CharField(required=False, allow_blank=True)
     gerada_os_automatica = serializers.BooleanField(required=False, default=False)
     vendedor = serializers.PrimaryKeyRelatedField(queryset=Usuario.objects.all(), required=False, allow_null=True)
+    classificacao_mei = serializers.CharField(read_only=True)
+    classificacao_mei_descricao = serializers.CharField(read_only=True)
 
     class Meta:
         model = Venda
         fields = [
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
+            'classificacao_mei', 'classificacao_mei_descricao',
             'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'forma_pagamento', 'plano', 'cep',
             'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'forma_entrada', 'tem_fixo', 'telefone1', 'telefone2', 'cpf_representante_legal',

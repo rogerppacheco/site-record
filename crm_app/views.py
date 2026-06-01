@@ -2069,6 +2069,15 @@ class VendaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         venda = serializer.instance
+        resp_data = dict(serializer.data)
+        if getattr(venda, 'classificacao_mei', None):
+            from crm_app.services.cnpj_mei_service import rotulo_classificacao_mei
+            doc = venda.cliente.cpf_cnpj if venda.cliente else ''
+            resp_data['classificacao_mei'] = venda.classificacao_mei
+            resp_data['classificacao_mei_descricao'] = rotulo_classificacao_mei(
+                venda.classificacao_mei, documento=doc
+            )
+        headers = self.get_success_headers(resp_data)
         # Notificar o vendedor responsável (cadastro pelo vendedor ou pelo backoffice)
         if venda.vendedor and getattr(venda.vendedor, 'tel_whatsapp', None):
             try:
@@ -2084,9 +2093,8 @@ class VendaViewSet(viewsets.ModelViewSet):
                 logger.info(f"Notificação de venda recebida enviada para vendedor {venda.vendedor.username} (venda #{venda.id})")
             except Exception as e:
                 logger.warning(f"Falha ao enviar WhatsApp de venda recebida para {venda.vendedor.username}: {e}")
-        headers = self.get_success_headers(serializer.data)
-        print("[CRM DEBUG] Venda criada com sucesso! Dados:", serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        print("[CRM DEBUG] Venda criada com sucesso! Dados:", resp_data)
+        return Response(resp_data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
     def reenviar_whatsapp_aprovacao(self, request, pk=None):
@@ -2568,7 +2576,17 @@ class VendaViewSet(viewsets.ModelViewSet):
             vendedor = vendedor_data
         gerada_os = serializer.validated_data.pop('gerada_os_automatica', False)
 
-        serializer.save(vendedor=vendedor, cliente=cliente, status_tratamento=status_inicial, gerada_os_automatica=gerada_os)
+        venda = serializer.save(
+            vendedor=vendedor,
+            cliente=cliente,
+            status_tratamento=status_inicial,
+            gerada_os_automatica=gerada_os,
+        )
+        try:
+            from crm_app.services.cnpj_mei_service import persistir_classificacao_mei
+            persistir_classificacao_mei(cliente, venda)
+        except Exception:
+            logger.exception('Erro ao classificar MEI/NMEI na criação da venda %s', getattr(venda, 'id', '?'))
 
     def perform_update(self, serializer):
         venda_antes = self.get_object()
@@ -2755,6 +2773,45 @@ class VendaViewSet(viewsets.ModelViewSet):
             logger.error(f"Erro ao excluir venda {kwargs.get('pk')}: {e}", exc_info=True)
             return Response({"detail": "Erro ao excluir venda."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['post'], url_path='classificar-mei-historico')
+    def classificar_mei_historico(self, request):
+        """
+        Backfill MEI/NMEI para clientes CNPJ (14 dígitos) sem classificação.
+        Processa em lotes para evitar timeout. Apenas Diretoria/Admin.
+        """
+        user = request.user
+        if not user.is_superuser and not is_member(user, ['Diretoria', 'Admin']):
+            return Response({'detail': 'Acesso negado. Apenas Diretoria ou Admin.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            offset = int(request.data.get('offset', request.query_params.get('offset', 0)))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            limite = int(request.data.get('limite', request.query_params.get('limite', 20)))
+        except (TypeError, ValueError):
+            limite = 20
+
+        apenas_sem = request.data.get('apenas_sem_classificacao', request.query_params.get('apenas_sem_classificacao', '1'))
+        if isinstance(apenas_sem, str):
+            apenas_sem = apenas_sem.strip().lower() not in ('0', 'false', 'nao', 'não', 'n')
+
+        from crm_app.services.cnpj_mei_service import backfill_classificacao_mei_lote
+
+        try:
+            resultado = backfill_classificacao_mei_lote(
+                offset=offset,
+                limite=limite,
+                apenas_sem_classificacao=apenas_sem,
+            )
+        except Exception:
+            logger.exception('Erro no backfill classificação MEI')
+            return Response(
+                {'detail': 'Erro ao processar classificação MEI. Tente novamente.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(resultado)
+
     # --- NOVA AÇÃO: EXPORTAR EXCEL ---
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
@@ -2783,9 +2840,25 @@ class VendaViewSet(viewsets.ModelViewSet):
                 'motivo_pendencia',
             ).order_by('-data_criacao')
 
+        from crm_app.services.cnpj_mei_service import (
+            normalizar_classificacoes_legadas_no_banco,
+            rotulo_classificacao_mei,
+        )
+        try:
+            normalizar_classificacoes_legadas_no_banco()
+        except Exception:
+            logger.exception('Erro ao normalizar classificações MEI legadas no export')
+
+        def _classificacao_mei_celula(venda):
+            cod = venda.classificacao_mei or (
+                venda.cliente.classificacao_mei if venda.cliente else None
+            )
+            doc = venda.cliente.cpf_cnpj if venda.cliente else ''
+            return rotulo_classificacao_mei(cod, documento=doc)
+
         headers = [
             'ID', 'Reemissão', 'Data Criação', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
-            'Cliente', 'CPF/CNPJ', 'Telefone 1', 'Telefone 2', 'Email',
+            'Cliente', 'CPF/CNPJ', 'MEI/NMEI', 'Telefone 1', 'Telefone 2', 'Email',
             'Plano', 'Valor', 'Forma Pagamento',
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
             'OS', 'Data Agendamento', 'Turno', 'Data Instalação', 'Data Física (no cliente)',
@@ -2815,6 +2888,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 canal_venda,
                 v.cliente.nome_razao_social if v.cliente else '-',
                 v.cliente.cpf_cnpj if v.cliente else '-',
+                _classificacao_mei_celula(v),
                 v.telefone1 or '-',
                 v.telefone2 or '-',
                 v.cliente.email if v.cliente else '-',
