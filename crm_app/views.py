@@ -2546,7 +2546,16 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         nome = serializer.validated_data.pop('cliente_nome_razao_social')
         email = serializer.validated_data.pop('cliente_email', None)
-        
+
+        if len(cpf_limpo) == 14:
+            try:
+                from crm_app.services.cnpj_mei_service import resolver_razao_social_cnpj
+                razao_api, _ = resolver_razao_social_cnpj(cpf_limpo)
+                if razao_api:
+                    nome = razao_api
+            except Exception:
+                logger.exception('Erro ao resolver razão social CNPJ na criação da venda')
+
         try:
             cliente, created = Cliente.objects.get_or_create(
                 cpf_cnpj=cpf_limpo,
@@ -2831,6 +2840,66 @@ class VendaViewSet(viewsets.ModelViewSet):
             logger.exception('Erro no backfill classificação MEI')
             return Response(
                 {'detail': 'Erro ao processar classificação MEI. Tente novamente.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(resultado)
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='consultar-cnpj',
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def consultar_cnpj(self, request):
+        """Razão social e MEI/NMEI na Receita (formulário de venda). Qualquer usuário autenticado."""
+        cnpj = (request.query_params.get('cnpj') or '').strip()
+        from crm_app.services.cnpj_mei_service import consultar_dados_cnpj
+
+        dados = consultar_dados_cnpj(cnpj)
+        if dados.get('erro') and not dados.get('razao_social'):
+            return Response(dados, status=status.HTTP_400_BAD_REQUEST)
+        return Response(dados)
+
+    @action(detail=False, methods=['post'], url_path='corrigir-razao-social-cnpj')
+    def corrigir_razao_social_cnpj(self, request):
+        """
+        Corrige nome_razao_social dos clientes CNPJ conforme BrasilAPI (lotes).
+        Apenas Diretoria/Admin.
+        """
+        user = request.user
+        if not user.is_superuser and not is_member(user, ['Diretoria', 'Admin']):
+            return Response(
+                {'detail': 'Acesso negado. Apenas Diretoria ou Admin.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            offset = int(request.data.get('offset', request.query_params.get('offset', 0)))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            limite = int(request.data.get('limite', request.query_params.get('limite', 20)))
+        except (TypeError, ValueError):
+            limite = 20
+
+        forcar_todos = request.data.get('forcar_todos', request.query_params.get('forcar_todos'))
+        if isinstance(forcar_todos, str):
+            forcar_todos = forcar_todos.strip().lower() in ('1', 'true', 'sim', 's')
+        else:
+            forcar_todos = bool(forcar_todos)
+
+        from crm_app.services.cnpj_mei_service import backfill_razao_social_cnpj_lote
+
+        try:
+            resultado = backfill_razao_social_cnpj_lote(
+                offset=offset,
+                limite=limite,
+                forcar_todos=forcar_todos,
+            )
+        except Exception:
+            logger.exception('Erro no backfill razão social CNPJ')
+            return Response(
+                {'detail': 'Erro ao corrigir razões sociais. Tente novamente.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         return Response(resultado)
@@ -3908,6 +3977,22 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClienteSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'cliente'
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='dados-cnpj',
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def dados_cnpj(self, request):
+        """Consulta razão social e MEI/NMEI na Receita (BrasilAPI) para o formulário de venda."""
+        cnpj = (request.query_params.get('cnpj') or '').strip()
+        from crm_app.services.cnpj_mei_service import consultar_dados_cnpj
+
+        dados = consultar_dados_cnpj(cnpj)
+        if dados.get('erro') and not dados.get('razao_social'):
+            return Response(dados, status=status.HTTP_400_BAD_REQUEST)
+        return Response(dados)
 
     def get_queryset(self):
         queryset = Cliente.objects.annotate(

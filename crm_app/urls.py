@@ -211,6 +211,12 @@ urlpatterns = [
     path('boas-vindas/enviar/', BoasVindasEnviarGestaoView.as_view(), name='boas-vindas-enviar'),
     path('boas-vindas/agendar/', BoasVindasAgendarView.as_view(), name='boas-vindas-agendar'),
     path('boas-vindas/fila-status/', BoasVindasFilaStatusView.as_view(), name='boas-vindas-fila-status'),
+    # Consulta CNPJ na Receita (antes do router — evita 404 se a action não estiver registrada)
+    path(
+        'clientes/dados-cnpj/',
+        ClienteViewSet.as_view({'get': 'dados_cnpj'}),
+        name='cliente-dados-cnpj-direct',
+    ),
     path('', include(router.urls)),
     path('painel-segunda/', PainelSegundaAPIView.as_view(), name='painel-segunda-api'),
     path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),

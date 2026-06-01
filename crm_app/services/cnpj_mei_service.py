@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 BRASILAPI_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1/{cnpj}'
 CACHE_KEY_PREFIX = 'cnpj_mei:v3:'
+CACHE_KEY_RAZAO_PREFIX = 'cnpj_razao:v1:'
 CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 dias
 REQUEST_TIMEOUT_SECONDS = 12
 
@@ -159,6 +160,113 @@ class ResultadoClassificacaoMei:
 
 def _limpar_documento(doc: str) -> str:
     return re.sub(r'\D', '', str(doc or ''))
+
+
+def _normalizar_nome_cadastro(nome: str) -> str:
+    return re.sub(r'\s+', ' ', str(nome or '').strip().upper())
+
+
+def extrair_razao_social_brasilapi(payload: Optional[dict]) -> str:
+    """Razão social da Receita; fallback para nome fantasia."""
+    if not payload:
+        return ''
+    razao = (payload.get('razao_social') or '').strip()
+    if razao:
+        return razao.upper()[:255]
+    fantasia = (payload.get('nome_fantasia') or '').strip()
+    if fantasia:
+        return fantasia.upper()[:255]
+    return ''
+
+
+def _cache_key_razao(cnpj_limpo: str) -> str:
+    return f'{CACHE_KEY_RAZAO_PREFIX}{cnpj_limpo}'
+
+
+def resolver_razao_social_cnpj(cnpj: str, *, usar_cache: bool = True) -> tuple[str, Optional[str]]:
+    """
+    Consulta BrasilAPI e retorna (razao_social, erro).
+    CPF ou documento inválido retorna ('', mensagem).
+    """
+    doc = _limpar_documento(cnpj)
+    if len(doc) != 14:
+        return '', 'CNPJ deve ter 14 dígitos.'
+
+    chave = _cache_key_razao(doc)
+    if usar_cache:
+        cached = cache.get(chave)
+        if isinstance(cached, str) and cached.strip():
+            return cached, None
+
+    payload = _consultar_brasilapi(doc, tentativas=2)
+    if not payload:
+        return '', 'Não foi possível consultar o CNPJ na Receita Federal.'
+    razao = extrair_razao_social_brasilapi(payload)
+    if not razao:
+        return '', 'Razão social não encontrada na consulta.'
+    if usar_cache:
+        cache.set(chave, razao, CACHE_TTL_SECONDS)
+    return razao, None
+
+
+def consultar_dados_cnpj(cnpj: str, *, usar_cache: bool = True) -> dict[str, Any]:
+    """Dados públicos do CNPJ para o formulário de venda (razão social, MEI/NMEI)."""
+    doc = _limpar_documento(cnpj)
+    if len(doc) != 14:
+        return {'cnpj': doc, 'erro': 'CNPJ deve ter 14 dígitos.'}
+
+    chave_razao = _cache_key_razao(doc)
+    razao = ''
+    fantasia = ''
+    cache_hit = False
+    payload: Optional[dict] = None
+
+    if usar_cache:
+        cached_razao = cache.get(chave_razao)
+        if isinstance(cached_razao, str) and cached_razao.strip():
+            razao = cached_razao
+            cache_hit = True
+
+    if not razao:
+        payload = _consultar_brasilapi(doc, tentativas=2)
+        if not payload:
+            return {
+                'cnpj': doc,
+                'erro': 'Não foi possível consultar o CNPJ na Receita Federal.',
+            }
+        razao = extrair_razao_social_brasilapi(payload)
+        if not razao:
+            return {'cnpj': doc, 'erro': 'Razão social não encontrada na consulta.'}
+        if usar_cache:
+            cache.set(chave_razao, razao, CACHE_TTL_SECONDS)
+        fantasia = (payload.get('nome_fantasia') or '').strip().upper()[:255]
+        resultado_mei = _interpretar_resposta_brasilapi(payload, doc)
+        resultado_mei = _normalizar_resultado_cnpj(resultado_mei)
+        if usar_cache:
+            cache.set(
+                _cache_key(doc),
+                {
+                    'classificacao': resultado_mei.classificacao,
+                    'descricao': resultado_mei.descricao,
+                    'codigo_natureza_juridica': resultado_mei.codigo_natureza_juridica,
+                    'natureza_juridica': resultado_mei.natureza_juridica,
+                    'opcao_pelo_mei': resultado_mei.opcao_pelo_mei,
+                    'fonte': resultado_mei.fonte,
+                },
+                CACHE_TTL_SECONDS,
+            )
+    else:
+        resultado_mei = classificar_cnpj_mei(doc, usar_cache=usar_cache)
+        cache_hit = cache_hit or resultado_mei.cache_hit
+
+    return {
+        'cnpj': doc,
+        'razao_social': razao,
+        'nome_fantasia': fantasia,
+        'classificacao_mei': resultado_mei.classificacao,
+        'classificacao_mei_descricao': resultado_mei.descricao,
+        'cache_hit': cache_hit or resultado_mei.cache_hit,
+    }
 
 
 def _cache_key(cnpj_limpo: str) -> str:
@@ -445,6 +553,106 @@ def normalizar_classificacoes_legadas_no_banco() -> dict[str, int]:
         'vendas_cpf_limpos': limp_ven,
         'clientes_cpf_errado_cnpj': corr_cli,
         'vendas_cpf_errado': corr_ven,
+    }
+
+
+def queryset_clientes_cnpj_todos():
+    """Todos os clientes com CNPJ (14 dígitos no cadastro)."""
+    from django.db.models.functions import Length
+
+    from crm_app.models import Cliente
+
+    return Cliente.objects.annotate(doc_len=Length('cpf_cnpj')).filter(doc_len=14).order_by('id')
+
+
+def backfill_razao_social_cnpj_lote(
+    *,
+    offset: int = 0,
+    limite: int = 20,
+    forcar_todos: bool = False,
+    pausa_api_segundos: float = 0.5,
+) -> dict[str, Any]:
+    """
+    Corrige nome_razao_social dos clientes CNPJ conforme a Receita Federal (BrasilAPI).
+    Com forcar_todos: pagina todos os CNPJs; senão só os com nome diferente da API.
+    """
+    import time
+
+    limite = max(1, min(int(limite), 50))
+    offset = max(0, int(offset))
+
+    qs = queryset_clientes_cnpj_todos()
+    total_cnpj = qs.count()
+
+    if forcar_todos:
+        candidatos = list(qs[offset: offset + limite])
+    else:
+        candidatos = []
+        for cliente in qs.iterator(chunk_size=200):
+            razao_api, erro = resolver_razao_social_cnpj(cliente.cpf_cnpj, usar_cache=True)
+            if erro or not razao_api:
+                continue
+            if _normalizar_nome_cadastro(cliente.nome_razao_social) != _normalizar_nome_cadastro(razao_api):
+                candidatos.append(cliente)
+            if len(candidatos) >= limite:
+                break
+
+    atualizados = 0
+    iguais = 0
+    sem_razao = 0
+    erros = 0
+
+    for cliente in candidatos:
+        try:
+            razao_api, erro = resolver_razao_social_cnpj(
+                cliente.cpf_cnpj,
+                usar_cache=not forcar_todos,
+            )
+            if erro or not razao_api:
+                if erro:
+                    erros += 1
+                else:
+                    sem_razao += 1
+                continue
+            if _normalizar_nome_cadastro(cliente.nome_razao_social) == _normalizar_nome_cadastro(razao_api):
+                iguais += 1
+                continue
+            cliente.nome_razao_social = razao_api
+            cliente.save(update_fields=['nome_razao_social'])
+            atualizados += 1
+            if pausa_api_segundos > 0:
+                time.sleep(pausa_api_segundos)
+        except Exception:
+            logger.exception('[CNPJ] Erro ao corrigir razão social cliente id=%s', cliente.id)
+            erros += 1
+
+    processados = len(candidatos)
+    proximo_offset = offset + processados
+
+    if forcar_todos:
+        restantes = max(0, total_cnpj - proximo_offset)
+        concluido = processados == 0 or proximo_offset >= total_cnpj
+    else:
+        restantes = None
+        for cliente in qs.iterator(chunk_size=200):
+            razao_api, erro = resolver_razao_social_cnpj(cliente.cpf_cnpj, usar_cache=True)
+            if erro or not razao_api:
+                continue
+            if _normalizar_nome_cadastro(cliente.nome_razao_social) != _normalizar_nome_cadastro(razao_api):
+                restantes = (restantes or 0) + 1
+        restantes = restantes or 0
+        concluido = processados == 0 or restantes == 0
+
+    return {
+        'total_cnpj': total_cnpj,
+        'restantes': restantes,
+        'processados_lote': processados,
+        'proximo_offset': proximo_offset,
+        'concluido': concluido,
+        'atualizados': atualizados,
+        'iguais': iguais,
+        'sem_razao_api': sem_razao,
+        'erros': erros,
     }
 
 

@@ -9,6 +9,7 @@ from crm_app.services.cnpj_mei_service import (
     CLASSIFICACAO_NMEI,
     classificar_cnpj_mei,
     elegivel_adiantamento_cnpj,
+    extrair_razao_social_brasilapi,
     queryset_clientes_cnpj,
     tipo_cliente_comissao,
     usa_tabela_cnpj_comissao,
@@ -105,6 +106,23 @@ class InterpretarBrasilApiTest(SimpleTestCase):
             '08194694000157',
         )
         self.assertEqual(r.classificacao, CLASSIFICACAO_NMEI)
+
+
+class ExtrairRazaoSocialTest(SimpleTestCase):
+    def test_razao_social_prioritaria(self):
+        nome = extrair_razao_social_brasilapi({
+            'razao_social': 'Empresa Teste Ltda',
+            'nome_fantasia': 'Fantasia',
+        })
+        self.assertEqual(nome, 'EMPRESA TESTE LTDA')
+
+    def test_fallback_nome_fantasia(self):
+        nome = extrair_razao_social_brasilapi({'nome_fantasia': 'Loja do João'})
+        self.assertEqual(nome, 'LOJA DO JOÃO')
+
+    def test_vazio_sem_dados(self):
+        self.assertEqual(extrair_razao_social_brasilapi({}), '')
+        self.assertEqual(extrair_razao_social_brasilapi(None), '')
 
 
 class RegrasComissaoMeiTest(SimpleTestCase):
