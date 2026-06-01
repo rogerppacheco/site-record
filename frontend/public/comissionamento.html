@@ -213,6 +213,44 @@
         // --- FOLHA FORMATO EXCEL (dropdown = vendedores com venda no mês, um card por vez) ---
         let folhaExcelCache = { dados: null, periodo: '' };
 
+        function blocoResumoCnpjMei(r) {
+            const cv = r.cnpj_comissao_visual || {};
+            const mei = Number(cv.qtd_cnpj_mei || 0);
+            const nmei = Number(cv.qtd_cnpj_nmei || 0);
+            const cpf = Number(cv.qtd_cpf || 0);
+            if (!mei && !nmei) return '';
+            return `<div class="px-3 pt-3 pb-0">
+                <div class="alert alert-info py-2 px-3 small mb-0">
+                    <strong>Comissão por tipo de cliente</strong>
+                    <span class="d-block mt-1 text-muted">
+                        CNPJ <strong>MEI</strong> entra nas linhas <strong>PAP</strong> (mesma tabela que CPF).
+                        CNPJ <strong>NMEI</strong> entra nas linhas <strong>CNPJ</strong>. Adiant. CNPJ só para NMEI.
+                    </span>
+                    <span class="d-block mt-2">
+                        ${cpf ? `<span class="badge bg-secondary me-1">CPF ${cpf}</span>` : ''}
+                        ${mei ? `<span class="badge bg-primary me-1">CNPJ MEI ${mei} → PAP</span>` : ''}
+                        ${nmei ? `<span class="badge bg-dark me-1">CNPJ NMEI ${nmei} → CNPJ</span>` : ''}
+                    </span>
+                </div>
+            </div>`;
+        }
+
+        function rotuloPlanoComMei(p) {
+            const q = Number(p.qtd_cnpj_mei || 0);
+            let nome = p.plano || '';
+            if (q > 0 && /PAP/i.test(nome)) {
+                nome += ` <span class="text-muted fw-normal small" title="Vendas com CNPJ classificado MEI, pagas pela tabela PAP">(${q} CNPJ MEI)</span>`;
+            }
+            return nome;
+        }
+
+        function badgeMeiExtrato(e) {
+            const m = (e.classificacao_mei || '-').toString().toUpperCase();
+            if (m === 'MEI') return '<span class="badge bg-primary" title="CNPJ MEI — tabela PAP">MEI</span>';
+            if (m === 'NMEI') return '<span class="badge bg-dark" title="CNPJ NMEI — tabela CNPJ">NMEI</span>';
+            return '<span class="text-muted">-</span>';
+        }
+
         function montarCardFolha(v) {
             const r = v.resumo || {};
             const porPlano = r.por_plano || [];
@@ -221,6 +259,7 @@
                     <span class="fw-bold">${v.vendedor_nome}</span>
                     <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
                 </div>
+                ${blocoResumoCnpjMei(r)}
                 <div class="card-body p-0">
                     <table class="table table-sm table-bordered mb-0">
                         <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR JÁ ADIANT.</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
@@ -233,7 +272,7 @@
                 sumValAdiant += valAdiant;
                 if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0) {
                     sumValorTotalInst += Number(p.valor_total_instalados || 0);
-                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${qtdAnt > 0 ? fmtMoney(valAdiant) : '—'}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+                    html += `<tr><td>${rotuloPlanoComMei(p)}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${qtdAnt > 0 ? fmtMoney(valAdiant) : '—'}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
                 }
             });
             const totalQtdPagar = r.total_qtd_instalada_a_pagar != null ? r.total_qtd_instalada_a_pagar : 0;
@@ -302,7 +341,7 @@
                     })() : ''}
                 </div>
                 <div class="p-2 border-top small text-muted fw-bold">Extrato (${(v.extrato || []).length} vendas)</div>
-                <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class="text-center">ADIANT.</th></tr></thead><tbody>`;
+                <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th class="text-center">MEI/NMEI</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class="text-center">ADIANT.</th></tr></thead><tbody>`;
             const extratoLista = (v.extrato || []);
             const normaliza = (txt) => (txt || '').toString().trim().toUpperCase();
             const parseBrDateToSort = (dt) => {
@@ -334,7 +373,7 @@
             });
             blocos.forEach(b => {
                 if (!b.itens.length) return;
-                html += `<tr class="table-secondary"><td colspan="10" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
+                html += `<tr class="table-secondary"><td colspan="11" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
                 const itensOrdenados = [...b.itens].sort((a, b2) => {
                     const d1 = parseBrDateToSort(a.dt_pedido) || '9999-99-99';
                     const d2 = parseBrDateToSort(b2.dt_pedido) || '9999-99-99';
@@ -352,7 +391,7 @@
                         ? 'table-danger'
                         : (isVerde ? 'table-success' : 'table-warning');
                     const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
-                    html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
+                    html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td class="text-center">${badgeMeiExtrato(e)}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
                 });
             });
             html += `</tbody></table></div></div></div>`;

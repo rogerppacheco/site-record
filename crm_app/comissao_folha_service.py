@@ -324,12 +324,31 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             'adiantamento_esteira_instalados': {'quantidade': 0, 'valor_total': 0.0},
             'adiantamento_nao_classificado': {'quantidade': 0, 'valor_total': 0.0},
         }
-        from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+        from crm_app.services.cnpj_mei_service import (
+            CLASSIFICACAO_MEI,
+            classificacao_mei_venda,
+            tipo_cliente_comissao,
+        )
+
+        por_plano_cnpj_mei = defaultdict(int)
+        qtd_cnpj_mei_total = 0
+        qtd_cnpj_nmei_total = 0
+        qtd_cpf_total = 0
 
         for v in vendas:
             tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
+            doc_limpo_v = ''.join(filter(str.isdigit, (v.cliente.cpf_cnpj or '') if v.cliente else ''))
+            if len(doc_limpo_v) == 14:
+                if classificacao_mei_venda(v) == CLASSIFICACAO_MEI:
+                    qtd_cnpj_mei_total += 1
+                    if chave:
+                        por_plano_cnpj_mei[chave] += 1
+                else:
+                    qtd_cnpj_nmei_total += 1
+            elif len(doc_limpo_v) == 11:
+                qtd_cpf_total += 1
             if getattr(v, 'antecipacao_comissao', False):
                 va = valor_comissao_tabela_adiantamento(v, faixa_adiantamento, chave)
                 if chave:
@@ -377,6 +396,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             por_plano_lista.append({
                 'plano': labels.get(chave, chave),
                 'qtd_instalada_a_pagar': d['qtd'],
+                'qtd_cnpj_mei': por_plano_cnpj_mei.get(chave, 0),
                 'qtd_antecipada': d.get('qtd_antecipada', 0),
                 'valor_total_antecipado': round(float(d.get('total_antecipado', 0) or 0), 2),
                 'qtd_ja_pago': 0,
@@ -614,16 +634,24 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             ajustes['adiantar_cnpj'] = float(config.adiantar_cnpj or 0)
             ajustes['instalacao'] = float(config.desconto_instalacao or 0)
 
-        from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+        from crm_app.services.cnpj_mei_service import classificacao_mei_venda, tipo_cliente_comissao
+
+        def _campos_extrato_mei(venda):
+            doc = (venda.cliente.cpf_cnpj or '') if venda.cliente else ''
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) == 14
+            plano_nome = venda.plano.nome if venda.plano else ''
+            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+            mei = classificacao_mei_venda(venda) if eh_cnpj else None
+            return {
+                'plano_label': labels.get(chave, plano_nome or '-'),
+                'cnpj': 'SIM' if eh_cnpj else 'NÃO',
+                'classificacao_mei': mei if mei else '-',
+            }
 
         extrato = []
         for v in vendas:
-            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            eh_cnpj = len(doc_limpo) > 11
-            plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(v))
-            plano_label = labels.get(chave, plano_nome or '-')
+            campos = _campos_extrato_mei(v)
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             churn_status = 'SIM' if _norm_os_variantes(v.ordem_servico) & set_os_churn_mes_extrato else 'NÃO'
             dt_inst = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
@@ -631,8 +659,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
                 'dacc': dacc,
-                'cnpj': 'SIM' if eh_cnpj else 'NÃO',
-                'plano': plano_label,
+                'cnpj': campos['cnpj'],
+                'classificacao_mei': campos['classificacao_mei'],
+                'plano': campos['plano_label'],
                 'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
                 'dt_inst': dt_inst.strftime('%d/%m/%Y') if dt_inst else '',
                 'os': v.ordem_servico or '',
@@ -652,20 +681,16 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             variantes = _norm_os_variantes(v.ordem_servico)
             if not (variantes & set_os_churn_m1):
                 continue
-            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            eh_cnpj = len(doc_limpo) > 11
-            plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(v))
-            plano_label = labels.get(chave, plano_nome or '-')
+            campos = _campos_extrato_mei(v)
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             dt_inst_m1 = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
                 'dacc': dacc,
-                'cnpj': 'SIM' if eh_cnpj else 'NÃO',
-                'plano': plano_label,
+                'cnpj': campos['cnpj'],
+                'classificacao_mei': campos['classificacao_mei'],
+                'plano': campos['plano_label'],
                 'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
                 'dt_inst': dt_inst_m1.strftime('%d/%m/%Y') if dt_inst_m1 else '',
                 'os': v.ordem_servico or '',
@@ -688,12 +713,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             .order_by('data_criacao', 'id')
         )
         for v in vendas_criadas_mes_outros_status:
-            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            eh_cnpj = len(doc_limpo) > 11
-            plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(v))
-            plano_label = labels.get(chave, plano_nome or '-')
+            campos = _campos_extrato_mei(v)
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             status_nome = (
                 v.status_esteira.nome
@@ -704,8 +724,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
                 'dacc': dacc,
-                'cnpj': 'SIM' if eh_cnpj else 'NÃO',
-                'plano': plano_label,
+                'cnpj': campos['cnpj'],
+                'classificacao_mei': campos['classificacao_mei'],
+                'plano': campos['plano_label'],
                 'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
                 'dt_inst': '',
                 'os': v.ordem_servico or '',
@@ -790,6 +811,11 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'qtd_a_descontar_antecip': qtd_a_descontar_antecip,
                 'qtd_a_descontar_cnpj': qtd_a_descontar_cnpj,
                 'info_comissao_adiantada': info_comissao_adiantada,
+                'cnpj_comissao_visual': {
+                    'qtd_cpf': qtd_cpf_total,
+                    'qtd_cnpj_mei': qtd_cnpj_mei_total,
+                    'qtd_cnpj_nmei': qtd_cnpj_nmei_total,
+                },
             },
             'extrato': extrato,
         })
