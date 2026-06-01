@@ -2869,11 +2869,9 @@
                             const doc = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
                             const cnpj = doc.length === 14;
                             const mei = v.classificacao_mei === 'MEI';
-                            if (mei) {
-                                statusAdiantCnpj = '<span class="badge bg-light text-dark border" title="CNPJ MEI não recebe adiantamento CNPJ">MEI — N/A</span>';
-                            } else {
-                                statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
-                            }
+                            statusAdiantCnpj = (cnpj && !mei)
+                                ? '<span class="badge bg-secondary">Pendente</span>'
+                                : '<span class="badge bg-light text-dark border">Não elegível</span>';
                         }
                         celulaAdiantCnpj = statusAdiantCnpj;
                         statusAdiantComissao = v.antecipacao_comissao ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-light text-dark border">Não</span>';
@@ -2892,8 +2890,6 @@
                                     <option value="false" ${v.flag_adiant_cnpj ? '' : 'selected'}>Não</option>
                                     <option value="true" ${v.flag_adiant_cnpj ? 'selected' : ''}>Sim</option>
                                 </select>`;
-                            } else if (meiCol) {
-                                celulaAdiantCnpj = '<span class="text-muted small" title="CNPJ MEI">—</span>';
                             }
                         } else {
                             seletorComissao = statusAdiantComissao;
@@ -3004,7 +3000,9 @@
                     {
                         const adCnpjTexto = v.flag_adiant_cnpj
                             ? 'realizado'
-                            : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel');
+                            : (v.classificacao_mei === 'MEI'
+                                ? 'nao elegivel'
+                                : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel'));
                         const adComissaoTexto = v.antecipacao_comissao ? 'sim' : 'nao';
                         const confTexto = (v.cliente_confirmou_lembrete_instalacao === true) ? 'sim' : (v.cliente_confirmou_lembrete_instalacao === false ? 'nao' : '-');
                         const possoAntecipTexto = (function() {
