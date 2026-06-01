@@ -18,7 +18,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 BRASILAPI_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1/{cnpj}'
-CACHE_KEY_PREFIX = 'cnpj_mei:'
+CACHE_KEY_PREFIX = 'cnpj_mei:v2:'
 CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 dias
 REQUEST_TIMEOUT_SECONDS = 12
 
@@ -106,10 +106,30 @@ def _cache_key(cnpj_limpo: str) -> str:
     return f'{CACHE_KEY_PREFIX}{cnpj_limpo}'
 
 
-def _normalizar_opcao_mei(valor: Any) -> str:
-    if valor is None:
-        return ''
-    return str(valor).strip().upper()
+def _mei_excluido(data_exclusao: Any) -> bool:
+    """True se consta exclusão do MEI com data já vigente."""
+    if not data_exclusao:
+        return False
+    from datetime import date
+
+    try:
+        dt = date.fromisoformat(str(data_exclusao).strip()[:10])
+    except ValueError:
+        return False
+    return dt <= timezone.now().date()
+
+
+def _opcao_mei_ativa_no_payload(payload: dict) -> bool:
+    """
+    BrasilAPI envia opcao_pelo_mei como bool ou string.
+    False não significa 'não é MEI' — só True indica optante explícito.
+    """
+    valor = payload.get('opcao_pelo_mei')
+    if valor is True:
+        return True
+    if isinstance(valor, str):
+        return valor.strip().upper() in ('S', 'SIM', 'TRUE', '1')
+    return False
 
 
 def _interpretar_resposta_brasilapi(payload: dict, cnpj_limpo: str) -> ResultadoClassificacaoMei:
@@ -120,20 +140,24 @@ def _interpretar_resposta_brasilapi(payload: dict, cnpj_limpo: str) -> Resultado
         codigo_nj_int = None
 
     natureza = (payload.get('natureza_juridica') or '').strip()
-    opcao = _normalizar_opcao_mei(payload.get('opcao_pelo_mei'))
     excluido = payload.get('data_exclusao_do_mei')
+    opcao_raw = payload.get('opcao_pelo_mei')
 
-    if opcao in ('S', 'SIM', 'TRUE', '1'):
-        if not excluido:
-            classificacao = CLASSIFICACAO_MEI
-        else:
-            classificacao = CLASSIFICACAO_NMEI
-    elif opcao in ('N', 'NAO', 'NÃO', 'FALSE', '0'):
+    if _mei_excluido(excluido):
         classificacao = CLASSIFICACAO_NMEI
-    elif codigo_nj_int is not None and codigo_nj_int != 2135:
-        classificacao = CLASSIFICACAO_NMEI
+    elif _opcao_mei_ativa_no_payload(payload):
+        classificacao = CLASSIFICACAO_MEI
+    elif codigo_nj_int == 2135:
+        # 213-5 Empresário (Individual) sem exclusão do MEI → MEI (comum no cartão CNPJ)
+        classificacao = CLASSIFICACAO_MEI
     else:
         classificacao = CLASSIFICACAO_NMEI
+
+    opcao_label = None
+    if isinstance(opcao_raw, bool):
+        opcao_label = 'S' if opcao_raw else None
+    elif opcao_raw is not None:
+        opcao_label = str(opcao_raw).strip().upper() or None
 
     return _normalizar_resultado_cnpj(ResultadoClassificacaoMei(
         classificacao=classificacao,
@@ -141,7 +165,7 @@ def _interpretar_resposta_brasilapi(payload: dict, cnpj_limpo: str) -> Resultado
         cnpj=cnpj_limpo,
         codigo_natureza_juridica=codigo_nj_int,
         natureza_juridica=natureza,
-        opcao_pelo_mei=opcao or None,
+        opcao_pelo_mei=opcao_label,
         fonte='brasilapi',
     ))
 
@@ -158,6 +182,10 @@ def _consultar_brasilapi(cnpj_limpo: str, *, tentativas: int = 1) -> Optional[di
             with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
                 return json.loads(resp.read().decode('utf-8'))
         except urllib.error.HTTPError as e:
+            if e.code == 429 and tentativa < max_tentativas:
+                import time as _time
+                _time.sleep(2 * tentativa)
+                continue
             logger.warning('[CNPJ MEI] BrasilAPI HTTP %s para %s', e.code, cnpj_limpo)
             return None
         except Exception as e:
@@ -324,7 +352,7 @@ def normalizar_classificacoes_legadas_no_banco() -> dict[str, int]:
     }
 
 
-def queryset_clientes_cnpj(*, apenas_sem_classificacao: bool = True):
+def queryset_clientes_cnpj(*, apenas_sem_classificacao: bool = True, forcar_todos: bool = False):
     """Clientes com CNPJ (14 dígitos no cadastro), opcionalmente sem classificação."""
     from django.db.models import Q
     from django.db.models.functions import Length
@@ -332,7 +360,7 @@ def queryset_clientes_cnpj(*, apenas_sem_classificacao: bool = True):
     from crm_app.models import Cliente
 
     qs = Cliente.objects.annotate(doc_len=Length('cpf_cnpj')).filter(doc_len=14)
-    if apenas_sem_classificacao:
+    if not forcar_todos and apenas_sem_classificacao:
         qs = qs.filter(Q(classificacao_mei__isnull=True) | Q(classificacao_mei=''))
     return qs.order_by('id')
 
@@ -342,26 +370,30 @@ def backfill_classificacao_mei_lote(
     offset: int = 0,
     limite: int = 20,
     apenas_sem_classificacao: bool = True,
-    pausa_api_segundos: float = 0.35,
+    forcar_todos: bool = False,
+    pausa_api_segundos: float = 0.5,
 ) -> dict[str, Any]:
     """
     Processa um lote de CNPJs para preencher classificacao_mei em Cliente e Vendas.
 
-    Sempre pega os primeiros ``limite`` clientes ainda sem classificação (offset ignorado
-    na seleção). A fila encolhe a cada lote; usar offset crescente fazia o job parar cedo.
+    Sem ``forcar_todos``: sempre os primeiros ``limite`` ainda sem classificação (fila encolhe).
+    Com ``forcar_todos``: paginação por offset em todos os CNPJs (fila fixa em 380).
     """
     import time
 
     limite = max(1, min(int(limite), 50))
+    offset = max(0, int(offset))
 
-    qs = queryset_clientes_cnpj(apenas_sem_classificacao=apenas_sem_classificacao)
+    qs = queryset_clientes_cnpj(
+        apenas_sem_classificacao=apenas_sem_classificacao,
+        forcar_todos=forcar_todos,
+    )
     total_pendentes = qs.count()
-    clientes = list(qs[:limite])
 
-    try:
-        normalizar_classificacoes_legadas_no_banco()
-    except Exception:
-        logger.exception('[CNPJ MEI] Erro ao normalizar classificações legadas')
+    if forcar_todos:
+        clientes = list(qs[offset: offset + limite])
+    else:
+        clientes = list(qs[:limite])
 
     contagem = {
         CLASSIFICACAO_MEI: 0,
@@ -375,7 +407,9 @@ def backfill_classificacao_mei_lote(
     for cliente in clientes:
         try:
             qtd_vendas = Venda.objects.filter(cliente_id=cliente.id).count()
-            resultado = persistir_classificacao_mei_cliente_e_vendas(cliente)
+            resultado = persistir_classificacao_mei_cliente_e_vendas(
+                cliente, usar_cache=not forcar_todos
+            )
             contagem[resultado.classificacao] = contagem.get(resultado.classificacao, 0) + 1
             vendas_atualizadas += qtd_vendas
             if not resultado.cache_hit and pausa_api_segundos > 0:
@@ -385,14 +419,24 @@ def backfill_classificacao_mei_lote(
             erros += 1
 
     processados = len(clientes)
-    restantes = max(0, total_pendentes - processados)
-    concluido = processados == 0 or restantes == 0
+    proximo_offset = offset + processados
+
+    if forcar_todos:
+        restantes = max(0, total_pendentes - proximo_offset)
+        concluido = processados == 0 or proximo_offset >= total_pendentes
+    else:
+        restantes = queryset_clientes_cnpj(
+            apenas_sem_classificacao=apenas_sem_classificacao,
+            forcar_todos=False,
+        ).count()
+        concluido = processados == 0 or restantes == 0
 
     return {
         'total_pendentes': total_pendentes,
         'restantes': restantes,
         'processados_lote': processados,
-        'proximo_offset': offset + processados,
+        'proximo_offset': proximo_offset,
+        'processados_acumulado': proximo_offset if forcar_todos else None,
         'concluido': concluido,
         'mei': contagem.get(CLASSIFICACAO_MEI, 0),
         'nmei': contagem.get(CLASSIFICACAO_NMEI, 0),

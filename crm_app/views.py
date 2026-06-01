@@ -2796,13 +2796,35 @@ class VendaViewSet(viewsets.ModelViewSet):
         if isinstance(apenas_sem, str):
             apenas_sem = apenas_sem.strip().lower() not in ('0', 'false', 'nao', 'não', 'n')
 
-        from crm_app.services.cnpj_mei_service import backfill_classificacao_mei_lote
+        forcar_todos = request.data.get('forcar_todos', request.query_params.get('forcar_todos'))
+        if isinstance(forcar_todos, str):
+            forcar_todos = forcar_todos.strip().lower() in ('1', 'true', 'sim', 's')
+        else:
+            forcar_todos = bool(forcar_todos)
+
+        from crm_app.services.cnpj_mei_service import (
+            backfill_classificacao_mei_lote,
+            normalizar_classificacoes_legadas_no_banco,
+        )
+
+        primeiro_lote = request.data.get('primeiro_lote', request.query_params.get('primeiro_lote'))
+        if isinstance(primeiro_lote, str):
+            primeiro_lote = primeiro_lote.strip().lower() in ('1', 'true', 'sim', 's')
+        else:
+            primeiro_lote = bool(primeiro_lote) if primeiro_lote is not None else (offset == 0)
+
+        if primeiro_lote:
+            try:
+                normalizar_classificacoes_legadas_no_banco()
+            except Exception:
+                logger.exception('Erro ao normalizar classificações MEI legadas')
 
         try:
             resultado = backfill_classificacao_mei_lote(
                 offset=offset,
                 limite=limite,
                 apenas_sem_classificacao=apenas_sem,
+                forcar_todos=forcar_todos,
             )
         except Exception:
             logger.exception('Erro no backfill classificação MEI')

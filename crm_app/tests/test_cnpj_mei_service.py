@@ -27,6 +27,42 @@ class InterpretarBrasilApiTest(SimpleTestCase):
         )
         self.assertEqual(r.classificacao, CLASSIFICACAO_MEI)
 
+    def test_mei_2135_opcao_false_sem_exclusao(self):
+        """BrasilAPI: opcao_pelo_mei=False comum em MEI; não deve virar NMEI."""
+        r = _interpretar_resposta_brasilapi(
+            {
+                'codigo_natureza_juridica': 2135,
+                'natureza_juridica': 'Empresário (Individual)',
+                'opcao_pelo_mei': False,
+                'data_opcao_pelo_mei': None,
+                'data_exclusao_do_mei': None,
+            },
+            '13015154000107',
+        )
+        self.assertEqual(r.classificacao, CLASSIFICACAO_MEI)
+
+    def test_nmei_2135_com_exclusao_mei(self):
+        r = _interpretar_resposta_brasilapi(
+            {
+                'codigo_natureza_juridica': 2135,
+                'opcao_pelo_mei': False,
+                'data_exclusao_do_mei': '2025-12-31',
+            },
+            '43655857000152',
+        )
+        self.assertEqual(r.classificacao, CLASSIFICACAO_NMEI)
+
+    def test_mei_opcao_boolean_true(self):
+        r = _interpretar_resposta_brasilapi(
+            {
+                'codigo_natureza_juridica': 2135,
+                'opcao_pelo_mei': True,
+                'data_exclusao_do_mei': None,
+            },
+            '66088769000111',
+        )
+        self.assertEqual(r.classificacao, CLASSIFICACAO_MEI)
+
     def test_nmei_pela_natureza(self):
         r = _interpretar_resposta_brasilapi(
             {
