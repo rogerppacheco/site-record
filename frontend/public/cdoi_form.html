@@ -1586,11 +1586,17 @@
                 headers: {'Authorization': `Bearer ${token}`} 
             }); 
             const d = await r.json(); 
-            if(!r.ok) {
-                console.error('Erro ao buscar CEP:', d);
+            if (r.status === 401 || r.status === 403) {
+                alert(d.message || 'Sessão expirada. Faça login novamente.');
                 return;
             }
-            if(!d.erro){ 
+            if(!r.ok) {
+                const msg = d.message || d.error || 'Não foi possível consultar o CEP.';
+                alert(d.code === 'not_found' ? msg : msg + ' Tente novamente ou preencha manualmente.');
+                return;
+            }
+            const erroCep = d.erro === true || d.erro === 'true';
+            if(!erroCep){ 
                 document.getElementById('logradouro').value=d.logradouro; 
                 document.getElementById('bairro').value=d.bairro; 
                 document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; 

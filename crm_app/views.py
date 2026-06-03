@@ -8228,32 +8228,44 @@ def listar_grupos_whatsapp_api(request):
 
 
 class ViaCepProxyView(APIView):
-    """Proxy para consulta de CEP evitando CORS no frontend."""
+    """Proxy para consulta de CEP evitando CORS no frontend (ViaCEP + fallback OpenCEP)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, cep):
-        cep_limpo = re.sub(r'\D', '', str(cep or ''))
-        if len(cep_limpo) != 8:
-            return Response({'error': 'CEP inválido.'}, status=400)
+        from crm_app.services.cep_endereco import consultar_endereco_cep, normalizar_cep
 
-        url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
-        try:
-            resp = requests.get(url, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+        cep_limpo = normalizar_cep(cep)
+        if len(cep_limpo) != 8:
+            return Response({
+                'code': 'invalid',
+                'error': 'CEP inválido. Informe 8 dígitos.',
+            }, status=400)
+
+        resultado = consultar_endereco_cep(cep_limpo)
+        status = resultado.get('status')
+
+        if status == 'ok':
+            data = dict(resultado['data'])
+            fonte = resultado.get('fonte', 'viacep')
+            logger.info('[CEP] %s encontrado via %s (usuário %s)', cep_limpo, fonte, request.user)
+            data.pop('_fonte', None)
             return Response(data)
-        except requests.exceptions.Timeout:
-            logger.warning("[ViaCEP] Timeout ao consultar CEP %s", cep_limpo)
-            return Response({'error': 'Tempo esgotado ao consultar CEP. Tente novamente.'}, status=502)
-        except requests.exceptions.RequestException as e:
-            logger.warning("[ViaCEP] Erro de rede ao consultar CEP %s: %s", cep_limpo, e)
-            return Response({'error': f'Erro ao consultar CEP: {str(e)}'}, status=502)
-        except (ValueError, KeyError) as e:
-            logger.warning("[ViaCEP] Resposta inválida para CEP %s: %s", cep_limpo, e)
-            return Response({'error': 'Resposta inválida do serviço de CEP.'}, status=502)
-        except Exception as e:
-            logger.exception("[ViaCEP] Erro inesperado ao consultar CEP %s: %s", cep_limpo, e)
-            return Response({'error': f'Erro ao consultar CEP: {str(e)}'}, status=502)
+
+        if status == 'not_found':
+            logger.info('[CEP] %s não encontrado em ViaCEP nem OpenCEP', cep_limpo)
+            return Response({
+                'erro': True,
+                'code': 'not_found',
+                'message': 'CEP não encontrado na base dos Correios.',
+            }, status=404)
+
+        detail = resultado.get('detail', '')
+        logger.warning('[CEP] %s indisponível: %s', cep_limpo, detail)
+        return Response({
+            'code': 'unavailable',
+            'message': 'Serviço de consulta de CEP temporariamente indisponível. Tente novamente ou preencha manualmente.',
+            'detail': detail,
+        }, status=502)
 
 
 class NominatimProxyView(APIView):

@@ -482,14 +482,14 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-light">
-                    <h5 class="modal-title fw-bold text-danger"><i class="bi bi-geo-alt-fill"></i> CEP Não Encontrado</h5>
+                    <h5 class="modal-title fw-bold text-danger" id="modal-cep-titulo"><i class="bi bi-geo-alt-fill"></i> CEP Não Encontrado</h5>
                     <button type="button" class="btn-close" onclick="acaoCepManual(false)"></button>
                 </div>
                 <div class="modal-body text-center">
-                    <p class="mb-3">O CEP informado não retornou nenhum endereço na base dos Correios.</p>
-                    <p class="text-muted small">Deseja preencher o endereço manualmente?</p>
+                    <p class="mb-3" id="modal-cep-mensagem">O CEP informado não retornou nenhum endereço na base dos Correios.</p>
+                    <p class="text-muted small" id="modal-cep-submensagem">Deseja preencher o endereço manualmente?</p>
                 </div>
-                <div class="modal-footer justify-content-center">
+                <div class="modal-footer justify-content-center" id="modal-cep-botoes">
                     <button type="button" class="btn btn-outline-secondary" onclick="acaoCepManual(false)">Não, corrigir CEP</button>
                     <button type="button" class="btn btn-primary fw-bold" onclick="acaoCepManual(true)">Sim, preencher manual</button>
                 </div>
@@ -1056,27 +1056,86 @@
             ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         }
 
+        const CEP_MODAL_TEXTOS = {
+            not_found: {
+                titulo: 'CEP Não Encontrado',
+                mensagem: 'O CEP informado não retornou nenhum endereço na base dos Correios.',
+                sub: 'Deseja preencher o endereço manualmente?',
+                manual: true,
+            },
+            unavailable: {
+                titulo: 'Consulta de CEP indisponível',
+                mensagem: 'Não foi possível consultar o CEP no momento (serviço externo indisponível ou sem resposta).',
+                sub: 'Você pode tentar de novo em instantes ou preencher o endereço manualmente.',
+                manual: true,
+            },
+            unauthorized: {
+                titulo: 'Sessão expirada',
+                mensagem: 'Sua sessão expirou. Atualize a página e faça login novamente para consultar o CEP.',
+                sub: '',
+                manual: false,
+            },
+        };
+
+        function limparCamposEnderecoNovaVenda() {
+            ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+        }
+
+        function mostrarModalCep(tipo, mensagemCustom) {
+            const cfg = CEP_MODAL_TEXTOS[tipo] || CEP_MODAL_TEXTOS.unavailable;
+            const tituloEl = document.getElementById('modal-cep-titulo');
+            const msgEl = document.getElementById('modal-cep-mensagem');
+            const subEl = document.getElementById('modal-cep-submensagem');
+            const botoesEl = document.getElementById('modal-cep-botoes');
+            if (tituloEl) tituloEl.innerHTML = `<i class="bi bi-geo-alt-fill"></i> ${cfg.titulo}`;
+            if (msgEl) msgEl.textContent = mensagemCustom || cfg.mensagem;
+            if (subEl) {
+                subEl.textContent = cfg.sub || '';
+                subEl.style.display = cfg.sub ? '' : 'none';
+            }
+            if (botoesEl) botoesEl.style.display = cfg.manual ? '' : 'none';
+            modalCep.show();
+        }
+
         async function buscarCepNovaVenda(e) { 
             if(origemCadastroAtual === 'APP') return;
             const cep = e.target.value.replace(/\D/g, ''); 
             if (cep.length !== 8) return; 
             const fields = ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'];
             fields.forEach(id => document.getElementById(id).value = '...');
+            let d = {};
             try { 
                 const res = await fetch(`/api/crm/viacep/${cep}/`, { credentials: 'include' }); 
-                const d = await res.json(); 
-                if (!res.ok) {
-                    modalCep.show();
+                try { d = await res.json(); } catch (_) {}
+                if (res.status === 401 || res.status === 403) {
+                    limparCamposEnderecoNovaVenda();
+                    mostrarModalCep('unauthorized', d.message || d.error);
                     return;
                 }
-                if(!d.erro) { 
+                if (!res.ok) {
+                    limparCamposEnderecoNovaVenda();
+                    const tipo = d.code === 'not_found' ? 'not_found' : 'unavailable';
+                    mostrarModalCep(tipo, d.message || d.error);
+                    return;
+                }
+                const erroCep = d.erro === true || d.erro === 'true';
+                if (!erroCep) { 
                     document.getElementById('nova-logradouro').value = (d.logradouro || '').toUpperCase(); 
                     document.getElementById('nova-bairro').value = (d.bairro || '').toUpperCase(); 
                     document.getElementById('nova-cidade').value = (d.localidade || '').toUpperCase(); 
                     document.getElementById('nova-estado').value = (d.uf || '').toUpperCase(); 
                     document.getElementById('nova-numero').focus();
-                } else { modalCep.show(); }
-            } catch(err) { modalCep.show(); } 
+                } else {
+                    limparCamposEnderecoNovaVenda();
+                    mostrarModalCep('not_found', d.message);
+                }
+            } catch(err) {
+                limparCamposEnderecoNovaVenda();
+                mostrarModalCep('unavailable');
+            } 
         }
 
         function acaoCepManual(manual) {

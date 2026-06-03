@@ -38,7 +38,8 @@ def consultar_cep(cep, cache=None):
         logger.debug("[ViaCEP] Erro ao consultar CEP %s: %s", cep_limpo, e)
         result = None
     else:
-        if isinstance(data, dict) and data.get('erro') is not True:
+        from .cep_endereco import cep_resposta_tem_erro
+        if isinstance(data, dict) and not cep_resposta_tem_erro(data):
             result = {
                 'localidade': (data.get('localidade') or '').strip(),
                 'uf': (data.get('uf') or '').strip()[:2],
