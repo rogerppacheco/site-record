@@ -167,6 +167,21 @@ def avaliar_fastpath_zapi(data: Any) -> Optional[Dict[str, str]]:
     texto = _extrair_texto_minimo(data)
     tem_midia = _tem_midia(data)
 
+    from crm_app.whatsapp_telefone_blocklist import telefone_esta_bloqueado
+
+    participant = (
+        data.get('participantPhone')
+        or data.get('participant_phone')
+        or ''
+    )
+    if isinstance(data.get('text'), dict) and not participant:
+        participant = data['text'].get('participant') or ''
+    if isinstance(data.get('message'), dict) and not participant:
+        participant = (data.get('message') or {}).get('participant') or ''
+    if telefone_esta_bloqueado(telefone) or telefone_esta_bloqueado(str(participant)):
+        logger.info("[Fastpath] Telefone bloqueado ignorado: %s", telefone or participant)
+        return {'status': 'ok', 'mensagem': 'Telefone bloqueado'}
+
     if _is_group(data, telefone):
         if texto and _parece_resposta_gc(texto):
             return None

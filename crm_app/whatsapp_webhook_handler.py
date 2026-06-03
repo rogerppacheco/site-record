@@ -6834,6 +6834,20 @@ def processar_webhook_whatsapp(data, request=None):
     telefone_usuario = _strip_whatsapp_jid(telefone_usuario)
     participant_phone = _strip_whatsapp_jid(participant_phone)
 
+    from crm_app.whatsapp_telefone_blocklist import telefone_esta_bloqueado
+    if (
+        telefone_esta_bloqueado(telefone)
+        or telefone_esta_bloqueado(telefone_usuario)
+        or telefone_esta_bloqueado(participant_phone)
+    ):
+        logger.info(
+            "[Webhook] Telefone bloqueado ignorado: telefone=%s usuario=%s participant=%s",
+            telefone,
+            telefone_usuario,
+            participant_phone,
+        )
+        return {'status': 'ok', 'mensagem': 'Telefone bloqueado'}
+
     # Extrair mensagem antes do return de grupo (para permitir resposta do GC em grupo)
     mensagem_texto = ""
     if 'text' in data and isinstance(data['text'], dict):

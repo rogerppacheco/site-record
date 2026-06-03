@@ -64,3 +64,23 @@ class WhatsappWebhookFastpathTests(SimpleTestCase):
         out = avaliar_fastpath_zapi(payload)
         self.assertEqual('ok', out['status'])
         self.assertIn('conteúdo', out['mensagem'].lower())
+
+    def test_ignora_telefone_bloqueado(self):
+        payload = {
+            'phone': '5512981750292',
+            'type': 'ReceivedCallback',
+            'text': {'message': 'Escolha um dos botões abaixo.'},
+        }
+        out = avaliar_fastpath_zapi(payload)
+        self.assertEqual(out['status'], 'ok')
+        self.assertIn('bloqueado', out['mensagem'].lower())
+
+    def test_ignora_telefone_bloqueado_sem_prefixo_55(self):
+        payload = {
+            'phone': '12981750292',
+            'type': 'ReceivedCallback',
+            'text': {'message': 'Fachada'},
+        }
+        out = avaliar_fastpath_zapi(payload)
+        self.assertEqual(out['status'], 'ok')
+        self.assertIn('bloqueado', out['mensagem'].lower())
