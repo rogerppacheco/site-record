@@ -1107,12 +1107,20 @@
             const fields = ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'];
             fields.forEach(id => document.getElementById(id).value = '...');
             let d = {};
-            try { 
-                const res = await fetch(`/api/crm/viacep/${cep}/`, { credentials: 'include' }); 
+            try {
+                const token = localStorage.getItem('accessToken');
+                const headers = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const res = await fetch(`/api/crm/viacep/${cep}/`, { headers });
                 try { d = await res.json(); } catch (_) {}
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     limparCamposEnderecoNovaVenda();
-                    mostrarModalCep('unauthorized', d.message || d.error);
+                    logout();
+                    return;
+                }
+                if (res.status === 403) {
+                    limparCamposEnderecoNovaVenda();
+                    mostrarModalCep('unauthorized', d.message || d.detail || d.error);
                     return;
                 }
                 if (!res.ok) {
