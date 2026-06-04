@@ -793,7 +793,7 @@ class ImportacaoOsab(models.Model):
     nome_canal = models.CharField(max_length=255, null=True, blank=True) 
     pdv_sap = models.CharField(max_length=255, null=True, blank=True)
     descricao = models.CharField(max_length=255, null=True, blank=True)
-    data_abertura = models.DateField(null=True, blank=True)
+    data_abertura = models.DateTimeField(null=True, blank=True)
     data_fechamento = models.DateField(null=True, blank=True)
     situacao = models.CharField(max_length=255, null=True, blank=True)
     cluster = models.CharField(max_length=255, null=True, blank=True)

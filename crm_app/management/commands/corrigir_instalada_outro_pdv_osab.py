@@ -17,7 +17,18 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--ids", type=str, default="", help="IDs separados por vírgula.")
+        parser.add_argument(
+            "--arquivo-ids",
+            type=str,
+            default="",
+            help="Arquivo com um ID de venda por linha.",
+        )
         parser.add_argument("--log-osab", type=int, default=None, help="Log importação OSAB (snapshots AUSENTE_OSAB).")
+        parser.add_argument(
+            "--todos-outro-pdv-com-data-instalacao",
+            action="store_true",
+            help="Todas INSTALADA OUTRO PDV ativas com data_instalacao preenchida.",
+        )
         parser.add_argument("--aplicar", action="store_true", help="Grava alterações (sem flag: dry-run).")
 
     def handle(self, *args, **options):
@@ -30,6 +41,13 @@ class Command(BaseCommand):
         ids = set()
         if options.get("ids"):
             ids.update(int(x.strip()) for x in options["ids"].split(",") if x.strip())
+        arquivo = (options.get("arquivo_ids") or "").strip()
+        if arquivo:
+            with open(arquivo, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.isdigit():
+                        ids.add(int(line))
         log_id = options.get("log_osab")
         if log_id:
             ids.update(
@@ -38,9 +56,17 @@ class Command(BaseCommand):
                     origem=LogImportacaoOSABSnapshotVenda.ORIGEM_AUSENTE_OSAB,
                 ).values_list("venda_id", flat=True)
             )
+        if options.get("todos_outro_pdv_com_data_instalacao"):
+            ids.update(
+                Venda.objects.filter(
+                    ativo=True,
+                    status_esteira=st_outro,
+                    data_instalacao__isnull=False,
+                ).values_list("id", flat=True)
+            )
 
         if not ids:
-            self.stderr.write("Informe --ids ou --log-osab.")
+            self.stderr.write("Informe --ids, --arquivo-ids, --log-osab ou --todos-outro-pdv-com-data-instalacao.")
             return
 
         qs = Venda.objects.filter(id__in=ids, ativo=True, status_esteira=st_outro).select_related(

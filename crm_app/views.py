@@ -5134,12 +5134,20 @@ class ImportacaoOsabView(APIView):
                 return None
             # ==============================================================================
 
-            # Aplica a função linha a linha nas colunas de data
-            cols_data = ['DT_REF', 'DATA_ABERTURA', 'DATA_FECHAMENTO', 'DATA_AGENDAMENTO']
+            from crm_app.osab_datetime_utils import (
+                format_osab_datetime_local,
+                osab_datetimes_differ,
+                osab_datetime_to_aware,
+                parse_osab_datetime,
+            )
+
+            # Colunas só-data; DATA_ABERTURA preserva data+hora (datetime)
+            cols_data = ['DT_REF', 'DATA_FECHAMENTO', 'DATA_AGENDAMENTO']
             for col in cols_data:
                 if col in df.columns:
-                    # O .apply é mais lento que vetorização, mas muito mais seguro para dados sujos
                     df[col] = df[col].apply(smart_date_parser)
+            if 'DATA_ABERTURA' in df.columns:
+                df['DATA_ABERTURA'] = df['DATA_ABERTURA'].apply(parse_osab_datetime)
             
             df = df.replace({np.nan: None, pd.NaT: None})
 
@@ -5281,6 +5289,8 @@ class ImportacaoOsabView(APIView):
                         if col_planilha == 'PEDIDO': 
                             # Manter valor exato da planilha (já está como string preservando zeros)
                             val = self._normalize_pedido(val)  # Apenas remove .0 se for float convertido
+                        elif col_planilha == 'DATA_ABERTURA' and val:
+                            val = osab_datetime_to_aware(val)
                         dados_model[campo_model] = val
                     
                     doc_chave = dados_model.get('documento')
@@ -5406,14 +5416,17 @@ class ImportacaoOsabView(APIView):
                         report["logs_detalhados"].append(log_item)
                         continue
 
-                    # --- 1. DATA DE ABERTURA ---
-                    # Como usamos o parser inteligente, aqui já é date ou None
+                    # --- 1. DATA DE ABERTURA (data + hora, alinhada à OSAB) ---
                     nova_data_abertura = row.get('DATA_ABERTURA')
                     if nova_data_abertura:
-                        data_sistema = venda.data_abertura.date() if venda.data_abertura else None
-                        if data_sistema != nova_data_abertura:
-                            detalhes_hist['data_abertura'] = f"De '{data_sistema}' para '{nova_data_abertura}'"
-                            venda.data_abertura = nova_data_abertura
+                        nova_dt_abertura = osab_datetime_to_aware(nova_data_abertura)
+                        if nova_dt_abertura and osab_datetimes_differ(
+                            venda.data_abertura, nova_dt_abertura
+                        ):
+                            antes_ab = format_osab_datetime_local(venda.data_abertura)
+                            depois_ab = format_osab_datetime_local(nova_dt_abertura)
+                            detalhes_hist['data_abertura'] = f"De '{antes_ab}' para '{depois_ab}'"
+                            venda.data_abertura = nova_dt_abertura
                             houve_alteracao = True
 
                     # Aplica Alterações Status Tratamento
