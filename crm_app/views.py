@@ -2941,6 +2941,14 @@ class VendaViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Erro ao normalizar classificações MEI legadas no export')
 
+        from crm_app.churn_os_utils import build_osab_documento_set, rotulo_validacao_osab
+
+        osab_set = build_osab_documento_set(
+            ImportacaoOsab.objects.exclude(
+                Q(documento__isnull=True) | Q(documento='')
+            ).values_list('documento', flat=True).iterator(chunk_size=8000)
+        )
+
         def _classificacao_mei_celula(venda):
             cod = venda.classificacao_mei or (
                 venda.cliente.classificacao_mei if venda.cliente else None
@@ -2953,7 +2961,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             'Cliente', 'CPF/CNPJ', 'MEI/NMEI', 'Telefone 1', 'Telefone 2', 'Email',
             'Plano', 'Valor', 'Forma Pagamento',
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
-            'OS', 'Data Agendamento', 'Turno', 'Data Instalação', 'Data Física (no cliente)',
+            'OS', 'VALIDAÇÃO OSAB', 'Data Agendamento', 'Turno', 'Data Instalação', 'Data Física (no cliente)',
             'Adiant. CNPJ', 'Adiantamento de Comissão',
             'Adiant. Sábado', 'Valor Adiant. Sábado (R$)', 'Quitado adiant. sábado (inst.)',
             'Motivo Pendência', 'Observações',
@@ -2991,6 +2999,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 v.status_tratamento.nome if v.status_tratamento else '-',
                 v.status_comissionamento.nome if v.status_comissionamento else '-',
                 v.ordem_servico or '-',
+                rotulo_validacao_osab(v.ordem_servico, osab_set),
                 dt_agendamento,
                 v.get_periodo_agendamento_display() or '-',
                 dt_instalacao,

@@ -23,6 +23,32 @@ def os_variantes(val: Optional[str]) -> set[str]:
     return {x for x in out if x}
 
 
+def build_osab_documento_set(documentos) -> set[str]:
+    """Conjunto de chaves OSAB (documento) com variantes para match com ordem_servico do CRM."""
+    osab_set: set[str] = set()
+    for doc in documentos:
+        if doc is None:
+            continue
+        s = str(doc).strip()
+        if not s or s.upper() == 'NAN':
+            continue
+        osab_set.update(os_variantes(s))
+    return osab_set
+
+
+def pedido_consta_no_osab(pedido: Optional[str], osab_set: set[str]) -> bool:
+    if not osab_set or not pedido:
+        return False
+    return bool(os_variantes(str(pedido).strip()) & osab_set)
+
+
+def rotulo_validacao_osab(pedido: Optional[str], osab_set: set[str]) -> str:
+    """Retorno para exportações: CONSTA OSAB / NÃO CONSTA OSAB."""
+    if pedido_consta_no_osab(pedido, osab_set):
+        return 'CONSTA OSAB'
+    return 'NÃO CONSTA OSAB'
+
+
 def build_venda_lookup_por_os(vendas_qs) -> dict[str, Any]:
     """Mapeia variantes de ordem_servico -> instância Venda (primeira ocorrência)."""
     lookup: dict[str, Any] = {}

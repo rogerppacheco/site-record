@@ -84,6 +84,31 @@
         #pills-oferta .form-label { margin-bottom: 2px !important; }
         #pills-oferta hr { margin: 6px 0 !important; }
         #pills-oferta [style*="margin-top: 28px"] { margin-top: 28px !important; }
+
+        /* Etapa 5 — Finalização: recados lado a lado, leitura única sem rolagem */
+        #pills-finalizacao .script-section { padding: 8px 12px; margin-bottom: 0; }
+        #pills-finalizacao .script-title { font-size: 0.78rem; margin-bottom: 4px; padding-bottom: 4px; }
+        #pills-finalizacao .script-text { font-size: 0.82rem; line-height: 1.3; margin-bottom: 0; }
+        #pills-finalizacao .checklist-box { padding: 6px 10px; margin-bottom: 0; }
+        #pills-finalizacao .checklist-label { font-size: 0.82rem; }
+        #pills-finalizacao .card-body { padding: 8px 12px !important; }
+        #pills-finalizacao .card-subtitle { margin-bottom: 6px !important; }
+        #pills-finalizacao .form-label { font-size: 0.8rem; margin-bottom: 2px; }
+        #pills-finalizacao .form-control,
+        #pills-finalizacao .form-select { font-size: 0.85rem; padding: 4px 8px; }
+        #pills-finalizacao .recado-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-left: 3px solid var(--cor-primaria, #0d6efd);
+            border-radius: 6px;
+            padding: 8px 10px;
+            height: 100%;
+        }
+        #pills-finalizacao .recado-box .script-title { border-bottom: none; margin-bottom: 4px; }
+        #pills-finalizacao .row.g-2 { row-gap: 6px; }
+        #pills-finalizacao .mb-2 { margin-bottom: 4px !important; }
+        #pills-finalizacao .mb-3 { margin-bottom: 6px !important; }
+        #pills-finalizacao #script-obs-venda { min-height: 52px; }
     </style>
 </head>
 <body>
@@ -597,13 +622,38 @@
 
                                 <div class="tab-pane fade" id="pills-finalizacao" role="tabpanel">
                                     <div class="script-section">
-                                        <div class="script-title">Agendamento e Encerramento</div>
-                                        <p class="script-text">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
-                                        <div class="checklist-box mb-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-maioridade"><label class="form-check-label checklist-label" for="check-maioridade">Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?</label></div></div>
-                                        <div class="card bg-light border-0 mb-3"><div class="card-body"><h6 class="card-subtitle mb-3 text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6><div class="row g-3"><div class="col-md-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-md-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
-                                        <div class="script-section bg-light border p-3 rounded mb-3"><div class="script-title small">Aplicativo Nio</div><p class="script-text mb-0">"Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode: <strong>Acompanhar a internet, Solicitar 2ª via da fatura, Atualizar dados e Pedir suporte.</strong> O app é essencial, pois você terá tudo na palma da sua mão. <br><br>Qualquer dúvida, entre em contato pelo WhatsApp (21 3605 1000). Enviaremos uma pesquisa de satisfação amanhã, sua opinião é muito importante!"</p></div>
-                                        <div class="mb-2"><label class="form-label fw-bold text-danger">Observações da Auditoria</label><textarea class="form-control uppercase-input" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer divergência..."></textarea></div>
-                                        <div class="text-end mt-2"><button class="btn btn-primary btn-sm" onclick="proximaAba('pills-retorno-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                        <div class="row g-2 align-items-start mb-2">
+                                            <div class="col-lg-6">
+                                                <div class="script-title mb-1">Agendamento e Encerramento</div>
+                                                <p class="script-text mb-2">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
+                                                <div class="checklist-box"><div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="check-maioridade"><label class="form-check-label checklist-label" for="check-maioridade">Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?</label></div></div>
+                                            </div>
+                                            <div class="col-lg-6">
+                                                <div class="card bg-light border-0 mb-0 h-100"><div class="card-body"><h6 class="card-subtitle text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6><div class="row g-2"><div class="col-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-lg-4 col-md-6">
+                                                <div class="recado-box">
+                                                    <div class="script-title small">Aplicativo Nio</div>
+                                                    <p class="script-text mb-0">"Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode: <strong>Acompanhar a internet, Solicitar 2ª via da fatura, Atualizar dados e Pedir suporte.</strong> O app é essencial, pois você terá tudo na palma da sua mão."</p>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-4 col-md-6">
+                                                <div class="recado-box">
+                                                    <div class="script-title small">Recolhimento de Modem / Repasse de valores</div>
+                                                    <p class="script-text mb-0">"Informo que o vendedor não está autorizado a recolher modem ou receber valores em nome da Nio."</p>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-4 col-md-12">
+                                                <div class="recado-box">
+                                                    <div class="script-title small">Outras informações do vendedor</div>
+                                                    <p class="script-text mb-0">"Houve alguma informação que o vendedor passou, que não falamos nessa auditoria?"</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-1"><label class="form-label fw-bold text-danger mb-1">Observações da Auditoria</label><textarea class="form-control uppercase-input" id="script-obs-venda" rows="2" placeholder="Anote aqui qualquer divergência..."></textarea></div>
+                                        <div class="text-end mt-1"><button class="btn btn-primary btn-sm" onclick="proximaAba('pills-retorno-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
