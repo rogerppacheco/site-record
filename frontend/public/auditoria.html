@@ -85,30 +85,84 @@
         #pills-oferta hr { margin: 6px 0 !important; }
         #pills-oferta [style*="margin-top: 28px"] { margin-top: 28px !important; }
 
-        /* Etapa 5 — Finalização: recados lado a lado, leitura única sem rolagem */
-        #pills-finalizacao .script-section { padding: 8px 12px; margin-bottom: 0; }
-        #pills-finalizacao .script-title { font-size: 0.78rem; margin-bottom: 4px; padding-bottom: 4px; }
-        #pills-finalizacao .script-text { font-size: 0.82rem; line-height: 1.3; margin-bottom: 0; }
-        #pills-finalizacao .checklist-box { padding: 6px 10px; margin-bottom: 0; }
-        #pills-finalizacao .checklist-label { font-size: 0.82rem; }
-        #pills-finalizacao .card-body { padding: 8px 12px !important; }
-        #pills-finalizacao .card-subtitle { margin-bottom: 6px !important; }
-        #pills-finalizacao .form-label { font-size: 0.8rem; margin-bottom: 2px; }
+        /* Etapa 5 — Finalização: preenche a área útil do modal sem rolagem */
+        .auditoria-flex-fill:has(#pills-finalizacao.active) {
+            overflow: hidden;
+            padding: 14px 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .auditoria-flex-fill:has(#pills-finalizacao.active) .compact-container {
+            max-width: 100%;
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .auditoria-flex-fill:has(#pills-finalizacao.active) #pills-tabContent {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        #pills-finalizacao.tab-pane.active {
+            display: flex !important;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+        #pills-finalizacao .finalizacao-card {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            padding: 18px 22px;
+            margin-bottom: 0;
+        }
+        #pills-finalizacao .script-title { font-size: 0.92rem; margin-bottom: 8px; padding-bottom: 6px; }
+        #pills-finalizacao .script-text { font-size: 0.95rem; line-height: 1.45; margin-bottom: 0; }
+        #pills-finalizacao .checklist-box { padding: 10px 14px; margin-bottom: 0; }
+        #pills-finalizacao .checklist-label { font-size: 0.92rem; }
+        #pills-finalizacao .card-body { padding: 14px 16px !important; }
+        #pills-finalizacao .card-subtitle { margin-bottom: 10px !important; font-size: 0.82rem; }
+        #pills-finalizacao .form-label { font-size: 0.88rem; margin-bottom: 4px; }
         #pills-finalizacao .form-control,
-        #pills-finalizacao .form-select { font-size: 0.85rem; padding: 4px 8px; }
+        #pills-finalizacao .form-select { font-size: 0.95rem; padding: 8px 12px; }
+        #pills-finalizacao .finalizacao-top { flex: 0 0 auto; margin-bottom: 14px !important; }
+        #pills-finalizacao .finalizacao-recados {
+            flex: 1 1 auto;
+            min-height: 0;
+            align-items: stretch;
+            margin-bottom: 14px !important;
+        }
+        #pills-finalizacao .finalizacao-recados > [class*="col"] { display: flex; min-height: 0; }
         #pills-finalizacao .recado-box {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
-            border-left: 3px solid var(--cor-primaria, #0d6efd);
-            border-radius: 6px;
-            padding: 8px 10px;
-            height: 100%;
+            border-left: 4px solid var(--cor-primaria, #0d6efd);
+            border-radius: 8px;
+            padding: 14px 16px;
+            flex: 1 1 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
         }
-        #pills-finalizacao .recado-box .script-title { border-bottom: none; margin-bottom: 4px; }
-        #pills-finalizacao .row.g-2 { row-gap: 6px; }
-        #pills-finalizacao .mb-2 { margin-bottom: 4px !important; }
-        #pills-finalizacao .mb-3 { margin-bottom: 6px !important; }
-        #pills-finalizacao #script-obs-venda { min-height: 52px; }
+        #pills-finalizacao .recado-box .script-title { border-bottom: none; margin-bottom: 8px; font-size: 0.88rem; }
+        #pills-finalizacao .finalizacao-obs-wrap {
+            flex: 0 1 22%;
+            min-height: 72px;
+            max-height: 28%;
+            display: flex;
+            flex-direction: column;
+        }
+        #pills-finalizacao .finalizacao-obs-wrap .form-label { flex: 0 0 auto; }
+        #pills-finalizacao #script-obs-venda {
+            flex: 1 1 auto;
+            min-height: 56px;
+            resize: none;
+        }
+        #pills-finalizacao .finalizacao-footer { flex: 0 0 auto; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -621,18 +675,18 @@
                                 </div>
 
                                 <div class="tab-pane fade" id="pills-finalizacao" role="tabpanel">
-                                    <div class="script-section">
-                                        <div class="row g-2 align-items-start mb-2">
-                                            <div class="col-lg-6">
-                                                <div class="script-title mb-1">Agendamento e Encerramento</div>
-                                                <p class="script-text mb-2">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
-                                                <div class="checklist-box"><div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="check-maioridade"><label class="form-check-label checklist-label" for="check-maioridade">Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?</label></div></div>
+                                    <div class="script-section finalizacao-card">
+                                        <div class="row g-3 align-items-stretch finalizacao-top">
+                                            <div class="col-lg-6 d-flex flex-column">
+                                                <div class="script-title mb-2">Agendamento e Encerramento</div>
+                                                <p class="script-text mb-3">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
+                                                <div class="checklist-box mt-auto"><div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="check-maioridade"><label class="form-check-label checklist-label" for="check-maioridade">Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?</label></div></div>
                                             </div>
                                             <div class="col-lg-6">
-                                                <div class="card bg-light border-0 mb-0 h-100"><div class="card-body"><h6 class="card-subtitle text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6><div class="row g-2"><div class="col-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
+                                                <div class="card bg-light border-0 mb-0 h-100"><div class="card-body d-flex flex-column justify-content-center"><h6 class="card-subtitle text-muted text-uppercase fw-bold">Preferência de Agendamento</h6><div class="row g-3"><div class="col-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
                                             </div>
                                         </div>
-                                        <div class="row g-2 mb-2">
+                                        <div class="row g-3 finalizacao-recados">
                                             <div class="col-lg-4 col-md-6">
                                                 <div class="recado-box">
                                                     <div class="script-title small">Aplicativo Nio</div>
@@ -652,8 +706,11 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="mb-1"><label class="form-label fw-bold text-danger mb-1">Observações da Auditoria</label><textarea class="form-control uppercase-input" id="script-obs-venda" rows="2" placeholder="Anote aqui qualquer divergência..."></textarea></div>
-                                        <div class="text-end mt-1"><button class="btn btn-primary btn-sm" onclick="proximaAba('pills-retorno-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                        <div class="finalizacao-obs-wrap">
+                                            <label class="form-label fw-bold text-danger mb-2">Observações da Auditoria</label>
+                                            <textarea class="form-control uppercase-input" id="script-obs-venda" rows="2" placeholder="Anote aqui qualquer divergência..."></textarea>
+                                        </div>
+                                        <div class="text-end finalizacao-footer"><button class="btn btn-primary" onclick="proximaAba('pills-retorno-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
