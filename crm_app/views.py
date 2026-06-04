@@ -7107,6 +7107,29 @@ def _perf_grupos_filtro_data_livre():
     return ['Diretoria', 'Admin', 'BackOffice']
 
 
+def _perf_filtro_venda_os_sem_reemissao(prefix=''):
+    """Mesma regra do painel (Hoje/Semana): ativa, O.S., CADASTRADA, sem reemissão."""
+    p = prefix
+    return (
+        Q(**{f'{p}ativo': True})
+        & ~Q(**{f'{p}ordem_servico': ''})
+        & Q(**{f'{p}ordem_servico__isnull': False})
+        & Q(**{f'{p}status_tratamento__nome__iexact': 'CADASTRADA'})
+        & Q(**{f'{p}reemissao': False})
+    )
+
+
+def _perf_filtro_venda_os_com_reemissao(prefix=''):
+    """Mesma regra do painel (Mensal): ativa, O.S., CADASTRADA (inclui reemissão)."""
+    p = prefix
+    return (
+        Q(**{f'{p}ativo': True})
+        & ~Q(**{f'{p}ordem_servico': ''})
+        & Q(**{f'{p}ordem_servico__isnull': False})
+        & Q(**{f'{p}status_tratamento__nome__iexact': 'CADASTRADA'})
+    )
+
+
 def _perf_ultimo_dia_mes(year, month):
     return date(year, month, calendar.monthrange(year, month)[1])
 
@@ -7774,8 +7797,11 @@ class ExportarPerformanceExcelView(APIView):
         users_export = _aplicar_filtro_vendedor_ativo_perf(users_export, user, request.query_params.get('vendedor_ativo'))
 
         vendas = (
-            Venda.objects.filter(ativo=True, vendedor_id__in=users_export.values_list('id', flat=True))
-            .select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
+            Venda.objects.filter(vendedor_id__in=users_export.values_list('id', flat=True))
+            .select_related(
+                'vendedor', 'cliente', 'plano', 'forma_pagamento',
+                'status_esteira', 'status_tratamento',
+            )
         )
 
         # Período selecionado no botão (define nome do arquivo e prioridade das abas)
@@ -7844,32 +7870,30 @@ class ExportarPerformanceExcelView(APIView):
         grupos_gestao = _perf_grupos_gestao()
         use_data_efetiva = not is_member(user, grupos_gestao)
 
-        # Regra de reemissão:
-        # - Hoje e Semana: exclui reemissão
-        # - Mês: inclui reemissão
-        vendas_sem_reemissao = vendas.filter(reemissao=False)
+        filtro_os_sem_reemissao = _perf_filtro_venda_os_sem_reemissao()
+        filtro_os_com_reemissao = _perf_filtro_venda_os_com_reemissao()
 
-        # --- ABA 1: HOJE ---
-        vendas_hoje = vendas_sem_reemissao.filter(data_criacao__date=hoje_ref)
+        # --- ABA 1: HOJE (data_abertura = hoje, mesma regra do painel) ---
+        vendas_hoje = vendas.filter(
+            filtro_os_sem_reemissao,
+            data_abertura__date=hoje_ref,
+        )
         dados_hoje = self._montar_dados(vendas_hoje, use_data_efetiva)
-        
-        # --- ABA 2: SEMANA (segunda a sábado) ---
-        vendas_semana = vendas_sem_reemissao.filter(
-            data_criacao__date__gte=inicio_semana,
-            data_criacao__date__lte=fim_semana,
+
+        # --- ABA 2: SEMANA (segunda a sábado, data_abertura) ---
+        vendas_semana = vendas.filter(
+            filtro_os_sem_reemissao,
+            data_abertura__date__gte=inicio_semana,
+            data_abertura__date__lte=fim_semana,
         )
         dados_semana = self._montar_dados(vendas_semana, use_data_efetiva)
-        
-        # --- ABA 3: MÊS ---
-        filtro_instalacao_mes = (
-            (Q(data_instalacao_fisica__isnull=False) & Q(data_instalacao_fisica__gte=inicio_mes) & Q(data_instalacao_fisica__lte=fim_mes))
-            | (Q(data_instalacao_fisica__isnull=True) & Q(data_instalacao__gte=inicio_mes) & Q(data_instalacao__lte=fim_mes))
-        )
 
+        # --- ABA 3: MÊS (abertura no mês, inclui reemissão — coluna Total do painel) ---
         vendas_mes = vendas.filter(
-            Q(data_criacao__date__gte=inicio_mes, data_criacao__date__lte=fim_mes)
-            | (Q(status_esteira__nome__iexact='INSTALADA') & filtro_instalacao_mes)
-        ).distinct()
+            filtro_os_com_reemissao,
+            data_abertura__date__gte=inicio_mes,
+            data_abertura__date__lte=fim_mes,
+        )
         dados_mes = self._montar_dados(vendas_mes, use_data_efetiva, inicio_mes=inicio_mes, fim_mes=fim_mes)
 
         # 4. Gerar o Excel
@@ -7898,20 +7922,21 @@ class ExportarPerformanceExcelView(APIView):
     def _montar_dados(self, queryset, use_data_efetiva=False, inicio_mes=None, fim_mes=None):
         dados = []
         for v in queryset:
-            # Converter para horário local para validação visual
             dt_criacao_local = timezone.localtime(v.data_criacao).strftime('%d/%m/%Y %H:%M:%S') if v.data_criacao else '-'
-            # Consultores: data efetiva (física se preenchida); gestão: data OSAB
+            dt_abertura_local = timezone.localtime(v.data_abertura).strftime('%d/%m/%Y %H:%M:%S') if v.data_abertura else '-'
             dt_inst = (v.data_instalacao_fisica or v.data_instalacao) if use_data_efetiva else v.data_instalacao
             dt_inst_str = dt_inst.strftime('%d/%m/%Y') if dt_inst else '-'
             linha = {
                 'ID Venda': v.id,
                 'Data Criação (Local)': dt_criacao_local,
+                'Data Abertura O.S. (Local)': dt_abertura_local,
                 'Vendedor': v.vendedor.username.upper() if v.vendedor else '-',
                 'Canal': v.vendedor.canal if v.vendedor else '-',
                 'Cliente': v.cliente.nome_razao_social if v.cliente else '-',
                 'CPF/CNPJ': v.cliente.cpf_cnpj if v.cliente else '-',
                 'Plano': v.plano.nome if v.plano else '-',
                 'Forma Pagamento': v.forma_pagamento.nome if v.forma_pagamento else '-',
+                'Status Tratamento': v.status_tratamento.nome if v.status_tratamento else '-',
                 'Status Esteira': v.status_esteira.nome if v.status_esteira else '-',
                 'Data Instalação': dt_inst_str,
                 'Data Física (no cliente)': v.data_instalacao_fisica.strftime('%d/%m/%Y') if v.data_instalacao_fisica else '-',
@@ -7920,19 +7945,12 @@ class ExportarPerformanceExcelView(APIView):
             }
             if inicio_mes:
                 fim_recorte = fim_mes or inicio_mes
-                data_criacao_local_date = timezone.localtime(v.data_criacao).date() if v.data_criacao else None
                 instalada_no_mes = bool(
                     dt_inst and inicio_mes <= dt_inst <= fim_recorte
                     and v.status_esteira
                     and str(v.status_esteira.nome or '').strip().upper() == 'INSTALADA'
                 )
-                if data_criacao_local_date and inicio_mes <= data_criacao_local_date <= fim_recorte:
-                    origem_mes = 'Venda do mês'
-                elif instalada_no_mes:
-                    origem_mes = 'Instalada no mês (venda anterior)'
-                else:
-                    origem_mes = 'Fora do recorte mensal'
-                linha['Origem Mensal'] = origem_mes
+                linha['Instalada no mês'] = 'Sim' if instalada_no_mes else 'Não'
             dados.append(linha)
         if not dados:
             return [{'Status': 'Sem vendas neste período'}]
