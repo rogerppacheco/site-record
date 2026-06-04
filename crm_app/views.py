@@ -4559,6 +4559,29 @@ class ImportacaoOsabView(APIView):
             pedido_str = pedido_str[:-2]
         return pedido_str
 
+    def _variantes_pedido_osab(self, pedido):
+        """Variantes de PEDIDO/O.S. para cruzamento CRM × ImportacaoOsab (zeros à esquerda, etc.)."""
+        from crm_app.churn_os_utils import os_variantes
+
+        norm = self._normalize_pedido(pedido)
+        if not norm:
+            return set()
+        return os_variantes(norm)
+
+    def _build_osab_documento_set(self, documentos):
+        """Conjunto de chaves para match incluindo variantes de cada documento OSAB."""
+        osab_set = set()
+        for doc in documentos:
+            if doc is None:
+                continue
+            osab_set.update(self._variantes_pedido_osab(doc))
+        return osab_set
+
+    def _pedido_consta_no_osab_set(self, pedido, osab_set):
+        if not osab_set:
+            return False
+        return bool(self._variantes_pedido_osab(pedido) & osab_set)
+
     def _normalize_text(self, text):
         if not text: return ""
         text = str(text).upper().strip()
@@ -4650,8 +4673,9 @@ class ImportacaoOsabView(APIView):
         Após gravar a importação: vendas ativas com O.S. que não existem em ImportacaoOsab.
         - Só considera pedidos com data de abertura (ou criação, se sem abertura) **antes do dia atual**
           (base OSAB costuma refletir até o dia anterior).
-        - Esteira contendo INSTALADA e não sendo já 'INSTALADA OUTRO PDV' -> INSTALADA OUTRO PDV.
-        - Demais -> NÃO CONSTA NA OSAB.
+        - Esteira INSTALADA: não altera (ausência na base espelho não prova outro PDV;
+          ex.: PAP marcou INSTALADA antes da planilha refletir o pedido).
+        - Demais status -> NÃO CONSTA NA OSAB.
         Não envia WhatsApp. Não executa se a planilha tiver 0 linhas ou 0 pedidos válidos
         (evita marcar o CRM inteiro quando o arquivo não trouxe PEDIDO utilizável).
         """
@@ -4690,17 +4714,9 @@ class ImportacaoOsabView(APIView):
             mensagem='Verificando vendas no CRM ausentes da base OSAB...'
         )
 
-        osab_set = set()
-        for doc in ImportacaoOsab.objects.values_list('documento', flat=True).iterator(chunk_size=8000):
-            if doc is None:
-                continue
-            s = str(doc).strip()
-            if not s:
-                continue
-            osab_set.add(s)
-            n = self._normalize_pedido(doc)
-            if n:
-                osab_set.add(n)
+        osab_set = self._build_osab_documento_set(
+            ImportacaoOsab.objects.values_list('documento', flat=True).iterator(chunk_size=8000)
+        )
 
         if not osab_set:
             return out
@@ -4709,10 +4725,8 @@ class ImportacaoOsabView(APIView):
         if not st_nao:
             st_nao = StatusCRM.objects.filter(tipo='Esteira', nome__iexact='NAO CONSTA NA OSAB').first()
         st_outro = StatusCRM.objects.filter(tipo='Esteira', nome__iexact='INSTALADA OUTRO PDV').first()
-        if not st_nao or not st_outro:
-            print(
-                "Aviso OSAB: cadastre os status Esteira 'NÃO CONSTA NA OSAB' e 'INSTALADA OUTRO PDV' no CRM."
-            )
+        if not st_nao:
+            print("Aviso OSAB: cadastre o status Esteira 'NÃO CONSTA NA OSAB' no CRM.")
             return out
 
         hoje = timezone.localdate()
@@ -4727,8 +4741,7 @@ class ImportacaoOsabView(APIView):
             os_str = (venda.ordem_servico or '').strip()
             if not os_str:
                 continue
-            norm = self._normalize_pedido(os_str)
-            if os_str in osab_set or (norm and norm in osab_set):
+            if self._pedido_consta_no_osab_set(os_str, osab_set):
                 continue
 
             if venda.data_abertura:
@@ -4743,15 +4756,21 @@ class ImportacaoOsabView(APIView):
 
             se = venda.status_esteira
             if se:
-                if se.id == st_nao.id or se.id == st_outro.id:
+                if st_outro and se.id == st_outro.id:
+                    continue
+                if se.id == st_nao.id:
                     continue
 
             nome_se = (se.nome if se else '') or ''
             nome_u = nome_se.upper()
-            if 'INSTALADA' in nome_u and 'OUTRO PDV' not in nome_u:
-                target = st_outro
-            else:
-                target = st_nao
+            # INSTALADA: não rebaixar só por ausência na base espelho (PAP/OSAB delta).
+            if nome_u == 'INSTALADA' or (
+                'INSTALADA' in nome_u and 'OUTRO PDV' not in nome_u and 'NAO CONSTA' not in nome_u
+                and 'NÃO CONSTA' not in nome_u
+            ):
+                continue
+
+            target = st_nao
 
             if se and se.id == target.id:
                 continue
@@ -4777,10 +4796,7 @@ class ImportacaoOsabView(APIView):
                     },
                 )
             )
-            if target.id == st_outro.id:
-                out['crm_sem_osab_outro_pdv'] += 1
-            else:
-                out['crm_sem_osab_nao_consta'] += 1
+            out['crm_sem_osab_nao_consta'] += 1
 
         if not vendas_atualizar:
             return out
@@ -4998,6 +5014,19 @@ class ImportacaoOsabView(APIView):
 
                 # 1. Normalização dos nomes das colunas
             df.columns = [str(col).strip().upper().replace(' ', '_') for col in df.columns]
+
+            def _coluna_tem_valores(col_nome):
+                if col_nome not in df.columns:
+                    return False
+                serie = df[col_nome].astype(str).str.replace('nan', '').str.strip()
+                return serie.ne('').any()
+
+            if not _coluna_tem_valores('PEDIDO'):
+                for alt_col in ('NR_ORDEM_ORIGINAL', 'NUMERO_BA'):
+                    if _coluna_tem_valores(alt_col):
+                        df['PEDIDO'] = df[alt_col]
+                        print(f"[OSAB] Coluna PEDIDO vazia/ausente; usando {alt_col} como PEDIDO.")
+                        break
             
             # 1.1 Validação de tipos de colunas esperadas
             colunas_esperadas_tipo = {
@@ -5141,6 +5170,7 @@ class ImportacaoOsabView(APIView):
             lista_pedidos_raw = df['PEDIDO'].dropna().tolist() if 'PEDIDO' in df.columns else []
             # Normalizar pedidos mantendo valor exato (apenas remover .0 se for float convertido)
             lista_pedidos_limpos = set()
+            lista_pedidos_match = set()
             for p in lista_pedidos_raw:
                 p_str = str(p).strip()
                 if p_str and p_str != 'nan':
@@ -5149,32 +5179,25 @@ class ImportacaoOsabView(APIView):
                         p_str = p_str[:-2]
                     if p_str:  # Garantir que não está vazio após processamento
                         lista_pedidos_limpos.add(p_str)
+                        lista_pedidos_match.update(self._variantes_pedido_osab(p_str))
 
             vendas_filtradas = Venda.objects.filter(
-                ativo=True, 
-                ordem_servico__in=lista_pedidos_limpos
+                ativo=True,
+                ordem_servico__in=lista_pedidos_match,
             ).select_related('vendedor', 'status_esteira', 'status_tratamento')
             
-            # Criar mapa usando pedido normalizado (mantém zeros à esquerda)
+            # Mapa pedido (e variantes) -> venda CRM
             vendas_map = {}
             for v in vendas_filtradas:
-                os_normalizado = self._normalize_pedido(v.ordem_servico)
-                if os_normalizado:
-                    vendas_map[os_normalizado] = v
-                # Também adicionar com a chave original para compatibilidade
-                if v.ordem_servico:
-                    vendas_map[v.ordem_servico] = v
+                for key in self._variantes_pedido_osab(v.ordem_servico):
+                    vendas_map.setdefault(key, v)
             osab_bot = get_osab_bot_user()
 
-            # Buscar OSAB existentes usando documentos normalizados
+            # Buscar OSAB existentes (inclui variantes de PEDIDO para match)
             osab_existentes = {}
-            for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_limpos):
-                doc_normalizado = self._normalize_pedido(obj.documento)
-                if doc_normalizado:
-                    osab_existentes[doc_normalizado] = obj
-                # Também adicionar com documento original para compatibilidade
-                if obj.documento:
-                    osab_existentes[obj.documento] = obj
+            for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_match):
+                for key in self._variantes_pedido_osab(obj.documento):
+                    osab_existentes.setdefault(key, obj)
 
             from crm_app.esteira_eventos_utils import (
                 ORIGEM_OSAB,
