@@ -588,6 +588,39 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     'quantidade': qtd_vendas_antecip_mes,
                 }
             )
+
+        # Adiantamento sábado cancelado: estorna na folha o valor já pago (ADIANTAMENTO_COMISSAO).
+        # Mês de referência = cancelamento (data_ultima_alteracao). Evita duplicar se já confirmado em Processamento Auto.
+        di_cancel = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+        df_cancel = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+        vendas_sab_cancel_mes = Venda.objects.filter(
+            vendedor=consultor,
+            ativo=True,
+            status_esteira__nome__icontains='CANCEL',
+            adiantamento_sabado_marcado=True,
+            flag_desc_adiantamento_sabado=False,
+            adiantamento_sabado_quitado_em__isnull=True,
+            data_ultima_alteracao__date__gte=di_cancel,
+            data_ultima_alteracao__date__lt=df_cancel,
+        )
+        valor_sab_cancel = Decimal('0')
+        qtd_sab_cancel = 0
+        for v_sab in vendas_sab_cancel_mes:
+            val_sab = Decimal(str(v_sab.adiantamento_sabado_valor or 0))
+            if val_sab > 0:
+                valor_sab_cancel += val_sab
+                qtd_sab_cancel += 1
+        if qtd_sab_cancel > 0:
+            total_descontos += valor_sab_cancel
+            detalhes_descontos.append(
+                {
+                    'motivo': 'Desconto adiantamento sábado (cancelado)',
+                    'valor': float(valor_sab_cancel),
+                    'tipo_exibicao': 'folha_adiant_sabado_cancel',
+                    'quantidade': qtd_sab_cancel,
+                }
+            )
+
         total_bonus = Decimal('0')
         detalhes_bonus = []
         if config:
@@ -746,10 +779,16 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             for d in detalhes_descontos
             if (d.get('tipo_exibicao') or '').lower() == 'folha_antecipacao_instalacao'
         )
+        qtd_a_descontar_sab_cancel = sum(
+            d.get('quantidade', 1)
+            for d in detalhes_descontos
+            if (d.get('tipo_exibicao') or '').lower() == 'folha_adiant_sabado_cancel'
+        )
         qtd_a_descontar_cnpj = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'adiant_cnpj')
         qtd_a_descontar = (
             qtd_a_descontar_boleto
             + qtd_a_descontar_antecip
+            + qtd_a_descontar_sab_cancel
             + qtd_a_descontar_cnpj
             + qtd_churn_m0
             + qtd_churn_m1

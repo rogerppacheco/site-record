@@ -64,7 +64,8 @@
         .text-end.mt-4 { margin-top: 12px !important; }
         .btn.btn-lg { padding: 10px 18px; }
         
-        /* Etapas 4 e 5 — preenchem a área útil do modal sem rolagem */
+        /* Etapas 3, 4 e 5 — preenchem a área útil do modal sem rolagem */
+        .auditoria-flex-fill:has(#pills-endereco.active),
         .auditoria-flex-fill:has(#pills-oferta.active),
         .auditoria-flex-fill:has(#pills-finalizacao.active) {
             overflow: hidden;
@@ -72,6 +73,7 @@
             display: flex;
             flex-direction: column;
         }
+        .auditoria-flex-fill:has(#pills-endereco.active) .compact-container,
         .auditoria-flex-fill:has(#pills-oferta.active) .compact-container,
         .auditoria-flex-fill:has(#pills-finalizacao.active) .compact-container {
             max-width: 100%;
@@ -80,6 +82,7 @@
             flex-direction: column;
             min-height: 0;
         }
+        .auditoria-flex-fill:has(#pills-endereco.active) #pills-tabContent,
         .auditoria-flex-fill:has(#pills-oferta.active) #pills-tabContent,
         .auditoria-flex-fill:has(#pills-finalizacao.active) #pills-tabContent {
             flex: 1 1 auto;
@@ -87,12 +90,85 @@
             flex-direction: column;
             min-height: 0;
         }
+        #pills-endereco.tab-pane.active,
         #pills-oferta.tab-pane.active,
         #pills-finalizacao.tab-pane.active {
             display: flex !important;
             flex-direction: column;
             flex: 1 1 auto;
             min-height: 0;
+        }
+        /* Etapa 3 — Endereço */
+        #pills-endereco .endereco-card {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            padding: 16px 20px;
+            margin-bottom: 0;
+        }
+        #pills-endereco .script-title { font-size: 0.92rem; margin-bottom: 8px; padding-bottom: 6px; }
+        #pills-endereco .checklist-box { padding: 10px 14px; margin-bottom: 10px !important; }
+        #pills-endereco .checklist-box .row { --bs-gutter-x: 1rem; }
+        #pills-endereco .script-text { font-size: 0.95rem; line-height: 1.4; margin-bottom: 8px !important; }
+        #pills-endereco .endereco-campos-grow {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 14px;
+        }
+        #pills-endereco .endereco-campos-grid {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 12px 16px;
+            align-items: end;
+        }
+        #pills-endereco .endereco-campo { min-width: 0; }
+        #pills-endereco .endereco-campo--cep { grid-column: span 2; }
+        #pills-endereco .endereco-campo--numero { grid-column: span 2; }
+        #pills-endereco .endereco-campo--uf { grid-column: span 2; }
+        #pills-endereco .endereco-campo--logradouro { grid-column: span 12; }
+        #pills-endereco .endereco-campo--complemento { grid-column: span 12; }
+        #pills-endereco .endereco-campo--bairro { grid-column: span 4; }
+        #pills-endereco .endereco-campo--cidade { grid-column: span 5; }
+        #pills-endereco .endereco-campo--ref { grid-column: span 3; }
+        #pills-endereco .endereco-campo--full { grid-column: 1 / -1; }
+        #pills-endereco .input-group { width: 100%; flex-wrap: nowrap; }
+        #pills-endereco .input-group .audit-campo-endereco,
+        #pills-endereco .input-group .form-select.audit-campo-endereco {
+            flex: 1 1 auto;
+            width: 100%;
+            min-width: 0;
+            height: auto;
+            min-height: 38px;
+            line-height: 1.35;
+            padding: 8px 12px;
+            font-size: 0.95rem;
+            field-sizing: content;
+            overflow: visible;
+            text-overflow: clip;
+        }
+        @supports not (field-sizing: content) {
+            #pills-endereco .input-group .audit-campo-endereco,
+            #pills-endereco .input-group .form-select.audit-campo-endereco {
+                width: 100%;
+            }
+        }
+        #pills-endereco .endereco-rodape {
+            flex: 0 0 auto;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        @media (max-width: 992px) {
+            #pills-endereco .endereco-campo { grid-column: 1 / -1; }
         }
         /* Etapa 4 — Oferta & Pagto */
         #pills-oferta .oferta-card {
@@ -647,27 +723,60 @@
                                 </div>
 
                                 <div class="tab-pane fade" id="pills-endereco" role="tabpanel">
-                                    <div class="script-section">
+                                    <div class="script-section endereco-card">
                                         <div class="script-title">Endereço de Instalação</div>
-                                        <div class="checklist-box mb-3"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
-                                        <p class="script-text mb-3">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
-                                        <div class="row g-3">
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Número</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div></div>
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
-                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
-                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">UF</label><div class="input-group"><select class="form-select form-control-script" id="audit-uf"><option value="">Selecione</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-uf')"><i class="bi bi-clipboard" id="btn-icon-audit-uf"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
+                                        <div class="checklist-box mb-2">
+                                            <div class="row g-2">
+                                                <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div></div>
+                                                <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
+                                            </div>
                                         </div>
-                                        <p class="script-text mt-3 text-success">"Ok, endereço confirmado."</p>
-                                        <div class="text-end mt-2">
-                                            <button class="btn btn-outline-secondary" type="button" onclick="copiarEnderecoCompleto()">
-                                                <i class="bi bi-clipboard-check"></i> Copiar Endereço Completo
-                                            </button>
+                                        <p class="script-text mb-2">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
+                                        <div class="endereco-campos-grow">
+                                            <div class="endereco-campos-grid" id="endereco-campos-grid">
+                                                <div class="endereco-campo endereco-campo--cep">
+                                                    <label class="form-label small text-muted fw-bold">CEP</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script audit-campo-endereco" data-campo-endereco="cep" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--numero">
+                                                    <label class="form-label small text-muted fw-bold">Número</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script audit-campo-endereco" data-campo-endereco="numero" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--uf">
+                                                    <label class="form-label small text-muted fw-bold">UF</label>
+                                                    <div class="input-group"><select class="form-select form-control-script audit-campo-endereco" data-campo-endereco="uf" id="audit-uf"><option value="">Selecione</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-uf')"><i class="bi bi-clipboard" id="btn-icon-audit-uf"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--logradouro endereco-campo--full">
+                                                    <label class="form-label small text-muted fw-bold">Logradouro</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input audit-campo-endereco" data-campo-endereco="logradouro" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--complemento endereco-campo--full">
+                                                    <label class="form-label small text-muted fw-bold">Complemento</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input audit-campo-endereco" data-campo-endereco="complemento" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--bairro">
+                                                    <label class="form-label small text-muted fw-bold">Bairro</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input audit-campo-endereco" data-campo-endereco="bairro" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--cidade">
+                                                    <label class="form-label small text-muted fw-bold">Cidade</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input audit-campo-endereco" data-campo-endereco="cidade" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div>
+                                                </div>
+                                                <div class="endereco-campo endereco-campo--ref">
+                                                    <label class="form-label small text-muted fw-bold">Ponto de Referência</label>
+                                                    <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input audit-campo-endereco" data-campo-endereco="ref" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                        <div class="endereco-rodape">
+                                            <p class="script-text mb-0 text-success">"Ok, endereço confirmado."</p>
+                                            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                                <button class="btn btn-outline-secondary" type="button" onclick="copiarEnderecoCompleto()">
+                                                    <i class="bi bi-clipboard-check"></i> Copiar Endereço Completo
+                                                </button>
+                                                <button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1185,12 +1294,21 @@
                         $('#audit-cidade').val((data.localidade || '').toUpperCase());
                         $('#audit-uf').val((data.uf || '').toUpperCase());
                         $('#audit-numero').focus();
+                        ajustarLayoutCamposEnderecoAuditoria();
                     })
                     .catch(function() {
                         alert("Erro ao buscar CEP. Verifique sua conexão ou tente novamente.");
                         $('#audit-logradouro').val('');
                     });
             });
+
+            $(document).on('input change', '#pills-endereco .audit-campo-endereco', ajustarLayoutCamposEnderecoAuditoria);
+            var tabEndereco = document.getElementById('pills-endereco-tab');
+            if (tabEndereco) {
+                tabEndereco.addEventListener('shown.bs.tab', function() {
+                    ajustarLayoutCamposEnderecoAuditoria();
+                });
+            }
 
             $('#filtro-pesquisa').on('keypress', function(e) { if (e.which === 13) aplicarFiltrosAuditoria(); });
             $('#painel-historico-ligacao-filtro').on('keypress', function(e) {
@@ -1648,6 +1766,7 @@
                 }
 
                 calcularIdadeAuto(); atualizarTextoPlano(); aplicarMascarasManuais(); 
+                ajustarLayoutCamposEnderecoAuditoria();
                 atualizarSaudacao();
                 $('.form-check-input').prop('checked', false);
                 $('.nav-link').removeClass('active'); $('.tab-pane').removeClass('show active');
@@ -2983,6 +3102,20 @@
 
         function copiarMensagem() { const t = document.getElementById("aprovacao-mensagem"); t.select(); navigator.clipboard.writeText(t.value).then(() => alert("Copiado!")); }
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+
+        /** Ajusta largura das colunas do endereço conforme o texto (bairro/cidade/ref longos ocupam linha inteira). */
+        function ajustarLayoutCamposEnderecoAuditoria() {
+            const limitesLinhaInteira = { bairro: 20, cidade: 24, ref: 22 };
+            document.querySelectorAll('#pills-endereco [data-campo-endereco]').forEach(function(inp) {
+                const val = (inp.value || '').trim();
+                inp.title = val || '';
+                const tipo = inp.getAttribute('data-campo-endereco');
+                const bloco = inp.closest('.endereco-campo');
+                if (!bloco || !tipo || limitesLinhaInteira[tipo] === undefined) return;
+                bloco.classList.toggle('endereco-campo--full', val.length > limitesLinhaInteira[tipo]);
+            });
+        }
+
     function copiarEnderecoCompleto() {
         function toTitleCase(str) {
             return str.toLowerCase().replace(/\b\w+/g, function(txt){
