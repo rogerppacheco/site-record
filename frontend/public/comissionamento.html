@@ -43,6 +43,11 @@
         .filter-row th { background-color: #e9ecef !important; padding: 5px !important; }
         .filter-input { font-size: 0.75rem; border: 1px solid #ced4da; border-radius: 2px; padding: 4px; width: 100%; }
         .filter-input:focus { outline: none; border-color: #86b7fe; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
+        .extrato-comissao-table .filter-row select.filter-input { padding: 2px 4px; }
+        .extrato-comissao-table th { white-space: nowrap; }
+        .extrato-valor-referencia { color: #6c757d; font-style: italic; }
+        .extrato-valor-antecipada { color: #0dcaf0; }
+        .extrato-valor-churn { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -251,6 +256,179 @@
             return '<span class="text-muted">-</span>';
         }
 
+        function fmtValorComissaoExtrato(e) {
+            if (e.valor_comissao == null || e.valor_comissao === '') return '<span class="text-muted">—</span>';
+            const tipo = (e.comissao_tipo || '').toLowerCase();
+            let cls = 'money-col fw-bold';
+            let title = 'Comissão na folha';
+            if (tipo === 'antecipada') { cls += ' extrato-valor-antecipada'; title = 'Já adiantada (referência)'; }
+            else if (tipo === 'referencia') { cls += ' extrato-valor-referencia'; title = 'Tabela de referência (não instalada)'; }
+            else if (tipo === 'churn') { cls += ' extrato-valor-churn'; title = 'Desconto churn'; }
+            return `<span class="${cls}" title="${title}">${fmtMoney(e.valor_comissao)}</span>`;
+        }
+
+        function montarTabelaExtrato(v) {
+            const extratoLista = (v.extrato || []);
+            const normaliza = (txt) => (txt || '').toString().trim().toUpperCase();
+            const parseBrDateToSort = (dt) => {
+                const s = (dt || '').toString().trim();
+                const p = s.split('/');
+                if (p.length !== 3) return '';
+                const [dd, mm, yyyy] = p;
+                if (!dd || !mm || !yyyy) return '';
+                return `${yyyy.padStart(4, '0')}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+            };
+            const blocoInfo = (e) => {
+                const situacao = normaliza(e.situacao);
+                const isChurn = normaliza(e.churn) === 'SIM';
+                const isCancelada = situacao.includes('CANCELADA');
+                if (situacao === 'INSTALADA' && !isChurn) return { ordem: 0, titulo: 'INSTALADAS', statusGrupo: 'INSTALADA' };
+                if (situacao === 'INSTALADA' && isChurn) return { ordem: 1, titulo: 'INSTALADAS COM CHURN', statusGrupo: 'INSTALADA (CHURN)' };
+                if (isCancelada) return { ordem: 2, titulo: 'CANCELADAS', statusGrupo: situacao || 'CANCELADA' };
+                return { ordem: 3, titulo: 'DEMAIS STATUS', statusGrupo: situacao || '-' };
+            };
+            const blocos = [
+                { ordem: 0, titulo: 'INSTALADAS', itens: [] },
+                { ordem: 1, titulo: 'INSTALADAS COM CHURN', itens: [] },
+                { ordem: 2, titulo: 'CANCELADAS', itens: [] },
+                { ordem: 3, titulo: 'DEMAIS STATUS', itens: [] }
+            ];
+            extratoLista.forEach(e => {
+                const b = blocoInfo(e);
+                blocos[b.ordem].itens.push({ ...e, _statusGrupo: b.statusGrupo });
+            });
+
+            const cols = [
+                { key: 'nome', label: 'NOME', filter: 'text' },
+                { key: 'dacc', label: 'DACC', filter: 'select' },
+                { key: 'cnpj', label: 'CNPJ', filter: 'select' },
+                { key: 'classificacao_mei', label: 'MEI/NMEI', filter: 'select' },
+                { key: 'plano', label: 'PLANO', filter: 'text' },
+                { key: 'dt_pedido', label: 'DT PEDIDO', filter: 'text' },
+                { key: 'dt_inst', label: 'DT INST', filter: 'text' },
+                { key: 'os', label: 'OS', filter: 'text' },
+                { key: 'situacao', label: 'SITUAÇÃO', filter: 'text' },
+                { key: 'churn', label: 'CHURN', filter: 'select' },
+                { key: 'adiantada', label: 'ADIANT.', filter: 'select' },
+                { key: 'valor_comissao', label: 'COMISSÃO', filter: 'text', align: 'end' },
+            ];
+
+            let html = `<div class="p-2 border-top small text-muted fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Extrato (${extratoLista.length} vendas)</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm extrato-limpar-filtros">Limpar filtros</button>
+            </div>
+            <div class="table-responsive"><table class="table table-sm table-striped mb-0 small extrato-comissao-table"><thead class="table-light">
+                <tr>${cols.map(c => `<th class="${c.align === 'end' ? 'text-end' : ''}">${c.label}</th>`).join('')}</tr>
+                <tr class="filter-row">${cols.map(c => {
+                    if (c.filter === 'select') {
+                        let opts = '<option value="">Todos</option>';
+                        if (c.key === 'classificacao_mei') {
+                            opts += '<option value="MEI">MEI</option><option value="NMEI">NMEI</option><option value="-">-</option>';
+                        } else {
+                            opts += '<option value="SIM">SIM</option><option value="NÃO">NÃO</option><option value="-">-</option>';
+                        }
+                        return `<th><select class="filter-input extrato-filter-input" data-col="${c.key}">${opts}</select></th>`;
+                    }
+                    return `<th><input type="text" class="filter-input extrato-filter-input" data-col="${c.key}" placeholder="Filtrar..." autocomplete="off"></th>`;
+                }).join('')}</tr>
+            </thead><tbody>`;
+
+            blocos.forEach(b => {
+                if (!b.itens.length) return;
+                html += `<tr class="table-secondary extrato-bloco-row" data-bloco="${b.ordem}"><td colspan="${cols.length}" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
+                const itensOrdenados = [...b.itens].sort((a, b2) => {
+                    const d1 = parseBrDateToSort(a.dt_pedido) || '9999-99-99';
+                    const d2 = parseBrDateToSort(b2.dt_pedido) || '9999-99-99';
+                    if (d1 !== d2) return d1.localeCompare(d2);
+                    return (a.nome || '').localeCompare(b2.nome || '');
+                });
+                itensOrdenados.forEach(e => {
+                    const isChurn = normaliza(e.churn) === 'SIM';
+                    const isAdiant = normaliza(e.adiantada) === 'SIM';
+                    const situacao = normaliza(e.situacao);
+                    const isCancelada = situacao.includes('CANCELADA');
+                    const isInstalada = situacao === 'INSTALADA';
+                    const isVerde = isInstalada && !isChurn;
+                    const rowClass = (isChurn || isCancelada)
+                        ? 'table-danger'
+                        : (isVerde ? 'table-success' : 'table-warning');
+                    const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
+                    const meiTxt = (e.classificacao_mei || '-').toString().toUpperCase();
+                    const dataAttrs = cols.map(c => {
+                        let val = c.key === 'classificacao_mei' ? meiTxt : (e[c.key] != null ? String(e[c.key]) : '');
+                        if (c.key === 'valor_comissao' && e.valor_comissao != null) val = String(e.valor_comissao);
+                        return `data-${c.key}="${(val || '').replace(/"/g, '&quot;')}"`;
+                    }).join(' ');
+                    html += `<tr class="extrato-data-row ${rowClass}" data-bloco="${b.ordem}" ${dataAttrs}${rowStyle}>
+                        <td>${e.nome || ''}</td>
+                        <td>${e.dacc || ''}</td>
+                        <td>${e.cnpj || ''}</td>
+                        <td class="text-center">${badgeMeiExtrato(e)}</td>
+                        <td>${e.plano || ''}</td>
+                        <td>${e.dt_pedido || ''}</td>
+                        <td>${e.dt_inst || ''}</td>
+                        <td>${e.os || ''}</td>
+                        <td>${e.situacao || ''}</td>
+                        <td>${e.churn || ''}</td>
+                        <td class="text-center">${e.adiantada || '-'}</td>
+                        <td class="text-end">${fmtValorComissaoExtrato(e)}</td>
+                    </tr>`;
+                });
+            });
+            html += '</tbody></table></div>';
+            return html;
+        }
+
+        function aplicarFiltrosExtrato(cardEl) {
+            if (!cardEl) return;
+            const table = cardEl.querySelector('.extrato-comissao-table');
+            if (!table) return;
+            const filtros = {};
+            table.querySelectorAll('.extrato-filter-input').forEach(inp => {
+                const col = inp.dataset.col;
+                const val = (inp.value || '').trim().toUpperCase();
+                if (val) filtros[col] = val;
+            });
+            const dataRows = table.querySelectorAll('tbody tr.extrato-data-row');
+            dataRows.forEach(tr => {
+                let visivel = true;
+                for (const [col, val] of Object.entries(filtros)) {
+                    const cell = (tr.dataset[col] || '').toUpperCase();
+                    if (col === 'classificacao_mei') {
+                        if (cell !== val && !(val === '-' && (cell === '' || cell === '-'))) { visivel = false; break; }
+                    } else if (!cell.includes(val)) {
+                        visivel = false;
+                        break;
+                    }
+                }
+                tr.style.display = visivel ? '' : 'none';
+            });
+            table.querySelectorAll('tbody tr.extrato-bloco-row').forEach(blocoTr => {
+                const bloco = blocoTr.dataset.bloco;
+                const alguma = [...table.querySelectorAll(`tbody tr.extrato-data-row[data-bloco="${bloco}"]`)]
+                    .some(r => r.style.display !== 'none');
+                blocoTr.style.display = alguma ? '' : 'none';
+            });
+        }
+
+        function initExtratoFiltros(container) {
+            if (!container) return;
+            container.querySelectorAll('.extrato-comissao-table').forEach(table => {
+                const card = table.closest('.card');
+                table.querySelectorAll('.extrato-filter-input').forEach(inp => {
+                    inp.addEventListener('input', () => aplicarFiltrosExtrato(card));
+                    inp.addEventListener('change', () => aplicarFiltrosExtrato(card));
+                });
+                const btnLimpar = card && card.querySelector('.extrato-limpar-filtros');
+                if (btnLimpar) {
+                    btnLimpar.onclick = () => {
+                        table.querySelectorAll('.extrato-filter-input').forEach(inp => { inp.value = ''; });
+                        aplicarFiltrosExtrato(card);
+                    };
+                }
+            });
+        }
+
         function montarCardFolha(v) {
             const r = v.resumo || {};
             const porPlano = r.por_plano || [];
@@ -346,61 +524,8 @@
                         return bloco;
                     })() : ''}
                 </div>
-                <div class="p-2 border-top small text-muted fw-bold">Extrato (${(v.extrato || []).length} vendas)</div>
-                <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th class="text-center">MEI/NMEI</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class="text-center">ADIANT.</th></tr></thead><tbody>`;
-            const extratoLista = (v.extrato || []);
-            const normaliza = (txt) => (txt || '').toString().trim().toUpperCase();
-            const parseBrDateToSort = (dt) => {
-                const s = (dt || '').toString().trim();
-                const p = s.split('/');
-                if (p.length !== 3) return '';
-                const [dd, mm, yyyy] = p;
-                if (!dd || !mm || !yyyy) return '';
-                return `${yyyy.padStart(4, '0')}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-            };
-            const blocoInfo = (e) => {
-                const situacao = normaliza(e.situacao);
-                const isChurn = normaliza(e.churn) === 'SIM';
-                const isCancelada = situacao.includes('CANCELADA');
-                if (situacao === 'INSTALADA' && !isChurn) return { ordem: 0, titulo: 'INSTALADAS', statusGrupo: 'INSTALADA' };
-                if (situacao === 'INSTALADA' && isChurn) return { ordem: 1, titulo: 'INSTALADAS COM CHURN', statusGrupo: 'INSTALADA (CHURN)' };
-                if (isCancelada) return { ordem: 2, titulo: 'CANCELADAS', statusGrupo: situacao || 'CANCELADA' };
-                return { ordem: 3, titulo: 'DEMAIS STATUS', statusGrupo: situacao || '-' };
-            };
-            const blocos = [
-                { ordem: 0, titulo: 'INSTALADAS', itens: [] },
-                { ordem: 1, titulo: 'INSTALADAS COM CHURN', itens: [] },
-                { ordem: 2, titulo: 'CANCELADAS', itens: [] },
-                { ordem: 3, titulo: 'DEMAIS STATUS', itens: [] }
-            ];
-            extratoLista.forEach(e => {
-                const b = blocoInfo(e);
-                blocos[b.ordem].itens.push({ ...e, _statusGrupo: b.statusGrupo });
-            });
-            blocos.forEach(b => {
-                if (!b.itens.length) return;
-                html += `<tr class="table-secondary"><td colspan="11" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
-                const itensOrdenados = [...b.itens].sort((a, b2) => {
-                    const d1 = parseBrDateToSort(a.dt_pedido) || '9999-99-99';
-                    const d2 = parseBrDateToSort(b2.dt_pedido) || '9999-99-99';
-                    if (d1 !== d2) return d1.localeCompare(d2); // mais antiga primeiro
-                    return (a.nome || '').localeCompare(b2.nome || '');
-                });
-                itensOrdenados.forEach(e => {
-                    const isChurn = normaliza(e.churn) === 'SIM';
-                    const isAdiant = normaliza(e.adiantada) === 'SIM';
-                    const situacao = normaliza(e.situacao);
-                    const isCancelada = situacao.includes('CANCELADA');
-                    const isInstalada = situacao === 'INSTALADA';
-                    const isVerde = isInstalada && !isChurn;
-                    const rowClass = (isChurn || isCancelada)
-                        ? 'table-danger'
-                        : (isVerde ? 'table-success' : 'table-warning');
-                    const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
-                    html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td class="text-center">${badgeMeiExtrato(e)}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
-                });
-            });
-            html += `</tbody></table></div></div></div>`;
+                ${montarTabelaExtrato(v)}
+            </div></div>`;
             return html;
         }
 
@@ -419,6 +544,7 @@
                 return;
             }
             container.innerHTML = `<div class="mb-3 fw-bold text-secondary">Período: ${folhaExcelCache.periodo}</div>` + montarCardFolha(v);
+            initExtratoFiltros(container);
         }
 
         async function carregarFolhaExcel() {

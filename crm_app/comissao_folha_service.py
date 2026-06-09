@@ -150,6 +150,51 @@ def get_valor_manual(config, chave):
     return float(v) if v is not None else None
 
 
+def valor_comissao_linha_extrato(
+    venda,
+    *,
+    faixa_regra,
+    faixa_adiantamento,
+    config,
+    usar_manual,
+    instalada_na_folha=False,
+    churn_m1=False,
+):
+    """
+    Valor de comissão exibido no extrato por venda.
+    Retorna (valor float|None, tipo: a_pagar|antecipada|churn|referencia).
+    """
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+
+    plano_nome = venda.plano.nome if venda.plano else ''
+    chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+    if not chave:
+        return None, None
+
+    ref = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
+
+    if churn_m1:
+        if usar_manual:
+            vu = get_valor_manual(config, chave)
+        else:
+            vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
+        return (float(vu) if vu is not None else ref), 'churn'
+
+    if instalada_na_folha:
+        if comissao_ja_adiantada_venda(venda):
+            return ref, 'antecipada'
+        if usar_manual:
+            vu = get_valor_manual(config, chave)
+        else:
+            vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
+        if vu is not None:
+            return float(vu), 'a_pagar'
+        return ref, 'referencia'
+
+    return ref, 'referencia'
+
+
 def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_display=False):
     """
     Calcula a folha de comissão do mês no formato Excel.
@@ -162,7 +207,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         {
           "vendedor_id", "vendedor_nome",
           "resumo": { "total_qtd_instalada_a_pagar", "por_plano": [...], "comissao_total_geral", "ajustes": {...}, "liquido" },
-          "extrato": [ { "venda_id", "nome", "dacc", "cnpj", "plano", "dt_pedido", "dt_inst", "os", "situacao", "vendedor", "churn" }, ... ]
+          "extrato": [ { "venda_id", "nome", "dacc", "cnpj", "plano", "dt_pedido", "dt_inst", "os", "situacao", "vendedor", "churn", "valor_comissao", "comissao_tipo" }, ... ]
         }
       ]
     }
@@ -689,6 +734,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             churn_status = 'SIM' if _norm_os_variantes(v.ordem_servico) & set_os_churn_mes_extrato else 'NÃO'
             dt_inst = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
+            val_com, tipo_com = valor_comissao_linha_extrato(
+                v,
+                faixa_regra=faixa_regra,
+                faixa_adiantamento=faixa_adiantamento,
+                config=config,
+                usar_manual=usar_manual,
+                instalada_na_folha=True,
+            )
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -707,6 +760,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'vendedor': consultor.username,
                 'churn': churn_status,
                 'adiantada': 'SIM' if comissao_ja_adiantada_venda(v) else 'NÃO',
+                'valor_comissao': round(float(val_com), 2) if val_com is not None else None,
+                'comissao_tipo': tipo_com,
             })
         # Incluir no extrato as vendas churn M-1 (mês anterior), para aparecerem na lista com CHURN=SIM
         for v in vendas_m1:
@@ -718,6 +773,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             campos = _campos_extrato_mei(v)
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             dt_inst_m1 = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
+            val_com, tipo_com = valor_comissao_linha_extrato(
+                v,
+                faixa_regra=faixa_regra,
+                faixa_adiantamento=faixa_adiantamento,
+                config=config,
+                usar_manual=usar_manual,
+                churn_m1=True,
+            )
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -732,6 +795,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'vendedor': consultor.username,
                 'churn': 'SIM',
                 'adiantada': 'NÃO',
+                'valor_comissao': round(float(val_com), 2) if val_com is not None else None,
+                'comissao_tipo': tipo_com,
             })
         # Após a listagem de instaladas (como já existe hoje), incluir também as vendas
         # criadas no mês com status diferente de INSTALADA.
@@ -754,6 +819,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 if v.status_esteira
                 else (v.status_tratamento.nome if getattr(v, 'status_tratamento', None) else '-')
             )
+            val_com, tipo_com = valor_comissao_linha_extrato(
+                v,
+                faixa_regra=faixa_regra,
+                faixa_adiantamento=faixa_adiantamento,
+                config=config,
+                usar_manual=usar_manual,
+                instalada_na_folha=False,
+            )
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -768,6 +841,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'vendedor': consultor.username,
                 'churn': 'NÃO',
                 'adiantada': 'NÃO',
+                'valor_comissao': round(float(val_com), 2) if val_com is not None else None,
+                'comissao_tipo': tipo_com,
             })
 
         qtd_a_descontar_boleto = sum(

@@ -168,8 +168,9 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "table.extrato th.ex-plano, table.extrato td.ex-plano { width: 9%; }",
         "table.extrato th.ex-dtped, table.extrato td.ex-dtped, table.extrato th.ex-dtinst, table.extrato td.ex-dtinst { width: 7%; }",
         "table.extrato th.ex-os, table.extrato td.ex-os { width: 9%; }",
-        "table.extrato th.ex-sit, table.extrato td.ex-sit { width: 33%; text-align: left; }",
+        "table.extrato th.ex-sit, table.extrato td.ex-sit { width: 28%; text-align: left; }",
         "table.extrato th.ex-churn, table.extrato td.ex-churn, table.extrato th.ex-adiant, table.extrato td.ex-adiant { width: 5%; }",
+        "table.extrato th.ex-comissao, table.extrato td.ex-comissao { width: 7%; text-align: right; }",
         ".row-danger { background-color: #f8d7da; }",
         ".row-success { background-color: #d4edda; }",
         ".row-warning { background-color: #fff3cd; }",
@@ -341,6 +342,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         '<th class="ex-sit" style="width:33%">SITUAÇÃO</th>'
         '<th class="ex-churn c" style="width:5%">CHURN</th>'
         '<th class="ex-adiant c" style="width:5%">ADIANT.</th>'
+        '<th class="ex-comissao r" style="width:7%">COMISSÃO</th>'
         "</tr></thead><tbody>"
     )
 
@@ -348,7 +350,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         if not b["itens"]:
             continue
         parts.append(
-            f'<tr class="bloco-row"><td colspan="10">{_e(b["titulo"])} — {len(b["itens"])} venda(s)</td></tr>'
+            f'<tr class="bloco-row"><td colspan="11">{_e(b["titulo"])} — {len(b["itens"])} venda(s)</td></tr>'
         )
         itens = sorted(
             b["itens"],
@@ -363,6 +365,8 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
             is_verde = is_instalada and not churn_sim
             cls = "row-danger" if (churn_sim or is_cancelada) else ("row-success" if is_verde else "row-warning")
             style = ' style="background-color:#cfe8d6;"' if (is_verde and adiant_sim) else ""
+            val_com = e.get("valor_comissao")
+            val_com_txt = _fmt_br(val_com) if val_com is not None else "—"
             parts.append(
                 f'<tr class="{cls}"{style}>'
                 f'<td class="ex-nome">{_e(e.get("nome"))}</td>'
@@ -375,6 +379,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
                 f'<td class="ex-sit">{_e(e.get("situacao"))}</td>'
                 f'<td class="ex-churn c">{_e(e.get("churn"))}</td>'
                 f'<td class="ex-adiant c">{_e(e.get("adiantada") or "—")}</td>'
+                f'<td class="ex-comissao r">{val_com_txt}</td>'
                 "</tr>"
             )
 
