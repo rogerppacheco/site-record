@@ -77,6 +77,21 @@ def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
     return 0.0
 
 
+def valor_adiantamento_exibicao_folha(venda, faixa_adiantamento, chave, origem=None):
+    """
+    Valor de comissão antecipada na folha/extrato.
+    Adiantamento sábado: snapshot da esteira (adiantamento_sabado_valor).
+    Adiantamento comissão (esteira): tabela de governança.
+    """
+    if origem is None:
+        origem = origem_adiantamento_comissao_venda(venda)
+    if origem in ('sabado', 'sabado_quitado_instalacao', 'sabado_pendente'):
+        val = getattr(venda, 'adiantamento_sabado_valor', None)
+        if val is not None and float(val) > 0:
+            return float(val)
+    return valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
+
+
 def data_instalacao_efetiva_folha(venda):
     """
     Data de instalação usada na folha (OSAB + física no cliente):
@@ -216,9 +231,16 @@ def valor_comissao_linha_extrato(
     chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
     origem = origem_adiantamento_comissao_venda(venda)
     if not chave:
-        return None, label_tipo_comissao_extrato('referencia', origem), 'referencia'
+        val = None
+        if origem in ('sabado', 'sabado_quitado_instalacao', 'sabado_pendente'):
+            vs = getattr(venda, 'adiantamento_sabado_valor', None)
+            if vs is not None and float(vs) > 0:
+                val = float(vs)
+        base = 'antecipada' if comissao_ja_adiantada_venda(venda) else 'referencia'
+        return val, label_tipo_comissao_extrato(base, origem), base
 
-    ref = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
+    tabela = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
+    val_adiant = valor_adiantamento_exibicao_folha(venda, faixa_adiantamento, chave, origem)
 
     if churn_m1:
         if usar_manual:
@@ -226,12 +248,12 @@ def valor_comissao_linha_extrato(
         else:
             vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
         base = 'churn'
-        return (float(vu) if vu is not None else ref), label_tipo_comissao_extrato(base, origem), base
+        return (float(vu) if vu is not None else tabela), label_tipo_comissao_extrato(base, origem), base
 
     if instalada_na_folha:
         if comissao_ja_adiantada_venda(venda):
             base = 'antecipada'
-            return ref, label_tipo_comissao_extrato(base, origem), base
+            return val_adiant, label_tipo_comissao_extrato(base, origem), base
         if usar_manual:
             vu = get_valor_manual(config, chave)
         else:
@@ -240,10 +262,11 @@ def valor_comissao_linha_extrato(
             base = 'a_pagar'
             return float(vu), label_tipo_comissao_extrato(base, origem), base
         base = 'referencia'
-        return ref, label_tipo_comissao_extrato(base, origem), base
+        return tabela, label_tipo_comissao_extrato(base, origem), base
 
     base = 'referencia'
-    return ref, label_tipo_comissao_extrato(base, origem), base
+    val_ref = val_adiant if origem == 'sabado_pendente' else tabela
+    return val_ref, label_tipo_comissao_extrato(base, origem), base
 
 
 def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_display=False):
@@ -448,7 +471,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             elif len(doc_limpo_v) == 11:
                 qtd_cpf_total += 1
             if comissao_ja_adiantada_venda(v):
-                va = valor_comissao_tabela_adiantamento(v, faixa_adiantamento, chave)
+                o_ant = origem_adiantamento_comissao_venda(v) or 'esteira_comissao'
+                va = valor_adiantamento_exibicao_folha(v, faixa_adiantamento, chave, o_ant)
                 if chave:
                     por_plano[chave]['qtd_antecipada'] += 1
                     por_plano[chave]['total_antecipado'] += va
