@@ -113,7 +113,10 @@
                                 <i class="bi bi-file-earmark-pdf"></i> Exportar PDF
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-success px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-excel-resumo" onclick="exportarResumoComissionamentoXlsx()" title="Baixar resumo em Excel com todos os vendedores do mês">
-                                <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+                                <i class="bi bi-file-earmark-excel"></i> Excel Resumo
+                            </button>
+                            <button type="button" class="btn btn-sm btn-success px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-excel-extrato" onclick="exportarExtratoComissionamentoXlsx()" title="Baixar extrato de vendas (mesma tabela da tela)">
+                                <i class="bi bi-table"></i> Excel Extrato
                             </button>
                         </div>
                     </div>
@@ -315,7 +318,12 @@
 
             let html = `<div class="p-2 border-top small text-muted fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span>Extrato (${extratoLista.length} vendas)</span>
-                <button type="button" class="btn btn-outline-secondary btn-sm extrato-limpar-filtros">Limpar filtros</button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarExtratoComissionamentoXlsx()" title="Baixar extrato em Excel (mesmas colunas da tabela)">
+                        <i class="bi bi-file-earmark-excel"></i> Excel
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm extrato-limpar-filtros">Limpar filtros</button>
+                </div>
             </div>
             <div class="table-responsive"><table class="table table-sm table-striped mb-0 small extrato-comissao-table"><thead class="table-light">
                 <tr>${cols.map(c => `<th class="${c.align === 'end' ? 'text-end' : ''}">${c.label}</th>`).join('')}</tr>
@@ -742,6 +750,76 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = origText;
+            }
+        }
+
+        async function exportarExtratoComissionamentoXlsx() {
+            const vendedorId = document.getElementById('folha-excel-vendedor')?.value;
+            const selMulti = document.getElementById('folha-excel-vendedores-multi');
+            const idsMulti = selMulti ? Array.from(selMulti.selectedOptions).map(o => parseInt(o.value, 10)).filter(Boolean) : [];
+            const idsEnvio = idsMulti.length > 0 ? idsMulti : (vendedorId ? [parseInt(vendedorId, 10)] : []);
+            const ano = document.getElementById('filtro-ano')?.value;
+            const mes = document.getElementById('filtro-mes')?.value;
+            if (!idsEnvio.length) {
+                alert('Selecione um vendedor no dropdown ou marque um/mais vendedores no campo de envio em lote.');
+                return;
+            }
+            const btn = document.getElementById('btn-exportar-excel-extrato');
+            const origText = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            }
+            try {
+                const res = await axios.post(
+                    `${apiUrl}exportar-extrato-excel/`,
+                    {
+                        vendedor_id: vendedorId ? parseInt(vendedorId, 10) : null,
+                        vendedores_ids: idsEnvio,
+                        ano: parseInt(ano, 10),
+                        mes: parseInt(mes, 10)
+                    },
+                    { responseType: 'blob' }
+                );
+                const cd = res.headers['content-disposition'] || '';
+                let filename = idsEnvio.length === 1
+                    ? `extrato_comissao_${String(mes).padStart(2, '0')}_${ano}.xlsx`
+                    : `extratos_comissao_${String(mes).padStart(2, '0')}_${ano}.zip`;
+                const mStar = /filename\*=UTF-8''([^;\n]+)/i.exec(cd);
+                const mQuoted = /filename="([^"]+)"/i.exec(cd);
+                if (mStar && mStar[1]) {
+                    filename = decodeURIComponent(mStar[1].trim());
+                } else if (mQuoted && mQuoted[1]) {
+                    filename = mQuoted[1].trim();
+                }
+                const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                let msg = err.message || 'Erro ao exportar extrato.';
+                if (err.response && err.response.data instanceof Blob) {
+                    try {
+                        const t = await err.response.data.text();
+                        const j = JSON.parse(t);
+                        msg = j.error || j.detail || msg;
+                    } catch (_) {
+                        msg = 'Falha ao gerar o arquivo.';
+                    }
+                } else if (err.response?.data?.error) {
+                    msg = err.response.data.error;
+                }
+                alert('Erro: ' + msg);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origText;
+                }
             }
         }
 
