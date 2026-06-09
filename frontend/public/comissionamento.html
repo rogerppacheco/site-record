@@ -261,13 +261,24 @@
 
         function fmtValorComissaoExtrato(e) {
             if (e.valor_comissao == null || e.valor_comissao === '') return '<span class="text-muted">—</span>';
-            const tipo = (e.comissao_tipo || '').toLowerCase();
+            const cod = (e.comissao_tipo_codigo || '').toLowerCase();
             let cls = 'money-col fw-bold';
-            let title = 'Comissão na folha';
-            if (tipo === 'antecipada') { cls += ' extrato-valor-antecipada'; title = 'Já adiantada (referência)'; }
-            else if (tipo === 'referencia') { cls += ' extrato-valor-referencia'; title = 'Tabela de referência (não instalada)'; }
-            else if (tipo === 'churn') { cls += ' extrato-valor-churn'; title = 'Desconto churn'; }
-            return `<span class="${cls}" title="${title}">${fmtMoney(e.valor_comissao)}</span>`;
+            if (cod === 'antecipada' || (e.comissao_tipo || '').toLowerCase().includes('antecipada')) cls += ' extrato-valor-antecipada';
+            else if (cod === 'referencia') cls += ' extrato-valor-referencia';
+            else if (cod === 'churn') cls += ' extrato-valor-churn';
+            return `<span class="${cls}">${fmtMoney(e.valor_comissao)}</span>`;
+        }
+
+        function fmtTipoComissaoExtrato(e) {
+            const txt = e.comissao_tipo || '—';
+            const cod = (e.comissao_tipo_codigo || '').toLowerCase();
+            let cls = 'small';
+            if (txt.includes('sábado')) cls += ' text-info';
+            else if (txt.includes('esteira')) cls += ' text-primary';
+            else if (cod === 'churn') cls += ' text-danger';
+            else if (cod === 'a_pagar') cls += ' fw-bold';
+            else if (cod === 'referencia') cls += ' text-muted';
+            return `<span class="${cls}">${txt}</span>`;
         }
 
         function montarTabelaExtrato(v) {
@@ -314,6 +325,7 @@
                 { key: 'churn', label: 'CHURN', filter: 'select' },
                 { key: 'adiantada', label: 'ADIANT.', filter: 'select' },
                 { key: 'valor_comissao', label: 'COMISSÃO', filter: 'text', align: 'end' },
+                { key: 'comissao_tipo', label: 'TIPO COMISSÃO', filter: 'text' },
             ];
 
             let html = `<div class="p-2 border-top small text-muted fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -380,6 +392,7 @@
                         <td>${e.churn || ''}</td>
                         <td class="text-center">${e.adiantada || '-'}</td>
                         <td class="text-end">${fmtValorComissaoExtrato(e)}</td>
+                        <td>${fmtTipoComissaoExtrato(e)}</td>
                     </tr>`;
                 });
             });

@@ -150,6 +150,51 @@ def get_valor_manual(config, chave):
     return float(v) if v is not None else None
 
 
+def origem_adiantamento_comissao_venda(venda) -> str | None:
+    """
+    Classifica a origem do adiantamento quando a venda foi antecipada.
+    None se não houver antecipação de comissão na folha.
+    """
+    from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+
+    sab_marcado = bool(getattr(venda, 'adiantamento_sabado_marcado', False))
+    sab_quitado = bool(getattr(venda, 'adiantamento_sabado_quitado_em', None))
+
+    if comissao_ja_adiantada_venda(venda):
+        if sab_marcado and sab_quitado:
+            return 'sabado_quitado_instalacao'
+        if sab_marcado:
+            return 'sabado'
+        if sab_quitado:
+            return 'sabado_quitado_instalacao'
+        return 'esteira_comissao'
+
+    if sab_marcado and not sab_quitado:
+        return 'sabado_pendente'
+    return None
+
+
+def label_tipo_comissao_extrato(base_tipo: str | None, origem_adiant: str | None = None) -> str:
+    """Rótulo legível para coluna TIPO COMISSÃO do extrato."""
+    base = (base_tipo or '').lower()
+    if base == 'a_pagar':
+        return 'A pagar'
+    if base == 'churn':
+        return 'Churn (desconto)'
+    if base == 'referencia':
+        if origem_adiant == 'sabado_pendente':
+            return 'Referência — adiant. sábado'
+        return 'Referência (tabela)'
+    if base == 'antecipada':
+        return {
+            'esteira_comissao': 'Antecipada — comissão (esteira)',
+            'sabado': 'Antecipada — sábado',
+            'sabado_quitado_instalacao': 'Antecipada — sábado (quitado na instalação)',
+            'sabado_pendente': 'Antecipada — sábado',
+        }.get(origem_adiant or '', 'Antecipada — comissão (esteira)')
+    return '—'
+
+
 def valor_comissao_linha_extrato(
     venda,
     *,
@@ -161,16 +206,17 @@ def valor_comissao_linha_extrato(
     churn_m1=False,
 ):
     """
-    Valor de comissão exibido no extrato por venda.
-    Retorna (valor float|None, tipo: a_pagar|antecipada|churn|referencia).
+    Valor e tipo de comissão exibidos no extrato por venda.
+    Retorna (valor float|None, rótulo tipo comissão, código base).
     """
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
     from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
 
     plano_nome = venda.plano.nome if venda.plano else ''
     chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+    origem = origem_adiantamento_comissao_venda(venda)
     if not chave:
-        return None, None
+        return None, label_tipo_comissao_extrato('referencia', origem), 'referencia'
 
     ref = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
 
@@ -179,20 +225,25 @@ def valor_comissao_linha_extrato(
             vu = get_valor_manual(config, chave)
         else:
             vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
-        return (float(vu) if vu is not None else ref), 'churn'
+        base = 'churn'
+        return (float(vu) if vu is not None else ref), label_tipo_comissao_extrato(base, origem), base
 
     if instalada_na_folha:
         if comissao_ja_adiantada_venda(venda):
-            return ref, 'antecipada'
+            base = 'antecipada'
+            return ref, label_tipo_comissao_extrato(base, origem), base
         if usar_manual:
             vu = get_valor_manual(config, chave)
         else:
             vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
         if vu is not None:
-            return float(vu), 'a_pagar'
-        return ref, 'referencia'
+            base = 'a_pagar'
+            return float(vu), label_tipo_comissao_extrato(base, origem), base
+        base = 'referencia'
+        return ref, label_tipo_comissao_extrato(base, origem), base
 
-    return ref, 'referencia'
+    base = 'referencia'
+    return ref, label_tipo_comissao_extrato(base, origem), base
 
 
 def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_display=False):
@@ -406,14 +457,15 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     valor_adiant_sem_chave_excel += va
                 if not chave:
                     chave_origem = 'adiantamento_nao_classificado'
-                elif getattr(v, 'adiantamento_sabado_marcado', False) and getattr(v, 'adiantamento_sabado_quitado_em', None):
-                    chave_origem = 'adiantamento_sabado_quitado_instalacao'
-                elif getattr(v, 'adiantamento_sabado_marcado', False):
-                    chave_origem = 'adiantamento_sabado'
-                elif getattr(v, 'adiantamento_sabado_quitado_em', None):
-                    chave_origem = 'adiantamento_sabado_quitado_instalacao'
                 else:
-                    chave_origem = 'adiantamento_esteira_instalados'
+                    _map_origem = {
+                        'esteira_comissao': 'adiantamento_esteira_instalados',
+                        'sabado': 'adiantamento_sabado',
+                        'sabado_quitado_instalacao': 'adiantamento_sabado_quitado_instalacao',
+                        'sabado_pendente': 'adiantamento_sabado',
+                    }
+                    o = origem_adiantamento_comissao_venda(v) or 'esteira_comissao'
+                    chave_origem = _map_origem.get(o, 'adiantamento_nao_classificado')
                 info_adiantamento_origem[chave_origem]['quantidade'] += 1
                 info_adiantamento_origem[chave_origem]['valor_total'] += float(va or 0)
                 continue
@@ -734,7 +786,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             churn_status = 'SIM' if _norm_os_variantes(v.ordem_servico) & set_os_churn_mes_extrato else 'NÃO'
             dt_inst = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
-            val_com, tipo_com = valor_comissao_linha_extrato(
+            val_com, tipo_com_label, tipo_com_cod = valor_comissao_linha_extrato(
                 v,
                 faixa_regra=faixa_regra,
                 faixa_adiantamento=faixa_adiantamento,
@@ -761,7 +813,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'churn': churn_status,
                 'adiantada': 'SIM' if comissao_ja_adiantada_venda(v) else 'NÃO',
                 'valor_comissao': round(float(val_com), 2) if val_com is not None else None,
-                'comissao_tipo': tipo_com,
+                'comissao_tipo': tipo_com_label,
+                'comissao_tipo_codigo': tipo_com_cod,
             })
         # Incluir no extrato as vendas churn M-1 (mês anterior), para aparecerem na lista com CHURN=SIM
         for v in vendas_m1:
@@ -773,7 +826,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             campos = _campos_extrato_mei(v)
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             dt_inst_m1 = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
-            val_com, tipo_com = valor_comissao_linha_extrato(
+            val_com, tipo_com_label, tipo_com_cod = valor_comissao_linha_extrato(
                 v,
                 faixa_regra=faixa_regra,
                 faixa_adiantamento=faixa_adiantamento,
@@ -796,7 +849,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'churn': 'SIM',
                 'adiantada': 'NÃO',
                 'valor_comissao': round(float(val_com), 2) if val_com is not None else None,
-                'comissao_tipo': tipo_com,
+                'comissao_tipo': tipo_com_label,
+                'comissao_tipo_codigo': tipo_com_cod,
             })
         # Após a listagem de instaladas (como já existe hoje), incluir também as vendas
         # criadas no mês com status diferente de INSTALADA.
@@ -819,7 +873,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 if v.status_esteira
                 else (v.status_tratamento.nome if getattr(v, 'status_tratamento', None) else '-')
             )
-            val_com, tipo_com = valor_comissao_linha_extrato(
+            val_com, tipo_com_label, tipo_com_cod = valor_comissao_linha_extrato(
                 v,
                 faixa_regra=faixa_regra,
                 faixa_adiantamento=faixa_adiantamento,
@@ -842,7 +896,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'churn': 'NÃO',
                 'adiantada': 'NÃO',
                 'valor_comissao': round(float(val_com), 2) if val_com is not None else None,
-                'comissao_tipo': tipo_com,
+                'comissao_tipo': tipo_com_label,
+                'comissao_tipo_codigo': tipo_com_cod,
             })
 
         qtd_a_descontar_boleto = sum(

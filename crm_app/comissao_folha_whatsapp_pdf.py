@@ -168,7 +168,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "table.extrato th.ex-plano, table.extrato td.ex-plano { width: 9%; }",
         "table.extrato th.ex-dtped, table.extrato td.ex-dtped, table.extrato th.ex-dtinst, table.extrato td.ex-dtinst { width: 7%; }",
         "table.extrato th.ex-os, table.extrato td.ex-os { width: 9%; }",
-        "table.extrato th.ex-sit, table.extrato td.ex-sit { width: 28%; text-align: left; }",
+        "table.extrato th.ex-sit, table.extrato td.ex-sit { width: 24%; text-align: left; }",
         "table.extrato th.ex-churn, table.extrato td.ex-churn, table.extrato th.ex-adiant, table.extrato td.ex-adiant { width: 5%; }",
         "table.extrato th.ex-comissao, table.extrato td.ex-comissao { width: 7%; text-align: right; }",
         ".row-danger { background-color: #f8d7da; }",
@@ -343,6 +343,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         '<th class="ex-churn c" style="width:5%">CHURN</th>'
         '<th class="ex-adiant c" style="width:5%">ADIANT.</th>'
         '<th class="ex-comissao r" style="width:7%">COMISSÃO</th>'
+        '<th class="ex-tipo" style="width:12%">TIPO COMISSÃO</th>'
         "</tr></thead><tbody>"
     )
 
@@ -380,6 +381,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
                 f'<td class="ex-churn c">{_e(e.get("churn"))}</td>'
                 f'<td class="ex-adiant c">{_e(e.get("adiantada") or "—")}</td>'
                 f'<td class="ex-comissao r">{val_com_txt}</td>'
+                f'<td class="ex-tipo">{_e(e.get("comissao_tipo") or "—")}</td>'
                 "</tr>"
             )
 

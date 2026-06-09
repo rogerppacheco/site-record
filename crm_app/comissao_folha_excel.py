@@ -42,7 +42,7 @@ _LARGURAS = {
     'CHURN': 8,
     'ADIANT.': 9,
     'COMISSÃO': 12,
-    'TIPO COMISSÃO': 14,
+    'TIPO COMISSÃO': 28,
 }
 
 
@@ -73,12 +73,8 @@ def _parse_br_date_key(dt: str) -> str:
 
 
 def _tipo_comissao_label(tipo: str | None) -> str:
-    return {
-        'a_pagar': 'A pagar',
-        'antecipada': 'Antecipada',
-        'referencia': 'Referência',
-        'churn': 'Churn',
-    }.get((tipo or '').lower(), '')
+    """Legado: comissao_tipo já vem formatado do backend."""
+    return (tipo or '').strip() or '—'
 
 
 def _linhas_extrato_vendedor(vendedor_data: Dict[str, Any]) -> List[Dict[str, Any]]:
