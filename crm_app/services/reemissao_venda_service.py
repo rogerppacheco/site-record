@@ -71,6 +71,17 @@ def duplicar(
     venda_nova.periodo_agendamento = novo_turno
     venda_nova.reemissao = True
 
+    # Reemissão = nova OS; não herda adiantamento sábado / antecipação da venda original.
+    venda_nova.adiantamento_sabado_marcado = False
+    venda_nova.adiantamento_sabado_valor = None
+    venda_nova.adiantamento_sabado_marcado_em = None
+    venda_nova.adiantamento_sabado_marcado_por = None
+    venda_nova.adiantamento_sabado_manual = False
+    venda_nova.adiantamento_sabado_obs_manual = ''
+    venda_nova.adiantamento_sabado_quitado_em = None
+    venda_nova.flag_desc_adiantamento_sabado = False
+    venda_nova.antecipacao_comissao = False
+
     status_agendado = StatusCRM.objects.filter(
         nome__iexact="AGENDADO", tipo__iexact="Esteira"
     ).first()

@@ -305,7 +305,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         config = configs.get(consultor.id)
         # Adiant. Comissão = Sim na esteira: não entra em QTD A PAGAR nem na comissão do mês (já adiantada).
-        set_adiant_comissao_esteira = {v.id for v in vendas if getattr(v, 'antecipacao_comissao', False)}
+        from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+
+        set_adiant_comissao_esteira = {v.id for v in vendas if comissao_ja_adiantada_venda(v)}
         vendas_para_pagar = [v for v in vendas if v.id not in set_adiant_comissao_esteira]
         qtd_instalada_a_pagar = len(vendas_para_pagar)
         faixa_regra = encontrar_faixa(consultor, qtd_instalada_a_pagar)
@@ -349,7 +351,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     qtd_cnpj_nmei_total += 1
             elif len(doc_limpo_v) == 11:
                 qtd_cpf_total += 1
-            if getattr(v, 'antecipacao_comissao', False):
+            if comissao_ja_adiantada_venda(v):
                 va = valor_comissao_tabela_adiantamento(v, faixa_adiantamento, chave)
                 if chave:
                     por_plano[chave]['qtd_antecipada'] += 1
@@ -559,7 +561,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             if (
                 v.forma_pagamento
                 and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
-                and not getattr(v, 'antecipacao_comissao', False)
+                and not comissao_ja_adiantada_venda(v)
             )
         )
         qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
@@ -589,37 +591,36 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 }
             )
 
-        # Adiantamento sábado cancelado: estorna na folha o valor já pago (ADIANTAMENTO_COMISSAO).
-        # Mês de referência = cancelamento (data_ultima_alteracao). Evita duplicar se já confirmado em Processamento Auto.
-        di_cancel = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
-        df_cancel = data_fim.date() if hasattr(data_fim, 'date') else data_fim
-        vendas_sab_cancel_mes = Venda.objects.filter(
-            vendedor=consultor,
-            ativo=True,
-            status_esteira__nome__icontains='CANCEL',
-            adiantamento_sabado_marcado=True,
-            flag_desc_adiantamento_sabado=False,
-            adiantamento_sabado_quitado_em__isnull=True,
-            data_ultima_alteracao__date__gte=di_cancel,
-            data_ultima_alteracao__date__lt=df_cancel,
-        )
+        # Adiantamento sábado: desconto na folha (cancelada ou safra com outra OS instalada/cancelada).
+        from crm_app.services.adiantamento_sabado_service import calcular_descontos_adiantamento_sabado_folha
+
+        descontos_sab = calcular_descontos_adiantamento_sabado_folha(consultor, data_inicio, data_fim)
         valor_sab_cancel = Decimal('0')
         qtd_sab_cancel = 0
-        for v_sab in vendas_sab_cancel_mes:
-            val_sab = Decimal(str(v_sab.adiantamento_sabado_valor or 0))
-            if val_sab > 0:
-                valor_sab_cancel += val_sab
-                qtd_sab_cancel += 1
+        motivos_sab = {}
+        for item in descontos_sab:
+            val_sab = Decimal(str(item['valor']))
+            if val_sab <= 0:
+                continue
+            valor_sab_cancel += val_sab
+            qtd_sab_cancel += 1
+            motivos_sab[item['motivo']] = motivos_sab.get(item['motivo'], 0) + 1
         if qtd_sab_cancel > 0:
             total_descontos += valor_sab_cancel
-            detalhes_descontos.append(
-                {
-                    'motivo': 'Desconto adiantamento sábado (cancelado)',
-                    'valor': float(valor_sab_cancel),
-                    'tipo_exibicao': 'folha_adiant_sabado_cancel',
-                    'quantidade': qtd_sab_cancel,
-                }
-            )
+            for motivo, qtd in motivos_sab.items():
+                val_motivo = sum(
+                    Decimal(str(x['valor']))
+                    for x in descontos_sab
+                    if x['motivo'] == motivo
+                )
+                detalhes_descontos.append(
+                    {
+                        'motivo': motivo,
+                        'valor': float(val_motivo),
+                        'tipo_exibicao': 'folha_adiant_sabado_cancel',
+                        'quantidade': qtd,
+                    }
+                )
 
         total_bonus = Decimal('0')
         detalhes_bonus = []
@@ -705,7 +706,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 ),
                 'vendedor': consultor.username,
                 'churn': churn_status,
-                'adiantada': 'SIM' if getattr(v, 'antecipacao_comissao', False) else 'NÃO',
+                'adiantada': 'SIM' if comissao_ja_adiantada_venda(v) else 'NÃO',
             })
         # Incluir no extrato as vendas churn M-1 (mês anterior), para aparecerem na lista com CHURN=SIM
         for v in vendas_m1:
@@ -795,6 +796,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         )
 
         tot_q_adiant = sum(int(x.get('qtd_antecipada', 0) or 0) for x in por_plano_lista) + qtd_adiant_sem_chave_excel
+        tot_q_pagar_antecip = int(qtd_instalada_a_pagar) + int(tot_q_adiant)
         tot_v_adiant = sum(float(x.get('valor_total_antecipado', 0) or 0) for x in por_plano_lista) + float(
             valor_adiant_sem_chave_excel
         )
@@ -833,6 +835,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             'vendedor_nome': consultor.username,
             'resumo': {
                 'total_qtd_instalada_a_pagar': qtd_instalada_a_pagar,
+                'total_qtd_instalada_antecipada': int(tot_q_adiant),
+                'total_qtd_vendas_folha': tot_q_pagar_antecip,
                 'total_qtd_ja_pago': 0,
                 'total_qtd_churn_30': 0,
                 'faixa_aplicada': faixa_aplicada,

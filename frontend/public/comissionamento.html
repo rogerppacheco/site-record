@@ -276,7 +276,13 @@
                 }
             });
             const totalQtdPagar = r.total_qtd_instalada_a_pagar != null ? r.total_qtd_instalada_a_pagar : 0;
+            const totalQtdVendasFolha = r.total_qtd_vendas_folha != null ? r.total_qtd_vendas_folha : (totalQtdPagar + sumQtdAnt);
             html += `<tr class="table-light fw-bold"><td>TOTAL</td><td class="text-center">${totalQtdPagar}</td><td class="text-center">${sumQtdAnt}</td><td class="text-end text-info">${sumQtdAnt > 0 ? fmtMoney(sumValAdiant) : '—'}</td><td class="text-end">—</td><td class="text-end">${fmtMoney(sumValorTotalInst)}</td><td class="text-end">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+                <div class="px-3 py-2 border-top bg-light small d-flex justify-content-between flex-wrap gap-2">
+                    <span><strong>Total vendas a pagar:</strong> ${totalQtdPagar}</span>
+                    <span><strong>Total vendas antecipadas:</strong> ${sumQtdAnt}</span>
+                    <span class="text-primary fw-bold"><strong>Total vendas no mês (pagas):</strong> ${totalQtdVendasFolha}</span>
+                </div>
                 <div class="p-3 border-top bg-white">
                     <div class="row small mb-2">
                         <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>

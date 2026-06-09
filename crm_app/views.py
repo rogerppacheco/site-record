@@ -1672,6 +1672,13 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_ma
             },
         )
 
+    st_pos = (venda.status_esteira.nome if venda.status_esteira else '') or ''
+    if 'INSTALADA' in st_pos.upper():
+        from crm_app.services.adiantamento_sabado_service import (
+            garantir_quitacao_adiantamento_sabado_instalada,
+        )
+        garantir_quitacao_adiantamento_sabado_instalada(venda)
+
     return {
         'adiantamento_sabado_valor': float(valor_unit),
         'data_lancamento': data_lanc.isoformat(),
@@ -3665,6 +3672,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             venda.adiantamento_sabado_obs_manual = ''
             if venda_instalada:
                 venda.antecipacao_comissao = False
+                venda.adiantamento_sabado_quitado_em = None
             venda.save(
                 update_fields=[
                     'adiantamento_sabado_marcado',
@@ -3674,6 +3682,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                     'adiantamento_sabado_manual',
                     'adiantamento_sabado_obs_manual',
                     'antecipacao_comissao',
+                    'adiantamento_sabado_quitado_em',
                 ]
             )
             HistoricoAlteracaoVenda.objects.create(
@@ -4062,6 +4071,7 @@ def _fechar_pagamento_mes(ano, mes, total_pago=None):
         calcular_folha_mes,
         get_vendas_ids_desconto_churn_mes,
     )
+    from .services.adiantamento_sabado_service import get_vendas_ids_desconto_adiantamento_sabado_mes
 
     status_pago = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PAGO').first()
     if not status_pago:
@@ -4091,6 +4101,10 @@ def _fechar_pagamento_mes(ano, mes, total_pago=None):
     ids_churn = get_vendas_ids_desconto_churn_mes(ano, mes)
     if ids_churn:
         Venda.objects.filter(id__in=ids_churn).update(desconto_churn_aplicado_em=ano * 100 + mes)
+
+    ids_sab = get_vendas_ids_desconto_adiantamento_sabado_mes(ano, mes)
+    if ids_sab:
+        Venda.objects.filter(id__in=ids_sab).update(flag_desc_adiantamento_sabado=True)
 
     folha = calcular_folha_mes(ano, mes)
     recebido_total = sum(float(v.get('resumo', {}).get('liquido', 0) or 0) for v in folha.get('vendedores', []))
@@ -8697,15 +8711,24 @@ class PendenciasDescontoView(APIView):
                 val = float(consultor.desconto_instalacao_antecipada or 0)
                 if val > 0: pendencias.append(self._montar_obj(v, 'ANTECIPACAO', val, 'Desconto Antecipação'))
 
-        vendas_sab_cancel = Venda.objects.filter(
+        from crm_app.services.adiantamento_sabado_service import (
+            motivo_estorno_adiantamento_sabado,
+            venda_entra_estorno_adiantamento_sabado_mes,
+        )
+
+        vendas_sab = Venda.objects.filter(
             ativo=True,
-            status_esteira__nome__icontains='CANCEL',
             adiantamento_sabado_marcado=True,
             flag_desc_adiantamento_sabado=False,
-        ).select_related('vendedor', 'forma_pagamento', 'cliente')
+            adiantamento_sabado_quitado_em__isnull=True,
+        ).exclude(adiantamento_sabado_valor__isnull=True).exclude(
+            adiantamento_sabado_valor=0
+        ).select_related('vendedor', 'forma_pagamento', 'cliente', 'status_esteira')
 
         ano_q = request.query_params.get('ano')
         mes_q = request.query_params.get('mes')
+        data_inicio_c = None
+        data_fim_c = None
         if ano_q and mes_q:
             try:
                 ay, my = int(ano_q), int(mes_q)
@@ -8715,14 +8738,13 @@ class PendenciasDescontoView(APIView):
                         data_fim_c = datetime(ay + 1, 1, 1).date()
                     else:
                         data_fim_c = datetime(ay, my + 1, 1).date()
-                    vendas_sab_cancel = vendas_sab_cancel.filter(
-                        data_ultima_alteracao__date__gte=data_inicio_c,
-                        data_ultima_alteracao__date__lt=data_fim_c,
-                    )
             except (TypeError, ValueError):
                 pass
 
-        for v in vendas_sab_cancel:
+        for v in vendas_sab:
+            if data_inicio_c and data_fim_c:
+                if not venda_entra_estorno_adiantamento_sabado_mes(v, data_inicio_c, data_fim_c):
+                    continue
             val = float(v.adiantamento_sabado_valor or 0)
             if val <= 0:
                 continue
@@ -8731,7 +8753,7 @@ class PendenciasDescontoView(APIView):
                 continue
             pendencias.append(
                 self._montar_obj(
-                    v, 'ADIANT_SABADO', val, 'Desconto adiantamento sábado (não instalado / cancelado)'
+                    v, 'ADIANT_SABADO', val, motivo_estorno_adiantamento_sabado(v)
                 )
             )
 
