@@ -31,6 +31,29 @@ def verificar_mudanca_status(sender, instance, **kwargs):
             pass
 
 @receiver(post_save, sender=Venda)
+def quitar_adiantamento_sabado_ao_instalar(sender, instance, created, **kwargs):
+    """Qualquer save que leve a venda a INSTALADA quita adiantamento sábado pendente."""
+    if created:
+        return
+    old_esteira = getattr(instance, '_old_status_esteira', None)
+    if not instance.status_esteira:
+        return
+    try:
+        from crm_app.services.adiantamento_sabado_service import (
+            quitar_adiantamento_sabado_na_instalacao,
+            status_esteira_eh_instalada,
+        )
+        if not status_esteira_eh_instalada(instance.status_esteira):
+            return
+        quitar_adiantamento_sabado_na_instalacao(instance, old_esteira)
+    except Exception:
+        logger.exception(
+            'Erro ao quitar adiantamento sábado na instalação (signal) — venda #%s',
+            instance.pk,
+        )
+
+
+@receiver(post_save, sender=Venda)
 def disparar_whatsapp_cadastrada(sender, instance, created, **kwargs):
     """
     Após salvar, verifica se o status mudou para 'CADASTRADA' e envia msg ao vendedor.

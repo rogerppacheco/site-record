@@ -1564,23 +1564,6 @@ def _valor_adiantamento_base_comissao(venda):
     return Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa, is_cnpj_venda)))
 
 
-def _quitar_adiantamento_sabado_na_instalacao(venda, status_esteira_antes):
-    """Ao instalar venda que tinha adiantamento sábado: marca antecipação e quitação sem novo lançamento."""
-    nome_new = (venda.status_esteira.nome if venda.status_esteira else '') or ''
-    nome_old = (status_esteira_antes.nome if status_esteira_antes else '') or ''
-    if 'INSTALADA' not in nome_new.upper():
-        return
-    if 'INSTALADA' in nome_old.upper():
-        return
-    if not getattr(venda, 'adiantamento_sabado_marcado', False):
-        return
-    if venda.adiantamento_sabado_quitado_em:
-        return
-    venda.antecipacao_comissao = True
-    venda.adiantamento_sabado_quitado_em = timezone.now()
-    venda.save(update_fields=['antecipacao_comissao', 'adiantamento_sabado_quitado_em'])
-
-
 def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_manual=None):
     """
     Marca adiantamento sábado para uma venda (mesmas regras do endpoint unitário).
@@ -2633,12 +2616,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             )
         except Exception:
             logger.exception('Erro ao registrar eventos da esteira (manual)')
-
-        # Quitação do adiantamento sábado ao passar para INSTALADA (evita segundo pagamento na aba Instaladas)
-        try:
-            _quitar_adiantamento_sabado_na_instalacao(venda_atualizada, status_esteira_antes)
-        except Exception:
-            logger.exception('Erro ao quitar adiantamento sábado na instalação')
 
         alteracoes = {}
         if venda_antes.status_esteira != venda_atualizada.status_esteira:
@@ -5609,6 +5586,10 @@ class ImportacaoOsabView(APIView):
                         with connection.cursor() as cursor:
                             cursor.execute("SET LOCAL statement_timeout = '120000ms'")
                         Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
+                        from crm_app.services.adiantamento_sabado_service import (
+                            quitar_adiantamento_sabado_pos_bulk,
+                        )
+                        quitar_adiantamento_sabado_pos_bulk(vendas_atualizar)
 
                 if historicos_criar:
                     LogImportacaoOSAB.objects.filter(id=log_id).update(
