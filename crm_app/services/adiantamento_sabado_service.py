@@ -309,6 +309,91 @@ def garantir_quitacao_adiantamento_sabado_instalada(venda) -> bool:
     return bool(updated)
 
 
+def valor_alvo_adiantamento_sabado_folha(
+    venda,
+    *,
+    faixa_regra,
+    config,
+    usar_manual: bool,
+) -> float | None:
+    """
+    Valor-alvo do adiantamento sábado para venda instalada na folha do mês.
+    Usa Regras por Faixa (COMISSÃO) ou valores manuais da config do vendedor.
+    """
+    from crm_app.comissao_folha_service import (
+        get_valor_from_faixa,
+        get_valor_manual,
+        plano_tipo_to_chave,
+    )
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+    plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
+    chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+    if not chave:
+        return None
+    if usar_manual:
+        return get_valor_manual(config, chave)
+    if not faixa_regra:
+        return None
+    return get_valor_from_faixa(faixa_regra, chave)
+
+
+def aplicar_complemento_adiantamento_sabado_folha(
+    vendas_instaladas,
+    *,
+    faixa_regra_total,
+    config,
+    usar_manual: bool,
+) -> int:
+    """
+    Ajusta adiantamento_sabado_valor nas vendas instaladas do mês para o valor
+    da faixa alcançada (antecipadas + a pagar). Inclui rebaixa quando pago > faixa.
+    Agendado/pendenciado/cancelado ficam fora (não estão na lista de instaladas).
+    """
+    from decimal import Decimal
+
+    from crm_app.models import Venda
+
+    pendentes_update = []
+    for venda in vendas_instaladas:
+        if not getattr(venda, 'adiantamento_sabado_marcado', False):
+            continue
+        if getattr(venda, 'flag_desc_adiantamento_sabado', False):
+            continue
+        val_atual = getattr(venda, 'adiantamento_sabado_valor', None)
+        if val_atual is None or float(val_atual) <= 0:
+            continue
+
+        alvo = valor_alvo_adiantamento_sabado_folha(
+            venda,
+            faixa_regra=faixa_regra_total,
+            config=config,
+            usar_manual=usar_manual,
+        )
+        if alvo is None:
+            continue
+
+        alvo_dec = Decimal(str(round(float(alvo), 2)))
+        atual_dec = Decimal(str(val_atual)).quantize(Decimal('0.01'))
+        if alvo_dec == atual_dec:
+            continue
+
+        venda.adiantamento_sabado_valor = alvo_dec
+        pendentes_update.append(venda)
+        logger.info(
+            'Complemento adiant. sábado folha — venda #%s: %s → %s (faixa=%s, manual=%s)',
+            venda.pk,
+            atual_dec,
+            alvo_dec,
+            getattr(faixa_regra_total, 'faixa_nome', None) if faixa_regra_total else None,
+            usar_manual,
+        )
+
+    if pendentes_update:
+        Venda.objects.bulk_update(pendentes_update, ['adiantamento_sabado_valor'])
+    return len(pendentes_update)
+
+
 def quitar_adiantamento_sabado_pos_bulk(vendas) -> int:
     """
     Após bulk_update (OSAB etc.) que altera status_esteira sem disparar signals.

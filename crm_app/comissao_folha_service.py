@@ -429,8 +429,21 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         set_adiant_comissao_esteira = {v.id for v in vendas if comissao_ja_adiantada_venda(v)}
         vendas_para_pagar = [v for v in vendas if v.id not in set_adiant_comissao_esteira]
         qtd_instalada_a_pagar = len(vendas_para_pagar)
+        qtd_total_instalada = len(vendas)
         faixa_regra = encontrar_faixa(consultor, qtd_instalada_a_pagar)
+        faixa_regra_total = encontrar_faixa(consultor, qtd_total_instalada)
         usar_manual = config and config.usar_valor_manual
+
+        from crm_app.services.adiantamento_sabado_service import (
+            aplicar_complemento_adiantamento_sabado_folha,
+        )
+
+        aplicar_complemento_adiantamento_sabado_folha(
+            vendas,
+            faixa_regra_total=faixa_regra_total,
+            config=config,
+            usar_manual=bool(usar_manual),
+        )
 
         # Por plano (chave): qtd a pagar, qtd antecipada (esteira), total já adiantado (primeira faixa COMISSAO)
         por_plano = defaultdict(
