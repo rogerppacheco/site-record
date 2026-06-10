@@ -21,12 +21,17 @@ class _ClienteStub:
 
 
 class _FaixaStub:
-    def __init__(self, faixa_nome: str = 'Faixa 2', valor_500mb_pap: float = 150.0) -> None:
+    def __init__(
+        self,
+        faixa_nome: str = 'Faixa 2',
+        valor_500mb_pap: float = 150.0,
+        valor_500mb_cnpj: float | None = None,
+    ) -> None:
         self.faixa_nome = faixa_nome
         self.valor_500mb_pap = Decimal(str(valor_500mb_pap))
         self.valor_700mb_pap = None
         self.valor_1gb_pap = None
-        self.valor_500mb_cnpj = None
+        self.valor_500mb_cnpj = Decimal(str(valor_500mb_cnpj)) if valor_500mb_cnpj is not None else None
         self.valor_700mb_cnpj = None
         self.valor_1gb_cnpj = None
 
@@ -157,3 +162,45 @@ class CalcularComplementoAdiantamentoSabadoFolhaTests(SimpleTestCase):
             usar_manual=True,
         )
         self.assertEqual(45.0, res['total_complemento'])
+
+
+class ComplementoMeiVsCnpjTests(SimpleTestCase):
+    def test_mei_usa_tabela_pap_no_complemento(self) -> None:
+        venda = _VendaStub(
+            pk=20,
+            adiantamento_sabado_marcado=True,
+            adiantamento_sabado_valor_pago=Decimal('150.00'),
+            flag_desc_adiantamento_sabado=False,
+            plano=_PlanoStub('500 MB'),
+            cliente=_ClienteStub(cpf_cnpj='12345678000199'),
+            classificacao_mei='MEI',
+        )
+        res = calcular_complemento_adiantamento_sabado_folha(
+            [venda],
+            faixa_regra_total=_FaixaStub(valor_500mb_pap=180.0, faixa_nome='Faixa 2'),
+            config=None,
+            usar_manual=False,
+        )
+        self.assertEqual(30.0, res['total_complemento'])
+        self.assertEqual('500MB_PAP', res['por_venda'][20]['chave'])
+        self.assertEqual('MEI', res['detalhes'][0]['classificacao_mei'])
+        self.assertEqual('CPF', res['detalhes'][0]['tipo_cliente'])
+
+    def test_nmei_usa_tabela_cnpj_no_complemento(self) -> None:
+        venda = _VendaStub(
+            pk=21,
+            adiantamento_sabado_marcado=True,
+            adiantamento_sabado_valor_pago=Decimal('220.00'),
+            flag_desc_adiantamento_sabado=False,
+            plano=_PlanoStub('500 MB'),
+            cliente=_ClienteStub(cpf_cnpj='12345678000199'),
+            classificacao_mei='NMEI',
+        )
+        res = calcular_complemento_adiantamento_sabado_folha(
+            [venda],
+            faixa_regra_total=_FaixaStub(valor_500mb_cnpj=250.0, valor_500mb_pap=180.0),
+            config=None,
+            usar_manual=False,
+        )
+        self.assertEqual(30.0, res['total_complemento'])
+        self.assertEqual('500MB_CNPJ', res['por_venda'][21]['chave'])

@@ -457,6 +457,7 @@
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
                     <span class="fw-bold">${v.vendedor_nome}</span>
                     <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
+                    ${r.faixa_complemento_sabado && r.faixa_complemento_sabado !== r.faixa_aplicada ? `<span class="badge bg-info ms-1" title="Faixa usada no complemento do adiantamento sábado (total instaladas: ${r.qtd_instalada_faixa_complemento || '?'})">Compl. sábado: ${r.faixa_complemento_sabado}</span>` : ''}
                 </div>
                 ${blocoResumoCnpjMei(r)}
                 <div class="card-body p-0">
@@ -545,8 +546,15 @@
                         b += `<div class="d-flex justify-content-between text-info mt-1 border-top pt-1"><span>Total pago no sábado <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
                         const compSab = (i.complemento_sabado || {});
                         if (Number(compSab.valor_complemento || 0) !== 0) {
-                            b += `<div class="d-flex justify-content-between text-success mt-1"><span><i class="bi bi-plus-circle"></i> Complemento sábado pendente <strong>(${compSab.quantidade || 0} un.)</strong></span><span class="fw-bold">+ ${fmtMoney(compSab.valor_complemento || 0)}</span></div>`;
+                            b += `<div class="d-flex justify-content-between text-success mt-1"><span><i class="bi bi-plus-circle"></i> Complemento sábado pendente <strong>(${compSab.quantidade || 0} un.)</strong>${compSab.faixa_nome ? ' — faixa <strong>' + compSab.faixa_nome + '</strong>' : ''}</span><span class="fw-bold">+ ${fmtMoney(compSab.valor_complemento || 0)}</span></div>`;
                             b += `<div class="d-flex justify-content-between text-primary mt-1"><span>Total venda sábado (pago + complemento)</span><span class="fw-bold">${fmtMoney(compSab.valor_alvo || 0)}</span></div>`;
+                            const det = compSab.detalhes_vendas || [];
+                            if (det.length) {
+                                b += '<div class="small text-muted ms-2 mt-1">Detalhe por venda (MEI usa tabela PAP):</div>';
+                                det.forEach(d => {
+                                    b += `<div class="small text-muted ms-3">#${d.venda_id} OS ${d.os || '-'} | ${d.chave || d.plano} | MEI: ${d.classificacao_mei || '-'} | pago ${fmtMoney(d.pago)} → alvo ${fmtMoney(d.alvo)} = <strong>${d.complemento >= 0 ? '+' : ''}${fmtMoney(d.complemento)}</strong></div>`;
+                                });
+                            }
                         }
                         if (i.por_plano && i.por_plano.length) {
                             i.por_plano.forEach(row => {

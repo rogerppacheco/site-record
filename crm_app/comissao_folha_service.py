@@ -458,8 +458,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         vendas_para_pagar = [v for v in vendas if v.id not in set_adiant_comissao_esteira]
         qtd_instalada_a_pagar = len(vendas_para_pagar)
         qtd_total_instalada = len(vendas)
-        faixa_regra = encontrar_faixa(consultor, qtd_instalada_a_pagar)
-        faixa_regra_total = encontrar_faixa(consultor, qtd_total_instalada)
+        # Faixa pela produção total instalada no mês (antecipadas + a pagar), conforme regra de negócio.
+        faixa_regra = encontrar_faixa(consultor, qtd_total_instalada)
         usar_manual = config and config.usar_valor_manual
 
         from crm_app.services.adiantamento_sabado_service import (
@@ -471,7 +471,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         valores_pago_sabado_lanc = carregar_valores_pago_sabado_lancamentos(consultor.id)
         resumo_complemento_sab = calcular_complemento_adiantamento_sabado_folha(
             vendas,
-            faixa_regra_total=faixa_regra_total,
+            faixa_regra_total=faixa_regra,
             config=config,
             usar_manual=bool(usar_manual),
             valores_lancamento=valores_pago_sabado_lanc,
@@ -848,6 +848,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         liquido = comissao_total_geral + complemento_sabado_total + total_bonus - total_descontos
         faixa_aplicada = (faixa_regra.faixa_nome if faixa_regra else None) or ('MANUAL' if usar_manual else '')
+        faixa_complemento_sabado = faixa_aplicada
 
         ajustes = {
             'premiacao': float(getattr(config, 'premiação', None) or 0) if config else 0,
@@ -1064,10 +1065,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'valor_complemento': round(float(resumo_complemento_sab.get('total_complemento') or 0), 2),
                 'valor_pago': round(float(resumo_complemento_sab.get('total_pago') or 0), 2),
                 'valor_alvo': round(float(resumo_complemento_sab.get('total_alvo') or 0), 2),
+                'faixa_nome': resumo_complemento_sab.get('faixa_nome'),
+                'detalhes_vendas': resumo_complemento_sab.get('detalhes') or [],
             },
         }
-        detalhes_complemento_sabado = []
-        if float(complemento_sabado_total) != 0:
+        detalhes_complemento_sabado = list(resumo_complemento_sab.get('detalhes') or [])
+        if float(complemento_sabado_total) != 0 and not detalhes_complemento_sabado:
             qtd_comp = int(resumo_complemento_sab.get('quantidade_complemento') or 0)
             detalhes_complemento_sabado.append(
                 {
@@ -1087,6 +1090,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'total_qtd_ja_pago': 0,
                 'total_qtd_churn_30': 0,
                 'faixa_aplicada': faixa_aplicada,
+                'faixa_complemento_sabado': faixa_complemento_sabado,
+                'qtd_instalada_faixa_complemento': qtd_total_instalada,
                 'por_plano': por_plano_lista,
                 'comissao_total_geral': float(comissao_total_geral),
                 'complemento_sabado_total': float(complemento_sabado_total),

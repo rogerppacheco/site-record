@@ -353,6 +353,15 @@ def carregar_valores_pago_sabado_lancamentos(
     return mapa
 
 
+def chave_comissao_venda(venda) -> str | None:
+    """Chave REGRAS_FAIXAS (500MB_PAP etc.) respeitando MEI → PAP."""
+    from crm_app.comissao_folha_service import plano_tipo_to_chave
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+    plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
+    return plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+
+
 def valor_alvo_adiantamento_sabado_folha(
     venda,
     *,
@@ -364,15 +373,9 @@ def valor_alvo_adiantamento_sabado_folha(
     Valor-alvo do adiantamento sábado para venda instalada na folha do mês.
     Usa Regras por Faixa (COMISSÃO) ou valores manuais da config do vendedor.
     """
-    from crm_app.comissao_folha_service import (
-        get_valor_from_faixa,
-        get_valor_manual,
-        plano_tipo_to_chave,
-    )
-    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.comissao_folha_service import get_valor_from_faixa, get_valor_manual
 
-    plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
-    chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+    chave = chave_comissao_venda(venda)
     if not chave:
         return None
     if usar_manual:
@@ -395,15 +398,16 @@ def calcular_complemento_adiantamento_sabado_folha(
     complemento = valor_alvo_faixa − valor_pago_sábado (pode ser negativo na rebaixa).
     Não persiste alterações — entra no líquido da folha e na exibição.
     """
-    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
-    from crm_app.comissao_folha_service import plano_tipo_to_chave
+    from crm_app.services.cnpj_mei_service import classificacao_mei_venda, tipo_cliente_comissao
 
     por_venda: dict[int, dict] = {}
     por_plano: dict[str, dict] = {}
+    detalhes: list[dict] = []
     total_complemento = 0.0
     total_pago = 0.0
     total_alvo = 0.0
     qtd_complemento = 0
+    faixa_nome = getattr(faixa_regra_total, 'faixa_nome', None) if faixa_regra_total else None
 
     for venda in vendas_instaladas:
         if not getattr(venda, 'adiantamento_sabado_marcado', False):
@@ -429,16 +433,34 @@ def calcular_complemento_adiantamento_sabado_folha(
         pago_r = round(pago, 2)
 
         plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
-        chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda)) or ''
+        chave = chave_comissao_venda(venda) or ''
+        mei = classificacao_mei_venda(venda)
+        tipo_cli = tipo_cliente_comissao(venda)
 
         por_venda[venda.pk] = {
             'pago': pago_r,
             'alvo': alvo_r,
             'complemento': complemento,
             'chave': chave,
+            'classificacao_mei': mei,
+            'tipo_cliente': tipo_cli,
         }
         if complemento != 0:
             qtd_complemento += 1
+            detalhes.append(
+                {
+                    'venda_id': venda.pk,
+                    'os': getattr(venda, 'ordem_servico', None) or '',
+                    'plano': plano_nome,
+                    'chave': chave,
+                    'classificacao_mei': mei or '-',
+                    'tipo_cliente': tipo_cli,
+                    'pago': pago_r,
+                    'alvo': alvo_r,
+                    'complemento': complemento,
+                    'faixa_nome': faixa_nome,
+                }
+            )
 
         total_pago += pago_r
         total_alvo += alvo_r
@@ -461,6 +483,8 @@ def calcular_complemento_adiantamento_sabado_folha(
         'quantidade_complemento': qtd_complemento,
         'por_venda': por_venda,
         'por_plano': por_plano,
+        'detalhes': detalhes,
+        'faixa_nome': faixa_nome,
     }
 
 
