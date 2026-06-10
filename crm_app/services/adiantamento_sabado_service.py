@@ -57,7 +57,7 @@ def venda_elegivel_estorno_adiantamento_sabado(venda) -> bool:
         return False
     if getattr(venda, 'adiantamento_sabado_quitado_em', None):
         return False
-    val = getattr(venda, 'adiantamento_sabado_valor', None)
+    val = valor_pago_adiantamento_sabado_venda(venda)
     if not val or float(val) <= 0:
         return False
     if status_esteira_eh_instalada(venda.status_esteira):
@@ -144,7 +144,7 @@ def calcular_descontos_adiantamento_sabado_folha(consultor, data_inicio, data_fi
     for v in vendas:
         if not venda_entra_estorno_adiantamento_sabado_mes(v, di, df):
             continue
-        val = float(v.adiantamento_sabado_valor or 0)
+        val = valor_pago_adiantamento_sabado_venda(v)
         if val <= 0:
             continue
         descontos.append({
@@ -309,6 +309,50 @@ def garantir_quitacao_adiantamento_sabado_instalada(venda) -> bool:
     return bool(updated)
 
 
+def valor_pago_adiantamento_sabado_venda(
+    venda,
+    valores_lancamento: dict[int, float] | None = None,
+) -> float:
+    """
+    Valor efetivamente pago no sábado (não inclui complemento de faixa da folha).
+    Prioridade: adiantamento_sabado_valor_pago → lançamento financeiro → adiantamento_sabado_valor.
+    """
+    vp = getattr(venda, 'adiantamento_sabado_valor_pago', None)
+    if vp is not None and float(vp) > 0:
+        return float(vp)
+    vid = getattr(venda, 'pk', None) or getattr(venda, 'id', None)
+    if valores_lancamento and vid is not None:
+        val_lanc = valores_lancamento.get(int(vid))
+        if val_lanc is not None and float(val_lanc) > 0:
+            return float(val_lanc)
+    val = getattr(venda, 'adiantamento_sabado_valor', None)
+    if val is not None and float(val) > 0:
+        return float(val)
+    return 0.0
+
+
+def carregar_valores_pago_sabado_lancamentos(
+    vendedor_id: int | None = None,
+) -> dict[int, float]:
+    """Mapa venda_id → valor pago conforme metadados dos lançamentos de sábado."""
+    from crm_app.models import LancamentoFinanceiro
+
+    qs = LancamentoFinanceiro.objects.filter(tipo='ADIANTAMENTO_COMISSAO')
+    if vendedor_id:
+        qs = qs.filter(usuario_id=vendedor_id)
+    mapa: dict[int, float] = {}
+    for lanc in qs.only('metadados', 'usuario_id'):
+        meta = lanc.metadados if isinstance(lanc.metadados, dict) else {}
+        if meta.get('origem') != 'esteira_sabado_agendados':
+            continue
+        for vid, val in (meta.get('valores_por_venda_id') or {}).items():
+            try:
+                mapa[int(vid)] = float(val)
+            except (TypeError, ValueError):
+                continue
+    return mapa
+
+
 def valor_alvo_adiantamento_sabado_folha(
     venda,
     *,
@@ -338,30 +382,37 @@ def valor_alvo_adiantamento_sabado_folha(
     return get_valor_from_faixa(faixa_regra, chave)
 
 
-def aplicar_complemento_adiantamento_sabado_folha(
+def calcular_complemento_adiantamento_sabado_folha(
     vendas_instaladas,
     *,
     faixa_regra_total,
     config,
     usar_manual: bool,
-) -> int:
+    valores_lancamento: dict[int, float] | None = None,
+) -> dict:
     """
-    Ajusta adiantamento_sabado_valor nas vendas instaladas do mês para o valor
-    da faixa alcançada (antecipadas + a pagar). Inclui rebaixa quando pago > faixa.
-    Agendado/pendenciado/cancelado ficam fora (não estão na lista de instaladas).
+    Complemento de faixa para vendas instaladas com adiantamento sábado.
+    complemento = valor_alvo_faixa − valor_pago_sábado (pode ser negativo na rebaixa).
+    Não persiste alterações — entra no líquido da folha e na exibição.
     """
-    from decimal import Decimal
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.comissao_folha_service import plano_tipo_to_chave
 
-    from crm_app.models import Venda
+    por_venda: dict[int, dict] = {}
+    por_plano: dict[str, dict] = {}
+    total_complemento = 0.0
+    total_pago = 0.0
+    total_alvo = 0.0
+    qtd_complemento = 0
 
-    pendentes_update = []
     for venda in vendas_instaladas:
         if not getattr(venda, 'adiantamento_sabado_marcado', False):
             continue
         if getattr(venda, 'flag_desc_adiantamento_sabado', False):
             continue
-        val_atual = getattr(venda, 'adiantamento_sabado_valor', None)
-        if val_atual is None or float(val_atual) <= 0:
+
+        pago = valor_pago_adiantamento_sabado_venda(venda, valores_lancamento)
+        if pago <= 0:
             continue
 
         alvo = valor_alvo_adiantamento_sabado_folha(
@@ -373,25 +424,44 @@ def aplicar_complemento_adiantamento_sabado_folha(
         if alvo is None:
             continue
 
-        alvo_dec = Decimal(str(round(float(alvo), 2)))
-        atual_dec = Decimal(str(val_atual)).quantize(Decimal('0.01'))
-        if alvo_dec == atual_dec:
-            continue
+        complemento = round(float(alvo) - pago, 2)
+        alvo_r = round(float(alvo), 2)
+        pago_r = round(pago, 2)
 
-        venda.adiantamento_sabado_valor = alvo_dec
-        pendentes_update.append(venda)
-        logger.info(
-            'Complemento adiant. sábado folha — venda #%s: %s → %s (faixa=%s, manual=%s)',
-            venda.pk,
-            atual_dec,
-            alvo_dec,
-            getattr(faixa_regra_total, 'faixa_nome', None) if faixa_regra_total else None,
-            usar_manual,
-        )
+        plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
+        chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda)) or ''
 
-    if pendentes_update:
-        Venda.objects.bulk_update(pendentes_update, ['adiantamento_sabado_valor'])
-    return len(pendentes_update)
+        por_venda[venda.pk] = {
+            'pago': pago_r,
+            'alvo': alvo_r,
+            'complemento': complemento,
+            'chave': chave,
+        }
+        if complemento != 0:
+            qtd_complemento += 1
+
+        total_pago += pago_r
+        total_alvo += alvo_r
+        total_complemento += complemento
+
+        if chave:
+            slot = por_plano.setdefault(
+                chave,
+                {'qtd': 0, 'pago': 0.0, 'complemento': 0.0, 'alvo': 0.0},
+            )
+            slot['qtd'] += 1
+            slot['pago'] += pago_r
+            slot['complemento'] += complemento
+            slot['alvo'] += alvo_r
+
+    return {
+        'total_complemento': round(total_complemento, 2),
+        'total_pago': round(total_pago, 2),
+        'total_alvo': round(total_alvo, 2),
+        'quantidade_complemento': qtd_complemento,
+        'por_venda': por_venda,
+        'por_plano': por_plano,
+    }
 
 
 def quitar_adiantamento_sabado_pos_bulk(vendas) -> int:

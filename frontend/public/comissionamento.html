@@ -463,20 +463,34 @@
                     <table class="table table-sm table-bordered mb-0">
                         <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR JÁ ADIANT.</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
                         <tbody>`;
-            let sumQtdAnt = 0, sumValAdiant = 0, sumValorTotalInst = 0;
+            let sumQtdAnt = 0, sumValAdiant = 0, sumValComplemento = 0, sumValorTotalInst = 0;
             porPlano.forEach(p => {
                 const qtdAnt = p.qtd_antecipada || 0;
                 const valAdiant = p.valor_total_antecipado != null ? p.valor_total_antecipado : 0;
+                const valComp = p.valor_total_complemento_sabado != null ? p.valor_total_complemento_sabado : 0;
                 sumQtdAnt += qtdAnt;
                 sumValAdiant += valAdiant;
-                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0) {
+                sumValComplemento += valComp;
+                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0 || valComp > 0) {
                     sumValorTotalInst += Number(p.valor_total_instalados || 0);
-                    html += `<tr><td>${rotuloPlanoComMei(p)}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${qtdAnt > 0 ? fmtMoney(valAdiant) : '—'}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+                    const valTotalSab = (valAdiant + valComp);
+                    const colAdiant = qtdAnt > 0
+                        ? (valComp !== 0
+                            ? `${fmtMoney(valAdiant)} <span class="text-muted small">+ ${fmtMoney(valComp)} comp.</span>`
+                            : fmtMoney(valAdiant))
+                        : '—';
+                    html += `<tr><td>${rotuloPlanoComMei(p)}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${colAdiant}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
                 }
             });
             const totalQtdPagar = r.total_qtd_instalada_a_pagar != null ? r.total_qtd_instalada_a_pagar : 0;
             const totalQtdVendasFolha = r.total_qtd_vendas_folha != null ? r.total_qtd_vendas_folha : (totalQtdPagar + sumQtdAnt);
-            html += `<tr class="table-light fw-bold"><td>TOTAL</td><td class="text-center">${totalQtdPagar}</td><td class="text-center">${sumQtdAnt}</td><td class="text-end text-info">${sumQtdAnt > 0 ? fmtMoney(sumValAdiant) : '—'}</td><td class="text-end">—</td><td class="text-end">${fmtMoney(sumValorTotalInst)}</td><td class="text-end">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+            const complementoSabTotal = r.complemento_sabado_total != null ? r.complemento_sabado_total : sumValComplemento;
+            const colTotalAdiant = sumQtdAnt > 0
+                ? (sumValComplemento !== 0
+                    ? `${fmtMoney(sumValAdiant)} <span class="text-muted small">+ ${fmtMoney(sumValComplemento)} comp.</span>`
+                    : fmtMoney(sumValAdiant))
+                : '—';
+            html += `<tr class="table-light fw-bold"><td>TOTAL</td><td class="text-center">${totalQtdPagar}</td><td class="text-center">${sumQtdAnt}</td><td class="text-end text-info">${colTotalAdiant}</td><td class="text-end">—</td><td class="text-end">${fmtMoney(sumValorTotalInst)}</td><td class="text-end">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
                 <div class="px-3 py-2 border-top bg-light small d-flex justify-content-between flex-wrap gap-2">
                     <span><strong>Total vendas a pagar:</strong> ${totalQtdPagar}</span>
                     <span><strong>Total vendas antecipadas:</strong> ${sumQtdAnt}</span>
@@ -484,6 +498,8 @@
                 </div>
                 <div class="p-3 border-top bg-white">
                     <div class="row small mb-2">
+                        <div class="col">Comissão (a pagar): <span class="fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</span></div>
+                        ${complementoSabTotal !== 0 ? `<div class="col">Complemento sábado: <span class="text-success fw-bold">+ ${fmtMoney(complementoSabTotal)}</span></div>` : ''}
                         <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
                         <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
                         <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
@@ -526,7 +542,12 @@
                         b += linhaRef('Sábado — quitado na instalação', 'adiantamento_sabado_quitado_instalacao');
                         b += linhaRef('Adiantamento na esteira / instalados', 'adiantamento_esteira_instalados');
                         b += linhaRef('Não classificado', 'adiantamento_nao_classificado');
-                        b += `<div class="d-flex justify-content-between text-info mt-1 border-top pt-1"><span>Total adiantado <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
+                        b += `<div class="d-flex justify-content-between text-info mt-1 border-top pt-1"><span>Total pago no sábado <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
+                        const compSab = (i.complemento_sabado || {});
+                        if (Number(compSab.valor_complemento || 0) !== 0) {
+                            b += `<div class="d-flex justify-content-between text-success mt-1"><span><i class="bi bi-plus-circle"></i> Complemento sábado pendente <strong>(${compSab.quantidade || 0} un.)</strong></span><span class="fw-bold">+ ${fmtMoney(compSab.valor_complemento || 0)}</span></div>`;
+                            b += `<div class="d-flex justify-content-between text-primary mt-1"><span>Total venda sábado (pago + complemento)</span><span class="fw-bold">${fmtMoney(compSab.valor_alvo || 0)}</span></div>`;
+                        }
                         if (i.por_plano && i.por_plano.length) {
                             i.por_plano.forEach(row => {
                                 if (row.qtd > 0) b += `<div class="small text-muted ms-2">${row.plano}: ${row.qtd} un. → ${fmtMoney(row.valor_total)}</div>`;

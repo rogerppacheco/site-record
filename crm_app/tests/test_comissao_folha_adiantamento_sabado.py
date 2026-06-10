@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 from decimal import Decimal
-from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
 from crm_app.services.adiantamento_sabado_service import (
-    aplicar_complemento_adiantamento_sabado_folha,
+    calcular_complemento_adiantamento_sabado_folha,
     valor_alvo_adiantamento_sabado_folha,
+    valor_pago_adiantamento_sabado_venda,
 )
 
 
@@ -48,6 +48,23 @@ class _VendaStub:
             setattr(self, chave, valor)
 
 
+class ValorPagoAdiantamentoSabadoTests(SimpleTestCase):
+    def test_prioriza_campo_valor_pago(self) -> None:
+        venda = _VendaStub(
+            pk=1,
+            adiantamento_sabado_valor_pago=Decimal('130.00'),
+            adiantamento_sabado_valor=Decimal('180.00'),
+        )
+        self.assertEqual(130.0, valor_pago_adiantamento_sabado_venda(venda))
+
+    def test_usa_lancamento_quando_campo_vazio(self) -> None:
+        venda = _VendaStub(pk=2, adiantamento_sabado_valor=Decimal('180.00'))
+        self.assertEqual(
+            130.0,
+            valor_pago_adiantamento_sabado_venda(venda, {2: 130.0}),
+        )
+
+
 class ValorAlvoAdiantamentoSabadoFolhaTests(SimpleTestCase):
     def test_usa_faixa_comissao_quando_nao_manual(self) -> None:
         venda = _VendaStub(plano=_PlanoStub('500 MB'), cliente=_ClienteStub())
@@ -70,101 +87,73 @@ class ValorAlvoAdiantamentoSabadoFolhaTests(SimpleTestCase):
         self.assertEqual(145.0, alvo)
 
 
-class AplicarComplementoAdiantamentoSabadoFolhaTests(SimpleTestCase):
-    @patch('crm_app.models.Venda.objects.bulk_update')
-    def test_complementa_instalada_ate_faixa_alcancada(self, mock_bulk) -> None:
+class CalcularComplementoAdiantamentoSabadoFolhaTests(SimpleTestCase):
+    def test_complemento_positivo_para_instalada(self) -> None:
         venda = _VendaStub(
             pk=10,
             adiantamento_sabado_marcado=True,
-            adiantamento_sabado_valor=Decimal('130.00'),
+            adiantamento_sabado_valor_pago=Decimal('130.00'),
             flag_desc_adiantamento_sabado=False,
             plano=_PlanoStub('500 MB'),
             cliente=_ClienteStub(),
         )
-        qtd = aplicar_complemento_adiantamento_sabado_folha(
+        res = calcular_complemento_adiantamento_sabado_folha(
             [venda],
             faixa_regra_total=_FaixaStub(valor_500mb_pap=150.0),
             config=None,
             usar_manual=False,
         )
-        self.assertEqual(1, qtd)
-        self.assertEqual(Decimal('150.00'), venda.adiantamento_sabado_valor)
-        mock_bulk.assert_called_once()
+        self.assertEqual(20.0, res['total_complemento'])
+        self.assertEqual(130.0, res['total_pago'])
+        self.assertEqual(150.0, res['total_alvo'])
+        self.assertEqual(20.0, res['por_venda'][10]['complemento'])
 
-    @patch('crm_app.models.Venda.objects.bulk_update')
-    def test_rebaixa_quando_pago_maior_que_faixa(self, mock_bulk) -> None:
+    def test_complemento_negativo_na_rebaixa(self) -> None:
         venda = _VendaStub(
             pk=11,
             adiantamento_sabado_marcado=True,
-            adiantamento_sabado_valor=Decimal('160.00'),
+            adiantamento_sabado_valor_pago=Decimal('160.00'),
             flag_desc_adiantamento_sabado=False,
             plano=_PlanoStub('500 MB'),
             cliente=_ClienteStub(),
         )
-        qtd = aplicar_complemento_adiantamento_sabado_folha(
+        res = calcular_complemento_adiantamento_sabado_folha(
             [venda],
             faixa_regra_total=_FaixaStub(valor_500mb_pap=130.0),
             config=None,
             usar_manual=False,
         )
-        self.assertEqual(1, qtd)
-        self.assertEqual(Decimal('130.00'), venda.adiantamento_sabado_valor)
-        mock_bulk.assert_called_once()
+        self.assertEqual(-30.0, res['total_complemento'])
 
-    @patch('crm_app.models.Venda.objects.bulk_update')
-    def test_nao_altera_sem_marcacao_sabado(self, mock_bulk) -> None:
+    def test_nao_calcula_sem_marcacao(self) -> None:
         venda = _VendaStub(
             pk=12,
             adiantamento_sabado_marcado=False,
-            adiantamento_sabado_valor=Decimal('130.00'),
+            adiantamento_sabado_valor_pago=Decimal('130.00'),
             plano=_PlanoStub('500 MB'),
             cliente=_ClienteStub(),
         )
-        qtd = aplicar_complemento_adiantamento_sabado_folha(
+        res = calcular_complemento_adiantamento_sabado_folha(
             [venda],
             faixa_regra_total=_FaixaStub(valor_500mb_pap=150.0),
             config=None,
             usar_manual=False,
         )
-        self.assertEqual(0, qtd)
-        self.assertEqual(Decimal('130.00'), venda.adiantamento_sabado_valor)
-        mock_bulk.assert_not_called()
+        self.assertEqual(0.0, res['total_complemento'])
 
-    @patch('crm_app.models.Venda.objects.bulk_update')
-    def test_nao_altera_com_estorno_ja_aplicado(self, mock_bulk) -> None:
-        venda = _VendaStub(
-            pk=13,
-            adiantamento_sabado_marcado=True,
-            adiantamento_sabado_valor=Decimal('130.00'),
-            flag_desc_adiantamento_sabado=True,
-            plano=_PlanoStub('500 MB'),
-            cliente=_ClienteStub(),
-        )
-        qtd = aplicar_complemento_adiantamento_sabado_folha(
-            [venda],
-            faixa_regra_total=_FaixaStub(valor_500mb_pap=150.0),
-            config=None,
-            usar_manual=False,
-        )
-        self.assertEqual(0, qtd)
-        mock_bulk.assert_not_called()
-
-    @patch('crm_app.models.Venda.objects.bulk_update')
-    def test_complementa_valor_manual_ate_config(self, mock_bulk) -> None:
+    def test_complemento_manual_usa_config(self) -> None:
         venda = _VendaStub(
             pk=14,
             adiantamento_sabado_marcado=True,
-            adiantamento_sabado_valor=Decimal('100.00'),
+            adiantamento_sabado_valor_pago=Decimal('100.00'),
             flag_desc_adiantamento_sabado=False,
             plano=_PlanoStub('500 MB'),
             cliente=_ClienteStub(),
         )
-        qtd = aplicar_complemento_adiantamento_sabado_folha(
+        res = calcular_complemento_adiantamento_sabado_folha(
             [venda],
             faixa_regra_total=_FaixaStub(valor_500mb_pap=150.0),
             config=_ConfigStub(valor_500mb_pap_manual=145.0),
             usar_manual=True,
         )
-        self.assertEqual(1, qtd)
-        self.assertEqual(Decimal('145.00'), venda.adiantamento_sabado_valor)
-        mock_bulk.assert_called_once()
+        self.assertEqual(45.0, res['total_complemento'])

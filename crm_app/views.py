@@ -1611,6 +1611,7 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_ma
     with transaction.atomic():
         venda.adiantamento_sabado_marcado = True
         venda.adiantamento_sabado_valor = valor_unit
+        venda.adiantamento_sabado_valor_pago = valor_unit
         venda.adiantamento_sabado_marcado_em = timezone.now()
         venda.adiantamento_sabado_marcado_por = user
         venda.adiantamento_sabado_manual = bool(manual or valor_manual_dec is not None)
@@ -1619,6 +1620,7 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_ma
             update_fields=[
                 'adiantamento_sabado_marcado',
                 'adiantamento_sabado_valor',
+                'adiantamento_sabado_valor_pago',
                 'adiantamento_sabado_marcado_em',
                 'adiantamento_sabado_marcado_por',
                 'adiantamento_sabado_manual',
@@ -3491,9 +3493,15 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             venda.adiantamento_sabado_valor = valor_novo
+            venda.adiantamento_sabado_valor_pago = valor_novo
             venda.adiantamento_sabado_manual = True
             venda.adiantamento_sabado_obs_manual = obs
-            venda.save(update_fields=['adiantamento_sabado_valor', 'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual'])
+            venda.save(update_fields=[
+                'adiantamento_sabado_valor',
+                'adiantamento_sabado_valor_pago',
+                'adiantamento_sabado_manual',
+                'adiantamento_sabado_obs_manual',
+            ])
 
             lanc = LancamentoFinanceiro.objects.filter(
                 usuario_id=venda.vendedor_id,
@@ -3666,6 +3674,7 @@ class VendaViewSet(viewsets.ModelViewSet):
 
             venda.adiantamento_sabado_marcado = False
             venda.adiantamento_sabado_valor = None
+            venda.adiantamento_sabado_valor_pago = None
             venda.adiantamento_sabado_marcado_em = None
             venda.adiantamento_sabado_marcado_por = None
             venda.adiantamento_sabado_manual = False
@@ -3677,6 +3686,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 update_fields=[
                     'adiantamento_sabado_marcado',
                     'adiantamento_sabado_valor',
+                    'adiantamento_sabado_valor_pago',
                     'adiantamento_sabado_marcado_em',
                     'adiantamento_sabado_marcado_por',
                     'adiantamento_sabado_manual',
@@ -8821,6 +8831,7 @@ class PendenciasDescontoView(APIView):
 
         from crm_app.services.adiantamento_sabado_service import (
             motivo_estorno_adiantamento_sabado,
+            valor_pago_adiantamento_sabado_venda,
             venda_entra_estorno_adiantamento_sabado_mes,
         )
 
@@ -8853,7 +8864,7 @@ class PendenciasDescontoView(APIView):
             if data_inicio_c and data_fim_c:
                 if not venda_entra_estorno_adiantamento_sabado_mes(v, data_inicio_c, data_fim_c):
                     continue
-            val = float(v.adiantamento_sabado_valor or 0)
+            val = valor_pago_adiantamento_sabado_venda(v)
             if val <= 0:
                 continue
             consultor = v.vendedor

@@ -74,6 +74,7 @@ def duplicar(
     # Reemissão = nova OS; não herda adiantamento sábado / antecipação da venda original.
     venda_nova.adiantamento_sabado_marcado = False
     venda_nova.adiantamento_sabado_valor = None
+    venda_nova.adiantamento_sabado_valor_pago = None
     venda_nova.adiantamento_sabado_marcado_em = None
     venda_nova.adiantamento_sabado_marcado_por = None
     venda_nova.adiantamento_sabado_manual = False

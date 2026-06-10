@@ -77,18 +77,33 @@ def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
     return 0.0
 
 
-def valor_adiantamento_exibicao_folha(venda, faixa_adiantamento, chave, origem=None):
+def valor_adiantamento_exibicao_folha(
+    venda,
+    faixa_adiantamento,
+    chave,
+    origem=None,
+    complemento_sabado: float | None = None,
+):
     """
     Valor de comissão antecipada na folha/extrato.
-    Adiantamento sábado: snapshot da esteira (adiantamento_sabado_valor).
+    Adiantamento sábado: valor pago no sábado + complemento de faixa (se instalada).
     Adiantamento comissão (esteira): tabela de governança.
     """
     if origem is None:
         origem = origem_adiantamento_comissao_venda(venda)
     if origem in ('sabado', 'sabado_quitado_instalacao', 'sabado_pendente'):
-        val = getattr(venda, 'adiantamento_sabado_valor', None)
-        if val is not None and float(val) > 0:
-            return float(val)
+        from crm_app.services.adiantamento_sabado_service import (
+            valor_pago_adiantamento_sabado_venda,
+        )
+
+        pago = valor_pago_adiantamento_sabado_venda(venda)
+        if pago > 0:
+            comp = float(complemento_sabado or 0)
+            if comp != 0 and origem in ('sabado', 'sabado_quitado_instalacao'):
+                return round(pago + comp, 2)
+            if origem == 'sabado_pendente' or comp == 0:
+                return pago
+            return round(pago + comp, 2)
     return valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
 
 
@@ -219,13 +234,17 @@ def valor_comissao_linha_extrato(
     usar_manual,
     instalada_na_folha=False,
     churn_m1=False,
+    complemento_sabado: float | None = None,
 ):
     """
     Valor e tipo de comissão exibidos no extrato por venda.
     Retorna (valor float|None, rótulo tipo comissão, código base).
     """
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
-    from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+    from crm_app.services.adiantamento_sabado_service import (
+        comissao_ja_adiantada_venda,
+        valor_pago_adiantamento_sabado_venda,
+    )
 
     plano_nome = venda.plano.nome if venda.plano else ''
     chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
@@ -233,14 +252,17 @@ def valor_comissao_linha_extrato(
     if not chave:
         val = None
         if origem in ('sabado', 'sabado_quitado_instalacao', 'sabado_pendente'):
-            vs = getattr(venda, 'adiantamento_sabado_valor', None)
-            if vs is not None and float(vs) > 0:
-                val = float(vs)
+            pago = valor_pago_adiantamento_sabado_venda(venda)
+            if pago > 0:
+                comp = float(complemento_sabado or 0)
+                val = round(pago + comp, 2) if comp and origem != 'sabado_pendente' else pago
         base = 'antecipada' if comissao_ja_adiantada_venda(venda) else 'referencia'
         return val, label_tipo_comissao_extrato(base, origem), base
 
     tabela = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
-    val_adiant = valor_adiantamento_exibicao_folha(venda, faixa_adiantamento, chave, origem)
+    val_adiant = valor_adiantamento_exibicao_folha(
+        venda, faixa_adiantamento, chave, origem, complemento_sabado=complemento_sabado,
+    )
 
     if churn_m1:
         if usar_manual:
@@ -253,7 +275,13 @@ def valor_comissao_linha_extrato(
     if instalada_na_folha:
         if comissao_ja_adiantada_venda(venda):
             base = 'antecipada'
-            return val_adiant, label_tipo_comissao_extrato(base, origem), base
+            label = label_tipo_comissao_extrato(base, origem)
+            comp = float(complemento_sabado or 0)
+            if comp > 0 and origem in ('sabado', 'sabado_quitado_instalacao'):
+                label = f'{label} (+ complemento faixa)'
+            elif comp < 0 and origem in ('sabado', 'sabado_quitado_instalacao'):
+                label = f'{label} (ajuste rebaixa faixa)'
+            return val_adiant, label, base
         if usar_manual:
             vu = get_valor_manual(config, chave)
         else:
@@ -435,19 +463,32 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         usar_manual = config and config.usar_valor_manual
 
         from crm_app.services.adiantamento_sabado_service import (
-            aplicar_complemento_adiantamento_sabado_folha,
+            calcular_complemento_adiantamento_sabado_folha,
+            carregar_valores_pago_sabado_lancamentos,
+            valor_pago_adiantamento_sabado_venda,
         )
 
-        aplicar_complemento_adiantamento_sabado_folha(
+        valores_pago_sabado_lanc = carregar_valores_pago_sabado_lancamentos(consultor.id)
+        resumo_complemento_sab = calcular_complemento_adiantamento_sabado_folha(
             vendas,
             faixa_regra_total=faixa_regra_total,
             config=config,
             usar_manual=bool(usar_manual),
+            valores_lancamento=valores_pago_sabado_lanc,
         )
+        complemento_por_venda = resumo_complemento_sab.get('por_venda') or {}
+        complemento_sabado_total = Decimal(str(resumo_complemento_sab.get('total_complemento') or 0))
 
-        # Por plano (chave): qtd a pagar, qtd antecipada (esteira), total já adiantado (primeira faixa COMISSAO)
+        # Por plano (chave): qtd a pagar, qtd antecipada (esteira), total já adiantado (pago sábado / esteira)
         por_plano = defaultdict(
-            lambda: {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0.0, 'total_antecipado': 0.0}
+            lambda: {
+                'qtd': 0,
+                'qtd_antecipada': 0,
+                'valor_unit': None,
+                'total': 0.0,
+                'total_antecipado': 0.0,
+                'total_complemento_sabado': 0.0,
+            }
         )
         comissao_total_geral = Decimal('0')
         qtd_adiant_sem_chave_excel = 0
@@ -485,10 +526,18 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 qtd_cpf_total += 1
             if comissao_ja_adiantada_venda(v):
                 o_ant = origem_adiantamento_comissao_venda(v) or 'esteira_comissao'
-                va = valor_adiantamento_exibicao_folha(v, faixa_adiantamento, chave, o_ant)
+                comp_v = float((complemento_por_venda.get(v.id) or {}).get('complemento') or 0)
+                va = valor_adiantamento_exibicao_folha(
+                    v, faixa_adiantamento, chave, o_ant, complemento_sabado=comp_v,
+                )
                 if chave:
                     por_plano[chave]['qtd_antecipada'] += 1
-                    por_plano[chave]['total_antecipado'] += va
+                    if o_ant in ('sabado', 'sabado_quitado_instalacao'):
+                        pago_v = valor_pago_adiantamento_sabado_venda(v, valores_pago_sabado_lanc)
+                        por_plano[chave]['total_antecipado'] += pago_v
+                        por_plano[chave]['total_complemento_sabado'] += comp_v
+                    else:
+                        por_plano[chave]['total_antecipado'] += float(va or 0)
                 else:
                     qtd_adiant_sem_chave_excel += 1
                     valor_adiant_sem_chave_excel += va
@@ -504,7 +553,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     o = origem_adiantamento_comissao_venda(v) or 'esteira_comissao'
                     chave_origem = _map_origem.get(o, 'adiantamento_nao_classificado')
                 info_adiantamento_origem[chave_origem]['quantidade'] += 1
-                info_adiantamento_origem[chave_origem]['valor_total'] += float(va or 0)
+                ref_val = float(va or 0)
+                if o_ant in ('sabado', 'sabado_quitado_instalacao', 'sabado_pendente'):
+                    ref_val = valor_pago_adiantamento_sabado_venda(v, valores_pago_sabado_lanc)
+                info_adiantamento_origem[chave_origem]['valor_total'] += ref_val
                 continue
             if not chave:
                 continue
@@ -527,14 +579,25 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         for chave in CHAVES_PLANO:
             d = por_plano.get(
                 chave,
-                {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0, 'total_antecipado': 0.0},
+                {
+                    'qtd': 0,
+                    'qtd_antecipada': 0,
+                    'valor_unit': None,
+                    'total': 0,
+                    'total_antecipado': 0.0,
+                    'total_complemento_sabado': 0.0,
+                },
             )
+            comp_plano = round(float(d.get('total_complemento_sabado', 0) or 0), 2)
+            pago_plano = round(float(d.get('total_antecipado', 0) or 0), 2)
             por_plano_lista.append({
                 'plano': labels.get(chave, chave),
                 'qtd_instalada_a_pagar': d['qtd'],
                 'qtd_cnpj_mei': por_plano_cnpj_mei.get(chave, 0),
                 'qtd_antecipada': d.get('qtd_antecipada', 0),
-                'valor_total_antecipado': round(float(d.get('total_antecipado', 0) or 0), 2),
+                'valor_total_antecipado': pago_plano,
+                'valor_total_complemento_sabado': comp_plano,
+                'valor_total_venda_sabado': round(pago_plano + comp_plano, 2),
                 'qtd_ja_pago': 0,
                 'qtd_churn_30': 0,
                 'valor_unitario_instalados': d['valor_unit'],
@@ -783,7 +846,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             total_bonus += Decimal(str(item['valor']))
             detalhes_bonus.append(item)
 
-        liquido = comissao_total_geral + total_bonus - total_descontos
+        liquido = comissao_total_geral + complemento_sabado_total + total_bonus - total_descontos
         faixa_aplicada = (faixa_regra.faixa_nome if faixa_regra else None) or ('MANUAL' if usar_manual else '')
 
         ajustes = {
@@ -830,6 +893,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 config=config,
                 usar_manual=usar_manual,
                 instalada_na_folha=True,
+                complemento_sabado=float((complemento_por_venda.get(v.id) or {}).get('complemento') or 0),
             )
             extrato.append({
                 'venda_id': v.id,
@@ -995,7 +1059,23 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 }
                 for k, v in info_adiantamento_origem.items()
             },
+            'complemento_sabado': {
+                'quantidade': int(resumo_complemento_sab.get('quantidade_complemento') or 0),
+                'valor_complemento': round(float(resumo_complemento_sab.get('total_complemento') or 0), 2),
+                'valor_pago': round(float(resumo_complemento_sab.get('total_pago') or 0), 2),
+                'valor_alvo': round(float(resumo_complemento_sab.get('total_alvo') or 0), 2),
+            },
         }
+        detalhes_complemento_sabado = []
+        if float(complemento_sabado_total) != 0:
+            qtd_comp = int(resumo_complemento_sab.get('quantidade_complemento') or 0)
+            detalhes_complemento_sabado.append(
+                {
+                    'motivo': 'Complemento adiantamento sábado (faixa alcançada)',
+                    'valor': float(complemento_sabado_total),
+                    'quantidade': qtd_comp,
+                }
+            )
 
         resultado.append({
             'vendedor_id': consultor.id,
@@ -1009,6 +1089,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'faixa_aplicada': faixa_aplicada,
                 'por_plano': por_plano_lista,
                 'comissao_total_geral': float(comissao_total_geral),
+                'complemento_sabado_total': float(complemento_sabado_total),
+                'detalhes_complemento_sabado': detalhes_complemento_sabado,
                 'ajustes': ajustes,
                 'total_descontos': float(total_descontos),
                 'total_bonus': float(total_bonus),

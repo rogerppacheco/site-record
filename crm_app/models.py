@@ -400,6 +400,11 @@ class Venda(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True,
         verbose_name="Valor adiantamento sábado (snapshot)",
     )
+    adiantamento_sabado_valor_pago = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name="Valor pago adiantamento sábado",
+        help_text="Valor efetivamente pago no sábado; base para complemento na folha.",
+    )
     adiantamento_sabado_marcado_em = models.DateTimeField(null=True, blank=True, verbose_name="Adiant. sábado marcado em")
     adiantamento_sabado_marcado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -72,6 +72,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
 
     sum_q_ant = 0
     sum_val_adiant = 0.0
+    sum_val_comp = 0.0
     sum_val_tot_inst = 0.0
     linhas_plano: List[str] = []
 
@@ -81,18 +82,29 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         q_ap = int(p.get("qtd_instalada_a_pagar") or 0)
         q_ant = int(p.get("qtd_antecipada") or 0)
         v_adiant = p.get("valor_total_antecipado")
+        v_comp = p.get("valor_total_complemento_sabado")
         try:
             v_adiant_f = float(v_adiant) if v_adiant is not None else 0.0
         except (TypeError, ValueError):
             v_adiant_f = 0.0
+        try:
+            v_comp_f = float(v_comp) if v_comp is not None else 0.0
+        except (TypeError, ValueError):
+            v_comp_f = 0.0
         sum_q_ant += q_ant
         sum_val_adiant += v_adiant_f
+        sum_val_comp += v_comp_f
         v_tot = float(p.get("valor_total_instalados") or 0)
         sum_val_tot_inst += v_tot
 
         v_unit = p.get("valor_unitario_instalados")
         v_unit_s = _fmt_br(v_unit) if v_unit is not None else "—"
-        cell_adiant = _fmt_br(v_adiant_f) if q_ant > 0 else "—"
+        if q_ant > 0:
+            cell_adiant = _fmt_br(v_adiant_f)
+            if v_comp_f != 0:
+                cell_adiant += " (+ " + _fmt_br(v_comp_f) + " comp.)"
+        else:
+            cell_adiant = "—"
 
         linhas_plano.append(
             "<tr>"
@@ -112,7 +124,9 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "<td><b>TOTAL</b></td>"
         f'<td class="c"><b>{total_q_pagar}</b></td>'
         f'<td class="c"><b>{sum_q_ant}</b></td>'
-        f'<td class="r info"><b>{_fmt_br(sum_val_adiant) if sum_q_ant > 0 else "—"}</b></td>'
+        f'<td class="r info"><b>{_fmt_br(sum_val_adiant) if sum_q_ant > 0 else "—"}'
+        + (f" (+ {_fmt_br(sum_val_comp)} comp.)" if sum_val_comp != 0 and sum_q_ant > 0 else "")
+        + '</b></td>'
         '<td class="r">—</td>'
         f'<td class="r"><b>{_fmt_br(sum_val_tot_inst)}</b></td>'
         f'<td class="r b"><b>{_fmt_br(r.get("comissao_total_geral") or 0)}</b></td>'
@@ -205,11 +219,19 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         total_row,
         "</tbody></table>",
         '<div class="resumo">',
+        '<div class="resumo-linha">Comissão (a pagar): ' + _fmt_br(r.get("comissao_total_geral") or 0) + "</div>",
+    ]
+    comp_sab = float(r.get("complemento_sabado_total") or 0)
+    if comp_sab != 0:
+        parts.append(
+            '<div class="resumo-linha pos">Complemento sábado: + ' + _fmt_br(comp_sab) + "</div>"
+        )
+    parts.extend([
         '<div class="resumo-linha neg">Descontos: - ' + _fmt_br(r.get("total_descontos") or 0) + "</div>",
         '<div class="resumo-linha pos">Bônus: + ' + _fmt_br(r.get("total_bonus") or 0) + "</div>",
         '<div class="resumo-linha pos liquido">LÍQUIDO A PAGAR: ' + _fmt_br(r.get("liquido") or 0) + "</div>",
         "</div>",
-    ]
+    ])
 
     if r.get("desconta_boleto_pap") is False:
         parts.append(
