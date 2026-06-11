@@ -70,9 +70,9 @@ def venda_elegivel_estorno_adiantamento_sabado(venda) -> bool:
     return False
 
 
-def _data_abertura_os(venda):
-    """Data de abertura da O.S. (fallback: data_criacao) para enquadrar o estorno no mês da folha."""
-    dt = getattr(venda, 'data_abertura', None) or getattr(venda, 'data_criacao', None)
+def _data_abertura_os_estorno(venda):
+    """Data de abertura da O.S. para estorno sábado (sem fallback — exige correção se ausente)."""
+    dt = getattr(venda, 'data_abertura', None)
     if not dt:
         return None
     if timezone.is_aware(dt):
@@ -80,31 +80,85 @@ def _data_abertura_os(venda):
     return dt.date() if hasattr(dt, 'date') else dt
 
 
+def _status_permite_estorno_sabado(status_esteira) -> bool:
+    return (
+        status_esteira_eh_cancelada(status_esteira)
+        or status_esteira_eh_agendado_ou_pendenciada(status_esteira)
+    )
+
+
 def venda_entra_estorno_adiantamento_sabado_mes(venda, data_inicio, data_fim) -> bool:
     """
-    Mês M da folha:
-    - CANCELADA: cancelamento (data_ultima_alteracao) em M.
-    - AGENDADO/PENDENCIADA: sem instalar e com data de abertura da O.S. em M.
+    Mês M da folha (safra = abertura da O.S.):
+    - CANCELADA ou AGENDADO/PENDENCIADA: data_abertura da O.S. em M.
     """
     if not venda_elegivel_estorno_adiantamento_sabado(venda):
+        return False
+    if not _status_permite_estorno_sabado(venda.status_esteira):
         return False
 
     di = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
     df = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    dab = _data_abertura_os_estorno(venda)
+    if not dab:
+        return False
+    return di <= dab < df
 
-    if status_esteira_eh_cancelada(venda.status_esteira):
-        if not venda.data_ultima_alteracao:
-            return False
-        dalt = timezone.localtime(venda.data_ultima_alteracao).date()
-        return di <= dalt < df
 
-    if status_esteira_eh_agendado_ou_pendenciada(venda.status_esteira):
-        dab = _data_abertura_os(venda)
-        if not dab:
-            return False
-        return di <= dab < df
+def coletar_vendas_adiantamento_sabado_sem_data_abertura(
+    consultor,
+    data_inicio,
+    data_fim,
+) -> list[dict]:
+    """
+    Vendas elegíveis a estorno sábado (cancelada/agendada/pendenciada) sem data_abertura.
+    Não entram na folha até correção manual da data de abertura da O.S.
+    """
+    from crm_app.models import Venda
 
-    return False
+    di = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+    df = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    if not di or not df:
+        return []
+
+    vendas = (
+        Venda.objects.filter(
+            vendedor=consultor,
+            ativo=True,
+            adiantamento_sabado_marcado=True,
+            flag_desc_adiantamento_sabado=False,
+            adiantamento_sabado_quitado_em__isnull=True,
+            data_abertura__isnull=True,
+        )
+        .exclude(adiantamento_sabado_valor__isnull=True)
+        .exclude(adiantamento_sabado_valor=0)
+        .select_related('status_esteira', 'cliente')
+    )
+
+    alertas: list[dict] = []
+    for venda in vendas:
+        if not venda_elegivel_estorno_adiantamento_sabado(venda):
+            continue
+        if not _status_permite_estorno_sabado(venda.status_esteira):
+            continue
+        alertas.append(
+            {
+                'tipo': 'adiantamento_sabado_sem_data_abertura',
+                'venda_id': venda.id,
+                'os': venda.ordem_servico or '',
+                'nome': (
+                    (venda.cliente.nome_razao_social or '')[:80]
+                    if getattr(venda, 'cliente', None)
+                    else ''
+                ),
+                'situacao': _nome_status(venda.status_esteira),
+                'mensagem': (
+                    'Venda com adiantamento sábado sem data de abertura da O.S. '
+                    '— corrija no cadastro para o estorno entrar na folha.'
+                ),
+            }
+        )
+    return alertas
 
 
 def motivo_estorno_adiantamento_sabado(venda) -> str:
@@ -115,10 +169,9 @@ def motivo_estorno_adiantamento_sabado(venda) -> str:
 
 def calcular_descontos_adiantamento_sabado_folha(consultor, data_inicio, data_fim):
     """
-    Estorno automático na folha do mês:
-    - AGENDADO/PENDENCIADA com adiantamento sábado, sem instalar, O.S. aberta no mês;
-    - CANCELADA no mês (mesma regra de valor, flag_desc evita repetir).
-    Valor: adiantamento_sabado_valor (manual ou tabela ao marcar).
+    Estorno automático na folha do mês da abertura da O.S. (safra):
+    - CANCELADA, AGENDADO ou PENDENCIADA com adiantamento sábado, sem instalar;
+    - flag_desc evita repetir; valor = pago no sábado.
     """
     from crm_app.models import Venda
 

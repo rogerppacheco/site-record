@@ -1,6 +1,6 @@
-from django.db.models.signals import pre_save, post_save
+from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
-from .models import Venda, ContratoM10, StatusCRM
+from .models import Venda, ContratoM10, StatusCRM, LancamentoFinanceiro
 from .whatsapp_service import WhatsAppService
 import logging
 
@@ -119,3 +119,35 @@ def criar_faturas_automatico(sender, instance, created, **kwargs):
             logger.info(f"✅ Faturas criadas/atualizadas para contrato {instance.numero_contrato}")
     except Exception as e:
         logger.error(f"❌ Erro ao criar/atualizar faturas para {instance.numero_contrato}: {e}")
+
+
+@receiver(pre_save, sender=LancamentoFinanceiro)
+def _capturar_data_anterior_lancamento_folha(sender, instance, **kwargs) -> None:
+    """Guarda o mês anterior do lançamento para invalidar cache se a data mudar."""
+    if not instance.pk:
+        return
+    try:
+        anterior = LancamentoFinanceiro.objects.only('data').get(pk=instance.pk)
+        instance._data_folha_anterior = anterior.data
+    except LancamentoFinanceiro.DoesNotExist:
+        instance._data_folha_anterior = None
+
+
+def _invalidar_cache_folha_por_data_lancamento(data) -> None:
+    from crm_app.services.folha_comissionamento_cache import invalidar_folha_por_data
+
+    invalidar_folha_por_data(data)
+
+
+@receiver(post_save, sender=LancamentoFinanceiro)
+def invalidar_cache_folha_apos_lancamento(sender, instance, **kwargs) -> None:
+    """Bônus, descontos e adiantamentos manuais devem refletir na folha sem esperar TTL."""
+    _invalidar_cache_folha_por_data_lancamento(instance.data)
+    data_anterior = getattr(instance, '_data_folha_anterior', None)
+    if data_anterior and data_anterior != instance.data:
+        _invalidar_cache_folha_por_data_lancamento(data_anterior)
+
+
+@receiver(post_delete, sender=LancamentoFinanceiro)
+def invalidar_cache_folha_apos_excluir_lancamento(sender, instance, **kwargs) -> None:
+    _invalidar_cache_folha_por_data_lancamento(instance.data)

@@ -8675,9 +8675,25 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
                 return Response({'detail': 'Este usuário não está habilitado para receber Adiantamento de CNPJ.'}, status=status.HTTP_400_BAD_REQUEST)
         return super().create(request, *args, **kwargs)
 
-    def perform_create(self, serializer):
-        # Salva automaticamente quem criou o registro (segurança/auditoria)
-        serializer.save(criado_por=self.request.user)
+    def _invalidar_cache_folha_lancamento(self, data) -> None:
+        from crm_app.services.folha_comissionamento_cache import invalidar_folha_por_data
+
+        invalidar_folha_por_data(data)
+
+    def perform_create(self, serializer) -> None:
+        instance = serializer.save(criado_por=self.request.user)
+        self._invalidar_cache_folha_lancamento(instance.data)
+
+    def perform_update(self, serializer) -> None:
+        data_anterior = serializer.instance.data
+        instance = serializer.save()
+        self._invalidar_cache_folha_lancamento(data_anterior)
+        if instance.data != data_anterior:
+            self._invalidar_cache_folha_lancamento(instance.data)
+
+    def perform_destroy(self, instance) -> None:
+        self._invalidar_cache_folha_lancamento(instance.data)
+        instance.delete()
 
     @action(detail=False, methods=['get'], url_path='vendas-instaladas-mes')
     def vendas_instaladas_mes(self, request):
@@ -9019,6 +9035,9 @@ class ConfirmarDescontosEmMassaView(APIView):
                 
                 if lancamentos_criados:
                     LancamentoFinanceiro.objects.bulk_create(lancamentos_criados)
+                    from crm_app.services.folha_comissionamento_cache import invalidar_folha_por_data
+
+                    invalidar_folha_por_data(data_lancamento)
 
                 if updates_flags['CNPJ']: Venda.objects.filter(id__in=updates_flags['CNPJ']).update(flag_adiant_cnpj=True)
                 if updates_flags['BOLETO']: Venda.objects.filter(id__in=updates_flags['BOLETO']).update(flag_desc_boleto=True)
@@ -9075,7 +9094,11 @@ class ReverterDescontoMassaView(APIView):
             # Se não tiver metadados (registros criados durante os testes anteriores),
             # permitimos excluir apenas o financeiro para limpar a tela.
             if not lancamento.metadados:
+                from crm_app.services.folha_comissionamento_cache import invalidar_folha_por_data
+
+                data_rev = lancamento.data
                 lancamento.delete()
+                invalidar_folha_por_data(data_rev)
                 return Response({'mensagem': 'Registro antigo excluído do financeiro! Nota: As flags nas vendas NÃO foram revertidas (dados de vínculo ausentes).'})
             # ---------------------------------------
 
@@ -9098,8 +9121,11 @@ class ReverterDescontoMassaView(APIView):
                     if updates:
                         vendas_afetadas.update(**updates)
 
-                # Apaga o lançamento financeiro
+                data_rev = lancamento.data
                 lancamento.delete()
+                from crm_app.services.folha_comissionamento_cache import invalidar_folha_por_data
+
+                invalidar_folha_por_data(data_rev)
 
             return Response({'mensagem': 'Reversão concluída com sucesso! As vendas voltaram para a lista de pendências.'})
 

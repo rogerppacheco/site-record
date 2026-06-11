@@ -8,7 +8,9 @@ from django.utils import timezone
 from crm_app.comissao_folha_service import annotate_data_folha_comissao, calcular_folha_mes
 from crm_app.models import PagamentoComissao, Venda
 from crm_app.services.adiantamento_sabado_service import (
+    _data_abertura_os_estorno,
     calcular_descontos_adiantamento_sabado_folha,
+    coletar_vendas_adiantamento_sabado_sem_data_abertura,
     comissao_ja_adiantada_venda,
     status_esteira_eh_agendado_ou_pendenciada,
     status_esteira_eh_cancelada,
@@ -70,10 +72,14 @@ class Command(BaseCommand):
                 dfc = getattr(v_ann, 'data_folha_comissao', None)
                 if dfc and di <= dfc < df:
                     motivo_rel = motivo_rel or 'instalada_folha_mes'
-            if status_esteira_eh_cancelada(v.status_esteira) and v.data_ultima_alteracao:
-                dalt = timezone.localtime(v.data_ultima_alteracao).date()
-                if di <= dalt < df:
-                    motivo_rel = motivo_rel or 'cancelada_no_mes'
+            if status_esteira_eh_cancelada(v.status_esteira) or status_esteira_eh_agendado_ou_pendenciada(
+                v.status_esteira
+            ):
+                dab = _data_abertura_os_estorno(v)
+                if dab and di <= dab < df:
+                    motivo_rel = motivo_rel or 'abertura_os_no_mes'
+                elif venda_elegivel_estorno_adiantamento_sabado(v) and not dab:
+                    motivo_rel = motivo_rel or 'sem_data_abertura'
             if venda_entra_estorno_adiantamento_sabado_mes(v, di, df):
                 motivo_rel = motivo_rel or 'estorno_folha_mes'
             if getattr(v, 'flag_desc_adiantamento_sabado', False):
@@ -82,6 +88,22 @@ class Command(BaseCommand):
                 relevantes.append((v, motivo_rel, st))
 
         self.stdout.write(f'\nVendas com adiantamento sábado relevantes a {mes:02d}/{ano}: {len(relevantes)}')
+
+        alertas_sem_abertura: list[dict] = []
+        for consultor in User.objects.filter(is_active=True).order_by('username'):
+            alertas_sem_abertura.extend(
+                coletar_vendas_adiantamento_sabado_sem_data_abertura(consultor, di, df)
+            )
+        if alertas_sem_abertura:
+            self.stdout.write(
+                self.style.WARNING(
+                    f'\nALERTAS — vendas sem data_abertura (não entram no estorno): {len(alertas_sem_abertura)}'
+                )
+            )
+            for a in alertas_sem_abertura:
+                self.stdout.write(
+                    f'  #{a["venda_id"]} | OS {a.get("os") or "—"} | {a.get("nome") or "-"} | {a.get("situacao")}'
+                )
 
         # Estornos calculados na folha
         estorno_por_venda = {}
@@ -132,10 +154,23 @@ class Command(BaseCommand):
                     ok.append(('ESTORNO_FOLHA_OK', linha_base + f' | estorno={estorno_por_venda[v.id]["motivo"]}'))
                 elif venda_entra_estorno_adiantamento_sabado_mes(v, di, df):
                     problemas.append(('ESTORNO_FALTANDO', linha_base, 'Elegível a estorno na folha mas não aparece no cálculo'))
-                elif status_esteira_eh_cancelada(v.status_esteira):
-                    problemas.append(('CANCEL_FORA_MES', linha_base, 'Cancelada fora do mês da folha'))
+                elif not _data_abertura_os_estorno(v):
+                    problemas.append(
+                        (
+                            'SEM_DATA_ABERTURA',
+                            linha_base,
+                            'Sem data de abertura da O.S. — estorno não entra na folha até correção',
+                        )
+                    )
                 else:
-                    ok.append(('PENDENTE_OUTRO_MES', linha_base))
+                    dab = _data_abertura_os_estorno(v)
+                    problemas.append(
+                        (
+                            'ABERTURA_FORA_MES',
+                            linha_base,
+                            f'Abertura O.S. {dab} fora do mês da folha (safra = abertura)',
+                        )
+                    )
             else:
                 ok.append(('OUTRO', linha_base))
 

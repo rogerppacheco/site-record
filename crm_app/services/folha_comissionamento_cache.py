@@ -60,6 +60,24 @@ def invalidar_folha_mes(ano: int, mes: int) -> None:
     logger.info("[FOLHA_CACHE] Versão do mês %02d/%d atualizada para %s", mes, ano, nova)
 
 
+def invalidar_folha_por_data(data: Any) -> None:
+    """Invalida cache da folha do mês da data informada (lançamentos manuais)."""
+    if data is None:
+        return
+    try:
+        if hasattr(data, "year") and hasattr(data, "month"):
+            ano, mes = int(data.year), int(data.month)
+        else:
+            from datetime import date as date_cls
+
+            parsed = date_cls.fromisoformat(str(data)[:10])
+            ano, mes = parsed.year, parsed.month
+        if 1 <= mes <= 12:
+            invalidar_folha_mes(ano, mes)
+    except (TypeError, ValueError, AttributeError):
+        logger.warning("[FOLHA_CACHE] Não foi possível invalidar cache para data=%s", data)
+
+
 def obter_folha_cacheada(
     ano: int,
     mes: int,

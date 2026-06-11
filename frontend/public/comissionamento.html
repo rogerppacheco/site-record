@@ -466,6 +466,16 @@
                     </div>
                 </div>
                 ${blocoResumoCnpjMei(r)}
+                ${(r.alertas_folha && r.alertas_folha.length) ? (function(){
+                    const linhas = r.alertas_folha.map(a =>
+                        `<li><strong>#${a.venda_id}</strong> OS ${a.os || '—'} — ${a.nome || 'Cliente'} (${a.situacao || '—'})</li>`
+                    ).join('');
+                    return `<div class="px-3 pt-2"><div class="alert alert-warning py-2 px-3 small mb-0">
+                        <strong><i class="bi bi-exclamation-triangle"></i> Atenção — adiantamento sábado sem data de abertura da O.S.</strong>
+                        <ul class="mb-0 mt-1">${linhas}</ul>
+                        <span class="text-muted">Corrija a data de abertura no cadastro da venda para o estorno entrar na folha.</span>
+                    </div></div>`;
+                })() : ''}
                 <div class="card-body p-0">
                     <table class="table table-sm table-bordered mb-0">
                         <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR JÁ ADIANT.</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>

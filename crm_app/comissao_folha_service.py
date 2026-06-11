@@ -836,10 +836,16 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 }
             )
 
-        # Adiantamento sábado: desconto na folha (cancelada ou safra com outra OS instalada/cancelada).
-        from crm_app.services.adiantamento_sabado_service import calcular_descontos_adiantamento_sabado_folha
+        # Adiantamento sábado: estorno na folha do mês da abertura da O.S. (safra).
+        from crm_app.services.adiantamento_sabado_service import (
+            calcular_descontos_adiantamento_sabado_folha,
+            coletar_vendas_adiantamento_sabado_sem_data_abertura,
+        )
 
         descontos_sab = calcular_descontos_adiantamento_sabado_folha(consultor, data_inicio, data_fim)
+        alertas_folha = coletar_vendas_adiantamento_sabado_sem_data_abertura(
+            consultor, data_inicio, data_fim
+        )
         valor_sab_cancel = Decimal('0')
         qtd_sab_cancel = 0
         motivos_sab = {}
@@ -1161,6 +1167,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     'qtd_cnpj_mei': qtd_cnpj_mei_total,
                     'qtd_cnpj_nmei': qtd_cnpj_nmei_total,
                 },
+                'alertas_folha': alertas_folha,
             },
             'extrato': extrato,
         })

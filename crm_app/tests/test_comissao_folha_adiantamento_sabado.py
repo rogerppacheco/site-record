@@ -164,6 +164,76 @@ class CalcularComplementoAdiantamentoSabadoFolhaTests(SimpleTestCase):
         self.assertEqual(45.0, res['total_complemento'])
 
 
+class EstornoAdiantamentoSabadoMesTests(SimpleTestCase):
+    """Regra de estorno: mês da abertura da O.S. (safra), não data do cancelamento."""
+
+    def _status(self, nome: str) -> object:
+        return type('StatusStub', (), {'nome': nome})()
+
+    def _venda_estorno(
+        self,
+        *,
+        status_nome: str,
+        data_abertura,
+        data_ultima_alteracao=None,
+    ) -> _VendaStub:
+        return _VendaStub(
+            pk=99,
+            adiantamento_sabado_marcado=True,
+            adiantamento_sabado_valor=Decimal('150.00'),
+            adiantamento_sabado_valor_pago=Decimal('150.00'),
+            flag_desc_adiantamento_sabado=False,
+            status_esteira=self._status(status_nome),
+            data_abertura=data_abertura,
+            data_ultima_alteracao=data_ultima_alteracao,
+        )
+
+    def test_cancelada_abertura_os_no_mes_entra_mesmo_cancelando_depois(self) -> None:
+        from datetime import datetime
+        from crm_app.services.adiantamento_sabado_service import venda_entra_estorno_adiantamento_sabado_mes
+
+        venda = self._venda_estorno(
+            status_nome='CANCELADA',
+            data_abertura=datetime(2026, 5, 15),
+            data_ultima_alteracao=datetime(2026, 6, 6),
+        )
+        self.assertTrue(
+            venda_entra_estorno_adiantamento_sabado_mes(
+                venda, datetime(2026, 5, 1), datetime(2026, 6, 1)
+            )
+        )
+
+    def test_cancelada_abertura_fora_do_mes_nao_entra(self) -> None:
+        from datetime import datetime
+        from crm_app.services.adiantamento_sabado_service import venda_entra_estorno_adiantamento_sabado_mes
+
+        venda = self._venda_estorno(
+            status_nome='CANCELADA',
+            data_abertura=datetime(2026, 6, 2),
+            data_ultima_alteracao=datetime(2026, 6, 6),
+        )
+        self.assertFalse(
+            venda_entra_estorno_adiantamento_sabado_mes(
+                venda, datetime(2026, 5, 1), datetime(2026, 6, 1)
+            )
+        )
+
+    def test_sem_data_abertura_nao_entra(self) -> None:
+        from datetime import datetime
+        from crm_app.services.adiantamento_sabado_service import venda_entra_estorno_adiantamento_sabado_mes
+
+        venda = self._venda_estorno(
+            status_nome='CANCELADA',
+            data_abertura=None,
+            data_ultima_alteracao=datetime(2026, 5, 20),
+        )
+        self.assertFalse(
+            venda_entra_estorno_adiantamento_sabado_mes(
+                venda, datetime(2026, 5, 1), datetime(2026, 6, 1)
+            )
+        )
+
+
 class ComplementoMeiVsCnpjTests(SimpleTestCase):
     def test_mei_usa_tabela_pap_no_complemento(self) -> None:
         venda = _VendaStub(
