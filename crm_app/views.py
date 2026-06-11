@@ -8875,13 +8875,16 @@ class PendenciasDescontoView(APIView):
             consultor = v.vendedor
             if not consultor: continue
 
-            from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
+            from crm_app.services.cnpj_mei_service import (
+                elegivel_adiantamento_cnpj,
+                elegivel_desconto_boleto_folha,
+            )
 
             if elegivel_adiantamento_cnpj(v) and not v.flag_adiant_cnpj:
                 val = float(consultor.adiantamento_cnpj or 0)
                 if val > 0: pendencias.append(self._montar_obj(v, 'CNPJ', val, 'Adiantamento CNPJ'))
 
-            if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper() and not v.flag_desc_boleto:
+            if elegivel_desconto_boleto_folha(v) and not v.flag_desc_boleto:
                 val = float(consultor.desconto_boleto or 0)
                 if val > 0: pendencias.append(self._montar_obj(v, 'BOLETO', val, 'Desconto Boleto'))
 

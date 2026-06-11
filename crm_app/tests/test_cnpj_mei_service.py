@@ -9,6 +9,7 @@ from crm_app.services.cnpj_mei_service import (
     CLASSIFICACAO_NMEI,
     classificar_cnpj_mei,
     elegivel_adiantamento_cnpj,
+    elegivel_desconto_boleto_folha,
     extrair_razao_social_brasilapi,
     queryset_clientes_cnpj,
     tipo_cliente_comissao,
@@ -147,6 +148,35 @@ class RegrasComissaoMeiTest(SimpleTestCase):
         self.assertEqual(tipo_cliente_comissao(v), 'CNPJ')
         self.assertTrue(usa_tabela_cnpj_comissao(v))
         self.assertTrue(elegivel_adiantamento_cnpj(v))
+
+
+class ElegivelDescontoBoletoFolhaTest(SimpleTestCase):
+    def _venda(self, doc: str, mei=None, forma: str = 'BOLETO', adiantada: bool = False):
+        cliente = MagicMock(cpf_cnpj=doc, classificacao_mei=mei)
+        forma_pagamento = MagicMock(nome=forma)
+        venda = MagicMock(
+            cliente=cliente,
+            classificacao_mei=mei,
+            forma_pagamento=forma_pagamento,
+            antecipacao_comissao=adiantada,
+            adiantamento_sabado_quitado_em=True if adiantada else None,
+        )
+        return venda
+
+    def test_cpf_boleto_elegivel(self) -> None:
+        self.assertTrue(elegivel_desconto_boleto_folha(self._venda('12345678901')))
+
+    def test_cnpj_mei_boleto_elegivel(self) -> None:
+        self.assertTrue(elegivel_desconto_boleto_folha(self._venda('43655857000152', mei=CLASSIFICACAO_MEI)))
+
+    def test_cnpj_nmei_boleto_nao_elegivel(self) -> None:
+        self.assertFalse(elegivel_desconto_boleto_folha(self._venda('08194694000157', mei=CLASSIFICACAO_NMEI)))
+
+    def test_adiantamento_sabado_quitado_cpf_continua_elegivel(self) -> None:
+        self.assertTrue(elegivel_desconto_boleto_folha(self._venda('12345678901', adiantada=True)))
+
+    def test_nao_boleto_nao_elegivel(self) -> None:
+        self.assertFalse(elegivel_desconto_boleto_folha(self._venda('12345678901', forma='DÉBITO AUTOMÁTICO')))
 
 
 class ClassificarCnpjMeiTest(SimpleTestCase):

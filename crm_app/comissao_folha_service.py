@@ -803,18 +803,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             total_descontos += valor_churn_m1
             detalhes_descontos.append({'motivo': 'Desconto Churn M-1', 'valor': float(valor_churn_m1), 'tipo_exibicao': 'churn_m1', 'quantidade': qtd_churn_m1})
 
-        # Boleto e antecipação de instalação: vendas instaladas no mês × Desc. Boleto / Desc. Antecip. (cadastro do colaborador).
+        # Boleto: CPF e CNPJ MEI instalados no mês (inclui adiantamento sábado quitado). CNPJ NMEI isento.
         # "Desconta Boleto PAP?" vem da Config. Comissão do mês em Regras por vendedor (vale também com comissão manual).
+        from crm_app.services.cnpj_mei_service import elegivel_desconto_boleto_folha
+
         desconta_boleto_pap = bool(getattr(config, 'desconta_boleto_pap', True)) if config else True
-        qtd_vendas_boleto_mes = sum(
-            1
-            for v in vendas
-            if (
-                v.forma_pagamento
-                and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
-                and not comissao_ja_adiantada_venda(v)
-            )
-        )
+        qtd_vendas_boleto_mes = sum(1 for v in vendas if elegivel_desconto_boleto_folha(v))
         qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
         unit_bo = float(getattr(consultor, 'desconto_boleto', None) or 0)
         unit_ant = float(getattr(consultor, 'desconto_instalacao_antecipada', None) or 0)

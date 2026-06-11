@@ -193,7 +193,12 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
             doc = v.cliente.cpf_cnpj if v.cliente else ""
             doc_limpo = "".join(filter(str.isdigit, doc))
 
-            if v.forma_pagamento and "BOLETO" in v.forma_pagamento.nome.upper():
+            from crm_app.services.cnpj_mei_service import (
+                elegivel_adiantamento_cnpj,
+                elegivel_desconto_boleto_folha,
+            )
+
+            if elegivel_desconto_boleto_folha(v):
                 if not v.flag_desc_boleto:
                     val = float(consultor.desconto_boleto or 0)
                     if val > 0:
@@ -210,8 +215,6 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
                     val = float(consultor.desconto_instalacao_antecipada or 0)
                     if val > 0:
                         stats_descontos["Desc. Antecipação (Previsto)"] += val
-
-            from crm_app.services.cnpj_mei_service import elegivel_adiantamento_cnpj
 
             if elegivel_adiantamento_cnpj(v):
                 if not v.flag_adiant_cnpj:
