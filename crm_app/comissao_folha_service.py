@@ -803,7 +803,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             total_descontos += valor_churn_m1
             detalhes_descontos.append({'motivo': 'Desconto Churn M-1', 'valor': float(valor_churn_m1), 'tipo_exibicao': 'churn_m1', 'quantidade': qtd_churn_m1})
 
-        # Boleto: CPF e CNPJ MEI instalados no mês (inclui adiantamento sábado quitado). CNPJ NMEI isento.
+        # Boleto: CPF e CNPJ MEI instalados no mês (inclui sábado quitado; exclui comissão antecipada na esteira). NMEI isento.
         # "Desconta Boleto PAP?" vem da Config. Comissão do mês em Regras por vendedor (vale também com comissão manual).
         from crm_app.services.cnpj_mei_service import elegivel_desconto_boleto_folha
 

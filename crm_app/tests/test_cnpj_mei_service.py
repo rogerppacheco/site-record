@@ -175,6 +175,18 @@ class ElegivelDescontoBoletoFolhaTest(SimpleTestCase):
     def test_adiantamento_sabado_quitado_cpf_continua_elegivel(self) -> None:
         self.assertTrue(elegivel_desconto_boleto_folha(self._venda('12345678901', adiantada=True)))
 
+    def test_comissao_antecipada_esteira_nao_elegivel(self) -> None:
+        venda = self._venda('12345678901')
+        venda.antecipacao_comissao = True
+        venda.adiantamento_sabado_quitado_em = None
+        self.assertFalse(elegivel_desconto_boleto_folha(venda))
+
+    def test_comissao_antecipada_com_sabado_quitado_elegivel(self) -> None:
+        venda = self._venda('12345678901')
+        venda.antecipacao_comissao = True
+        venda.adiantamento_sabado_quitado_em = True
+        self.assertTrue(elegivel_desconto_boleto_folha(venda))
+
     def test_nao_boleto_nao_elegivel(self) -> None:
         self.assertFalse(elegivel_desconto_boleto_folha(self._venda('12345678901', forma='DÉBITO AUTOMÁTICO')))
 

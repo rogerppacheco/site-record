@@ -113,7 +113,8 @@ def usa_tabela_cnpj_comissao(
 def elegivel_desconto_boleto_folha(venda) -> bool:
     """
     Desconto de boleto na folha: CPF e CNPJ MEI (tabela PAP).
-    CNPJ NMEI não entra. Adiantamento sábado quitado ou comissão antecipada não isenta.
+    CNPJ NMEI não entra. Adiantamento sábado quitado na instalação entra.
+    Comissão antecipada na esteira (sem sábado quitado) não entra.
     """
     if venda is None:
         return False
@@ -122,7 +123,13 @@ def elegivel_desconto_boleto_folha(venda) -> bool:
         return False
     if 'BOLETO' not in (getattr(forma_pagamento, 'nome', None) or '').upper():
         return False
-    return not usa_tabela_cnpj_comissao(venda)
+    if usa_tabela_cnpj_comissao(venda):
+        return False
+    comissao_antecipada = bool(getattr(venda, 'antecipacao_comissao', False))
+    sabado_quitado = bool(getattr(venda, 'adiantamento_sabado_quitado_em', None))
+    if comissao_antecipada and not sabado_quitado:
+        return False
+    return True
 
 
 def elegivel_adiantamento_cnpj(venda) -> bool:
