@@ -401,6 +401,36 @@ FUNIL_VENDAS_REGISTRAR = config(
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
 
+# --- Performance: cache folha de comissionamento (DatabaseCache, compartilhado entre workers) ---
+FOLHA_COMISSAO_CACHE_ENABLED = config(
+    'FOLHA_COMISSAO_CACHE_ENABLED',
+    default=True,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+FOLHA_COMISSAO_CACHE_TTL = config('FOLHA_COMISSAO_CACHE_TTL', default=1800, cast=int)
+
+# Webhook Z-API: processar em thread e responder HTTP 200 imediatamente
+WHATSAPP_WEBHOOK_ASYNC = config(
+    'WHATSAPP_WEBHOOK_ASYNC',
+    default=True,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+
+# Gunicorn (scripts/start_web.sh): workers/threads configuráveis no Railway
+GUNICORN_WORKERS = config('GUNICORN_WORKERS', default=2, cast=int)
+GUNICORN_THREADS = config('GUNICORN_THREADS', default=2, cast=int)
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache_table',
+        'TIMEOUT': FOLHA_COMISSAO_CACHE_TTL,
+        'OPTIONS': {
+            'MAX_ENTRIES': 5000,
+        },
+    },
+}
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

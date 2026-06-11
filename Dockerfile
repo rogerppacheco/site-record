@@ -19,6 +19,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
 # Comando de inicialização
-# NÃO usar --max-requests aqui: o recycle do worker encerra threads daemon (Playwright no webhook)
-# e as automações Crédito/Status/PAP param no meio sem erro visível.
-CMD ["gunicorn", "gestao_equipes.wsgi", "--timeout", "1200", "--graceful-timeout", "1200", "--keep-alive", "5"]
+# NÃO usar --max-requests: recycle de worker mata threads daemon (Playwright no webhook).
+# Workers/threads via GUNICORN_WORKERS e GUNICORN_THREADS (default 2/2).
+RUN chmod +x /app/scripts/start_web.sh
+CMD ["/app/scripts/start_web.sh"]

@@ -174,6 +174,22 @@ class WebhookWhatsAppView(APIView):
                     )
                 return Response(rapido, status=200)
 
+        from crm_app.services.webhook_async_dispatcher import (
+            despachar_webhook_whatsapp,
+            webhook_deve_processar_assincrono,
+        )
+
+        if webhook_deve_processar_assincrono():
+            try:
+                despachar_webhook_whatsapp(data, request=request)
+                return Response(
+                    {'status': 'ok', 'mensagem': 'Webhook recebido — processamento em background'},
+                    status=200,
+                )
+            except Exception as e:
+                logger_webhook.exception("[WebhookWhatsAppView] Erro ao despachar webhook async: %s", e)
+                return Response({'status': 'erro', 'mensagem': str(e)}, status=500)
+
         try:
             from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
             resultado = processar_webhook_whatsapp(data, request=request)
@@ -4035,7 +4051,8 @@ class FolhaComissionamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        from .comissao_folha_service import calcular_folha_mes
+        from crm_app.services.folha_comissionamento_cache import calcular_folha_mes_com_cache
+
         hoje = timezone.now()
         try:
             ano = int(request.query_params.get('ano', hoje.year))
@@ -4051,7 +4068,12 @@ class FolhaComissionamentoView(APIView):
                 vendedor_id = None
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
         use_effective_date = not is_member(request.user, grupos_gestao)
-        dados = calcular_folha_mes(ano, mes, vendedor_id, use_effective_date_for_display=use_effective_date)
+        dados = calcular_folha_mes_com_cache(
+            ano,
+            mes,
+            vendedor_id,
+            use_effective_date_for_display=use_effective_date,
+        )
         return Response(dados)
 
 
@@ -4151,6 +4173,9 @@ def _fechar_pagamento_mes(ano, mes, total_pago=None):
     if itens:
         PagamentoComissaoItem.objects.bulk_create(itens, ignore_conflicts=True)
 
+    from crm_app.services.folha_comissionamento_cache import invalidar_folha_mes
+    invalidar_folha_mes(ano, mes)
+
     return {"mensagem": f"Fechamento realizado! {count} vendas atualizadas.", "vendas_atualizadas": count}
 
 class FecharPagamentoView(APIView):
@@ -4193,6 +4218,9 @@ class ReabrirPagamentoView(APIView):
             )
 
             PagamentoComissao.objects.filter(referencia_ano=ano, referencia_mes=mes).delete()
+
+            from crm_app.services.folha_comissionamento_cache import invalidar_folha_mes
+            invalidar_folha_mes(ano, mes)
 
             return Response({"mensagem": "Mês reaberto com sucesso!", "vendas_revertidas": vendas_revertidas})
 

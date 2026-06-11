@@ -12,4 +12,5 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
 # Sem --max-requests: recycle de worker mata threads de automação PAP (Playwright).
-CMD ["gunicorn", "gestao_equipes.wsgi", "--timeout", "1200", "--graceful-timeout", "1200", "--keep-alive", "5"]
+RUN chmod +x /app/scripts/start_web.sh
+CMD ["/app/scripts/start_web.sh"]
