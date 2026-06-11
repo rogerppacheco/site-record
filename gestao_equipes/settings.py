@@ -24,6 +24,7 @@ ALLOWED_HOSTS = [
     'site-record-production.up.railway.app',
     'site-record.up.railway.app',
     'pleasing-recreation.up.railway.app',
+    'healthcheck.railway.app',
     # Permite qualquer subdomínio do Railway ou Heroku
     '.up.railway.app',
     '.herokuapp.com',
