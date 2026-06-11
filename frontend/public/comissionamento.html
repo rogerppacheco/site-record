@@ -453,11 +453,17 @@
         function montarCardFolha(v) {
             const r = v.resumo || {};
             const porPlano = r.por_plano || [];
+            const totalInstaladosFaixa = r.qtd_instalada_faixa_complemento != null
+                ? r.qtd_instalada_faixa_complemento
+                : (r.total_qtd_vendas_folha != null ? r.total_qtd_vendas_folha : null);
             let html = `<div class="card border shadow-sm mb-4">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span class="fw-bold">${v.vendedor_nome}</span>
-                    <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
-                    ${r.faixa_complemento_sabado && r.faixa_complemento_sabado !== r.faixa_aplicada ? `<span class="badge bg-info ms-1" title="Faixa usada no complemento do adiantamento sábado (total instaladas: ${r.qtd_instalada_faixa_complemento || '?'})">Compl. sábado: ${r.faixa_complemento_sabado}</span>` : ''}
+                    <div class="d-flex align-items-center flex-wrap gap-1">
+                        <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
+                        ${totalInstaladosFaixa != null ? `<span class="badge bg-secondary" title="Total de vendas instaladas no mês (base da faixa)">Instalados: ${totalInstaladosFaixa}</span>` : ''}
+                        ${r.faixa_complemento_sabado && r.faixa_complemento_sabado !== r.faixa_aplicada ? `<span class="badge bg-info" title="Faixa usada no complemento do adiantamento sábado (total instaladas: ${r.qtd_instalada_faixa_complemento || '?'})">Compl. sábado: ${r.faixa_complemento_sabado}</span>` : ''}
+                    </div>
                 </div>
                 ${blocoResumoCnpjMei(r)}
                 <div class="card-body p-0">

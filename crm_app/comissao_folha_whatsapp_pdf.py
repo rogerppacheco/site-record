@@ -69,6 +69,10 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
     nome_v = _e(vendedor_data.get("vendedor_nome") or "")
     faixa = _e(r.get("faixa_aplicada") or "-")
     periodo_e = _e(periodo)
+    qtd_instalados = r.get("qtd_instalada_faixa_complemento")
+    if qtd_instalados is None:
+        qtd_instalados = r.get("total_qtd_vendas_folha")
+    qtd_instalados_s = _e(qtd_instalados if qtd_instalados is not None else "-")
 
     sum_q_ant = 0
     sum_val_adiant = 0.0
@@ -161,12 +165,12 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "table.folha tr.total td { background: #f8f9fa; }",
         "td.b { font-weight: bold; }",
         "td.info { color: #0dcaf0; }",
-        ".resumo { margin: 10px 0; font-size: 9px; width: 100%; }",
-        ".resumo-linha { display: block; width: 100%; margin: 0 0 8px 0; padding: 0; clear: both; }",
-        ".resumo-linha:last-child { margin-bottom: 0; }",
+        ".resumo-vendas { margin: 8px 0; font-size: 9px; padding: 6px 8px; background: #f8f9fa; border: 1px solid #dee2e6; }",
+        "table.resumo-financeiro { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9px; }",
+        "table.resumo-financeiro td { border: 1px solid #dee2e6; padding: 6px 8px; text-align: center; vertical-align: middle; }",
+        "table.resumo-financeiro td.liquido { font-size: 10px; font-weight: bold; }",
         ".neg { color: #dc3545; font-weight: bold; }",
         ".pos { color: #198754; font-weight: bold; }",
-        ".liquido { font-size: 10px; }",
         ".aviso { background: #fff3cd; border: 1px solid #ffc107; padding: 6px; margin: 8px 0; font-size: 8px; }",
         ".bloco { margin-top: 10px; margin-bottom: 10px; font-size: 8px; width: 100%; clear: both; }",
         ".bloco-tit { color: #6c757d; font-weight: bold; margin: 8px 0 6px 0; display: block; }",
@@ -193,7 +197,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "</head><body>",
         '<div class="hdr">'
         '<table class="hdr-bar" border="0" cellpadding="0" cellspacing="0"><tr>'
-        '<td class="hdr-faixa">Faixa: ' + faixa + "</td>"
+        '<td class="hdr-faixa">Faixa: ' + faixa + " | Instalados: " + qtd_instalados_s + "</td>"
         '<td class="hdr-nome"><h1>' + nome_v + "</h1></td>"
         '<td class="hdr-periodo">Período: ' + periodo_e + "</td>"
         "</tr></table></div>"
@@ -204,6 +208,8 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         + periodo_e
         + " | <strong>Faixa:</strong> "
         + faixa
+        + " | <strong>Instalados:</strong> "
+        + qtd_instalados_s
         + "</div>",
         '<table class="folha">',
         "<thead><tr>",
@@ -218,19 +224,41 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "".join(linhas_plano),
         total_row,
         "</tbody></table>",
-        '<div class="resumo">',
-        '<div class="resumo-linha">Comissão (a pagar): ' + _fmt_br(r.get("comissao_total_geral") or 0) + "</div>",
+        '<div class="resumo-vendas">'
+        "<strong>Total vendas a pagar:</strong> "
+        + _e(total_q_pagar)
+        + " | <strong>Total vendas antecipadas:</strong> "
+        + _e(sum_q_ant)
+        + " | <strong>Total vendas no mês (pagas):</strong> "
+        + _e(
+            r.get("total_qtd_vendas_folha")
+            if r.get("total_qtd_vendas_folha") is not None
+            else (total_q_pagar + sum_q_ant)
+        )
+        + "</div>",
+        '<table class="resumo-financeiro"><tr>',
+        "<td><strong>Comissão (a pagar):</strong><br/>"
+        + _fmt_br(r.get("comissao_total_geral") or 0)
+        + "</td>",
     ]
     comp_sab = float(r.get("complemento_sabado_total") or 0)
     if comp_sab != 0:
         parts.append(
-            '<div class="resumo-linha pos">Complemento sábado: + ' + _fmt_br(comp_sab) + "</div>"
+            '<td class="pos"><strong>Complemento sábado:</strong><br/>+ '
+            + _fmt_br(comp_sab)
+            + "</td>"
         )
     parts.extend([
-        '<div class="resumo-linha neg">Descontos: - ' + _fmt_br(r.get("total_descontos") or 0) + "</div>",
-        '<div class="resumo-linha pos">Bônus: + ' + _fmt_br(r.get("total_bonus") or 0) + "</div>",
-        '<div class="resumo-linha pos liquido">LÍQUIDO A PAGAR: ' + _fmt_br(r.get("liquido") or 0) + "</div>",
-        "</div>",
+        '<td class="neg"><strong>Descontos:</strong><br/>- '
+        + _fmt_br(r.get("total_descontos") or 0)
+        + "</td>",
+        '<td class="pos"><strong>Bônus:</strong><br/>+ '
+        + _fmt_br(r.get("total_bonus") or 0)
+        + "</td>",
+        '<td class="liquido pos"><strong>LÍQUIDO A PAGAR:</strong><br/>'
+        + _fmt_br(r.get("liquido") or 0)
+        + "</td>",
+        "</tr></table>",
     ])
 
     if r.get("desconta_boleto_pap") is False:
