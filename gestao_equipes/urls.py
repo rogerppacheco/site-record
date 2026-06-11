@@ -6,6 +6,8 @@ from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from gestao_equipes.views_health import HealthView, MetricsView, ReadyView
+
 # --- IMPORTS DAS VIEWS NECESSÁRIAS ---
 from usuarios.views import LoginView
 from core.views import calendario_fiscal_view, RegraAutomacaoViewSet, PainelSegundaView
@@ -55,8 +57,11 @@ router = DefaultRouter()
 router.register(r'regras-automacao', RegraAutomacaoViewSet, basename='regras-automacao')
 
 urlpatterns = [
+    path('health/', HealthView.as_view(), name='health'),
+    path('ready/', ReadyView.as_view(), name='ready'),
+    path('metrics/', MetricsView.as_view(), name='metrics'),
     path('admin/', admin.site.urls),
-    
+
     # API AUTH
     path('api/auth/login/', LoginView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

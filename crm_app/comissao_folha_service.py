@@ -164,6 +164,60 @@ def vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim):
     )
 
 
+def _agrupar_vendas_folha_bulk(vendedor_ids, data_inicio, data_fim):
+    """Carrega vendas da folha de todos os vendedores em uma única query."""
+    from collections import defaultdict
+    from .models import Venda
+
+    if not vendedor_ids:
+        return {}
+    di = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+    df = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    qs = (
+        annotate_data_folha_comissao(
+            Venda.objects.filter(
+                vendedor_id__in=vendedor_ids,
+                ativo=True,
+                status_esteira__nome__iexact='INSTALADA',
+            )
+        )
+        .filter(
+            data_folha_comissao__isnull=False,
+            data_folha_comissao__gte=di,
+            data_folha_comissao__lt=df,
+        )
+        .select_related('plano', 'cliente', 'forma_pagamento', 'status_tratamento', 'status_esteira')
+        .order_by('vendedor_id', 'data_folha_comissao', 'id')
+    )
+    grupos = defaultdict(list)
+    for venda in qs:
+        grupos[venda.vendedor_id].append(venda)
+    return dict(grupos)
+
+
+def _agrupar_lancamentos_bulk(usuario_ids, data_inicio, data_fim):
+    """Carrega lançamentos financeiros do período em uma única query."""
+    from collections import defaultdict
+    from .models import LancamentoFinanceiro
+
+    if not usuario_ids:
+        return {}
+    di = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+    df = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    qs = (
+        LancamentoFinanceiro.objects.filter(
+            usuario_id__in=usuario_ids,
+            data__gte=di,
+            data__lt=df,
+        )
+        .order_by('usuario_id', 'data', 'id')
+    )
+    grupos = defaultdict(list)
+    for lanc in qs:
+        grupos[lanc.usuario_id].append(lanc)
+    return dict(grupos)
+
+
 def get_valor_manual(config, chave):
     """Retorna o valor manual da config do vendedor para a chave."""
     if not config or not chave:
@@ -444,11 +498,18 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 return r
         return None
 
+    consultor_ids = list(consultores.values_list('id', flat=True))
+    vendas_bulk_m0 = _agrupar_vendas_folha_bulk(consultor_ids, data_inicio, data_fim)
+    vendas_bulk_m1 = _agrupar_vendas_folha_bulk(consultor_ids, data_inicio_ant, data_fim_ant)
+    lancamentos_bulk = _agrupar_lancamentos_bulk(consultor_ids, data_inicio, data_fim)
+    from crm_app.services.adiantamento_sabado_service import carregar_valores_pago_sabado_lancamentos
+
+    valores_pago_sabado_global = carregar_valores_pago_sabado_lancamentos()
+
     resultado = []
     for consultor in consultores:
-        vendas = vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim)
-        # Vendas instaladas no mês anterior (para desconto M-1: churn dez descontado na comissão jan)
-        vendas_m1 = vendas_instaladas_folha_periodo(consultor, data_inicio_ant, data_fim_ant)
+        vendas = vendas_bulk_m0.get(consultor.id, [])
+        vendas_m1 = vendas_bulk_m1.get(consultor.id, [])
 
         config = configs.get(consultor.id)
         # Adiant. Comissão = Sim na esteira: não entra em QTD A PAGAR nem na comissão do mês (já adiantada).
@@ -464,11 +525,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         from crm_app.services.adiantamento_sabado_service import (
             calcular_complemento_adiantamento_sabado_folha,
-            carregar_valores_pago_sabado_lancamentos,
             valor_pago_adiantamento_sabado_venda,
         )
 
-        valores_pago_sabado_lanc = carregar_valores_pago_sabado_lancamentos(consultor.id)
+        valores_pago_sabado_lanc = valores_pago_sabado_global
         resumo_complemento_sab = calcular_complemento_adiantamento_sabado_folha(
             vendas,
             faixa_regra_total=faixa_regra,
@@ -609,13 +669,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         # Ajustes: descontos vêm dos lançamentos confirmados (Adiantamentos e Descontos / Confirmar Descontos) + config (INSS, etc.)
         # Não somar por venda da config: boleto/inclusão/instalação/adiant.CNPJ só entram após confirmação (LancamentoFinanceiro).
-        lancamentos = list(
-            LancamentoFinanceiro.objects.filter(
-                usuario=consultor,
-                data__gte=data_inicio.date(),
-                data__lt=data_fim.date(),
-            ).order_by('data', 'id')
-        )
+        lancamentos = lancamentos_bulk.get(consultor.id, [])
         total_descontos = Decimal('0')
         detalhes_descontos = []
         detalhes_bonus_lancamentos = []

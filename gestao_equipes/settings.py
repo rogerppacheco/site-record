@@ -55,6 +55,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'gestao_equipes.middleware_static_cache.StaticCacheMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -113,7 +114,7 @@ if database_url:
     # Usar PostgreSQL (Railway)
     DATABASES['default'] = dj_database_url.parse(
         database_url,
-        conn_max_age=600,
+        conn_max_age=config('DB_CONN_MAX_AGE', default=120, cast=int),
         ssl_require=False
     )
     # PostgreSQL settings
@@ -419,6 +420,42 @@ WHATSAPP_WEBHOOK_ASYNC = config(
 # Gunicorn (scripts/start_web.sh): workers/threads configuráveis no Railway
 GUNICORN_WORKERS = config('GUNICORN_WORKERS', default=2, cast=int)
 GUNICORN_THREADS = config('GUNICORN_THREADS', default=2, cast=int)
+
+STATIC_CACHE_MAX_AGE = config('STATIC_CACHE_MAX_AGE', default=86400, cast=int)
+
+# Rate limit folha de comissionamento (por usuário)
+FOLHA_COMISSAO_RATE_LIMIT = config('FOLHA_COMISSAO_RATE_LIMIT', default=6, cast=int)
+FOLHA_COMISSAO_RATE_PERIOD = config('FOLHA_COMISSAO_RATE_PERIOD', default=60, cast=int)
+FOLHA_COMISSAO_TIMEOUT_SECONDS = config('FOLHA_COMISSAO_TIMEOUT_SECONDS', default=90, cast=int)
+
+# PAP dedicado: web enfileira jobs; serviço pap consome (fila PostgreSQL, sem Redis)
+PAP_USE_DEDICATED_WORKER = config(
+    'PAP_USE_DEDICATED_WORKER',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+PAP_WORKER_MODE = config(
+    'PAP_WORKER_MODE',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+PAP_WORKER_POLL_SECONDS = config('PAP_WORKER_POLL_SECONDS', default=2, cast=float)
+
+# Sentry (tier gratuito — definir SENTRY_DSN no Railway)
+SENTRY_DSN = config('SENTRY_DSN', default='')
+SENTRY_TRACES_SAMPLE_RATE = config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float)
+
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,
+        environment=config('RAILWAY_ENVIRONMENT', default='local'),
+    )
 
 CACHES = {
     'default': {

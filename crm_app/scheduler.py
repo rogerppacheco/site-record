@@ -68,6 +68,20 @@ def sync_status_esteira_pap_automatico():
         logger.error(f"❌ Erro no sync automático da esteira: {str(e)}")
 
 
+def preaquecer_cache_folha_comissionamento():
+    """Pré-calcula folha do mês corrente para popular cache antes do horário comercial."""
+    try:
+        from django.utils import timezone
+        from crm_app.services.folha_comissionamento_cache import calcular_folha_mes_com_cache
+
+        hoje = timezone.now()
+        logger.info("📋 Pré-aquecendo cache da folha %02d/%d...", hoje.month, hoje.year)
+        calcular_folha_mes_com_cache(hoje.year, hoje.month)
+        logger.info("✅ Cache da folha pré-aquecido.")
+    except Exception as e:
+        logger.error(f"❌ Erro ao pré-aquecer cache da folha: {e}")
+
+
 def _registrar_jobs(scheduler):
     scheduler.add_job(
         buscar_faturas_automatico,
@@ -108,6 +122,22 @@ def _registrar_jobs(scheduler):
         trigger=CronTrigger.from_crontab('0 22 * * *'),
         id='sync_status_esteira_pap_noturno',
         name='Sync esteira PAP — início 22:00 (America/Sao_Paulo)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        preaquecer_cache_folha_comissionamento,
+        trigger=CronTrigger.from_crontab('0 6 * * *'),
+        id='preaquecer_cache_folha',
+        name='Pré-aquecer cache folha comissionamento (06:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        preaquecer_cache_folha_comissionamento,
+        trigger=CronTrigger.from_crontab('0 12 * * *'),
+        id='preaquecer_cache_folha_meiodia',
+        name='Pré-aquecer cache folha comissionamento (12:00)',
         replace_existing=True,
         max_instances=1,
     )

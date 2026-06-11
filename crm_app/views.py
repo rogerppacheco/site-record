@@ -4051,7 +4051,26 @@ class FolhaComissionamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+        from django.conf import settings as django_settings
+
         from crm_app.services.folha_comissionamento_cache import calcular_folha_mes_com_cache
+        from crm_app.services.rate_limit import permitir_requisicao
+
+        limite = int(getattr(django_settings, 'FOLHA_COMISSAO_RATE_LIMIT', 6))
+        periodo = int(getattr(django_settings, 'FOLHA_COMISSAO_RATE_PERIOD', 60))
+        timeout_s = int(getattr(django_settings, 'FOLHA_COMISSAO_TIMEOUT_SECONDS', 90))
+        chave_rl = f"folha:{request.user.id}"
+        permitido, retry_em = permitir_requisicao(chave_rl, limite, periodo)
+        if not permitido:
+            return Response(
+                {
+                    'erro': 'Muitas requisições à folha de comissionamento. Tente novamente em instantes.',
+                    'retry_after_seconds': retry_em,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
 
         hoje = timezone.now()
         try:
@@ -4068,12 +4087,29 @@ class FolhaComissionamentoView(APIView):
                 vendedor_id = None
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
         use_effective_date = not is_member(request.user, grupos_gestao)
-        dados = calcular_folha_mes_com_cache(
-            ano,
-            mes,
-            vendedor_id,
-            use_effective_date_for_display=use_effective_date,
-        )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                calcular_folha_mes_com_cache,
+                ano,
+                mes,
+                vendedor_id,
+                use_effective_date_for_display=use_effective_date,
+            )
+            try:
+                dados = future.result(timeout=timeout_s)
+            except FuturesTimeoutError:
+                return Response(
+                    {
+                        'erro': (
+                            'Cálculo da folha excedeu o tempo limite. '
+                            'O resultado pode estar sendo gerado em cache — tente novamente em 1 minuto.'
+                        ),
+                        'retry_after_seconds': 60,
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
         return Response(dados)
 
 

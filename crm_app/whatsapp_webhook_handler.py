@@ -8573,11 +8573,19 @@ def processar_webhook_whatsapp(data, request=None):
                         'status_online_started_at': time.time(),
                     }
                     sessao.save()
-                    threading.Thread(
-                        target=_executar_consulta_status_online_background,
-                        args=(telefone_formatado, cpf_para_consulta, None, run_id),
-                        daemon=True
-                    ).start()
+                    from crm_app.services.pap_dispatcher import despachar_pap
+                    despachar_pap(
+                        'status_online',
+                        telefone_formatado,
+                        {
+                            'telefone': telefone_formatado,
+                            'cpf': cpf_para_consulta,
+                            'os_filtro': None,
+                            'run_id': run_id,
+                        },
+                        _executar_consulta_status_online_background,
+                        (telefone_formatado, cpf_para_consulta, None, run_id),
+                    )
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
                 else:
                     sessao.etapa = 'inicial'
@@ -8602,11 +8610,19 @@ def processar_webhook_whatsapp(data, request=None):
                         'os_filtro': os_limpo,
                     }
                     sessao.save()
-                    threading.Thread(
-                        target=_executar_consulta_status_online_background,
-                        args=(telefone_formatado, cpf_para_consulta, os_limpo, run_id),
-                        daemon=True
-                    ).start()
+                    from crm_app.services.pap_dispatcher import despachar_pap
+                    despachar_pap(
+                        'status_online',
+                        telefone_formatado,
+                        {
+                            'telefone': telefone_formatado,
+                            'cpf': cpf_para_consulta,
+                            'os_filtro': os_limpo,
+                            'run_id': run_id,
+                        },
+                        _executar_consulta_status_online_background,
+                        (telefone_formatado, cpf_para_consulta, os_limpo, run_id),
+                    )
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
                 else:
                     sessao.etapa = 'inicial'
@@ -8642,11 +8658,19 @@ def processar_webhook_whatsapp(data, request=None):
                             sessao.save()
                             resposta = "✅ CNPJ recebido.\n\nAgora digite o *CPF do representante legal* (11 dígitos), ou *CANCELAR*:"
                         else:
-                            threading.Thread(
-                                target=_executar_analise_credito_background,
-                                args=(telefone_formatado, usuario_id, doc_limpo, None),
-                                daemon=True
-                            ).start()
+                            from crm_app.services.pap_dispatcher import despachar_pap
+                            despachar_pap(
+                                'analise_credito',
+                                telefone_formatado,
+                                {
+                                    'telefone': telefone_formatado,
+                                    'usuario_id': usuario_id,
+                                    'documento': doc_limpo,
+                                    'cpf_representante': None,
+                                },
+                                _executar_analise_credito_background,
+                                (telefone_formatado, usuario_id, doc_limpo, None),
+                            )
                             sessao.etapa = 'credito_aguardando'
                             sessao.save()
                             resposta = "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
@@ -8671,11 +8695,19 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.save()
                         resposta = "❌ Sessão expirada. Digite *CRÉDITO* para iniciar novamente."
                     else:
-                        threading.Thread(
-                            target=_executar_analise_credito_background,
-                            args=(telefone_formatado, usuario_id, doc_cnpj, cpf_rep),
-                            daemon=True
-                        ).start()
+                        from crm_app.services.pap_dispatcher import despachar_pap
+                        despachar_pap(
+                            'analise_credito',
+                            telefone_formatado,
+                            {
+                                'telefone': telefone_formatado,
+                                'usuario_id': usuario_id,
+                                'documento': doc_cnpj,
+                                'cpf_representante': cpf_rep,
+                            },
+                            _executar_analise_credito_background,
+                            (telefone_formatado, usuario_id, doc_cnpj, cpf_rep),
+                        )
                         sessao.etapa = 'credito_aguardando'
                         sessao.save()
                         resposta = "⏳ Consultando crédito para o CNPJ... Aguarde alguns instantes. Você receberá a resposta em seguida."
@@ -8703,11 +8735,18 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.save()
                         resposta = "❌ Sessão expirada. Digite *PEDIDO* para iniciar novamente."
                     else:
-                        threading.Thread(
-                            target=_executar_consulta_pedido_background,
-                            args=(telefone_formatado, usuario_id, cpf_limpo),
-                            daemon=True
-                        ).start()
+                        from crm_app.services.pap_dispatcher import despachar_pap
+                        despachar_pap(
+                            'consulta_pedido',
+                            telefone_formatado,
+                            {
+                                'telefone': telefone_formatado,
+                                'usuario_id': usuario_id,
+                                'cpf': cpf_limpo,
+                            },
+                            _executar_consulta_pedido_background,
+                            (telefone_formatado, usuario_id, cpf_limpo),
+                        )
                         sessao.etapa = 'pedido_aguardando'
                         sessao.save()
                         resposta = "⏳ Consultando pedido no PAP... Aguarde alguns instantes. Você receberá a resposta em seguida."
