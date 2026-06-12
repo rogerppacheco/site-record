@@ -52,7 +52,8 @@ class Presenca(models.Model):
 class ConfirmacaoPresencaDia(models.Model):
     """
     Confirmação do dia de presença via selfie com o time.
-    O supervisor/líder tira uma foto (câmera ao vivo) com data e local; a imagem é salva no OneDrive por data.
+    O supervisor/líder tira uma foto (câmera ao vivo) com data e local; a imagem
+    é enviada por WhatsApp à Diretoria.
     """
     data = models.DateField(db_index=True)
     supervisor = models.ForeignKey(
@@ -60,7 +61,7 @@ class ConfirmacaoPresencaDia(models.Model):
         on_delete=models.CASCADE,
         related_name='confirmacoes_presenca_dia'
     )
-    foto_url = models.URLField(max_length=500, blank=True)  # URL da selfie no OneDrive
+    foto_url = models.URLField(max_length=500, blank=True)  # reservado; selfies vão por WhatsApp
     latitude = models.DecimalField(max_digits=12, decimal_places=8, null=True, blank=True)
     longitude = models.DecimalField(max_digits=12, decimal_places=8, null=True, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)

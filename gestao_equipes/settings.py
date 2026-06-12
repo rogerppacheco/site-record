@@ -381,7 +381,6 @@ SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MIN_
 SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG', default=600, cast=int)
 
 # Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
-PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_Selfies')
 # Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)
 INCLUSAO_ONEDRIVE_FOLDER = config('INCLUSAO_ONEDRIVE_FOLDER', default='Inclusao_Viabilidade')
 

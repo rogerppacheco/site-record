@@ -1,21 +1,18 @@
 """
-Serviço de confirmação de presença do dia (selfie): upload OneDrive, registro
-no banco e envio da imagem por WhatsApp para a Diretoria.
+Serviço de confirmação de presença do dia (selfie): registro no banco e envio
+da imagem por WhatsApp para a Diretoria.
 
 Centraliza a regra de negócio: um supervisor/diretoria confirma o dia com uma
-foto; a foto é armazenada no OneDrive por pasta (Presenca_Selfies/YYYY-MM-DD)
-e opcionalmente enviada em silêncio para os diretores com WhatsApp cadastrado.
+foto; a imagem é enviada aos diretores com WhatsApp cadastrado (sem armazenamento
+externo de arquivo).
 """
 from __future__ import annotations
 
 import base64
-import io
 import logging
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
-
-from django.conf import settings as django_settings
 
 from presenca.models import ConfirmacaoPresencaDia
 from usuarios.models import Usuario
@@ -24,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConfirmacaoPresencaServiceError(Exception):
-    """Erro no serviço de confirmação (ex.: falha no upload OneDrive)."""
+    """Erro no serviço de confirmação de presença do dia."""
 
     pass
 
@@ -82,6 +79,72 @@ def _normalizar_coordenada(
         return None
 
 
+def _enviar_selfie_diretoria(
+    foto_bytes: bytes,
+    data_dia: date,
+    usuario: Any,
+) -> int:
+    """
+    Envia a selfie por WhatsApp para diretores ativos com telefone cadastrado.
+    Retorna a quantidade de envios bem-sucedidos.
+    """
+    diretores = Usuario.objects.filter(
+        groups__name="Diretoria",
+        is_active=True,
+    ).exclude(tel_whatsapp__isnull=True).exclude(tel_whatsapp="").distinct()
+
+    if not diretores.exists():
+        logger.warning(
+            "Presença selfie: nenhum diretor com WhatsApp cadastrado (data=%s, supervisor=%s)",
+            data_dia,
+            getattr(usuario, "username", ""),
+        )
+        return 0
+
+    from crm_app.whatsapp_service import WhatsAppService
+
+    svc = WhatsAppService()
+    data_fmt = data_dia.strftime("%d/%m/%Y")
+    caption = f"Presença do dia {data_fmt} - supervisor: {getattr(usuario, 'username', '')}"
+    img_b64 = base64.b64encode(foto_bytes).decode("utf-8")
+    enviados = 0
+
+    for diretor in diretores:
+        tel = (
+            (diretor.tel_whatsapp or "")
+            .replace(" ", "")
+            .replace("-", "")
+            .replace("(", "")
+            .replace(")", "")
+        )
+        if not tel:
+            continue
+        try:
+            resultado = svc.enviar_imagem_b64(tel, img_b64, caption=caption)
+            if resultado:
+                enviados += 1
+            else:
+                logger.warning(
+                    "Presença selfie: WhatsApp não confirmou envio para %s",
+                    diretor.username,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Presença selfie: falha ao enviar WhatsApp para %s: %s",
+                diretor.username,
+                exc,
+            )
+
+    logger.info(
+        "Presença selfie: %s/%s diretores notificados (data=%s, supervisor=%s)",
+        enviados,
+        diretores.count(),
+        data_dia,
+        getattr(usuario, "username", ""),
+    )
+    return enviados
+
+
 def registrar_selfie(
     usuario: Any,
     data_dia: date,
@@ -90,31 +153,11 @@ def registrar_selfie(
     longitude: Optional[float] = None,
 ) -> tuple[ConfirmacaoPresencaDia, bool]:
     """
-    Faz upload da foto para o OneDrive, persiste o registro de confirmação e
-    envia a imagem por WhatsApp para os usuários do grupo Diretoria (opcional).
+    Persiste a confirmação do dia e envia a selfie por WhatsApp para a Diretoria.
 
     Returns:
         Tupla (instância ConfirmacaoPresencaDia, created: bool).
     """
-    from presenca.models import ConfirmacaoPresencaDia
-
-    now_dt = datetime.now()
-    nome_arquivo = f"equipe_{getattr(usuario, 'username', 'user')}_{data_dia}_{now_dt.strftime('%H-%M')}.jpg"
-    pasta_base = getattr(
-        django_settings, "PRESENCA_ONEDRIVE_FOLDER", "Presenca_Selfies"
-    )
-    folder_name = f"{pasta_base}/{data_dia}"
-
-    foto_io = io.BytesIO(foto_bytes)
-    try:
-        from crm_app.onedrive_service import OneDriveUploader
-
-        uploader = OneDriveUploader()
-        foto_url = uploader.upload_file(foto_io, folder_name, nome_arquivo)
-    except Exception as e:
-        logger.exception("Upload OneDrive selfie: %s", e)
-        raise ConfirmacaoPresencaServiceError(f"Erro ao enviar foto para o OneDrive: {e}") from e
-
     lat_dec = _normalizar_coordenada(latitude) if latitude is not None else None
     lng_dec = _normalizar_coordenada(longitude) if longitude is not None else None
 
@@ -122,34 +165,13 @@ def registrar_selfie(
         data=data_dia,
         supervisor=usuario,
         defaults={
-            "foto_url": foto_url,
+            "foto_url": "",
             "latitude": lat_dec,
             "longitude": lng_dec,
         },
     )
 
-    diretores = Usuario.objects.filter(
-        groups__name="Diretoria",
-        is_active=True,
-    ).exclude(tel_whatsapp__isnull=True).exclude(tel_whatsapp="").distinct()
-
-    if diretores.exists():
-        try:
-            from crm_app.whatsapp_service import WhatsAppService
-
-            svc = WhatsAppService()
-            data_fmt = data_dia.strftime("%d/%m/%Y")
-            caption = f"Presença do dia {data_fmt} - supervisor: {getattr(usuario, 'username', '')}"
-            img_b64 = base64.b64encode(foto_bytes).decode("utf-8")
-            for d in diretores:
-                try:
-                    tel = (d.tel_whatsapp or "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-                    if tel:
-                        svc.enviar_imagem_b64(tel, img_b64, caption=caption)
-                except Exception as e:
-                    logger.debug("WhatsApp diretor %s: %s", d.username, e)
-        except Exception as e:
-            logger.warning("Envio WhatsApp Diretoria: %s", e)
+    _enviar_selfie_diretoria(foto_bytes, data_dia, usuario)
 
     return conf, created
 

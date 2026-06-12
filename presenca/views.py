@@ -158,7 +158,7 @@ class TodosUsuariosListView(generics.ListAPIView):
 class ConfirmacaoPresencaDiaView(APIView):
     """
     GET: ?data=YYYY-MM-DD → confirmação do dia.
-    POST: foto + data (upload OneDrive + WhatsApp Diretoria).
+    POST: foto + data (WhatsApp Diretoria + confirmação no banco).
     DELETE: ?data=YYYY-MM-DD → exclui confirmação (Diretoria/Admin).
     """
     permission_classes = [IsAuthenticated]
