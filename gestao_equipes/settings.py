@@ -380,7 +380,21 @@ SYNC_ESTEIRA_INTERVALO_CURTO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_CURTO_MAX_
 SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG', default=300, cast=int)
 SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG', default=600, cast=int)
 
-# Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
+# Lembretes WhatsApp para supervisores concluírem presença (10h, 11h) e falta automática às 12h
+PRESENCA_LEMBRETES_ATIVOS = config(
+    'PRESENCA_LEMBRETES_ATIVOS', default=True, cast=lambda v: str(v).lower() in ('true', '1', 'yes')
+)
+PRESENCA_FALTA_AUTOMATICA_12H_ATIVA = config(
+    'PRESENCA_FALTA_AUTOMATICA_12H_ATIVA', default=True, cast=lambda v: str(v).lower() in ('true', '1', 'yes')
+)
+PRESENCA_URL_SITE = config('PRESENCA_URL_SITE', default='https://www.recordpap.com.br/presenca/')
+PRESENCA_IMAGEM_ALERTA_SUPERVISOR = config(
+    'PRESENCA_IMAGEM_ALERTA_SUPERVISOR', default='presenca/assets/alerta_supervisor.png'
+)
+PRESENCA_MOTIVO_FALTA_AUTOMATICA = config(
+    'PRESENCA_MOTIVO_FALTA_AUTOMATICA', default='Falta automática (supervisor)'
+)
+
 # Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)
 INCLUSAO_ONEDRIVE_FOLDER = config('INCLUSAO_ONEDRIVE_FOLDER', default='Inclusao_Viabilidade')
 

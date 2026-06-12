@@ -82,6 +82,30 @@ def preaquecer_cache_folha_comissionamento():
         logger.error(f"❌ Erro ao pré-aquecer cache da folha: {e}")
 
 
+def lembrete_presenca_supervisor_10h():
+    try:
+        from presenca.services.lembrete_presenca_service import enviar_lembrete_supervisores, SLOT_10H
+        enviar_lembrete_supervisores(SLOT_10H)
+    except Exception as e:
+        logger.error("❌ Erro no lembrete presença 10h: %s", e)
+
+
+def lembrete_presenca_supervisor_11h():
+    try:
+        from presenca.services.lembrete_presenca_service import enviar_lembrete_supervisores, SLOT_11H
+        enviar_lembrete_supervisores(SLOT_11H)
+    except Exception as e:
+        logger.error("❌ Erro no lembrete presença 11h: %s", e)
+
+
+def aplicar_faltas_presenca_12h():
+    try:
+        from presenca.services.lembrete_presenca_service import aplicar_faltas_automaticas_12h
+        aplicar_faltas_automaticas_12h()
+    except Exception as e:
+        logger.error("❌ Erro na falta automática presença 12h: %s", e)
+
+
 def _registrar_jobs(scheduler):
     scheduler.add_job(
         buscar_faturas_automatico,
@@ -138,6 +162,31 @@ def _registrar_jobs(scheduler):
         trigger=CronTrigger.from_crontab('0 12 * * *'),
         id='preaquecer_cache_folha_meiodia',
         name='Pré-aquecer cache folha comissionamento (12:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    tz_sp = getattr(settings, "TIME_ZONE", "America/Sao_Paulo")
+    scheduler.add_job(
+        lembrete_presenca_supervisor_10h,
+        trigger=CronTrigger.from_crontab('0 10 * * 1-5', timezone=tz_sp),
+        id='lembrete_presenca_supervisor_10h',
+        name='Lembrete presença supervisor (10:00 seg-sex)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        lembrete_presenca_supervisor_11h,
+        trigger=CronTrigger.from_crontab('0 11 * * 1-5', timezone=tz_sp),
+        id='lembrete_presenca_supervisor_11h',
+        name='Lembrete presença supervisor (11:00 seg-sex)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        aplicar_faltas_presenca_12h,
+        trigger=CronTrigger.from_crontab('0 12 * * 1-5', timezone=tz_sp),
+        id='aplicar_faltas_presenca_12h',
+        name='Falta automática presença (12:00 seg-sex)',
         replace_existing=True,
         max_instances=1,
     )

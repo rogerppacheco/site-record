@@ -83,3 +83,33 @@ class DiaNaoUtil(models.Model):
 
     def __str__(self):
         return f"{self.data} - {self.descricao}"
+
+
+class LogLembretePresencaSupervisor(models.Model):
+    """Controle de idempotência dos lembretes WhatsApp e falta automática às 12h."""
+
+    SLOT_CHOICES = [
+        ("10h", "Lembrete 10h"),
+        ("11h", "Lembrete 11h"),
+        ("12h_falta", "Falta automática 12h"),
+    ]
+
+    data = models.DateField(db_index=True)
+    slot = models.CharField(max_length=20, choices=SLOT_CHOICES)
+    supervisor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="logs_lembrete_presenca",
+    )
+    sucesso = models.BooleanField(default=False)
+    detalhe = models.CharField(max_length=500, blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Log lembrete presença supervisor"
+        verbose_name_plural = "Logs lembretes presença supervisor"
+        unique_together = [["data", "slot", "supervisor"]]
+        ordering = ["-criado_em"]
+
+    def __str__(self) -> str:
+        return f"{self.data} {self.slot} — {self.supervisor_id}"
