@@ -55,15 +55,88 @@ def get_valor_from_faixa(regra_faixa, chave):
     return float(v) if v is not None else None
 
 
-def carregar_faixa_adiantamento_regras_faixa():
+def _normalizar_perfil_comissao_folha(valor: str | None) -> str | None:
+    v = (valor or '').strip().upper()
+    if not v:
+        return None
+    if v == 'SUPERVISOR':
+        return 'Supervisor'
+    if v == 'VENDEDOR':
+        return 'Vendedor'
+    return None
+
+
+def resolver_perfil_comissao_consultor(consultor, config=None) -> str:
+    """Perfil de comissão do consultor (usuário → config → padrão Vendedor)."""
+    perfil_usuario = getattr(getattr(consultor, 'perfil', None), 'nome', None)
+    perfil_resolvido = _normalizar_perfil_comissao_folha(perfil_usuario)
+    if perfil_resolvido:
+        return perfil_resolvido
+    perfil_config = _normalizar_perfil_comissao_folha(getattr(config, 'perfil_comissao', None))
+    if perfil_config:
+        return perfil_config
+    return 'Vendedor'
+
+
+def carregar_faixa_adiantamento_regras_faixa(consultor=None, config=None, perfil: str | None = None):
     """
-    Faixa base para adiantamentos na folha.
-    Regra solicitada: usar SEMPRE a primeira faixa de finalidade COMISSAO.
+    Faixa de referência para adiantamento na esteira / exibição na folha.
+    Usa o perfil do vendedor (Vendedor ou Supervisor), nunca a primeira faixa global.
+    Prioridade: finalidade ADIANTAMENTO do perfil → menor faixa COMISSAO do perfil.
     """
     from .models import RegraComissaoFaixa
 
-    faixa = RegraComissaoFaixa.objects.filter(finalidade='COMISSAO').order_by('id').first()
-    return faixa
+    if perfil is None and consultor is not None:
+        perfil = resolver_perfil_comissao_consultor(consultor, config)
+
+    if perfil:
+        faixa_adiant = (
+            RegraComissaoFaixa.objects.filter(
+                finalidade='ADIANTAMENTO',
+                perfil=perfil,
+                vendedor__isnull=True,
+            )
+            .order_by('min_vendas', 'id')
+            .first()
+        )
+        if faixa_adiant:
+            return faixa_adiant
+        faixa_comissao = (
+            RegraComissaoFaixa.objects.filter(
+                finalidade='COMISSAO',
+                perfil=perfil,
+                vendedor__isnull=True,
+            )
+            .order_by('min_vendas', 'id')
+            .first()
+        )
+        if faixa_comissao:
+            return faixa_comissao
+
+    return RegraComissaoFaixa.objects.filter(finalidade='COMISSAO').order_by('id').first()
+
+
+def carregar_valores_adiantamento_esteira_lancamentos(vendedor_id: int | None = None) -> dict[int, float]:
+    """Mapa venda_id → valor pago no adiantamento da esteira (instaladas / agendados)."""
+    from .models import LancamentoFinanceiro
+
+    origens_esteira = {'instaladas_comissao', 'esteira_sabado_agendados'}
+    qs = LancamentoFinanceiro.objects.filter(tipo='ADIANTAMENTO_COMISSAO')
+    if vendedor_id:
+        qs = qs.filter(usuario_id=vendedor_id)
+
+    mapa: dict[int, float] = {}
+    for lanc in qs.only('valor', 'metadados', 'quantidade_vendas'):
+        meta = lanc.metadados if isinstance(lanc.metadados, dict) else {}
+        if meta.get('origem') not in origens_esteira:
+            continue
+        valores_por_venda = meta.get('valores_por_venda_id') or {}
+        for vid, val in valores_por_venda.items():
+            try:
+                mapa[int(vid)] = float(val)
+            except (TypeError, ValueError):
+                continue
+    return mapa
 
 
 def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
@@ -83,11 +156,12 @@ def valor_adiantamento_exibicao_folha(
     chave,
     origem=None,
     complemento_sabado: float | None = None,
+    valores_esteira_lancamento: dict[int, float] | None = None,
 ):
     """
     Valor de comissão antecipada na folha/extrato.
     Adiantamento sábado: valor pago no sábado + complemento de faixa (se instalada).
-    Adiantamento comissão (esteira): tabela de governança.
+    Adiantamento comissão (esteira): valor do lançamento ou faixa do perfil do vendedor.
     """
     if origem is None:
         origem = origem_adiantamento_comissao_venda(venda)
@@ -104,6 +178,12 @@ def valor_adiantamento_exibicao_folha(
             if origem == 'sabado_pendente' or comp == 0:
                 return pago
             return round(pago + comp, 2)
+    if origem == 'esteira_comissao':
+        vid = getattr(venda, 'pk', None) or getattr(venda, 'id', None)
+        if valores_esteira_lancamento and vid is not None:
+            val_lanc = valores_esteira_lancamento.get(int(vid))
+            if val_lanc is not None and float(val_lanc) > 0:
+                return float(val_lanc)
     return valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
 
 
@@ -289,6 +369,7 @@ def valor_comissao_linha_extrato(
     instalada_na_folha=False,
     churn_m1=False,
     complemento_sabado: float | None = None,
+    valores_esteira_lancamento: dict[int, float] | None = None,
 ):
     """
     Valor e tipo de comissão exibidos no extrato por venda.
@@ -315,7 +396,12 @@ def valor_comissao_linha_extrato(
 
     tabela = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
     val_adiant = valor_adiantamento_exibicao_folha(
-        venda, faixa_adiantamento, chave, origem, complemento_sabado=complemento_sabado,
+        venda,
+        faixa_adiantamento,
+        chave,
+        origem,
+        complemento_sabado=complemento_sabado,
+        valores_esteira_lancamento=valores_esteira_lancamento,
     )
 
     if churn_m1:
@@ -443,8 +529,6 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
     for r in RegraComissaoFaixa.objects.filter(q_comissao, vendedor__isnull=False).select_related('vendedor'):
         regras_faixa_vendedor[r.vendedor_id].append(r)
 
-    faixa_adiantamento = carregar_faixa_adiantamento_regras_faixa()
-
     # Config do mês (ano, mes) com fallback para modelo padrão (ano/mes nulos)
     configs = {}
     for c in ConfigComissaoVendedor.objects.filter(ano=ano, mes=mes).select_related('usuario'):
@@ -522,6 +606,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         # Faixa pela produção total instalada no mês (antecipadas + a pagar), conforme regra de negócio.
         faixa_regra = encontrar_faixa(consultor, qtd_total_instalada)
         usar_manual = config and config.usar_valor_manual
+        faixa_adiantamento = carregar_faixa_adiantamento_regras_faixa(consultor, config)
+        valores_esteira_lanc = carregar_valores_adiantamento_esteira_lancamentos(consultor.id)
 
         from crm_app.services.adiantamento_sabado_service import (
             calcular_complemento_adiantamento_sabado_folha,
@@ -588,7 +674,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 o_ant = origem_adiantamento_comissao_venda(v) or 'esteira_comissao'
                 comp_v = float((complemento_por_venda.get(v.id) or {}).get('complemento') or 0)
                 va = valor_adiantamento_exibicao_folha(
-                    v, faixa_adiantamento, chave, o_ant, complemento_sabado=comp_v,
+                    v,
+                    faixa_adiantamento,
+                    chave,
+                    o_ant,
+                    complemento_sabado=comp_v,
+                    valores_esteira_lancamento=valores_esteira_lanc,
                 )
                 if chave:
                     por_plano[chave]['qtd_antecipada'] += 1
@@ -949,6 +1040,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 usar_manual=usar_manual,
                 instalada_na_folha=True,
                 complemento_sabado=float((complemento_por_venda.get(v.id) or {}).get('complemento') or 0),
+                valores_esteira_lancamento=valores_esteira_lanc,
             )
             extrato.append({
                 'venda_id': v.id,

@@ -34,7 +34,11 @@ def comissao_ja_adiantada_venda(venda) -> bool:
     Reemissão instalada sem adiantamento sábado próprio paga normalmente.
     Estorno já aplicado na folha e depois instalada → paga comissão normal.
     """
-    if getattr(venda, 'reemissao', False) and not getattr(venda, 'adiantamento_sabado_marcado', False):
+    if (
+        getattr(venda, 'reemissao', False)
+        and not getattr(venda, 'adiantamento_sabado_marcado', False)
+        and not getattr(venda, 'antecipacao_comissao', False)
+    ):
         return False
     if (
         getattr(venda, 'flag_desc_adiantamento_sabado', False)

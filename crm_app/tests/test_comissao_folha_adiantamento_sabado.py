@@ -234,6 +234,32 @@ class EstornoAdiantamentoSabadoMesTests(SimpleTestCase):
         )
 
 
+class ReemissaoAntecipacaoEsteiraTests(SimpleTestCase):
+    """Reemissão com antecipação na esteira não deve voltar para QTD A PAGAR."""
+
+    def test_reemissao_com_antecipacao_e_adiantada(self) -> None:
+        from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+
+        venda = _VendaStub(
+            reemissao=True,
+            antecipacao_comissao=True,
+            adiantamento_sabado_marcado=False,
+            status_esteira=type('S', (), {'nome': 'INSTALADA'})(),
+        )
+        self.assertTrue(comissao_ja_adiantada_venda(venda))
+
+    def test_reemissao_sem_antecipacao_nao_e_adiantada(self) -> None:
+        from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+
+        venda = _VendaStub(
+            reemissao=True,
+            antecipacao_comissao=False,
+            adiantamento_sabado_marcado=False,
+            status_esteira=type('S', (), {'nome': 'INSTALADA'})(),
+        )
+        self.assertFalse(comissao_ja_adiantada_venda(venda))
+
+
 class ComplementoMeiVsCnpjTests(SimpleTestCase):
     def test_mei_usa_tabela_pap_no_complemento(self) -> None:
         venda = _VendaStub(

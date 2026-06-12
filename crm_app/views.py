@@ -1570,12 +1570,14 @@ def _get_primeira_faixa_comissao():
 
 def _valor_adiantamento_base_comissao(venda):
     """
-    Valor base do adiantamento pela primeira faixa de COMISSAO.
+    Valor base do adiantamento na esteira conforme perfil do vendedor.
     Fallback: plano.comissao_base.
     """
+    from crm_app.comissao_folha_service import carregar_faixa_adiantamento_regras_faixa
     from crm_app.services.cnpj_mei_service import usa_tabela_cnpj_comissao
 
-    faixa = _get_primeira_faixa_comissao()
+    consultor = getattr(venda, 'vendedor', None)
+    faixa = carregar_faixa_adiantamento_regras_faixa(consultor=consultor)
     is_cnpj_venda = usa_tabela_cnpj_comissao(venda)
     return Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa, is_cnpj_venda)))
 
