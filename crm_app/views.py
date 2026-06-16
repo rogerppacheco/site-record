@@ -14992,6 +14992,9 @@ class ConfigAnteciparInstalacaoView(APIView):
             'grupo_nome': config.grupo.nome if config.grupo else None,
             'grupos': grupos,
             'pode_editar': is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']),
+            'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
+            'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
+            'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
         })
 
     def patch(self, request):
@@ -15015,6 +15018,17 @@ class ConfigAnteciparInstalacaoView(APIView):
                     config.grupo = g
                 except (TypeError, ValueError):
                     config.grupo_id = None
+        if 'relatorio_esteira_gc_ativo' in request.data:
+            config.relatorio_esteira_gc_ativo = bool(request.data.get('relatorio_esteira_gc_ativo'))
+        from crm_app.services.relatorio_esteira_gc_service import validar_horario_relatorio
+        if 'relatorio_esteira_horario_1' in request.data:
+            horario = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_1'))
+            if horario:
+                config.relatorio_esteira_horario_1 = horario
+        if 'relatorio_esteira_horario_2' in request.data:
+            horario = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_2'))
+            if horario:
+                config.relatorio_esteira_horario_2 = horario
         config.atualizado_por = request.user
         config.save()
         return Response({
@@ -15022,6 +15036,9 @@ class ConfigAnteciparInstalacaoView(APIView):
             'telefone_gc': config.telefone_gc or '',
             'grupo_id': config.grupo_id,
             'grupo_nome': config.grupo.nome if config.grupo else None,
+            'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
+            'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
+            'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
         })
 
 

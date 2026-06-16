@@ -106,6 +106,16 @@ def aplicar_faltas_presenca_12h():
         logger.error("❌ Erro na falta automática presença 12h: %s", e)
 
 
+def processar_relatorio_esteira_gc_agendado():
+    try:
+        from crm_app.services.relatorio_esteira_gc_service import processar_envio_relatorio_esteira_gc
+        processar_envio_relatorio_esteira_gc()
+    except Exception as e:
+        logger.error("❌ Erro no relatório esteira GC: %s", e)
+        import traceback
+        logger.error("Traceback: %s", traceback.format_exc())
+
+
 def _registrar_jobs(scheduler):
     scheduler.add_job(
         buscar_faturas_automatico,
@@ -120,6 +130,14 @@ def _registrar_jobs(scheduler):
         trigger=IntervalTrigger(minutes=1),
         id='processar_envio_performance',
         name='Processar envios programados de Performance (a cada minuto)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        processar_relatorio_esteira_gc_agendado,
+        trigger=IntervalTrigger(minutes=1),
+        id='processar_relatorio_esteira_gc',
+        name='Relatório esteira GC ao WhatsApp (a cada minuto)',
         replace_existing=True,
         max_instances=1,
     )

@@ -182,7 +182,9 @@
                     <div id="config-visualizar" class="mb-3">
                         <p class="mb-1"><strong>Nome do GC:</strong> <span id="config-nome-display">—</span></p>
                         <p class="mb-1"><strong>Telefone do GC:</strong> <span id="config-telefone-display">—</span></p>
-                        <p class="mb-0"><strong>Grupo WhatsApp:</strong> <span id="config-grupo-display">—</span></p>
+                        <p class="mb-1"><strong>Grupo WhatsApp:</strong> <span id="config-grupo-display">—</span></p>
+                        <p class="mb-1"><strong>Relatório diário esteira:</strong> <span id="config-relatorio-display">—</span></p>
+                        <p class="mb-0"><strong>Horários do relatório:</strong> <span id="config-horarios-display">—</span></p>
                     </div>
                     <div id="config-form" style="display:none;">
                         <div class="mb-3">
@@ -199,6 +201,23 @@
                                 <option value="">— Nenhum —</option>
                             </select>
                             <div id="config-grupos-aviso" class="form-text text-warning" style="display:none;">Nenhum grupo cadastrado. Cadastre em Integração &gt; Grupos de disparo (ou use a opção listar grupos da Z-API).</div>
+                        </div>
+                        <hr class="my-3">
+                        <h6 class="fw-bold mb-2">Relatório diário de vendas (esteira)</h6>
+                        <p class="text-muted small mb-3">Envia ao GC o volume de ativados e a esteira de auditoria do dia (segunda a sexta).</p>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="config-relatorio-ativo">
+                            <label class="form-check-label" for="config-relatorio-ativo">Ativar envio automático</label>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">1º envio</label>
+                                <input type="time" id="config-horario-1" class="form-control" value="17:20">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">2º envio (atualização)</label>
+                                <input type="time" id="config-horario-2" class="form-control" value="18:00">
+                            </div>
                         </div>
                         <button type="button" class="btn btn-primary" id="btn-salvar-config"><i class="bi bi-check-lg"></i> Salvar</button>
                         <span id="config-msg" class="ms-2 small"></span>
@@ -697,6 +716,9 @@
                     document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
+                    document.getElementById('config-relatorio-display').textContent = data.relatorio_esteira_gc_ativo ? 'Ativo' : 'Inativo';
+                    document.getElementById('config-horarios-display').textContent =
+                        (data.relatorio_esteira_horario_1 || '17:20') + ' e ' + (data.relatorio_esteira_horario_2 || '18:00');
                     const sel = document.getElementById('config-grupo');
                     sel.innerHTML = '<option value="">— Nenhum —</option>';
                     (data.grupos || []).forEach(function(g) {
@@ -709,6 +731,13 @@
                     document.getElementById('config-grupos-aviso').style.display = (data.grupos && data.grupos.length) ? 'none' : 'block';
                     document.getElementById('config-nome-gc').value = data.nome_gc || '';
                     document.getElementById('config-telefone').value = data.telefone_gc || '';
+                    document.getElementById('config-relatorio-ativo').checked = !!data.relatorio_esteira_gc_ativo;
+                    document.getElementById('config-horario-1').value = data.relatorio_esteira_horario_1 || '17:20';
+                    document.getElementById('config-horario-2').value = data.relatorio_esteira_horario_2 || '18:00';
+                    const relAtivo = !!data.relatorio_esteira_gc_ativo;
+                    document.getElementById('config-relatorio-display').textContent = relAtivo ? 'Ativo' : 'Inativo';
+                    document.getElementById('config-horarios-display').textContent =
+                        (data.relatorio_esteira_horario_1 || '17:20') + ' e ' + (data.relatorio_esteira_horario_2 || '18:00');
                     if (data.pode_editar) {
                         show('config-form', true);
                         show('config-visualizar', false);
@@ -729,11 +758,17 @@
                 const nomeGc = document.getElementById('config-nome-gc').value.trim();
                 const telefone = document.getElementById('config-telefone').value.trim();
                 const grupoId = document.getElementById('config-grupo').value;
+                const relatorioAtivo = document.getElementById('config-relatorio-ativo').checked;
+                const horario1 = document.getElementById('config-horario-1').value || '17:20';
+                const horario2 = document.getElementById('config-horario-2').value || '18:00';
                 try {
                     const body = {
                         nome_gc: nomeGc || null,
                         telefone_gc: telefone || null,
-                        grupo_id: grupoId === '' ? null : parseInt(grupoId, 10)
+                        grupo_id: grupoId === '' ? null : parseInt(grupoId, 10),
+                        relatorio_esteira_gc_ativo: relatorioAtivo,
+                        relatorio_esteira_horario_1: horario1,
+                        relatorio_esteira_horario_2: horario2
                     };
                     const res = await fetch(apiBase + '/antecipar-instalacao/config/', {
                         method: 'PATCH',
@@ -748,6 +783,9 @@
                     document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
+                    document.getElementById('config-relatorio-display').textContent = data.relatorio_esteira_gc_ativo ? 'Ativo' : 'Inativo';
+                    document.getElementById('config-horarios-display').textContent =
+                        (data.relatorio_esteira_horario_1 || '17:20') + ' e ' + (data.relatorio_esteira_horario_2 || '18:00');
                 } catch (e) {
                     msgEl.textContent = e.message || 'Erro ao salvar';
                     msgEl.className = 'ms-2 small text-danger';

@@ -1569,6 +1569,24 @@ class AnteciparInstalacaoConfig(models.Model):
         GrupoDisparo, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name="Grupo WhatsApp (ex: Record PAP)"
     )
+    relatorio_esteira_gc_ativo = models.BooleanField(
+        default=False,
+        verbose_name="Relatório diário esteira (GC)",
+        help_text="Envia ao GC o volume de ativados e esteira de auditoria (seg-sex).",
+    )
+    relatorio_esteira_horario_1 = models.TimeField(
+        default='17:20',
+        verbose_name="Horário 1º envio (esteira GC)",
+    )
+    relatorio_esteira_horario_2 = models.TimeField(
+        default='18:00',
+        verbose_name="Horário 2º envio (esteira GC)",
+    )
+    relatorio_esteira_controle_disparos = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Controle interno para evitar reenvio no mesmo slot diário.",
+    )
     atualizado_em = models.DateTimeField(auto_now=True)
     atualizado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
