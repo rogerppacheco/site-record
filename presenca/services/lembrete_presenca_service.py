@@ -89,9 +89,9 @@ def listar_supervisores_com_equipe() -> QuerySet[Usuario]:
         vendedor_solo=True,
         participa_controle_presenca=True,
         tel_whatsapp__isnull=False,
-    ).exclude(tel_whatsapp="")
+    ).exclude(tel_whatsapp="").distinct()
 
-    return (com_liderados | solo).distinct().order_by("username")
+    return (com_liderados | solo).order_by("username")
 
 
 def supervisor_pendente(supervisor: Usuario, data_dia: date) -> bool:
