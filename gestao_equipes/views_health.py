@@ -62,11 +62,24 @@ class MetricsView(View):
     def get(self, request: HttpRequest) -> JsonResponse:
         pap_queue_pending = 0
         pap_queue_running = 0
+        webhook_queue_pending = 0
+        webhook_queue_running = 0
         try:
             from crm_app.pap_job_fila import PapJobFila
 
             pap_queue_pending = PapJobFila.objects.filter(status=PapJobFila.STATUS_PENDENTE).count()
             pap_queue_running = PapJobFila.objects.filter(status=PapJobFila.STATUS_PROCESSANDO).count()
+        except Exception:
+            pass
+        try:
+            from crm_app.whatsapp_webhook_fila import WhatsappWebhookFila
+
+            webhook_queue_pending = WhatsappWebhookFila.objects.filter(
+                status=WhatsappWebhookFila.STATUS_PENDENTE
+            ).count()
+            webhook_queue_running = WhatsappWebhookFila.objects.filter(
+                status=WhatsappWebhookFila.STATUS_PROCESSANDO
+            ).count()
         except Exception:
             pass
 
@@ -80,8 +93,12 @@ class MetricsView(View):
         except Exception:
             cache_ok = False
 
-        worker_mode = "pap" if getattr(settings, "PAP_WORKER_MODE", False) else "web"
-        if getattr(settings, "RUN_SCHEDULER", False):
+        worker_mode = "web"
+        if getattr(settings, "PAP_WORKER_MODE", False):
+            worker_mode = "pap"
+        elif getattr(settings, "WHATSAPP_WORKER_MODE", False):
+            worker_mode = "webhook"
+        elif getattr(settings, "RUN_SCHEDULER", False):
             worker_mode = "scheduler"
 
         return JsonResponse(
@@ -89,8 +106,11 @@ class MetricsView(View):
                 "status": "ok",
                 "worker_mode": worker_mode,
                 "pap_dedicated_worker": getattr(settings, "PAP_USE_DEDICATED_WORKER", False),
+                "whatsapp_dedicated_worker": getattr(settings, "WHATSAPP_USE_DEDICATED_WORKER", False),
                 "pap_queue_pending": pap_queue_pending,
                 "pap_queue_running": pap_queue_running,
+                "webhook_queue_pending": webhook_queue_pending,
+                "webhook_queue_running": webhook_queue_running,
                 "cache_ok": cache_ok,
                 "memory_mb": _memoria_mb(),
                 "gunicorn_workers": int(getattr(settings, "GUNICORN_WORKERS", 1)),

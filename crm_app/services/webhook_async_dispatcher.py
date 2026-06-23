@@ -1,7 +1,8 @@
 """
 Despacho assíncrono de webhooks Z-API — libera o worker Gunicorn imediatamente.
 
-O processamento pesado (Playwright, ORM, envio WhatsApp) roda em thread daemon.
+Com WHATSAPP_USE_DEDICATED_WORKER=True no web, enfileira em PostgreSQL.
+Caso contrário, processamento pesado roda em thread daemon no mesmo container.
 """
 from __future__ import annotations
 
@@ -33,6 +34,13 @@ class WebhookRequestContext:
         return f"{self._base}{path}"
 
 
+def webhook_usa_fila_dedicada() -> bool:
+    return bool(
+        getattr(settings, "WHATSAPP_USE_DEDICATED_WORKER", False)
+        and not getattr(settings, "WHATSAPP_WORKER_MODE", False)
+    )
+
+
 def _nome_thread(payload: Dict[str, Any]) -> str:
     phone = (
         payload.get("phone")
@@ -41,6 +49,13 @@ def _nome_thread(payload: Dict[str, Any]) -> str:
         or "unknown"
     )
     return f"webhook-{str(phone)[-8:]}"
+
+
+def _base_url_de_request(request: Any = None) -> str:
+    if request is not None:
+        return request.build_absolute_uri("/").rstrip("/")
+    domain = getattr(settings, "RAILWAY_PUBLIC_DOMAIN", None) or "www.recordpap.com.br"
+    return f"https://{domain}"
 
 
 def _worker_processar(payload: Dict[str, Any], ctx: WebhookRequestContext) -> None:
@@ -61,9 +76,17 @@ def _worker_processar(payload: Dict[str, Any], ctx: WebhookRequestContext) -> No
 
 def despachar_webhook_whatsapp(data: Dict[str, Any], request: Any = None) -> None:
     """
-    Enfileira processamento em thread daemon e retorna sem bloquear o worker HTTP.
+    Enfileira no PostgreSQL (serviço webhook) ou processa em thread daemon local.
     """
     payload = copy.deepcopy(data)
+
+    if webhook_usa_fila_dedicada():
+        from crm_app.whatsapp_webhook_fila import enfileirar_webhook
+
+        enfileirar_webhook(payload, base_url=_base_url_de_request(request))
+        logger.info("[WebhookAsync] Enfileirado telefone=%s", _nome_thread(payload))
+        return
+
     ctx = WebhookRequestContext(request)
     thread = threading.Thread(
         target=_worker_processar,
@@ -76,4 +99,6 @@ def despachar_webhook_whatsapp(data: Dict[str, Any], request: Any = None) -> Non
 
 
 def webhook_deve_processar_assincrono() -> bool:
+    if getattr(settings, "WHATSAPP_WORKER_MODE", False):
+        return False
     return bool(getattr(settings, "WHATSAPP_WEBHOOK_ASYNC", True))

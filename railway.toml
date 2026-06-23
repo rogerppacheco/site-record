@@ -1,4 +1,4 @@
-# Config do serviço web (site-record). Scheduler e PAP usam toml próprios.
+# Config do serviço web (site-record). Scheduler, PAP e webhook usam toml próprios.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"

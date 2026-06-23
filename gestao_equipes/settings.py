@@ -435,12 +435,24 @@ FOLHA_COMISSAO_CACHE_ENABLED = config(
 )
 FOLHA_COMISSAO_CACHE_TTL = config('FOLHA_COMISSAO_CACHE_TTL', default=1800, cast=int)
 
-# Webhook Z-API: processar em thread e responder HTTP 200 imediatamente
+# Webhook Z-API: processar em thread/fila e responder HTTP 200 imediatamente
 WHATSAPP_WEBHOOK_ASYNC = config(
     'WHATSAPP_WEBHOOK_ASYNC',
     default=True,
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
+# Webhook dedicado: web enfileira; serviço webhook consome (fila PostgreSQL, sem Redis)
+WHATSAPP_USE_DEDICATED_WORKER = config(
+    'WHATSAPP_USE_DEDICATED_WORKER',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+WHATSAPP_WORKER_MODE = config(
+    'WHATSAPP_WORKER_MODE',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+WHATSAPP_WORKER_POLL_SECONDS = config('WHATSAPP_WORKER_POLL_SECONDS', default=1, cast=float)
 
 # Gunicorn (scripts/start_web.sh): workers/threads configuráveis no Railway
 GUNICORN_WORKERS = config('GUNICORN_WORKERS', default=2, cast=int)
