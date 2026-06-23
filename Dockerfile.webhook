@@ -11,4 +11,4 @@ COPY . /app/
 RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py run_webhook_worker"]
+CMD ["python", "manage.py", "run_webhook_worker"]

@@ -4,6 +4,6 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.webhook"
 
 [deploy]
-startCommand = "python manage.py migrate --noinput && python manage.py run_webhook_worker"
+startCommand = "python manage.py run_webhook_worker"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
