@@ -31,7 +31,7 @@ def record_apoia_arquivo_existe_local(arquivo_record):
 
 
 def record_apoia_disponivel(arquivo_record):
-    """Arquivo utilizável: existe no disco ou possui URL de backup (OneDrive)."""
+    """Arquivo utilizável: existe no disco ou possui URL de backup (R2)."""
     if arquivo_record.url_externa:
         return True
     return record_apoia_arquivo_existe_local(arquivo_record)
@@ -39,7 +39,7 @@ def record_apoia_disponivel(arquivo_record):
 
 def record_apoia_ler_bytes(arquivo_record):
     """
-    Lê bytes do arquivo local ou baixa da url_externa (OneDrive).
+    Lê bytes do arquivo local ou baixa da url_externa (R2).
     Raises FileNotFoundError se não houver fonte disponível.
     """
     if record_apoia_arquivo_existe_local(arquivo_record):
@@ -66,15 +66,15 @@ def record_apoia_ler_bytes(arquivo_record):
     )
 
 
-def espelhar_record_apoia_onedrive(arquivo_record, conteudo_bytes):
-    """Envia cópia para OneDrive e grava url_externa no registro."""
+def espelhar_record_apoia_r2(arquivo_record, conteudo_bytes):
+    """Envia cópia para o R2 e grava url_externa no registro."""
     if not conteudo_bytes:
         return None
     try:
-        from crm_app.onedrive_service import OneDriveUploader
+        from crm_app.cloudflare_r2_service import CloudflareR2Storage
 
         nome = arquivo_record.nome_original or os.path.basename(arquivo_record.arquivo.name or 'arquivo')
-        uploader = OneDriveUploader()
+        uploader = CloudflareR2Storage()
         url = uploader.upload_file_and_get_download_url(
             BytesIO(conteudo_bytes),
             folder_name='Record_Apoia',
@@ -83,11 +83,11 @@ def espelhar_record_apoia_onedrive(arquivo_record, conteudo_bytes):
         if url:
             arquivo_record.url_externa = url
             arquivo_record.save(update_fields=['url_externa'])
-            logger.info("[Record Apoia] Backup OneDrive salvo: %s (id=%s)", nome, arquivo_record.id)
+            logger.info("[Record Apoia] Backup R2 salvo: %s (id=%s)", nome, arquivo_record.id)
         return url
     except Exception as e:
         logger.warning(
-            "[Record Apoia] Falha ao espelhar no OneDrive (id=%s): %s",
+            "[Record Apoia] Falha ao espelhar no R2 (id=%s): %s",
             arquivo_record.id,
             e,
         )
@@ -142,7 +142,7 @@ class RecordApoiaUploadView(APIView):
                         elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
                             tipo_arquivo = 'VIDEO'
                     
-                    # Ler bytes antes do save para backup OneDrive (disco local no Railway é efêmero)
+                    # Ler bytes antes do save para backup R2 (disco local no Railway é efêmero)
                     arquivo.seek(0)
                     conteudo_bytes = arquivo.read()
                     arquivo.seek(0)
@@ -160,7 +160,7 @@ class RecordApoiaUploadView(APIView):
                         usuario_upload=request.user
                     )
 
-                    espelhar_record_apoia_onedrive(record, conteudo_bytes)
+                    espelhar_record_apoia_r2(record, conteudo_bytes)
 
                     tamanho = len(conteudo_bytes)
                     if record.arquivo:
@@ -614,7 +614,7 @@ class RecordApoiaAdminOrfaosView(APIView):
                         'tamanho_bytes': arquivo.tamanho_bytes or 0
                     })
                 
-                # Ativos sem arquivo local e sem backup OneDrive
+                # Ativos sem arquivo local e sem backup R2
                 if arquivo.ativo and not record_apoia_disponivel(arquivo) and arquivo.arquivo and arquivo.arquivo.name:
                     ativos_sem_arquivo.append({
                         'id': arquivo.id,

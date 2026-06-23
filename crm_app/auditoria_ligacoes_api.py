@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from crm_app.models import AuditoriaLigacao, Venda
-from crm_app.onedrive_service import OneDriveUploader
+from crm_app.cloudflare_r2_service import CloudflareR2Storage
 from crm_app.sonax_voice_service import SonaxVoiceService, unpack_recording_zip
 from crm_app.zenvia_voice_service import ZenviaVoiceService
 
@@ -539,11 +539,11 @@ class AuditoriaLigacaoSincronizarView(APIView):
 
         ligacao.save(update_fields=list(dict.fromkeys(update_fields + ["atualizado_em"])))
 
-        # Se finalizou e ainda não arquivou, tenta baixar e mandar pro OneDrive
+        # Se finalizou e ainda não arquivou, tenta baixar e mandar pro R2
         if finalizada and not ligacao.link_gravacao_onedrive:
             try:
                 content, ext = svc.download_recording(cid)
-                _upload_bytes_to_onedrive(ligacao, content, ext)
+                _upload_bytes_to_r2(ligacao, content, ext)
             except Exception as exc:
                 logger.warning("Sincronização manual: falha ao arquivar gravação. ligacao_id=%s call_id=%s err=%s", ligacao.id, cid, exc)
 
@@ -864,9 +864,9 @@ class AuditoriaLigacaoWebhookView(APIView):
 
         if ligacao.link_gravacao_provedor:
             try:
-                _sync_recording_to_onedrive(ligacao)
+                _sync_recording_to_r2(ligacao)
             except Exception as exc:
-                logger.exception("Falha ao sincronizar gravação no OneDrive: %s", exc)
+                logger.exception("Falha ao sincronizar gravação no R2: %s", exc)
         elif ligacao.provedor == "SONAX" and finalizada:
             try:
                 _try_sonax_download_and_archive(ligacao)
@@ -876,7 +876,7 @@ class AuditoriaLigacaoWebhookView(APIView):
         return Response({"detail": "Webhook processado."}, status=status.HTTP_200_OK)
 
 
-def _upload_bytes_to_onedrive(ligacao: AuditoriaLigacao, data: bytes, extension: str) -> None:
+def _upload_bytes_to_r2(ligacao: AuditoriaLigacao, data: bytes, extension: str) -> None:
     venda = ligacao.venda
     nome_cliente = str(getattr(venda, "cliente_nome_razao_social", "") or "").strip()
     cpf_cnpj = re.sub(r"\D", "", str(getattr(venda, "cliente_cpf_cnpj", "") or ""))
@@ -887,12 +887,12 @@ def _upload_bytes_to_onedrive(ligacao: AuditoriaLigacao, data: bytes, extension:
     call_stamp = (ligacao.data_inicio_chamada or ligacao.criado_em or timezone.now()).strftime("%Y%m%d_%H%M%S")
     filename = f"{call_stamp}_tentativa_{ligacao.id}_{ligacao.provider_call_id}{extension}"
     folder_name = (
-        f"{getattr(settings, 'AUDITORIA_ONEDRIVE_FOLDER', 'Auditoria_Ligacoes')}/"
+        f"{getattr(settings, 'AUDITORIA_R2_FOLDER', 'Auditoria_Ligacoes')}/"
         f"{cliente_folder}/{timezone.localdate().isoformat()}"
     )
     file_obj = io.BytesIO(data)
     file_obj.seek(0)
-    uploader = OneDriveUploader()
+    uploader = CloudflareR2Storage()
     web_url = uploader.upload_file(file_obj=file_obj, folder_name=folder_name, filename=filename)
 
     ligacao.link_gravacao_onedrive = web_url
@@ -902,7 +902,7 @@ def _upload_bytes_to_onedrive(ligacao: AuditoriaLigacao, data: bytes, extension:
     ligacao.save(update_fields=["link_gravacao_onedrive", "status", "finalizado_em", "atualizado_em"])
 
 
-def _sync_recording_to_onedrive(ligacao: AuditoriaLigacao) -> None:
+def _sync_recording_to_r2(ligacao: AuditoriaLigacao) -> None:
     url = ligacao.link_gravacao_provedor
     if not url or ligacao.link_gravacao_onedrive:
         return
@@ -919,10 +919,10 @@ def _sync_recording_to_onedrive(ligacao: AuditoriaLigacao) -> None:
     if response.content[:2] == b"PK":
         prefer_mp3 = bool(getattr(settings, "SONAX_RECORDING_PREFER_MP3", True))
         content, extension = unpack_recording_zip(response.content, prefer_mp3=prefer_mp3)
-        _upload_bytes_to_onedrive(ligacao, content, extension)
+        _upload_bytes_to_r2(ligacao, content, extension)
         return
 
-    _upload_bytes_to_onedrive(ligacao, response.content, extension)
+    _upload_bytes_to_r2(ligacao, response.content, extension)
 
 
 def _try_sonax_download_and_archive(ligacao: AuditoriaLigacao) -> None:
@@ -936,4 +936,4 @@ def _try_sonax_download_and_archive(ligacao: AuditoriaLigacao) -> None:
         logger.warning("Sonax pega_gravacao: credenciais id_cliente/token não configuradas.")
         return
     content, ext = svc.download_recording(cid)
-    _upload_bytes_to_onedrive(ligacao, content, ext)
+    _upload_bytes_to_r2(ligacao, content, ext)

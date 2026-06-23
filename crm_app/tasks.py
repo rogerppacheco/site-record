@@ -409,14 +409,14 @@ def processar_fallback_auditoria_ligacoes_sonax(
     Fallback para quando a Sonax não dispara o webhook de desligamento.
     - Varre ligações Sonax INICIADA/PROCESSANDO com `provider_call_id` numérico.
     - Consulta acao=status_chamada.
-    - Se finalizada, persiste status/duração/datas e tenta baixar gravação via pega_gravacao + OneDrive.
+    - Se finalizada, persiste status/duração/datas e tenta baixar gravação via pega_gravacao + R2.
     """
     try:
         from crm_app.sonax_voice_service import SonaxVoiceService
         from crm_app.auditoria_ligacoes_api import (
             _finalizada_por_status,
             _parse_provider_datetime,
-            _upload_bytes_to_onedrive,
+            _upload_bytes_to_r2,
         )
     except Exception:
         logger.exception("Falha ao importar dependências do fallback Sonax (auditoria).")
@@ -429,7 +429,7 @@ def processar_fallback_auditoria_ligacoes_sonax(
 
     pending_q = Q(status__in=["INICIADA", "PROCESSANDO"], criado_em__lte=cutoff)
     if include_finalizadas_sem_gravacao:
-        # Também força nova tentativa para chamadas já finalizadas/arquivadas sem link no OneDrive.
+        # Também força nova tentativa para chamadas já finalizadas/arquivadas sem link no R2.
         pending_q = pending_q | Q(
             status__in=["FINALIZADA", "ARQUIVADA", "APROVADA"],
             link_gravacao_onedrive__isnull=True,
@@ -504,7 +504,7 @@ def processar_fallback_auditoria_ligacoes_sonax(
         if finalizada and not ligacao.link_gravacao_onedrive:
             try:
                 content, ext = svc.download_recording(cid)
-                _upload_bytes_to_onedrive(ligacao, content, ext)
+                _upload_bytes_to_r2(ligacao, content, ext)
                 logger.info(
                     "Fallback Sonax auditoria: gravação arquivada. ligacao_id=%s call_id=%s",
                     ligacao.id,

@@ -244,11 +244,14 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER)
 
-# --- CONFIGURAÇÕES MICROSOFT GRAPH (ONEDRIVE) ---
-MS_CLIENT_ID = config('MS_CLIENT_ID')
-MS_CLIENT_SECRET = config('MS_CLIENT_SECRET')
-MS_REFRESH_TOKEN = config('MS_REFRESH_TOKEN')
-MS_DRIVE_FOLDER_ROOT = "CDOI_Record_Vertical"
+# --- CLOUDFLARE R2 (armazenamento de arquivos) ---
+CLOUDFLARE_R2_ACCOUNT_ID = config('CLOUDFLARE_R2_ACCOUNT_ID', default='')
+CLOUDFLARE_R2_ACCESS_KEY_ID = config('CLOUDFLARE_R2_ACCESS_KEY_ID', default='')
+CLOUDFLARE_R2_SECRET_ACCESS_KEY = config('CLOUDFLARE_R2_SECRET_ACCESS_KEY', default='')
+CLOUDFLARE_R2_BUCKET_NAME = config('CLOUDFLARE_R2_BUCKET_NAME', default='site-record-midia')
+CLOUDFLARE_R2_PUBLIC_URL = config('CLOUDFLARE_R2_PUBLIC_URL', default='')
+# Prefixo raiz no bucket; cada funcionalidade usa subpasta própria (Record_Apoia, CDOI, etc.)
+R2_FOLDER_ROOT = config('R2_FOLDER_ROOT', default='CDOI_Record_Vertical')
 
 # --- CONFIGURAÇÕES Z-API ---
 ZAPI_INSTANCE_ID = config('ZAPI_INSTANCE_ID', default='')
@@ -271,7 +274,10 @@ ZENVIA_VOICE_RECORDING_ENDPOINT_TEMPLATE = config(
 ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER = config('ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER', default='')
 ZENVIA_VOICE_TIMEOUT_SECONDS = config('ZENVIA_VOICE_TIMEOUT_SECONDS', default=20, cast=int)
 ZENVIA_VOICE_WEBHOOK_SECRET = config('ZENVIA_VOICE_WEBHOOK_SECRET', default='')
-AUDITORIA_ONEDRIVE_FOLDER = config('AUDITORIA_ONEDRIVE_FOLDER', default='Auditoria_Ligacoes')
+AUDITORIA_R2_FOLDER = config(
+    'AUDITORIA_R2_FOLDER',
+    default=config('AUDITORIA_ONEDRIVE_FOLDER', default='Auditoria_Ligacoes'),
+)
 
 # --- Sonax (auditoria: click2call + gravação pega_gravacao / webhook) ---
 # Provedor SIP da auditoria. Padrão: sonax. Use AUDITORIA_VOICE_PROVIDER=zenvia só se for fallback explícito.
@@ -339,14 +345,16 @@ FORCE_FATURA_PDF_PLAYWRIGHT = config('FORCE_FATURA_PDF_PLAYWRIGHT', default=Fals
 # Variável de ambiente: PAP_CAPTURE_SCREENSHOTS=true
 PAP_CAPTURE_SCREENSHOTS = config('PAP_CAPTURE_SCREENSHOTS', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
 
-# PAP_SCREENSHOTS_ONEDRIVE: Se True, além de salvar em downloads/, envia cada screenshot para o OneDrive
-# (mesma conta configurada em MS_CLIENT_ID / MS_REFRESH_TOKEN, pasta em MS_DRIVE_FOLDER_ROOT).
-# Também habilita captura em FALHAS da Etapa 1 (novo pedido / vendedor) mesmo com PAP_CAPTURE_SCREENSHOTS=false,
-# para ver no OneDrive a tela no momento do erro (prefixo pap_venda_*_01_err_* / 01_excecao_*).
-# Variável de ambiente: PAP_SCREENSHOTS_ONEDRIVE=true
-PAP_SCREENSHOTS_ONEDRIVE = config('PAP_SCREENSHOTS_ONEDRIVE', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
-# Pasta no OneDrive (dentro de MS_DRIVE_FOLDER_ROOT). Ex: PAP_Screenshots → CDOI_Record_Vertical/PAP_Screenshots/
-PAP_ONEDRIVE_FOLDER = config('PAP_ONEDRIVE_FOLDER', default='PAP_Screenshots')
+# PAP_SCREENSHOTS_R2: Se True, além de salvar em downloads/, envia cada screenshot para o R2.
+# Também habilita captura em FALHAS da Etapa 1 mesmo com PAP_CAPTURE_SCREENSHOTS=false.
+# Variável de ambiente: PAP_SCREENSHOTS_R2=true (aceita legado PAP_SCREENSHOTS_ONEDRIVE)
+PAP_SCREENSHOTS_R2 = config(
+    'PAP_SCREENSHOTS_R2',
+    default=config('PAP_SCREENSHOTS_ONEDRIVE', default=False),
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+# Pasta no R2 (dentro de R2_FOLDER_ROOT). Ex: PAP_Screenshots
+PAP_R2_FOLDER = config('PAP_R2_FOLDER', default=config('PAP_ONEDRIVE_FOLDER', default='PAP_Screenshots'))
 
 # Homologação: vendedor pode digitar FORCAR_SIM na etapa de aguardar SIM do cliente (sem resposta real do cliente).
 # Variável: PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE=true (não use em produção com clientes reais).
@@ -395,8 +403,11 @@ PRESENCA_MOTIVO_FALTA_AUTOMATICA = config(
     'PRESENCA_MOTIVO_FALTA_AUTOMATICA', default='Falta automática (supervisor)'
 )
 
-# Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)
-INCLUSAO_ONEDRIVE_FOLDER = config('INCLUSAO_ONEDRIVE_FOLDER', default='Inclusao_Viabilidade')
+# Pasta no R2 para solicitações de inclusão/viabilidade (subpasta por solicitação)
+INCLUSAO_R2_FOLDER = config(
+    'INCLUSAO_R2_FOLDER',
+    default=config('INCLUSAO_ONEDRIVE_FOLDER', default='Inclusao_Viabilidade'),
+)
 
 # --- Análise de crédito via WhatsApp: e-mails para o PAP/Nio ---
 # O Nio valida o e-mail (envia teste). Use um dos dois:

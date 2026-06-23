@@ -6,6 +6,7 @@ asgiref==3.8.1
 asn1crypto==1.5.1
 attrs==25.3.0
 beautifulsoup4==4.13.4
+boto3==1.38.36
 blinker==1.9.0
 cached-property==2.0.1
 cachetools==5.5.2

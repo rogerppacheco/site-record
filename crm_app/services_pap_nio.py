@@ -313,9 +313,9 @@ class PAPNioAutomation:
         forcar: bool = False,
     ) -> None:
         """
-        Salva screenshot em downloads/ e opcionalmente OneDrive.
+        Salva screenshot em downloads/ e opcionalmente R2.
         Por padrão só roda com capture_screenshots; use forcar=True em falhas quando
-        PAP_SCREENSHOTS_ONEDRIVE estiver ligado (ver _capture_screenshot_falha_etapa1).
+        PAP_SCREENSHOTS_R2 estiver ligado (ver _capture_screenshot_falha_etapa1).
         """
         from django.conf import settings
         pode = self.capture_screenshots or forcar
@@ -342,17 +342,17 @@ class PAPNioAutomation:
             filepath = os.path.join(downloads_dir, filename)
             self.page.screenshot(path=filepath, full_page=False)
             logger.info(f"[PAP] Screenshot salvo: {filename}")
-            # Enviar para OneDrive se configurado (mesma conta das outras ferramentas)
-            if getattr(settings, 'PAP_SCREENSHOTS_ONEDRIVE', False):
+            # Enviar para R2 se configurado
+            if getattr(settings, 'PAP_SCREENSHOTS_R2', False):
                 try:
-                    from crm_app.onedrive_service import OneDriveUploader
-                    folder = getattr(settings, 'PAP_ONEDRIVE_FOLDER', 'PAP_Screenshots')
+                    from crm_app.cloudflare_r2_service import CloudflareR2Storage
+                    folder = getattr(settings, 'PAP_R2_FOLDER', 'PAP_Screenshots')
                     with open(filepath, 'rb') as f:
-                        uploader = OneDriveUploader()
+                        uploader = CloudflareR2Storage()
                         web_url = uploader.upload_file(f, folder, filename)
-                    logger.info(f"[PAP] Screenshot enviado ao OneDrive: {web_url or filename}")
+                    logger.info(f"[PAP] Screenshot enviado ao R2: {web_url or filename}")
                 except Exception as e_od:
-                    logger.warning(f"[PAP] Erro ao enviar screenshot ao OneDrive: {e_od}")
+                    logger.warning(f"[PAP] Erro ao enviar screenshot ao R2: {e_od}")
         except Exception as e:
             if "Execution context was destroyed" not in str(e) and "context was destroyed" not in str(e):
                 logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
@@ -360,11 +360,11 @@ class PAPNioAutomation:
     def _capture_screenshot_falha_etapa1(self, step_name: str, wait_selector: str = None, wait_timeout_ms: int = 0) -> None:
         """
         Screenshot diagnóstico na Etapa 1 (novo pedido / vendedor).
-        Grava se PAP_CAPTURE_SCREENSHOTS OU PAP_SCREENSHOTS_ONEDRIVE estiver ativo
-        (assim dá para só subir falhas ao OneDrive sem printar todas as etapas).
+        Grava se PAP_CAPTURE_SCREENSHOTS OU PAP_SCREENSHOTS_R2 estiver ativo
+        (assim dá para só subir falhas ao R2 sem printar todas as etapas).
         """
         from django.conf import settings
-        forcar = self.capture_screenshots or getattr(settings, "PAP_SCREENSHOTS_ONEDRIVE", False)
+        forcar = self.capture_screenshots or getattr(settings, "PAP_SCREENSHOTS_R2", False)
         self._capture_screenshot(step_name, wait_selector=wait_selector, wait_timeout_ms=wait_timeout_ms, forcar=forcar)
 
     def _highlight_element(self, selector_or_element, duration_ms: int = 800) -> None:

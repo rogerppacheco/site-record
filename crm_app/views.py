@@ -544,7 +544,7 @@ from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from usuarios.models import Usuario
 from .models import CdoiSolicitacao, CdoiBloco, PreVenda, LinkPublicoPreVenda
-from .onedrive_service import OneDriveUploader
+from .cloudflare_r2_service import CloudflareR2Storage
 
 # Importar mapeamento de status FPD
 from .fpd_status_mapping import normalizar_status_fpd
@@ -9899,10 +9899,10 @@ class CdoiCreateView(APIView):
             if not nome_condominio:
                  return Response({"error": "Nome do condomínio é obrigatório."}, status=400)
 
-            # Upload OneDrive (Mantido igual)
-            uploader = OneDriveUploader()
+            # Upload R2
+            uploader = CloudflareR2Storage()
             clean_name = str(nome_condominio).replace('/', '-').strip()
-            folder_name = f"{clean_name}_{data.get('cep', '')}"
+            folder_name = f"CDOI/{clean_name}_{data.get('cep', '')}"
             
             link_carta = None
             if 'arquivo_carta' in files:
@@ -10546,10 +10546,10 @@ class CdoiUpdateView(APIView):
 
             # Processar upload de arquivos se fornecidos
             if files:
-                from crm_app.onedrive_service import OneDriveUploader
-                uploader = OneDriveUploader()
+                from crm_app.cloudflare_r2_service import CloudflareR2Storage
+                uploader = CloudflareR2Storage()
                 clean_name = str(cdoi.nome_condominio).replace('/', '-').strip()
-                folder_name = f"{clean_name}_{cdoi.cep or ''}"
+                folder_name = f"CDOI/{clean_name}_{cdoi.cep or ''}"
                 
                 if 'arquivo_carta' in files:
                     f = files['arquivo_carta']
@@ -10778,12 +10778,12 @@ class GerarLinkPublicoPreVendaView(APIView):
             # Upload de imagem/banner se fornecido
             imagem_banner = None
             if 'imagem_banner' in request.FILES:
-                from crm_app.onedrive_service import OneDriveUploader
+                from crm_app.cloudflare_r2_service import CloudflareR2Storage
                 import logging
                 logger = logging.getLogger(__name__)
-                uploader = OneDriveUploader()
+                uploader = CloudflareR2Storage()
                 clean_name = acionamento.nome_condominio.replace('/', '-').strip()
-                folder_name = f"PREVENDAS_{clean_name}"
+                folder_name = f"PreVendas/{clean_name}"
                 f = request.FILES['imagem_banner']
                 # Processar imagem: redimensionar e comprimir antes do upload
                 try:
@@ -10841,9 +10841,8 @@ class GerarLinkPublicoPreVendaView(APIView):
                     logger_prevenda = logging.getLogger(__name__)
                     imagem_banner = uploader.upload_file_and_get_download_url(f, folder_name, f"BANNER_{f.name}")
                     # Valida se a URL parece ser uma URL de download direto (não SharePoint webUrl)
-                    if imagem_banner and ('sharepoint.com/_layouts' in imagem_banner.lower() or 'onedrive.live.com' in imagem_banner.lower()):
-                        logger_prevenda.warning(f"[Pré-venda] URL parece ser SharePoint webUrl (pode causar CORS): {imagem_banner[:100]}")
-                        # Não rejeitar, mas avisar - pode funcionar em alguns casos
+                    if imagem_banner and 'r2.dev' not in imagem_banner.lower() and 'cloudflarestorage.com' not in imagem_banner.lower():
+                        logger_prevenda.warning(f"[Pré-venda] URL de banner inesperada: {imagem_banner[:100]}")
                     logger_prevenda.info(f"[Pré-venda] Banner uploaded com sucesso: {imagem_banner[:80] if imagem_banner else 'None'}...")
                 except Exception as e:
                     import logging

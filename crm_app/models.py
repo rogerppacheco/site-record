@@ -3046,7 +3046,7 @@ class RecordApoia(models.Model):
     url_externa = models.TextField(
         blank=True,
         null=True,
-        help_text='URL de backup (OneDrive) para sobreviver a redeploys sem volume persistente',
+        help_text='URL de backup (R2) para sobreviver a redeploys sem volume persistente',
     )
     
     class Meta:

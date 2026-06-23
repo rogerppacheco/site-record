@@ -6324,15 +6324,15 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
                 pdf_url = arquivo.url_externa or None
                 if tamanho_mb > 5 and not pdf_url:
                     try:
-                        from crm_app.onedrive_service import OneDriveUploader
+                        from crm_app.cloudflare_r2_service import CloudflareR2Storage
                         from io import BytesIO
                         file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
-                        onedrive = OneDriveUploader()
-                        pdf_url = onedrive.upload_file_and_get_download_url(
+                        storage = CloudflareR2Storage()
+                        pdf_url = storage.upload_file_and_get_download_url(
                             file_obj, folder_name='WhatsApp_Materiais', filename=nome_arquivo
                         )
                     except Exception as e:
-                        logger.warning("[Webhook] Erro OneDrive para material: %s", e)
+                        logger.warning("[Webhook] Erro R2 para material: %s", e)
                 resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}"
                 material_data = {
                     'tipo': 'DOCUMENTO',
@@ -9310,7 +9310,7 @@ def processar_webhook_whatsapp(data, request=None):
                                             }
                                         }
                                     else:
-                                        # DOCUMENTO: Verificar se é grande e fazer upload para OneDrive se necessário
+                                        # DOCUMENTO: Verificar se é grande e fazer upload para R2 se necessário
                                         tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
                                         tamanho_mb = tamanho_bytes / (1024 * 1024)
                                         
@@ -9318,28 +9318,26 @@ def processar_webhook_whatsapp(data, request=None):
                                         usar_url = tamanho_mb > 5  # Usar URL se arquivo > 5MB
                                         
                                         if usar_url:
-                                            logger.info(f"[Webhook] Arquivo grande ({tamanho_mb:.2f} MB), fazendo upload para OneDrive...")
+                                            logger.info(f"[Webhook] Arquivo grande ({tamanho_mb:.2f} MB), fazendo upload para R2...")
                                             try:
-                                                from crm_app.onedrive_service import OneDriveUploader
+                                                from crm_app.cloudflare_r2_service import CloudflareR2Storage
                                                 from io import BytesIO
                                                 
-                                                # Criar objeto file-like do arquivo_bytes
                                                 file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
                                                 
-                                                # Fazer upload para OneDrive
-                                                onedrive = OneDriveUploader()
-                                                pdf_url = onedrive.upload_file_and_get_download_url(
+                                                storage = CloudflareR2Storage()
+                                                pdf_url = storage.upload_file_and_get_download_url(
                                                     file_obj, 
                                                     folder_name='WhatsApp_Materiais',
                                                     filename=nome_arquivo
                                                 )
                                                 
-                                                logger.info(f"[Webhook] ✅ Upload para OneDrive concluído: {pdf_url}")
-                                                print(f"[Webhook] ✅ Upload OneDrive: {pdf_url}")
+                                                logger.info(f"[Webhook] ✅ Upload para R2 concluído: {pdf_url}")
+                                                print(f"[Webhook] ✅ Upload R2: {pdf_url}")
                                             except Exception as e:
-                                                logger.error(f"[Webhook] ❌ Erro ao fazer upload para OneDrive: {e}")
+                                                logger.error(f"[Webhook] ❌ Erro ao fazer upload para R2: {e}")
                                                 logger.warning(f"[Webhook] ⚠️ Continuando com base64 como fallback")
-                                                print(f"[Webhook] ❌ Erro OneDrive: {e}, usando base64")
+                                                print(f"[Webhook] ❌ Erro R2: {e}, usando base64")
                                                 pdf_url = None
                                         
                                         resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}"
@@ -9354,7 +9352,7 @@ def processar_webhook_whatsapp(data, request=None):
                                         # Adicionar URL se disponível (preferível), senão base64
                                         if pdf_url:
                                             material_data['url'] = pdf_url
-                                            logger.info(f"[Webhook] Material preparado com URL (OneDrive)")
+                                            logger.info(f"[Webhook] Material preparado com URL (R2)")
                                         else:
                                             material_data['base64'] = arquivo_b64
                                             logger.info(f"[Webhook] Material preparado com base64")

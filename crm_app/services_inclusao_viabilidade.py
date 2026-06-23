@@ -559,14 +559,14 @@ def _upload_arquivos_viabilidade(page, arquivos_paths: list) -> bool:
     return False
 
 
-def _upload_inclusao_onedrive(dados: dict, arquivos_paths: list) -> tuple:
+def _upload_inclusao_r2(dados: dict, arquivos_paths: list) -> tuple:
     """
-    Salva os arquivos da inclusão em pasta do OneDrive (uma pasta por solicitação).
+    Salva os arquivos da inclusão em pasta do R2 (uma pasta por solicitação).
     Pasta: Inclusao_Viabilidade/YYYY-MM-DD_HHmm_CEP_localidade/
     Retorna (sucesso: bool, pasta_path: str, links: list)
     """
     from datetime import datetime
-    from crm_app.onedrive_service import OneDriveUploader
+    from crm_app.cloudflare_r2_service import CloudflareR2Storage
 
     viacep = dados.get('viacep') or {}
     cep = re.sub(r'\D', '', str(dados.get('cep', '') or ''))[:8]
@@ -574,10 +574,10 @@ def _upload_inclusao_onedrive(dados: dict, arquivos_paths: list) -> tuple:
     localidade_safe = re.sub(r'[^\w\s-]', '', localidade).strip()[:40] or 'local'
     dt = datetime.now().strftime('%Y-%m-%d_%H%M')
     pasta = f"{dt}_{cep}_{localidade_safe}".replace(' ', '_')
-    base_folder = getattr(settings, 'INCLUSAO_ONEDRIVE_FOLDER', 'Inclusao_Viabilidade')
+    base_folder = getattr(settings, 'INCLUSAO_R2_FOLDER', 'Inclusao_Viabilidade')
     folder_path = f"{base_folder}/{pasta}"
 
-    uploader = OneDriveUploader()
+    uploader = CloudflareR2Storage()
     links = []
     for i, path in enumerate(arquivos_paths):
         if not path or not os.path.isfile(path):
@@ -589,9 +589,9 @@ def _upload_inclusao_onedrive(dados: dict, arquivos_paths: list) -> tuple:
                 url = uploader.upload_file(f, folder_path, nome)
                 if url:
                     links.append(url)
-                    logger.info(f"[Inclusão] OneDrive: {folder_path}/{nome} -> {url[:80]}...")
+                    logger.info(f"[Inclusão] R2: {folder_path}/{nome} -> {url[:80]}...")
         except Exception as e:
-            logger.warning(f"[Inclusão] Erro ao subir {nome} para OneDrive: {e}")
+            logger.warning(f"[Inclusão] Erro ao subir {nome} para R2: {e}")
     return len(links) > 0, folder_path, links
 
 
@@ -790,17 +790,17 @@ def preencher_formulario_inclusao(
                     _log_step("15-Coordenadas", str(e), ok=False)
             page.wait_for_timeout(200)
 
-            # 16. Upload de arquivos (foto + comprovantes). Primeiro salva no OneDrive, depois tenta no formulário
+            # 16. Upload de arquivos (foto + comprovantes). Primeiro salva no R2, depois tenta no formulário
             paths = arquivos_paths if arquivos_paths else ([foto_path] if foto_path else [])
             paths = [p for p in paths if p and os.path.isfile(p)]
             ok_upload = False
             if paths:
                 try:
-                    ok_od, od_pasta_used, _ = _upload_inclusao_onedrive(dados, paths)
+                    ok_od, od_pasta_used, _ = _upload_inclusao_r2(dados, paths)
                     if ok_od:
-                        logger.info(f"[Inclusão] Arquivos salvos no OneDrive: {od_pasta_used}")
+                        logger.info(f"[Inclusão] Arquivos salvos no R2: {od_pasta_used}")
                 except Exception as e:
-                    logger.warning(f"[Inclusão] OneDrive upload falhou (continuando): {e}")
+                    logger.warning(f"[Inclusão] Upload R2 falhou (continuando): {e}")
                 ok_upload = _upload_arquivos_viabilidade(page, paths)
                 # Se o upload falhou, o modal do Google Picker pode ter ficado aberto e bloqueia Enviar
                 _fechar_picker_modal(page)
@@ -845,7 +845,7 @@ def preencher_formulario_inclusao(
                     browser.close()
                     msg = "✅ Solicitação de viabilidade enviada com sucesso!"
                     if od_pasta_used:
-                        msg += f"\n\n📁 Arquivos salvos no OneDrive: {od_pasta_used}"
+                        msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}"
                     return True, msg
             else:
                 _log_step("SUBMIT", "Botão Enviar não encontrado", ok=False)
@@ -858,7 +858,7 @@ def preencher_formulario_inclusao(
             else:
                 msg = "O formulário não foi enviado (campos ou botão não encontrados). "
             if od_pasta_used:
-                msg += f"\n\n📁 Arquivos salvos no OneDrive: {od_pasta_used}\nVocê pode anexá-los manualmente no formulário."
+                msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}\nVocê pode anexá-los manualmente no formulário."
             return False, msg
 
     except Exception as e:
@@ -868,5 +868,5 @@ def preencher_formulario_inclusao(
             err_text = err_text[:147] + "..."
         msg = f"Erro ao preencher formulário: {err_text}"
         if od_pasta_used:
-            msg += f"\n\n📁 Arquivos salvos no OneDrive: {od_pasta_used}\nVocê pode anexá-los manualmente."
+            msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}\nVocê pode anexá-los manualmente."
         return False, msg
