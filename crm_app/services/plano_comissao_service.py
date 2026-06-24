@@ -214,3 +214,6 @@ def configurar_comissao_plano(
         propagar_valores_para_configs_vendedor(plano, vc.valor_pap, vc.valor_cnpj)
 
     return vc
+
+
+garantir_comissao_operadora = _garantir_comissao_operadora

@@ -1,0 +1,238 @@
+"""
+Matriz de comissão: faixas (instaladas) × planos (colunas dinâmicas).
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+from django.db import transaction
+
+from crm_app.comissao_folha_service import _plano_nome_to_banda
+from crm_app.models import (
+    ConfigComissaoVendedor,
+    Plano,
+    PlanoValoresComissaoVendedor,
+    RegraComissaoFaixa,
+    RegraComissaoFaixaPlano,
+)
+
+
+def _decimal_or_none(val: Any) -> Decimal | None:
+    if val is None or val == '':
+        return None
+    return Decimal(str(val))
+
+
+def _legacy_valores_faixa_banda(faixa: RegraComissaoFaixa, banda: str) -> tuple[Decimal | None, Decimal | None]:
+    if banda == '500MB':
+        return faixa.valor_500mb_pap, faixa.valor_500mb_cnpj
+    if banda == '700MB':
+        return faixa.valor_700mb_pap, faixa.valor_700mb_cnpj
+    if banda == '1GB':
+        return faixa.valor_1gb_pap, faixa.valor_1gb_cnpj
+    return None, None
+
+
+def get_valor_faixa_plano(
+    faixa: RegraComissaoFaixa | None,
+    plano: Plano | None,
+    tipo_cliente: str,
+) -> float | None:
+    """Valor na interseção faixa × plano; fallback nas colunas legadas 500/700/1GB."""
+    if not faixa or not plano:
+        return None
+    try:
+        row = RegraComissaoFaixaPlano.objects.get(faixa=faixa, plano=plano)
+        if tipo_cliente == 'CPF' and row.valor_pap is not None:
+            return float(row.valor_pap)
+        if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None:
+            return float(row.valor_cnpj)
+    except RegraComissaoFaixaPlano.DoesNotExist:
+        pass
+    banda = _plano_nome_to_banda(plano.nome)
+    if not banda:
+        return None
+    pap, cnpj = _legacy_valores_faixa_banda(faixa, banda)
+    if tipo_cliente == 'CPF' and pap is not None:
+        return float(pap)
+    if tipo_cliente == 'CNPJ' and cnpj is not None:
+        return float(cnpj)
+    return None
+
+
+def get_valor_manual_vendedor_plano(
+    config: ConfigComissaoVendedor | None,
+    plano: Plano | None,
+    tipo_cliente: str,
+) -> float | None:
+    if not config or not plano:
+        return None
+    try:
+        row = PlanoValoresComissaoVendedor.objects.get(config=config, plano=plano)
+    except PlanoValoresComissaoVendedor.DoesNotExist:
+        return None
+    if tipo_cliente == 'CPF' and row.valor_pap is not None:
+        return float(row.valor_pap)
+    if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None:
+        return float(row.valor_cnpj)
+    return None
+
+
+@transaction.atomic
+def sincronizar_plano_em_todas_faixas(plano: Plano) -> int:
+    """Garante célula (faixa × plano) para cada faixa existente ao cadastrar plano."""
+    count = 0
+    banda = _plano_nome_to_banda(plano.nome)
+    for faixa in RegraComissaoFaixa.objects.all():
+        pap, cnpj = _legacy_valores_faixa_banda(faixa, banda) if banda else (None, None)
+        _, created = RegraComissaoFaixaPlano.objects.get_or_create(
+            faixa=faixa,
+            plano=plano,
+            defaults={'valor_pap': pap, 'valor_cnpj': cnpj},
+        )
+        if created:
+            count += 1
+    return count
+
+
+@transaction.atomic
+def sincronizar_todos_planos_em_faixas() -> int:
+    """Preenche matriz faixa×plano para todos os planos ativos (migração/rotina)."""
+    total = 0
+    for plano in Plano.objects.filter(ativo=True):
+        total += sincronizar_plano_em_todas_faixas(plano)
+    return total
+
+
+def listar_matriz_comissao() -> dict[str, Any]:
+    planos = list(
+        Plano.objects.filter(ativo=True)
+        .select_related('operadora')
+        .order_by('nome')
+    )
+    faixas_qs = (
+        RegraComissaoFaixa.objects.select_related('vendedor')
+        .prefetch_related('valores_por_plano')
+        .order_by('perfil', 'vendedor', 'min_vendas')
+    )
+    plano_ids = [p.id for p in planos]
+    faixas_out: list[dict[str, Any]] = []
+    for faixa in faixas_qs:
+        valores_map: dict[str, dict[str, float | None]] = {}
+        for vp in faixa.valores_por_plano.all():
+            if vp.plano_id not in plano_ids:
+                continue
+            valores_map[str(vp.plano_id)] = {
+                'valor_pap': float(vp.valor_pap) if vp.valor_pap is not None else None,
+                'valor_cnpj': float(vp.valor_cnpj) if vp.valor_cnpj is not None else None,
+            }
+        for plano in planos:
+            key = str(plano.id)
+            if key not in valores_map:
+                pap, cnpj = _legacy_valores_faixa_banda(
+                    faixa, _plano_nome_to_banda(plano.nome) or '',
+                )
+                valores_map[key] = {
+                    'valor_pap': float(pap) if pap is not None else None,
+                    'valor_cnpj': float(cnpj) if cnpj is not None else None,
+                }
+        faixas_out.append({
+            'id': faixa.id,
+            'perfil': faixa.perfil,
+            'vendedor_id': faixa.vendedor_id,
+            'vendedor_username': faixa.vendedor.username if faixa.vendedor_id else None,
+            'finalidade': faixa.finalidade,
+            'faixa_nome': faixa.faixa_nome,
+            'min_vendas': faixa.min_vendas,
+            'max_vendas': faixa.max_vendas,
+            'valores_por_plano': valores_map,
+        })
+    return {
+        'planos': [
+            {
+                'id': p.id,
+                'nome': p.nome,
+                'operadora_nome': p.operadora.nome if p.operadora_id else '',
+            }
+            for p in planos
+        ],
+        'faixas': faixas_out,
+    }
+
+
+@transaction.atomic
+def salvar_matriz_comissao(payload: dict[str, Any]) -> dict[str, int]:
+    """
+    Persiste células e metadados de faixas.
+    payload: { faixas: [{ id?, perfil, faixa_nome, min_vendas, max_vendas, finalidade, vendedor, valores_por_plano }] }
+    """
+    atualizadas = 0
+    criadas_faixas = 0
+    for row in payload.get('faixas') or []:
+        faixa_id = row.get('id')
+        dados_faixa = {
+            'perfil': row.get('perfil') or None,
+            'vendedor_id': row.get('vendedor') or row.get('vendedor_id') or None,
+            'finalidade': row.get('finalidade') or 'COMISSAO',
+            'faixa_nome': row.get('faixa_nome') or '',
+            'min_vendas': int(row.get('min_vendas') or 0),
+            'max_vendas': int(row.get('max_vendas') if row.get('max_vendas') is not None else 99999),
+        }
+        if faixa_id:
+            faixa = RegraComissaoFaixa.objects.get(pk=faixa_id)
+            for campo, valor in dados_faixa.items():
+                setattr(faixa, campo, valor)
+            faixa.save()
+        else:
+            faixa = RegraComissaoFaixa.objects.create(**dados_faixa)
+            criadas_faixas += 1
+            for plano in Plano.objects.filter(ativo=True):
+                RegraComissaoFaixaPlano.objects.get_or_create(faixa=faixa, plano=plano)
+
+        for plano_id_str, vals in (row.get('valores_por_plano') or {}).items():
+            plano_id = int(plano_id_str)
+            vp, _ = RegraComissaoFaixaPlano.objects.get_or_create(faixa=faixa, plano_id=plano_id)
+            vp.valor_pap = _decimal_or_none(vals.get('valor_pap'))
+            vp.valor_cnpj = _decimal_or_none(vals.get('valor_cnpj'))
+            vp.save(update_fields=['valor_pap', 'valor_cnpj'])
+            atualizadas += 1
+    return {'celulas': atualizadas, 'faixas_criadas': criadas_faixas}
+
+
+def listar_valores_manuais_vendedor(config: ConfigComissaoVendedor) -> list[dict[str, Any]]:
+    planos = Plano.objects.filter(ativo=True).order_by('nome')
+    existentes = {
+        v.plano_id: v
+        for v in PlanoValoresComissaoVendedor.objects.filter(config=config).select_related('plano')
+    }
+    out: list[dict[str, Any]] = []
+    for plano in planos:
+        row = existentes.get(plano.id)
+        out.append({
+            'plano_id': plano.id,
+            'plano_nome': plano.nome,
+            'valor_pap': float(row.valor_pap) if row and row.valor_pap is not None else None,
+            'valor_cnpj': float(row.valor_cnpj) if row and row.valor_cnpj is not None else None,
+        })
+    return out
+
+
+@transaction.atomic
+def salvar_valores_manuais_vendedor(
+    config: ConfigComissaoVendedor,
+    valores: list[dict[str, Any]],
+) -> int:
+    count = 0
+    for item in valores:
+        plano_id = item.get('plano_id') or item.get('plano')
+        if not plano_id:
+            continue
+        vp, _ = PlanoValoresComissaoVendedor.objects.get_or_create(
+            config=config, plano_id=plano_id,
+        )
+        vp.valor_pap = _decimal_or_none(item.get('valor_pap'))
+        vp.valor_cnpj = _decimal_or_none(item.get('valor_cnpj'))
+        vp.save(update_fields=['valor_pap', 'valor_cnpj'])
+        count += 1
+    return count

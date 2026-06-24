@@ -827,6 +827,21 @@ class RegraComissaoFaixaDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
+class ComissaoMatrizView(APIView):
+    """Matriz dinâmica faixas × planos (colunas por plano cadastrado)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from crm_app.services.comissao_matriz_service import listar_matriz_comissao
+        return Response(listar_matriz_comissao())
+
+    def put(self, request):
+        from crm_app.services.comissao_matriz_service import salvar_matriz_comissao
+        stats = salvar_matriz_comissao(request.data)
+        from crm_app.services.comissao_matriz_service import listar_matriz_comissao
+        return Response({'stats': stats, 'matriz': listar_matriz_comissao()})
+
+
 def _config_vendedor_padrao(u):
     """Item padrão quando não existe config para o usuário."""
     return {
@@ -939,8 +954,8 @@ class ConfigComissaoVendedorDetailView(APIView):
             )
         serializer = ConfigComissaoVendedorSerializer(config, data=data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            config = serializer.save()
+            return Response(ConfigComissaoVendedorSerializer(config).data)
         return Response(serializer.errors, status=400)
 
     def patch(self, request, user_id):

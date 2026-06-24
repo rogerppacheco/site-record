@@ -216,13 +216,11 @@
                                     <a href="#" id="link-export-faixa" class="btn btn-sm btn-outline-primary" onclick="exportarRegrasFaixa(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Use <strong>Finalidade</strong> = &quot;Adiantamento&quot; para a faixa que define a &quot;Comissão est.&quot; na esteira (valores 500MB/700/1GB CNPJ). Faixas com Finalidade &quot;Pagamento de comissão&quot; entram no cálculo da folha (MIN/MAX); &quot;Adiantamento&quot; não entra na folha.</p>
-                            <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>Finalidade</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
-                            <div class="mt-4">
-                                <h6 class="text-primary mb-2">Planos com comissão diferenciada</h6>
-                                <p class="small text-muted mb-2">Quando existem dois planos na mesma banda (ex.: 1GB com mesh e 1GB sem mesh), a comissão fica no <strong>cadastro do plano</strong> com banda <strong>Personalizado</strong> — não há coluna extra na tabela acima.</p>
-                                <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0"><thead class="table-light"><tr><th>Plano</th><th>Operadora</th><th>PAP (CPF)</th><th>CNPJ</th><th>Banda</th><th></th></tr></thead><tbody id="lista-planos-comissao-diferenciada"></tbody></table></div>
+                            <p class="small text-muted mb-2">Cada <strong>coluna é um plano cadastrado</strong>. Crie faixas conforme a quantidade de instaladas (MIN/MAX). Valores PAP (CPF) e CNPJ por plano em cada faixa. Finalidade &quot;Adiantamento&quot; não entra na folha de pagamento.</p>
+                            <div class="d-flex gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-success" onclick="salvarMatrizComissao()"><i class="bi bi-check-lg"></i> Salvar matriz</button>
                             </div>
+                            <div class="table-responsive" id="wrap-matriz-comissao"><table class="table table-bordered table-sm align-middle mb-0" id="tabela-matriz-comissao"><thead class="table-light" id="thead-matriz-comissao"></thead><tbody id="tbody-matriz-comissao"></tbody></table></div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
                             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -260,14 +258,7 @@
                                         </div>
                                     </div>
                                     <div class="row g-2 mb-2"><div class="col-12 small text-muted fw-bold">Valores por plano (R$) — preencha se valor manual = SIM</div></div>
-                                    <div class="row g-2">
-                                        <div class="col-md-4"><label class="form-label small">500MB PAP</label><input type="number" id="cfg_500mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">700MB PAP</label><input type="number" id="cfg_700mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">1GB PAP</label><input type="number" id="cfg_1gb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">500MB CNPJ</label><input type="number" id="cfg_500mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">700MB CNPJ</label><input type="number" id="cfg_700mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">1GB CNPJ</label><input type="number" id="cfg_1gb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                    </div>
+                                    <div class="row g-2" id="cfg_valores_planos_container"></div>
                                     <hr class="my-3">
                                     <div class="row g-2">
                                         <div class="col-md-3"><label class="form-label small">Desconto Boleto (R$)</label><input type="number" id="cfg_desconto_boleto" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
@@ -316,17 +307,11 @@
                                 <div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div>
                                 <div class="col-md-2"><label class="form-label fw-bold">Valor mensal</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div>
                                 <div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa"></div>
                                 <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Salvar plano</button></div>
-                                <div class="col-12"><hr class="my-1"><h6 class="text-muted mb-0">Comissão e vínculo com regras de pagamento</h6></div>
-                                <div class="col-md-2"><label class="form-label fw-bold">Comissão PAP (CPF)</label><input type="number" class="form-control" id="plano_comissao_pap" step="0.01" placeholder="0,00"></div>
-                                <div class="col-md-2"><label class="form-label fw-bold">Comissão CNPJ</label><input type="number" class="form-control" id="plano_comissao_cnpj" step="0.01" placeholder="0,00"></div>
-                                <div class="col-md-2"><label class="form-label fw-bold">Banda (faixas)</label><select id="plano_banda_comissao" class="form-select"><option value="">Auto (pelo nome)</option><option value="500MB">500 MB</option><option value="700MB">700 MB</option><option value="1GB">1 GB</option><option value="PERSONALIZADO">Personalizado</option></select></div>
-                                <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa por este plano"></div>
-                                <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_faixas"><label class="form-check-label" for="plano_propagar_faixas">Propagar faixas</label></div></div>
-                                <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_vendedores" checked><label class="form-check-label" for="plano_propagar_vendedores">Propagar vendedores</label></div></div>
-                                <div class="col-12"><small class="text-muted">Planos na mesma banda (ex.: dois 1GB) viram <strong>Personalizado</strong> automaticamente — informe a comissão PAP/CNPJ aqui. <strong>Não marque Propagar faixas</strong> salvo para atualizar a tabela inteira de uma banda. O 1GB padrão (com mesh) continua usando as colunas <strong>1GB</strong> da tabela de faixas.</small></div>
+                                <div class="col-12"><small class="text-muted">Ao salvar, o plano ganha <strong>colunas próprias</strong> em Comissionamento → Regras por Faixa e Regras por Vendedor.</small></div>
                             </form>
-                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>PAP</th><th>CNPJ</th><th>Banda</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
                         </div>
                         <div id="formasPagamento" class="tab-content" style="display:none;"><div class="input-group mb-3"><input type="text" id="nova-forma-pagamento-nome" placeholder="Nova Forma (Ex: PIX)" class="form-control"><button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button></div><ul id="lista-formas-pagamento" class="list-group"></ul></div>
                         <div id="status" class="tab-content" style="display:none;"><form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="status_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div><div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table></div>
@@ -2359,16 +2344,12 @@
             const lista = Array.isArray(res) ? res : (res?.results || []);
             const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
             lista.forEach(p => {
-                const vc = p.valores_comissao || {};
-                const pap = vc.valor_pap != null ? vc.valor_pap : (p.comissao_base != null ? p.comissao_base : 0);
-                const cnpj = vc.valor_cnpj != null ? vc.valor_cnpj : '—';
-                const banda = vc.banda_comissao || '—';
-                tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(pap)}</td><td>${cnpj === '—' ? cnpj : fmtMoeda(cnpj)}</td><td>${banda}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
+                tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
             });
         } catch (e) {
             console.error('carregarPlanos:', e);
             const tbody = document.getElementById('lista-planos');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">Erro ao carregar planos: ${e.message || e}</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Erro ao carregar planos: ${e.message || e}</td></tr>`;
         }
     }
     var formPlano = document.getElementById('form-plano');
@@ -2380,23 +2361,12 @@
             return;
         }
         const id = document.getElementById('plano_id').value;
-        const valorPap = document.getElementById('plano_comissao_pap').value;
-        const valorCnpj = document.getElementById('plano_comissao_cnpj').value;
-        const bandaSel = document.getElementById('plano_banda_comissao').value;
         const body = {
             nome: document.getElementById('plano_nome').value.trim(),
             valor: document.getElementById('plano_valor').value,
-            comissao_base: valorPap || 0,
             operadora: operadoraId,
             ativo: true,
-            valores_comissao: {
-                valor_pap: valorPap || null,
-                valor_cnpj: valorCnpj || null,
-                propagar_faixas: document.getElementById('plano_propagar_faixas').checked,
-                propagar_vendedores: document.getElementById('plano_propagar_vendedores').checked,
-            },
         };
-        if (bandaSel) body.valores_comissao.banda_comissao = bandaSel;
         const recvOp = document.getElementById('plano_receb_operadora').value;
         if (recvOp !== '') body.recebimento_operadora_base = recvOp;
         if (!body.nome) {
@@ -2409,27 +2379,16 @@
             document.getElementById('plano_id').value = '';
             await carregarOperadoras();
             await carregarPlanos();
-            const banda = body.valores_comissao && body.valores_comissao.banda_comissao;
-            if (banda === 'PERSONALIZADO') {
-                alert(id ? 'Plano atualizado como Personalizado — comissão própria, sem alterar a coluna 1GB das faixas.' : 'Plano cadastrado como Personalizado — comissão própria vinculada ao plano.');
-            } else {
-                alert(id ? 'Plano atualizado com sucesso.' : 'Plano cadastrado com sucesso.');
-            }
+            alert(id ? 'Plano atualizado. Ajuste comissões em Comissionamento → Regras por Faixa.' : 'Plano cadastrado. Defina os valores em Comissionamento → Regras por Faixa.');
         } catch (err) {
             alert('Erro ao salvar plano: ' + (err.message || err));
         }
     };
     window.editarPlano = (p) => {
-        const vc = p.valores_comissao || {};
         document.getElementById('plano_id').value = p.id;
         document.getElementById('plano_nome').value = p.nome;
         document.getElementById('plano_valor').value = p.valor;
-        document.getElementById('plano_comissao_pap').value = vc.valor_pap != null ? vc.valor_pap : (p.comissao_base != null ? p.comissao_base : '');
-        document.getElementById('plano_comissao_cnpj').value = vc.valor_cnpj != null ? vc.valor_cnpj : '';
-        document.getElementById('plano_banda_comissao').value = vc.banda_comissao && vc.banda_comissao !== 'PERSONALIZADO' ? vc.banda_comissao : (vc.banda_comissao === 'PERSONALIZADO' ? 'PERSONALIZADO' : '');
         document.getElementById('plano_receb_operadora').value = p.comissao_operadora_valor != null ? p.comissao_operadora_valor : '';
-        document.getElementById('plano_propagar_faixas').checked = vc.propagar_faixas !== false;
-        document.getElementById('plano_propagar_vendedores').checked = vc.propagar_vendedores !== false;
         document.getElementById('plano_operadora_id').value = p.operadora;
     };
     window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
@@ -2597,49 +2556,96 @@
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
 
     // --- Regras por Faixa (REGRAS_FAIXAS) ---
-    async function carregarRegrasFaixa() {
-        const lista = await apiFetch('/crm/regras-comissao-faixa/');
-        const tbody = document.getElementById('lista-regras-faixa');
-        if (!tbody) return;
+    let _matrizComissaoCache = null;
+
+    function renderMatrizComissao(data) {
+        const thead = document.getElementById('thead-matriz-comissao');
+        const tbody = document.getElementById('tbody-matriz-comissao');
+        if (!thead || !tbody) return;
+        const planos = data.planos || [];
+        if (!planos.length) {
+            thead.innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center p-3">Cadastre planos em Cadastros Gerais → Planos.</td></tr>';
+            return;
+        }
+        let h1 = '<tr><th rowspan="2">Perfil</th><th rowspan="2">Final.</th><th rowspan="2">Faixa</th><th rowspan="2">Min</th><th rowspan="2">Max</th>';
+        planos.forEach(p => { h1 += `<th colspan="2" class="text-center small" title="${p.nome}">${p.nome.length > 22 ? p.nome.slice(0, 20) + '…' : p.nome}</th>`; });
+        h1 += '<th rowspan="2"></th></tr>';
+        let h2 = '<tr>';
+        planos.forEach(() => { h2 += '<th class="small">PAP</th><th class="small">CNPJ</th>'; });
+        h2 += '</tr>';
+        thead.innerHTML = h1 + h2;
         tbody.innerHTML = '';
-        const regras = Array.isArray(lista) ? lista : (lista?.results || []);
-        if (!regras.length) { tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">Nenhuma regra por faixa. Importe um Excel ou cadastre manualmente.</td></tr>'; return; }
-        const finalidadeLabel = (f) => (f === 'ADIANTAMENTO' ? 'Adiantamento' : (f === 'COMISSAO' ? 'Comissão' : (f || 'Comissão')));
-        regras.forEach(r => {
-            const perfil = r.vendedor_username || r.perfil || '-';
-            tbody.innerHTML += `<tr>
-                <td>${perfil}</td><td><span class="badge ${r.finalidade === 'ADIANTAMENTO' ? 'bg-info' : 'bg-secondary'}">${finalidadeLabel(r.finalidade)}</span></td><td>${r.faixa_nome || ''}</td><td>${r.min_vendas}</td><td>${r.max_vendas}</td>
-                <td>${r.valor_500mb_pap != null ? r.valor_500mb_pap : ''}</td><td>${r.valor_700mb_pap != null ? r.valor_700mb_pap : ''}</td><td>${r.valor_1gb_pap != null ? r.valor_1gb_pap : ''}</td>
-                <td>${r.valor_500mb_cnpj != null ? r.valor_500mb_cnpj : ''}</td><td>${r.valor_700mb_cnpj != null ? r.valor_700mb_cnpj : ''}</td><td>${r.valor_1gb_cnpj != null ? r.valor_1gb_cnpj : ''}</td>
-                <td><button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalEditarRegraFaixa(${r.id})" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirRegraFaixa(${r.id})" title="Excluir"><i class="bi bi-trash"></i></button></td>
-            </tr>`;
-        });
-        await carregarPlanosComissaoDiferenciada();
-    }
-    async function carregarPlanosComissaoDiferenciada() {
-        const tbody = document.getElementById('lista-planos-comissao-diferenciada');
-        if (!tbody) return;
-        try {
-            const res = await apiFetch('/crm/planos/?page_size=500');
-            const lista = Array.isArray(res) ? res : (res?.results || []);
-            const dif = lista.filter(p => p.valores_comissao && p.valores_comissao.banda_comissao === 'PERSONALIZADO');
-            if (!dif.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center">Nenhum plano com comissão personalizada.</td></tr>';
-                return;
-            }
-            tbody.innerHTML = '';
-            dif.forEach(p => {
-                const vc = p.valores_comissao || {};
-                tbody.innerHTML += `<tr>
-                    <td>${p.nome}</td><td>${p.operadora_nome || '-'}</td>
-                    <td>${vc.valor_pap != null ? fmtMoeda(vc.valor_pap) : '—'}</td>
-                    <td>${vc.valor_cnpj != null ? fmtMoeda(vc.valor_cnpj) : '—'}</td>
-                    <td><span class="badge bg-warning text-dark">Personalizado</span></td>
-                    <td><button type="button" class="btn btn-sm btn-outline-secondary" onclick='editarPlano(${JSON.stringify(p)})'>Editar</button></td>
-                </tr>`;
+        (data.faixas || []).forEach((f, idx) => {
+            let row = `<tr data-faixa-id="${f.id || ''}" data-faixa-idx="${idx}">
+                <td><input class="form-control form-control-sm mat-f-perfil" value="${f.perfil || ''}" placeholder="Vendedor"></td>
+                <td><select class="form-select form-select-sm mat-f-fin"><option value="COMISSAO" ${f.finalidade === 'COMISSAO' ? 'selected' : ''}>Comissão</option><option value="ADIANTAMENTO" ${f.finalidade === 'ADIANTAMENTO' ? 'selected' : ''}>Adiant.</option></select></td>
+                <td><input class="form-control form-control-sm mat-f-nome" value="${(f.faixa_nome || '').replace(/"/g, '&quot;')}"></td>
+                <td><input type="number" class="form-control form-control-sm mat-f-min" value="${f.min_vendas ?? 0}"></td>
+                <td><input type="number" class="form-control form-control-sm mat-f-max" value="${f.max_vendas != null && f.max_vendas !== 99999 ? f.max_vendas : ''}" placeholder="∞"></td>`;
+            planos.forEach(p => {
+                const v = (f.valores_por_plano || {})[String(p.id)] || {};
+                row += `<td><input type="number" step="0.01" class="form-control form-control-sm mat-v-pap" data-plano="${p.id}" value="${v.valor_pap != null ? v.valor_pap : ''}"></td>`;
+                row += `<td><input type="number" step="0.01" class="form-control form-control-sm mat-v-cnpj" data-plano="${p.id}" value="${v.valor_cnpj != null ? v.valor_cnpj : ''}"></td>`;
             });
+            row += `<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removerLinhaMatriz(${idx})" title="Remover linha">🗑</button></td></tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    window.removerLinhaMatriz = async function(idx) {
+        if (!_matrizComissaoCache || !_matrizComissaoCache.faixas) return;
+        const f = _matrizComissaoCache.faixas[idx];
+        if (f && f.id && !confirm('Excluir esta faixa permanentemente?')) return;
+        if (f && f.id) {
+            try { await apiFetch(`/crm/regras-comissao-faixa/${f.id}/`, { method: 'DELETE' }); } catch (e) { alert(e.message || e); return; }
+        }
+        _matrizComissaoCache.faixas.splice(idx, 1);
+        renderMatrizComissao(_matrizComissaoCache);
+    };
+
+    async function salvarMatrizComissao() {
+        const tbody = document.getElementById('tbody-matriz-comissao');
+        if (!tbody) return;
+        const faixas = [];
+        tbody.querySelectorAll('tr[data-faixa-idx]').forEach(tr => {
+            const vals = {};
+            tr.querySelectorAll('.mat-v-pap').forEach(inp => {
+                const pid = inp.dataset.plano;
+                const cnpjInp = tr.querySelector(`.mat-v-cnpj[data-plano="${pid}"]`);
+                vals[pid] = {
+                    valor_pap: inp.value === '' ? null : parseFloat(inp.value),
+                    valor_cnpj: !cnpjInp || cnpjInp.value === '' ? null : parseFloat(cnpjInp.value),
+                };
+            });
+            const maxRaw = tr.querySelector('.mat-f-max')?.value;
+            faixas.push({
+                id: tr.dataset.faixaId ? parseInt(tr.dataset.faixaId, 10) : null,
+                perfil: tr.querySelector('.mat-f-perfil')?.value || null,
+                finalidade: tr.querySelector('.mat-f-fin')?.value || 'COMISSAO',
+                faixa_nome: tr.querySelector('.mat-f-nome')?.value || '',
+                min_vendas: parseInt(tr.querySelector('.mat-f-min')?.value || '0', 10),
+                max_vendas: maxRaw === '' || maxRaw == null ? 99999 : parseInt(maxRaw, 10),
+                valores_por_plano: vals,
+            });
+        });
+        try {
+            await apiFetch('/crm/comissao-matriz/', { method: 'PUT', body: JSON.stringify({ faixas }) });
+            alert('Matriz de comissão salva.');
+            await carregarRegrasFaixa();
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || e}</td></tr>`;
+            alert('Erro ao salvar matriz: ' + (e.message || e));
+        }
+    }
+
+    async function carregarRegrasFaixa() {
+        try {
+            const data = await apiFetch('/crm/comissao-matriz/');
+            _matrizComissaoCache = data;
+            renderMatrizComissao(data);
+        } catch (e) {
+            const tbody = document.getElementById('tbody-matriz-comissao');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || e}</td></tr>`;
         }
     }
     async function exportarRegrasFaixa() {
@@ -2698,27 +2704,17 @@
     };
 
     window.abrirModalNovaFaixa = async function() {
-        const selVendedor = document.getElementById('regra_faixa_vendedor');
-        const users = await apiFetch('/crm/config-comissao-vendedor/');
-        const lista = Array.isArray(users) ? users : (users?.results || []);
-        selVendedor.innerHTML = '<option value="">— Nenhum —</option>';
-        lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
-        document.getElementById('modalRegraFaixaTitulo').textContent = 'Nova faixa';
-        document.getElementById('regra_faixa_id').value = '';
-        document.getElementById('regra_faixa_finalidade').value = 'COMISSAO';
-        document.getElementById('regra_faixa_perfil').value = 'Vendedor';
-        document.getElementById('regra_faixa_vendedor').value = '';
-        document.getElementById('regra_faixa_nome').value = '';
-        document.getElementById('regra_faixa_min').value = '0';
-        document.getElementById('regra_faixa_max').value = '';
-        document.getElementById('regra_faixa_500mb_pap').value = '';
-        document.getElementById('regra_faixa_700mb_pap').value = '';
-        document.getElementById('regra_faixa_1gb_pap').value = '';
-        document.getElementById('regra_faixa_500mb_cnpj').value = '';
-        document.getElementById('regra_faixa_700mb_cnpj').value = '';
-        document.getElementById('regra_faixa_1gb_cnpj').value = '';
-        const modal = new bootstrap.Modal(document.getElementById('modalEditarRegraFaixa'));
-        modal.show();
+        if (!_matrizComissaoCache) await carregarRegrasFaixa();
+        const planos = _matrizComissaoCache?.planos || [];
+        const vals = {};
+        planos.forEach(p => { vals[String(p.id)] = { valor_pap: null, valor_cnpj: null }; });
+        _matrizComissaoCache.faixas = _matrizComissaoCache.faixas || [];
+        _matrizComissaoCache.faixas.push({
+            id: null, perfil: 'Vendedor', finalidade: 'COMISSAO', faixa_nome: 'Nova faixa',
+            min_vendas: 0, max_vendas: 99999, valores_por_plano: vals,
+        });
+        renderMatrizComissao(_matrizComissaoCache);
+        document.getElementById('wrap-matriz-comissao')?.scrollIntoView({ behavior: 'smooth' });
     };
 
     async function salvarRegraFaixaModal() {
@@ -2776,11 +2772,37 @@
         });
     }
 
+    function renderValoresPlanosVendedor(valoresPorPlano, manual) {
+        const box = document.getElementById('cfg_valores_planos_container');
+        if (!box) return;
+        box.innerHTML = '';
+        (valoresPorPlano || []).forEach(v => {
+            const ro = manual ? '' : 'readonly';
+            box.innerHTML += `<div class="col-12"><div class="small fw-bold text-muted mb-1">${v.plano_nome}</div></div>
+                <div class="col-md-3"><label class="form-label small">PAP</label><input type="number" step="0.01" class="form-control form-control-sm cfg-plano-pap" data-plano-id="${v.plano_id}" value="${v.valor_pap != null ? v.valor_pap : ''}" ${ro}></div>
+                <div class="col-md-3"><label class="form-label small">CNPJ</label><input type="number" step="0.01" class="form-control form-control-sm cfg-plano-cnpj" data-plano-id="${v.plano_id}" value="${v.valor_cnpj != null ? v.valor_cnpj : ''}" ${ro}></div>`;
+        });
+    }
+
+    function coletarValoresPlanosVendedor() {
+        const out = [];
+        document.querySelectorAll('.cfg-plano-pap').forEach(inp => {
+            const pid = parseInt(inp.dataset.planoId, 10);
+            const cnpj = document.querySelector(`.cfg-plano-cnpj[data-plano-id="${pid}"]`);
+            out.push({
+                plano_id: pid,
+                valor_pap: inp.value === '' ? null : parseFloat(inp.value),
+                valor_cnpj: !cnpj || cnpj.value === '' ? null : parseFloat(cnpj.value),
+            });
+        });
+        return out;
+    }
+
     function toggleManualValoresForm() {
         const manual = document.getElementById('cfg_manual').value === 'SIM';
-        ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) { el.readOnly = !manual; if (!manual) el.value = ''; }
+        document.querySelectorAll('.cfg-plano-pap, .cfg-plano-cnpj').forEach(el => {
+            el.readOnly = !manual;
+            if (!manual) el.value = '';
         });
     }
 
@@ -2805,12 +2827,7 @@
             document.getElementById('cfg_manual').value = c.usar_valor_manual ? 'SIM' : 'NÃO';
             const elDescontaBoletoPap = document.getElementById('cfg_desconta_boleto_pap');
             if (elDescontaBoletoPap) elDescontaBoletoPap.value = c.desconta_boleto_pap !== false ? 'SIM' : 'NÃO';
-            document.getElementById('cfg_500mb_pap').value = val(c, 'valor_500mb_pap_manual');
-            document.getElementById('cfg_700mb_pap').value = val(c, 'valor_700mb_pap_manual');
-            document.getElementById('cfg_1gb_pap').value = val(c, 'valor_1gb_pap_manual');
-            document.getElementById('cfg_500mb_cnpj').value = val(c, 'valor_500mb_cnpj_manual');
-            document.getElementById('cfg_700mb_cnpj').value = val(c, 'valor_700mb_cnpj_manual');
-            document.getElementById('cfg_1gb_cnpj').value = val(c, 'valor_1gb_cnpj_manual');
+            renderValoresPlanosVendedor(c.valores_por_plano || [], c.usar_valor_manual);
             document.getElementById('cfg_desconto_boleto').value = val(c, 'desconto_boleto');
             document.getElementById('cfg_desconto_inclusao').value = val(c, 'desconto_inclusao');
             document.getElementById('cfg_desconto_instalacao').value = val(c, 'desconto_instalacao');
@@ -2820,7 +2837,14 @@
         } catch (e) {
             document.getElementById('regras-vendedor-nome').textContent = sel.options[sel.selectedIndex].text;
             document.getElementById('cfg_manual').value = 'NÃO';
-            ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj','cfg_desconto_boleto','cfg_desconto_inclusao','cfg_desconto_instalacao','cfg_adiantar_cnpj'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            try {
+                const mat = await apiFetch('/crm/comissao-matriz/');
+                const vazios = (mat.planos || []).map(p => ({ plano_id: p.id, plano_nome: p.nome, valor_pap: null, valor_cnpj: null }));
+                renderValoresPlanosVendedor(vazios, false);
+            } catch (_) {
+                renderValoresPlanosVendedor([], false);
+            }
+            ['cfg_desconto_boleto','cfg_desconto_inclusao','cfg_desconto_instalacao','cfg_adiantar_cnpj'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const elDescontaBoletoPap2 = document.getElementById('cfg_desconta_boleto_pap'); if (elDescontaBoletoPap2) elDescontaBoletoPap2.value = 'SIM';
             toggleManualValoresForm();
             if (card) card.style.display = 'block';
@@ -2838,12 +2862,7 @@
         const body = {
             usar_valor_manual: manual,
             desconta_boleto_pap: document.getElementById('cfg_desconta_boleto_pap') && document.getElementById('cfg_desconta_boleto_pap').value === 'SIM',
-            valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
-            valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
-            valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
-            valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
-            valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
-            valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+            valores_por_plano: manual ? coletarValoresPlanosVendedor() : [],
             desconto_boleto: document.getElementById('cfg_desconto_boleto').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_boleto').value),
             desconto_inclusao: document.getElementById('cfg_desconto_inclusao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_inclusao').value),
             desconto_instalacao: document.getElementById('cfg_desconto_instalacao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_instalacao').value),
@@ -2864,12 +2883,7 @@
         const manual = document.getElementById('cfg_manual').value === 'SIM';
         const bodyBase = {
             usar_valor_manual: true,
-            valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
-            valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
-            valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
-            valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
-            valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
-            valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+            valores_por_plano: coletarValoresPlanosVendedor(),
             desconto_boleto: document.getElementById('cfg_desconto_boleto').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_boleto').value),
             desconto_inclusao: document.getElementById('cfg_desconto_inclusao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_inclusao').value),
             desconto_instalacao: document.getElementById('cfg_desconto_instalacao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_instalacao').value),

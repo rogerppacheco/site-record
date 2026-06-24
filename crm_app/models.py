@@ -1125,6 +1125,32 @@ class RegraComissaoFaixa(models.Model):
         return f"{who} | {self.faixa_nome} ({self.min_vendas}-{self.max_vendas})"
 
 
+class RegraComissaoFaixaPlano(models.Model):
+    """Valor de comissão por faixa × plano (coluna dinâmica na matriz de comissionamento)."""
+    faixa = models.ForeignKey(
+        RegraComissaoFaixa, on_delete=models.CASCADE, related_name='valores_por_plano',
+    )
+    plano = models.ForeignKey(
+        Plano, on_delete=models.CASCADE, related_name='valores_faixa_comissao',
+    )
+    valor_pap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_cnpj = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_regra_comissao_faixa_plano'
+        verbose_name = 'Comissão faixa × plano'
+        verbose_name_plural = 'Comissões faixa × plano'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['faixa', 'plano'],
+                name='crm_regra_comissao_faixa_plano_uniq',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.faixa.faixa_nome} — {self.plano.nome}'
+
+
 class ConfigComissaoVendedor(models.Model):
     """
     Configuração de comissão por vendedor (aba REGRAS_VENDEDORES do Excel).

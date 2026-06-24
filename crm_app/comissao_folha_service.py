@@ -140,17 +140,15 @@ def carregar_valores_adiantamento_esteira_lancamentos(vendedor_id: int | None = 
 
 
 def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
-    """Valor por venda: plano personalizado → faixa COMISSÃO → comissao_base."""
+    """Valor por venda: matriz faixa×plano → colunas legadas → comissao_base."""
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
-    from crm_app.services.plano_comissao_service import (
-        get_valor_comissao_plano,
-        plano_comissao_diferenciada,
-    )
+    from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
-    if venda.plano and plano_comissao_diferenciada(venda.plano):
-        v_plano = get_valor_comissao_plano(venda.plano, tipo_cliente_comissao(venda))
-        if v_plano is not None:
-            return v_plano
+    tipo = tipo_cliente_comissao(venda)
+    if venda.plano and faixa_adiantamento:
+        v_matriz = get_valor_faixa_plano(faixa_adiantamento, venda.plano, tipo)
+        if v_matriz is not None:
+            return v_matriz
     if faixa_adiantamento and chave:
         v = get_valor_from_faixa(faixa_adiantamento, chave)
         if v is not None:
@@ -317,43 +315,28 @@ def resolver_valor_comissao_venda(
     usar_manual: bool,
     chave: str | None,
 ) -> float | None:
-    """
-    Valor de comissão para uma venda.
-    Planos PERSONALIZADO usam valores do cadastro do plano; demais usam faixa ou manual.
-    """
-    from crm_app.services.plano_comissao_service import (
-        get_valor_comissao_plano,
-        plano_comissao_diferenciada,
-    )
+    """Valor de comissão: manual por plano → matriz faixa×plano → colunas legadas."""
+    from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
-    if plano and plano_comissao_diferenciada(plano):
-        v = get_valor_comissao_plano(plano, tipo_cliente)
-        if v is not None:
-            return v
     if usar_manual:
         return get_valor_manual(config, chave, plano)
+    if faixa_regra and plano:
+        v = get_valor_faixa_plano(faixa_regra, plano, tipo_cliente)
+        if v is not None:
+            return v
     if faixa_regra and chave:
         return get_valor_from_faixa(faixa_regra, chave)
     return None
 
 
 def get_valor_manual(config, chave, plano=None):
-    """Retorna o valor manual da config do vendedor para a chave (plano tem prioridade)."""
-    if plano and chave:
-        from crm_app.services.plano_comissao_service import (
-            get_valor_comissao_plano,
-            get_valor_manual_plano,
-            plano_comissao_diferenciada,
-        )
-        if plano_comissao_diferenciada(plano):
-            tipo = 'CPF' if chave.endswith('_PAP') else 'CNPJ'
-            v = get_valor_comissao_plano(plano, tipo)
-            if v is not None:
-                return v
-        if config:
-            v_plano = get_valor_manual_plano(config, plano, chave)
-            if v_plano is not None:
-                return v_plano
+    """Retorna valor manual do vendedor (por plano ou colunas legadas 500/700/1GB)."""
+    if plano and config and chave:
+        from crm_app.services.comissao_matriz_service import get_valor_manual_vendedor_plano
+        tipo = 'CPF' if chave.endswith('_PAP') else 'CNPJ'
+        v_plano = get_valor_manual_vendedor_plano(config, plano, tipo)
+        if v_plano is not None:
+            return v_plano
     if not config or not chave:
         return None
     m = {
