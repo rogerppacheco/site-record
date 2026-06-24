@@ -218,6 +218,11 @@
                             </div>
                             <p class="small text-muted mb-2">Use <strong>Finalidade</strong> = &quot;Adiantamento&quot; para a faixa que define a &quot;Comissão est.&quot; na esteira (valores 500MB/700/1GB CNPJ). Faixas com Finalidade &quot;Pagamento de comissão&quot; entram no cálculo da folha (MIN/MAX); &quot;Adiantamento&quot; não entra na folha.</p>
                             <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>Finalidade</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
+                            <div class="mt-4">
+                                <h6 class="text-primary mb-2">Planos com comissão diferenciada</h6>
+                                <p class="small text-muted mb-2">Quando existem dois planos na mesma banda (ex.: 1GB com mesh e 1GB sem mesh), a comissão fica no <strong>cadastro do plano</strong> com banda <strong>Personalizado</strong> — não há coluna extra na tabela acima.</p>
+                                <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0"><thead class="table-light"><tr><th>Plano</th><th>Operadora</th><th>PAP (CPF)</th><th>CNPJ</th><th>Banda</th><th></th></tr></thead><tbody id="lista-planos-comissao-diferenciada"></tbody></table></div>
+                            </div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
                             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -317,9 +322,9 @@
                                 <div class="col-md-2"><label class="form-label fw-bold">Comissão CNPJ</label><input type="number" class="form-control" id="plano_comissao_cnpj" step="0.01" placeholder="0,00"></div>
                                 <div class="col-md-2"><label class="form-label fw-bold">Banda (faixas)</label><select id="plano_banda_comissao" class="form-select"><option value="">Auto (pelo nome)</option><option value="500MB">500 MB</option><option value="700MB">700 MB</option><option value="1GB">1 GB</option><option value="PERSONALIZADO">Personalizado</option></select></div>
                                 <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa por este plano"></div>
-                                <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_faixas" checked><label class="form-check-label" for="plano_propagar_faixas">Propagar faixas</label></div></div>
+                                <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_faixas"><label class="form-check-label" for="plano_propagar_faixas">Propagar faixas</label></div></div>
                                 <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_vendedores" checked><label class="form-check-label" for="plano_propagar_vendedores">Propagar vendedores</label></div></div>
-                                <div class="col-12"><small class="text-muted">Ao salvar, os valores são vinculados ao plano e propagados para <strong>Regras por Faixa</strong> (coluna da banda) e <strong>Regras por Vendedor</strong> (override por plano), quando as opções acima estiverem marcadas.</small></div>
+                                <div class="col-12"><small class="text-muted">Planos na mesma banda (ex.: dois 1GB) viram <strong>Personalizado</strong> automaticamente — informe a comissão PAP/CNPJ aqui. <strong>Não marque Propagar faixas</strong> salvo para atualizar a tabela inteira de uma banda. O 1GB padrão (com mesh) continua usando as colunas <strong>1GB</strong> da tabela de faixas.</small></div>
                             </form>
                             <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>PAP</th><th>CNPJ</th><th>Banda</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
                         </div>
@@ -2404,7 +2409,12 @@
             document.getElementById('plano_id').value = '';
             await carregarOperadoras();
             await carregarPlanos();
-            alert(id ? 'Plano atualizado. Valores propagados conforme opções marcadas.' : 'Plano cadastrado. Valores vinculados às regras de comissão.');
+            const banda = body.valores_comissao && body.valores_comissao.banda_comissao;
+            if (banda === 'PERSONALIZADO') {
+                alert(id ? 'Plano atualizado como Personalizado — comissão própria, sem alterar a coluna 1GB das faixas.' : 'Plano cadastrado como Personalizado — comissão própria vinculada ao plano.');
+            } else {
+                alert(id ? 'Plano atualizado com sucesso.' : 'Plano cadastrado com sucesso.');
+            }
         } catch (err) {
             alert('Erro ao salvar plano: ' + (err.message || err));
         }
@@ -2604,6 +2614,33 @@
                 <td><button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalEditarRegraFaixa(${r.id})" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirRegraFaixa(${r.id})" title="Excluir"><i class="bi bi-trash"></i></button></td>
             </tr>`;
         });
+        await carregarPlanosComissaoDiferenciada();
+    }
+    async function carregarPlanosComissaoDiferenciada() {
+        const tbody = document.getElementById('lista-planos-comissao-diferenciada');
+        if (!tbody) return;
+        try {
+            const res = await apiFetch('/crm/planos/?page_size=500');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            const dif = lista.filter(p => p.valores_comissao && p.valores_comissao.banda_comissao === 'PERSONALIZADO');
+            if (!dif.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center">Nenhum plano com comissão personalizada.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            dif.forEach(p => {
+                const vc = p.valores_comissao || {};
+                tbody.innerHTML += `<tr>
+                    <td>${p.nome}</td><td>${p.operadora_nome || '-'}</td>
+                    <td>${vc.valor_pap != null ? fmtMoeda(vc.valor_pap) : '—'}</td>
+                    <td>${vc.valor_cnpj != null ? fmtMoeda(vc.valor_cnpj) : '—'}</td>
+                    <td><span class="badge bg-warning text-dark">Personalizado</span></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-secondary" onclick='editarPlano(${JSON.stringify(p)})'>Editar</button></td>
+                </tr>`;
+            });
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || e}</td></tr>`;
+        }
     }
     async function exportarRegrasFaixa() {
         const token = localStorage.getItem('accessToken');

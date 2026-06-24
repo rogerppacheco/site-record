@@ -58,7 +58,7 @@ class PlanoValoresComissao(models.Model):
         verbose_name='Comissão CNPJ',
     )
     propagar_faixas = models.BooleanField(
-        default=True,
+        default=False,
         help_text='Atualiza colunas da banda em Regras por Faixa (COMISSÃO).',
     )
     propagar_vendedores = models.BooleanField(

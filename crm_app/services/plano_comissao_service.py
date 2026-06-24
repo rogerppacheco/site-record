@@ -32,6 +32,39 @@ def inferir_banda_comissao(plano: Plano) -> str:
     return banda or 'PERSONALIZADO'
 
 
+def plano_comissao_diferenciada(plano: Plano | None) -> bool:
+    """
+    Plano com comissão própria (não usa coluna genérica 500/700/1GB das faixas).
+    Ex.: segundo plano 1GB (SEM MESH) com valor menor que o ULTRA 1GB com mesh.
+    """
+    if not plano:
+        return False
+    try:
+        return plano.valores_comissao.banda_comissao == 'PERSONALIZADO'
+    except PlanoValoresComissao.DoesNotExist:
+        return False
+
+
+def resolver_banda_comissao_cadastro(plano: Plano, banda_informada: str | None = None) -> str:
+    """
+    Define banda no cadastro. Se já existir outro plano ativo na mesma banda/operadora,
+    força PERSONALIZADO para permitir comissão diferente (ex.: 1GB com e sem mesh).
+    """
+    banda = (banda_informada or '').strip() or inferir_banda_comissao(plano)
+    if banda == 'PERSONALIZADO':
+        return 'PERSONALIZADO'
+    duplicados = Plano.objects.filter(
+        ativo=True,
+        operadora_id=plano.operadora_id,
+        valores_comissao__banda_comissao=banda,
+    )
+    if plano.pk:
+        duplicados = duplicados.exclude(pk=plano.pk)
+    if duplicados.exists():
+        return 'PERSONALIZADO'
+    return banda
+
+
 def get_valor_comissao_plano(plano: Plano | None, tipo_cliente: str) -> float | None:
     """Valor de comissão cadastrado no plano para CPF (PAP) ou CNPJ."""
     if not plano:
@@ -147,13 +180,15 @@ def configurar_comissao_plano(
     Chamado no create/update do Plano via API de governança.
     """
     valores_data = valores_data or {}
-    banda = valores_data.get('banda_comissao') or inferir_banda_comissao(plano)
+    banda = resolver_banda_comissao_cadastro(plano, valores_data.get('banda_comissao'))
     valor_pap = valores_data.get('valor_pap')
     if valor_pap is None and plano.comissao_base is not None:
         valor_pap = plano.comissao_base
     valor_cnpj = valores_data.get('valor_cnpj')
-    propagar_faixas = valores_data.get('propagar_faixas', True)
-    propagar_vendedores = valores_data.get('propagar_vendedores', True)
+    propagar_faixas = bool(valores_data.get('propagar_faixas', False))
+    propagar_vendedores = bool(valores_data.get('propagar_vendedores', True))
+    if banda == 'PERSONALIZADO':
+        propagar_faixas = False
 
     vc, _ = PlanoValoresComissao.objects.update_or_create(
         plano=plano,

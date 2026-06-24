@@ -430,16 +430,20 @@ def valor_alvo_adiantamento_sabado_folha(
     Valor-alvo do adiantamento sábado para venda instalada na folha do mês.
     Usa Regras por Faixa (COMISSÃO) ou valores manuais da config do vendedor.
     """
-    from crm_app.comissao_folha_service import get_valor_from_faixa, get_valor_manual
+    from crm_app.comissao_folha_service import resolver_valor_comissao_venda
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
 
     chave = chave_comissao_venda(venda)
     if not chave:
         return None
-    if usar_manual:
-        return get_valor_manual(config, chave, venda.plano)
-    if not faixa_regra:
-        return None
-    return get_valor_from_faixa(faixa_regra, chave)
+    return resolver_valor_comissao_venda(
+        venda.plano,
+        tipo_cliente_comissao(venda),
+        faixa_regra=faixa_regra,
+        config=config,
+        usar_manual=usar_manual,
+        chave=chave,
+    )
 
 
 def calcular_complemento_adiantamento_sabado_folha(
