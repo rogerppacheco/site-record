@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-Importa o fluxo outbound site-record no n8n e exibe a URL do webhook.
+Publica ou atualiza o fluxo outbound site-record no n8n (upsert + activate).
 
 Variáveis de ambiente:
-  N8N_API_URL=https://seu-n8n.up.railway.app
-  N8N_API_KEY=<api key do n8n, se habilitada>
-
-  EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE_NAME=site_record_zap
-  (configure também no n8n como variáveis de ambiente)
+  N8N_API_URL=https://n8n-production-574f.up.railway.app
+  N8N_API_KEY=<api key do n8n>
 
 Uso:
   python ferramentas/n8n/deploy_site_record_outbound_flow.py
@@ -20,23 +17,57 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
 FLOW_FILE = Path(__file__).resolve().parent / "site-record-n8n-outbound-flow.json"
+FLOW_NAME = "Site Record — CRM → WhatsApp (Outbound)"
 WEBHOOK_PATH = "site-record-enviar-mensagem"
+DEFAULT_N8N_BASE = "https://n8n-production-574f.up.railway.app"
 
 
 def _env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
+def _api_base(n8n_url: str) -> str:
+    base = n8n_url.rstrip("/")
+    if base.endswith("/api/v1"):
+        return base
+    return f"{base}/api/v1"
+
+
 def _headers(api_key: str) -> Dict[str, str]:
-    h = {"Content-Type": "application/json"}
-    if api_key:
-        h["X-N8N-API-KEY"] = api_key
-    return h
+    return {
+        "Content-Type": "application/json",
+        "accept": "application/json",
+        "X-N8N-API-KEY": api_key,
+    }
+
+
+def _request(
+    method: str,
+    api_base: str,
+    api_key: str,
+    path: str,
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    url = f"{api_base}{path}"
+    resp = requests.request(
+        method,
+        url,
+        headers=_headers(api_key),
+        json=payload,
+        timeout=60,
+    )
+    try:
+        data = resp.json() if resp.content else {}
+    except ValueError:
+        data = {"raw": resp.text}
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"{method} {path} HTTP {resp.status_code}: {str(data)[:800]}")
+    return data if isinstance(data, dict) else {"data": data}
 
 
 def load_flow() -> Dict[str, Any]:
@@ -44,19 +75,35 @@ def load_flow() -> Dict[str, Any]:
         return json.load(fh)
 
 
-def deploy_flow(base_url: str, api_key: str, flow: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{base_url.rstrip('/')}/api/v1/workflows"
-    resp = requests.post(url, headers=_headers(api_key), json=flow, timeout=60)
-    if resp.status_code not in (200, 201):
-        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:800]}")
-    return resp.json()
+def list_workflows(api_base: str, api_key: str) -> List[Dict[str, Any]]:
+    data = _request("GET", api_base, api_key, "/workflows")
+    items = data.get("data")
+    return items if isinstance(items, list) else []
 
 
-def activate_workflow(base_url: str, api_key: str, workflow_id: str) -> None:
-    url = f"{base_url.rstrip('/')}/api/v1/workflows/{workflow_id}/activate"
-    resp = requests.post(url, headers=_headers(api_key), timeout=30)
-    if resp.status_code not in (200, 201):
-        raise RuntimeError(f"Ativação falhou HTTP {resp.status_code}: {resp.text[:500]}")
+def upsert_workflow(
+    api_base: str,
+    api_key: str,
+    flow: Dict[str, Any],
+    existing: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    payload = {
+        "name": flow["name"],
+        "nodes": flow["nodes"],
+        "connections": flow["connections"],
+        "settings": flow.get("settings") or {"executionOrder": "v1"},
+        "staticData": flow.get("staticData"),
+    }
+    if existing and existing.get("id"):
+        wf_id = str(existing["id"])
+        print(f"Atualizando workflow existente: {wf_id}")
+        return _request("PUT", api_base, api_key, f"/workflows/{wf_id}", payload)
+    print("Criando workflow site-record outbound")
+    return _request("POST", api_base, api_key, "/workflows", payload)
+
+
+def activate_workflow(api_base: str, api_key: str, workflow_id: str) -> None:
+    _request("POST", api_base, api_key, f"/workflows/{workflow_id}/activate")
 
 
 def main() -> int:
@@ -64,36 +111,45 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Só exibe URL esperada")
     args = parser.parse_args()
 
-    n8n_url = _env("N8N_API_URL")
+    n8n_url = _env("N8N_API_URL", DEFAULT_N8N_BASE)
     n8n_key = _env("N8N_API_KEY")
-    webhook_base = _env("N8N_WEBHOOK_BASE_URL", n8n_url)
+    webhook_base = _env("N8N_WEBHOOK_BASE_URL", n8n_url.replace("/api/v1", ""))
     expected_webhook = f"{webhook_base.rstrip('/')}/webhook/{WEBHOOK_PATH}"
 
     print("Fluxo:", FLOW_FILE.name)
-    print("Webhook esperado (N8N_OUTBOUND_WEBHOOK_URL):")
+    print("Webhook (N8N_OUTBOUND_WEBHOOK_URL):")
     print(f"  {expected_webhook}")
     print()
-    print("Variáveis Railway site-record:")
+    print("Variáveis Railway site-record (+ webhook worker):")
     print(f"  N8N_OUTBOUND_WEBHOOK_URL={expected_webhook}")
-    print("  WHATSAPP_PROVIDER=evolution")
+    print("  EVOLUTION_API_URL=https://evolution-api-production-8bbb.up.railway.app")
+    print("  EVOLUTION_INSTANCE_NAME=site_record_zap")
+    print("  EVOLUTION_API_KEY=<mesma do servidor Evolution>")
     print()
 
     if args.dry_run:
         return 0
 
-    if not n8n_url:
-        print("Defina N8N_API_URL para importar o fluxo.", file=sys.stderr)
+    if not n8n_key:
+        print("Defina N8N_API_KEY para publicar o fluxo.", file=sys.stderr)
         return 1
 
+    api_base = _api_base(n8n_url)
     flow = load_flow()
-    data = deploy_flow(n8n_url, n8n_key, flow)
-    wf_id = str(data.get("id") or "")
-    if wf_id:
-        activate_workflow(n8n_url, n8n_key, wf_id)
-        print(f"Workflow importado e ativado: id={wf_id}")
+    existing = next((w for w in list_workflows(api_base, n8n_key) if w.get("name") == FLOW_NAME), None)
+    saved = upsert_workflow(api_base, n8n_key, flow, existing)
+    wf_id = str(saved.get("id") or (existing or {}).get("id") or "")
+    if not wf_id:
+        print("Workflow sem ID após upsert.", file=sys.stderr)
+        return 1
+
+    if not saved.get("active"):
+        activate_workflow(api_base, n8n_key, wf_id)
+        print(f"Workflow ativado: id={wf_id}")
     else:
-        print("Workflow importado (sem id na resposta).")
-    print(f"\nConfigure: N8N_OUTBOUND_WEBHOOK_URL={expected_webhook}")
+        print(f"Workflow já ativo: id={wf_id}")
+
+    print(f"\nConfigure no Railway: N8N_OUTBOUND_WEBHOOK_URL={expected_webhook}")
     return 0
 
 

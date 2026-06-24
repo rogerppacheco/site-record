@@ -24,3 +24,10 @@ downloads/pap_trace*.zip
 
 # Arquivos de IDEs
 .vscode/
+
+# Ambiente virtual Python (não enviar no railway up)
+.venv/
+venv/
+backups/
+downloads/
+site-record.git/

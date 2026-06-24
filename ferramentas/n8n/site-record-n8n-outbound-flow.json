@@ -59,12 +59,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE_NAME }}",
+        "url": "https://evolution-api-production-8bbb.up.railway.app/message/sendText/site_record_zap",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" },
+            { "name": "apikey", "value": "SysrAPI2026!" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
@@ -82,12 +82,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendMedia/{{ $env.EVOLUTION_INSTANCE_NAME }}",
+        "url": "https://evolution-api-production-8bbb.up.railway.app/message/sendMedia/site_record_zap",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" },
+            { "name": "apikey", "value": "SysrAPI2026!" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },

@@ -12,7 +12,6 @@ from crm_app.services.evolution_connection_service import (
 )
 from crm_app.services.whatsapp_config_service import (
     build_whatsapp_config_payload,
-    get_active_whatsapp_provider_name,
     set_whatsapp_provider,
 )
 from crm_app.utils import is_member
@@ -26,8 +25,10 @@ def _usuario_pode_gerenciar_whatsapp(user) -> bool:
     )
 
 
-def _exige_evolution_ativo() -> bool:
-    return get_active_whatsapp_provider_name() == WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION
+def _evolution_disponivel() -> bool:
+    from crm_app.services.whatsapp_config_service import _credenciais_evolution_ok
+
+    return _credenciais_evolution_ok()
 
 
 @api_view(["GET", "PATCH"])
@@ -60,24 +61,31 @@ def whatsapp_status_api(request):
         return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
 
     config = build_whatsapp_config_payload()
-    if not _exige_evolution_ativo():
+    if not _evolution_disponivel():
         return Response(
             {
                 "provider": config["provider"],
-                "connected": config["zapiConfigured"],
-                "state": "zapi" if config["zapiConfigured"] else "unconfigured",
-                "instanceName": None,
+                "connected": False,
+                "state": "unconfigured",
+                "instanceName": config.get("instanceName"),
                 "message": (
-                    "Modo Z-API ativo. Conexão gerenciada no painel Z-API; "
-                    "credenciais "
-                    + ("OK" if config["zapiConfigured"] else "ausentes no servidor")
+                    "Credenciais Evolution ausentes no servidor "
+                    "(EVOLUTION_API_URL / EVOLUTION_API_KEY)."
                 ),
-            }
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
     try:
         data = EvolutionConnectionService().get_status()
         data["provider"] = config["provider"]
+        data["activeProvider"] = config["provider"]
+        data["setupMode"] = config["provider"] != WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION
+        if data.get("setupMode"):
+            data["message"] = (
+                "Aparelho Evolution (setup). Provedor ativo ainda é Z-API — "
+                "escaneie o QR e só então salve Evolution como provedor."
+            )
         return Response(data)
     except EvolutionConnectionError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -88,15 +96,15 @@ def whatsapp_status_api(request):
 def whatsapp_qrcode_api(request):
     if not _usuario_pode_gerenciar_whatsapp(request.user):
         return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
-    if not _exige_evolution_ativo():
+    if not _evolution_disponivel():
         return Response(
             {
                 "detail": (
-                    "QR Code só está disponível com provedor Evolution. "
-                    "Altere para Evolution ou use o painel Z-API."
+                    "Credenciais Evolution não configuradas no servidor "
+                    "(EVOLUTION_API_URL / EVOLUTION_API_KEY)."
                 )
             },
-            status=status.HTTP_400_BAD_REQUEST,
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     try:
         data = EvolutionConnectionService().get_qrcode()
@@ -110,10 +118,10 @@ def whatsapp_qrcode_api(request):
 def whatsapp_disconnect_api(request):
     if not _usuario_pode_gerenciar_whatsapp(request.user):
         return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
-    if not _exige_evolution_ativo():
+    if not _evolution_disponivel():
         return Response(
-            {"detail": "Desconexão Evolution indisponível enquanto Z-API estiver ativo."},
-            status=status.HTTP_400_BAD_REQUEST,
+            {"detail": "Credenciais Evolution não configuradas no servidor."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     try:
         data = EvolutionConnectionService().disconnect()

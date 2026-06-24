@@ -1,0 +1,22 @@
+# Evita upload/build gigante no Railway (railway up / Docker COPY)
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.github/
+.vscode/
+.cursor/
+*.sql
+*.dump
+backups/
+downloads/
+media/
+site-record.git/
+.env
+heroku_env.txt
+docs/heroku_env.txt
+.playwright_state.json
+node_modules/
+*.zip
+staticfiles/

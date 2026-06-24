@@ -144,7 +144,8 @@
             document.getElementById('card-provider-zapi').classList.toggle('active', provider === 'zapi');
             document.getElementById('card-provider-evolution').classList.toggle('active', provider === 'evolution');
             document.getElementById('panel-zapi').classList.toggle('d-none', provider !== 'zapi');
-            document.getElementById('panel-evolution').classList.toggle('d-none', provider !== 'evolution');
+            const evoOk = cfgAtual?.evolutionConfigured;
+            document.getElementById('panel-evolution').classList.toggle('d-none', !(provider === 'evolution' || evoOk));
         }
 
         function selecionarProvider(p) { marcarProviderUi(p); }
@@ -162,7 +163,13 @@
             document.getElementById('zapi-cred-status').innerHTML = cfgAtual.zapiConfigured
                 ? '<span class="text-success"><i class="bi bi-check-circle"></i> ZAPI_INSTANCE_ID e ZAPI_TOKEN configurados.</span>'
                 : '<span class="text-danger"><i class="bi bi-x-circle"></i> Credenciais Z-API não encontradas nas variáveis do servidor.</span>';
-            if (cfgAtual.provider === 'evolution') carregarWhatsAppConexao(true);
+            if (cfgAtual.evolutionConfigured) {
+                carregarWhatsAppConexao(true);
+            }
+            if (cfgAtual.provider === 'zapi' && cfgAtual.evolutionConfigured) {
+                document.getElementById('cfg-save-msg').innerHTML =
+                    '<span class="text-info">Provedor ativo: Z-API. Escaneie o QR abaixo e só depois salve Evolution.</span>';
+            }
         }
 
         async function salvarProvider() {
@@ -195,6 +202,10 @@
             if (status.instanceName) document.getElementById('wa-instance-name').textContent = status.instanceName;
             document.getElementById('wa-connected-msg').classList.toggle('d-none', !status.connected);
             document.getElementById('wa-connecting-msg').classList.toggle('d-none', !(status.state === 'connecting' && !status.connected));
+            if (status.message && status.setupMode) {
+                waSetError('');
+                document.getElementById('cfg-save-msg').innerHTML = `<span class="text-info">${status.message}</span>`;
+            }
             document.getElementById('btn-wa-disconnect').classList.toggle('d-none', !(status.connected || status.state === 'connecting'));
             document.getElementById('btn-wa-qrcode').classList.toggle('d-none', !!status.connected);
         }
@@ -205,7 +216,7 @@
                 const data = await apiFetch('/whatsapp/status/');
                 waAtualizarUi(data);
                 if (data.connected && waPollInterval) { clearInterval(waPollInterval); waPollInterval = null; }
-                if (!data.connected && providerSelecionado === 'evolution' && !waPollInterval) {
+                if (!data.connected && cfgAtual?.evolutionConfigured && !waPollInterval) {
                     waPollInterval = setInterval(() => carregarWhatsAppConexao(true), 5000);
                 }
             } catch (e) {
