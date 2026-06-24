@@ -15,8 +15,12 @@ Uso:
 Para replicar o fluxo do WhatsApp (mensagem a mensagem, igual VENDER):
   python manage.py testar_pap_terminal --slow-mo 500 --trace
     -> Digite VENDER, SIM, CEP, etc. e veja cada clique no PAP.
+    -> Digite CRÉDITO para testar análise de crédito (mesmo fluxo de produção).
     -> Com --trace, ao fechar o navegador o arquivo downloads/pap_trace_*.zip
        pode ser aberto em https://trace.playwright.dev (mostra seletores e ordem dos cliques).
+
+Debug só da lista de vendedores (etapa 1 do crédito):
+  python manage.py testar_credito_lista_vendedores_pap --slow-mo 500 --selecionar
 
 Opções úteis aqui:
   --slow-mo 800   pausa maior entre ações do Playwright

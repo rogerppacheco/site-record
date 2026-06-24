@@ -301,13 +301,15 @@ class Command(BaseCommand):
             return "erro", ultimo_msg or "Falha após várias tentativas.", None
 
         def executar_credito_terminal():
-            """Login → pedido → viabilidade fixa CRÉDITO; complemento sempre opção 1 se exigido."""
+            """Login → pedido (fluxo produção) → viabilidade fixa CRÉDITO."""
             from django.conf import settings
+            from crm_app.controle_tts_service import obter_matricula_tt_para_credito_pap
             from crm_app.whatsapp_webhook_handler import (
                 CREDITO_CEP_FIXO,
                 CREDITO_ENDERECO_ALVO,
                 CREDITO_NUMERO_FIXO,
                 CREDITO_REFERENCIA_FIXA,
+                _run_orm_returning,
             )
 
             pap.optimize_for_credit = getattr(settings, "PAP_CREDITO_FAST_MODE", True)
@@ -318,10 +320,37 @@ class Command(BaseCommand):
                 except Exception:
                     pass
                 return "erro", f"Erro ao acessar PAP: {msg}", None
-            sucesso, msg = pap.iniciar_novo_pedido(matricula_vendedor)
+
+            ok_prep, msg_prep = pap._preparar_novo_pedido_etapa1()
+            if not ok_prep:
+                pap._fechar_sessao()
+                return "erro", f"Erro ao preparar pedido: {msg_prep}", None
+
+            matriculas_pap = pap.listar_matriculas_vendedor_no_pap()
+            if not matriculas_pap:
+                pap._cache_matriculas_pap_dropdown = []
+                matriculas_pap = pap.listar_matriculas_vendedor_no_pap(forcar_recarga=True)
+            if not matriculas_pap:
+                pap._fechar_sessao()
+                return "erro", "Não foi possível carregar os vendedores deste PDV no PAP.", None
+
+            matricula_escolhida = _run_orm_returning(
+                lambda fb=matricula_vendedor or matricula_bo, cand=list(matriculas_pap): obter_matricula_tt_para_credito_pap(
+                    fb,
+                    candidatos=cand,
+                )
+            )
+            self.stdout.write(
+                self.style.HTTP_INFO(
+                    f"  [CRÉDITO] TT escolhido: {matricula_escolhida} "
+                    f"(de {len(matriculas_pap)} no PDV)"
+                )
+            )
+            sucesso, msg = pap._concluir_novo_pedido_etapa1(matricula_escolhida)
             if not sucesso:
                 pap._fechar_sessao()
                 return "erro", f"Erro ao iniciar pedido: {msg}", None
+
             ok_tela, msg_tela = pap.validar_tela_pronta_para_cep()
             if not ok_tela:
                 pap._fechar_sessao()

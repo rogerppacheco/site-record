@@ -1976,56 +1976,111 @@ class PAPNioAutomation:
     def obter_cache_matriculas_pap_dropdown(self) -> List[str]:
         return list(self._cache_matriculas_pap_dropdown or [])
 
-    def _abrir_dropdown_vendedor_e_coletar(self) -> List[str]:
-        """Abre o autocomplete de vendedor e coleta matrículas visíveis no PDV."""
+    def _termos_gatilho_lista_vendedor(self, matricula_alvo: Optional[str] = None) -> List[str]:
+        """
+        Termos que costumam abrir o autocomplete de vendedor no PAP.
+        Termos curtos (T, TT) não disparam a API; matrícula inexistente lista o PDV inteiro.
+        """
+        termos: List[str] = []
+        if matricula_alvo:
+            termos.extend(self._variantes_busca_matricula_vendedor(matricula_alvo))
+        termos.extend(
+            [
+                "999999",
+                "000000",
+                "TT999999",
+                "478091",
+                "478",
+                "652",
+                "TT4",
+                "TT6",
+                "T",
+                "TT",
+                "4",
+                "7",
+            ]
+        )
+        vistos: set[str] = set()
+        unicos: List[str] = []
+        for termo in termos:
+            t = (termo or "").strip()
+            if t and t not in vistos:
+                vistos.add(t)
+                unicos.append(t)
+        return unicos
+
+    def _disparar_itens_lista_vendedor(self, matricula_alvo: Optional[str] = None) -> List[Any]:
+        """Tenta abrir o dropdown de vendedor e retorna itens visíveis."""
         if not self.page:
             return []
         rapido = self.optimize_for_credit
-        debounce_ms = 1000 if rapido else 1200
-        timeout_list = 10000 if rapido else 12000
-        encontradas: List[str] = []
-        vistos: set[str] = set()
-        termos = ("T", "TT", "4", "7", "A")
-        for termo in termos:
+        debounce_ms = 1200 if rapido else 1500
+        timeout_list = 12000 if rapido else 15000
+        seletor_lista = '[role="listbox"] li, [role="option"], ul[class*="menu"] li'
+
+        matricula_input = self._query_matricula_vendedor_input()
+        if not matricula_input:
+            return []
+
+        try:
+            matricula_input.click()
+            matricula_input.fill("")
+            self.page.wait_for_timeout(350)
+            matricula_input.press("ArrowDown")
+            self.page.wait_for_timeout(debounce_ms)
+            itens = self._coletar_itens_lista_vendedor()
+            if itens:
+                logger.info("[PAP] Lista vendedor aberta com ArrowDown (%s itens)", len(itens))
+                return itens
+        except Exception as e:
+            logger.debug("[PAP] ArrowDown lista vendedor: %s", e)
+
+        for termo in self._termos_gatilho_lista_vendedor(matricula_alvo):
             try:
                 matricula_input = self._query_matricula_vendedor_input()
                 if not matricula_input:
                     continue
                 matricula_input.click()
                 matricula_input.fill("")
-                self.page.wait_for_timeout(250)
-                matricula_input.press_sequentially(termo, delay=80)
+                self.page.wait_for_timeout(300)
+                matricula_input.press_sequentially(termo, delay=90)
                 try:
-                    self.page.wait_for_selector(
-                        '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
-                        state="visible",
-                        timeout=timeout_list,
-                    )
+                    self.page.wait_for_selector(seletor_lista, state="visible", timeout=timeout_list)
                 except Exception:
                     pass
                 self.page.wait_for_timeout(debounce_ms)
                 itens = self._coletar_itens_lista_vendedor()
-                for mat in self._matriculas_de_itens_vendedor(itens):
-                    if mat not in vistos:
-                        vistos.add(mat)
-                        encontradas.append(mat)
-                if len(encontradas) >= 5:
-                    break
+                if itens:
+                    logger.info(
+                        "[PAP] Lista vendedor aberta com gatilho '%s' (%s itens)",
+                        termo,
+                        len(itens),
+                    )
+                    return itens
+                logger.debug("[PAP] Gatilho '%s' não abriu lista de vendedores", termo)
             except Exception as e:
-                logger.debug("[PAP] abrir dropdown vendedor termo=%s: %s", termo, e)
+                logger.debug("[PAP] gatilho lista vendedor termo=%s: %s", termo, e)
+        return []
+
+    def _abrir_dropdown_vendedor_e_coletar(self) -> List[str]:
+        """Abre o autocomplete de vendedor e coleta matrículas visíveis no PDV."""
+        if not self.page:
+            return []
+        itens = self._disparar_itens_lista_vendedor()
+        encontradas = self._matriculas_de_itens_vendedor(itens)
         if encontradas:
             self._cache_matriculas_pap_dropdown = encontradas
         return encontradas
 
-    def listar_matriculas_vendedor_no_pap(self) -> List[str]:
+    def listar_matriculas_vendedor_no_pap(self, forcar_recarga: bool = False) -> List[str]:
         """
         Lê matrículas disponíveis no autocomplete de vendedor do PDV logado.
         Usado no crédito para não escolher TT da OSAB que não existem neste portal.
         """
-        if self._cache_matriculas_pap_dropdown:
+        if not forcar_recarga and self._cache_matriculas_pap_dropdown:
             return list(self._cache_matriculas_pap_dropdown)
         if self.page:
-            self.page.wait_for_timeout(800)
+            self.page.wait_for_timeout(1500 if self.optimize_for_credit else 2000)
         encontradas = self._abrir_dropdown_vendedor_e_coletar()
         logger.info("[PAP] Matrículas no dropdown vendedor deste PDV: %s", len(encontradas))
         if encontradas:
@@ -2036,38 +2091,15 @@ class PAPNioAutomation:
         """Crédito: abre lista ampla do PDV e clica no item da matrícula exata."""
         if not self.page or not matricula_norm:
             return False
-        rapido = self.optimize_for_credit
-        debounce_ms = 1000 if rapido else 1200
-        timeout_list = 10000 if rapido else 12000
-        for termo_abrir in ("T", "TT", "4"):
-            try:
-                matricula_input = self._query_matricula_vendedor_input()
-                if not matricula_input:
-                    return False
-                matricula_input.click()
-                matricula_input.fill("")
-                self.page.wait_for_timeout(250)
-                matricula_input.press_sequentially(termo_abrir, delay=80)
-                try:
-                    self.page.wait_for_selector(
-                        '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
-                        state="visible",
-                        timeout=timeout_list,
-                    )
-                except Exception:
-                    pass
-                self.page.wait_for_timeout(debounce_ms)
-                itens = self._coletar_itens_lista_vendedor()
-                self._atualizar_cache_matriculas_pap(itens)
-                for item in itens:
-                    mat_item = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
-                    if mat_item == matricula_norm:
-                        logger.info("[PAP] Vendedor selecionado na lista (crédito): %s", mat_item)
-                        item.click()
-                        self.page.wait_for_timeout(400)
-                        return True
-            except Exception as e:
-                logger.debug("[PAP] seleção lista crédito termo=%s: %s", termo_abrir, e)
+        itens = self._disparar_itens_lista_vendedor(matricula_norm)
+        self._atualizar_cache_matriculas_pap(itens)
+        for item in itens:
+            mat_item = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
+            if mat_item == matricula_norm:
+                logger.info("[PAP] Vendedor selecionado na lista (crédito): %s", mat_item)
+                item.click()
+                self.page.wait_for_timeout(400)
+                return True
         return False
 
     def _selecionar_vendedor_matricula_etapa1(self, matricula_vendedor: str) -> bool:
@@ -2580,39 +2612,11 @@ class PAPNioAutomation:
             if not ref_preenchido:
                 logger.warning("[PAP] Campo Referência não encontrado ou não preenchido - botão Avançar pode permanecer desabilitado")
 
-            self.page.wait_for_timeout(1500)
+            self._wait_etapa2_ms(350, 1500)
 
-            # 5b. Verificar se há complementos - a lista (ul/li) só aparece ao clicar no campo "Complemento"
-            inp_complemento = self.page.query_selector('input[placeholder*="omplemento"], input[placeholder*="Complemento"]')
-            if inp_complemento:
-                try:
-                    inp_complemento.click()
-                    self.page.wait_for_timeout(800)
-                    try:
-                        self.page.wait_for_selector('ul[class*="fQkuQJ"] li, ul[class*="cUdcXF"] li', state="visible", timeout=3000)
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-            for sel_comp in [
-                'ul.sc-fQkuQJ.cUdcXF li',
-                'ul[class*="fQkuQJ"] li',
-                'ul[class*="cUdcXF"] li',
-                'ul li.sc-epGmkI',
-                'input[placeholder*="omplemento"] ~ ul li',
-                'div:has(input[placeholder*="omplemento"]) ul li',
-            ]:
-                try:
-                    lis = self.page.query_selector_all(sel_comp)
-                    if len(lis) >= 1:
-                        complementos = [{'indice': i + 1, 'texto': li.inner_text().strip()} for i, li in enumerate(lis) if li.inner_text().strip()]
-                        if complementos:
-                            self.dados_pedido['cep'] = cep
-                            self.dados_pedido['numero'] = str(numero)
-                            self.dados_pedido['referencia'] = referencia
-                            return True, "Complementos encontrados. Escolha uma opção:", {'_codigo': 'COMPLEMENTOS', 'lista': complementos}
-                except Exception:
-                    continue
+            tratado = self._tratar_complementos_etapa2(cep, numero, referencia)
+            if tratado is not None:
+                return tratado
 
             # 6. Clicar Avançar e tratar modal
             return self._etapa2_clicar_avancar_e_tratar_modal(cep, numero, referencia)
@@ -2674,6 +2678,145 @@ class PAPNioAutomation:
             logger.error(f"[PAP] etapa2_modal_indisponivel_clicar_voltar: {e}")
             return False, str(e)
     
+    def _wait_etapa2_ms(self, rapido_ms: int, normal_ms: int) -> None:
+        if self.page:
+            self.page.wait_for_timeout(rapido_ms if self.optimize_for_credit else normal_ms)
+
+    def _seletores_lista_complemento(self) -> List[str]:
+        return [
+            'ul.sc-fQkuQJ.cUdcXF li',
+            'ul[class*="fQkuQJ"] li',
+            'ul[class*="cUdcXF"] li',
+            'ul li.sc-epGmkI',
+            'input[placeholder*="omplemento"] ~ ul li',
+            'div:has(input[placeholder*="omplemento"]) ul li',
+        ]
+
+    def _query_input_complemento(self):
+        if not self.page:
+            return None
+        return self.page.query_selector(
+            'input[placeholder*="omplemento"], input[placeholder*="Complemento"]'
+        )
+
+    def _valor_complemento_no_input(self) -> str:
+        inp = self._query_input_complemento()
+        if not inp or not inp.is_visible():
+            return ""
+        try:
+            return (inp.input_value() or "").strip()
+        except Exception:
+            return ""
+
+    def _complemento_ja_selecionado(self) -> Tuple[bool, str]:
+        val = self._valor_complemento_no_input()
+        if not val:
+            return False, ""
+        lower = val.lower()
+        if lower in ("complemento", "selecione", "selecionar", "opcional"):
+            return False, ""
+        return True, val
+
+    def _coletar_itens_complemento_visiveis(self) -> List[Any]:
+        if not self.page:
+            return []
+        for sel in self._seletores_lista_complemento():
+            try:
+                lis = self.page.query_selector_all(sel)
+                vis = [
+                    el for el in lis
+                    if el.is_visible() and (el.inner_text() or "").strip()
+                ]
+                if vis:
+                    return vis
+            except Exception:
+                continue
+        return []
+
+    def _abrir_dropdown_complemento_se_necessario(self) -> List[Any]:
+        itens = self._coletar_itens_complemento_visiveis()
+        if itens:
+            return itens
+        inp = self._query_input_complemento()
+        if not inp:
+            return []
+        try:
+            inp.click()
+            self._wait_etapa2_ms(250, 700)
+            try:
+                self.page.wait_for_selector(
+                    'ul[class*="fQkuQJ"] li, ul[class*="cUdcXF"] li',
+                    state="visible",
+                    timeout=1500 if self.optimize_for_credit else 3000,
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return self._coletar_itens_complemento_visiveis()
+
+    def _listar_complementos_dropdown(self) -> List[dict]:
+        itens = self._abrir_dropdown_complemento_se_necessario()
+        return [
+            {"indice": i + 1, "texto": (el.inner_text() or "").strip()}
+            for i, el in enumerate(itens)
+            if (el.inner_text() or "").strip()
+        ]
+
+    def _tratar_complementos_etapa2(
+        self, cep: str, numero: str, referencia: str
+    ) -> Optional[Tuple[bool, str, Optional[Any]]]:
+        """
+        Complemento já preenchido → Avançar direto.
+        Crédito: auto-seleciona opção 1 na mesma passagem (evita reabrir dropdown).
+        Venda: retorna COMPLEMENTOS para o usuário escolher.
+        """
+        ja, texto_ja = self._complemento_ja_selecionado()
+        if ja:
+            logger.info("[PAP] Complemento já preenchido (%r) — avançando", texto_ja)
+            return self._etapa2_clicar_avancar_e_tratar_modal(cep, numero, referencia)
+
+        complementos = self._listar_complementos_dropdown()
+        if not complementos:
+            return None
+
+        self.dados_pedido["cep"] = cep
+        self.dados_pedido["numero"] = str(numero)
+        self.dados_pedido["referencia"] = referencia
+
+        if self.optimize_for_credit:
+            ok, msg = self._selecionar_complemento_por_indice(1, itens_precarregados=True)
+            if ok:
+                return self._etapa2_clicar_avancar_e_tratar_modal(cep, numero, referencia)
+            return False, msg or "Falha ao selecionar complemento.", None
+
+        return True, "Complementos encontrados. Escolha uma opção:", {
+            "_codigo": "COMPLEMENTOS",
+            "lista": complementos,
+        }
+
+    def _selecionar_complemento_por_indice(
+        self, indice: int, itens_precarregados: bool = False
+    ) -> Tuple[bool, str]:
+        ja, texto = self._complemento_ja_selecionado()
+        if ja:
+            logger.info("[PAP] Complemento já selecionado (%r) — pulando clique", texto)
+            return True, "Complemento já selecionado."
+
+        if itens_precarregados:
+            vis = self._coletar_itens_complemento_visiveis()
+        else:
+            vis = self._abrir_dropdown_complemento_se_necessario()
+
+        if indice > 0 and indice <= len(vis):
+            texto_item = (vis[indice - 1].inner_text() or "").strip()
+            if texto_item:
+                vis[indice - 1].click()
+                self._wait_etapa2_ms(200, 500)
+                logger.info("[PAP] Complemento selecionado (índice %s): %r", indice, texto_item)
+                return True, "Complemento selecionado."
+        return False, "Índice de complemento inválido ou lista não encontrada."
+
     def etapa2_selecionar_sem_complemento(self) -> Tuple[bool, str]:
         """Marca 'Sem complemento' via check() (interação real) e força revalidação clicando no Avançar."""
         try:
@@ -2701,42 +2844,11 @@ class PAPNioAutomation:
     def etapa2_selecionar_complemento(self, indice: int) -> Tuple[bool, str]:
         """
         Seleciona um complemento da lista (ex.: Loja 1, Loja 2, Casa A).
-        Usa os mesmos seletores do fluxo vender (etapa2_viabilidade / etapa2_preencher_referencia).
         Args:
             indice: 1-based (1 = primeiro complemento)
         """
         try:
-            # Igual ao vender: abrir dropdown clicando no campo Complemento
-            inp_comp = self.page.query_selector('input[placeholder*="omplemento"], input[placeholder*="Complemento"]')
-            if inp_comp:
-                inp_comp.click()
-                self.page.wait_for_timeout(800)
-                try:
-                    self.page.wait_for_selector('ul[class*="fQkuQJ"] li, ul[class*="cUdcXF"] li', state="visible", timeout=3000)
-                except Exception:
-                    pass
-            # Mesmos seletores do vender (etapa2_viabilidade e _etapa2_preencher_referencia)
-            for sel_comp in [
-                'ul.sc-fQkuQJ.cUdcXF li',
-                'ul[class*="fQkuQJ"] li',
-                'ul[class*="cUdcXF"] li',
-                'ul li.sc-epGmkI',
-                'input[placeholder*="omplemento"] ~ ul li',
-                'div:has(input[placeholder*="omplemento"]) ul li',
-            ]:
-                try:
-                    lis = self.page.query_selector_all(sel_comp)
-                    vis = [el for el in lis if el.is_visible()]
-                    if indice > 0 and indice <= len(vis):
-                        texto = (vis[indice - 1].inner_text() or "").strip()
-                        if texto:
-                            vis[indice - 1].click()
-                            self.page.wait_for_timeout(600)
-                            logger.info(f"[PAP] Complemento selecionado (índice {indice}): {texto!r}")
-                            return True, "Complemento selecionado."
-                except Exception:
-                    continue
-            return False, "Índice de complemento inválido ou lista não encontrada."
+            return self._selecionar_complemento_por_indice(indice)
         except Exception as e:
             logger.error(f"[PAP] etapa2_selecionar_complemento: {e}")
             return False, str(e)
@@ -2758,7 +2870,11 @@ class PAPNioAutomation:
         """
         if indice_complemento < 1:
             return False, "Índice de complemento inválido (use 1, 2, 3…).", None
-        ok, msg_sel = self.etapa2_selecionar_complemento(indice_complemento)
+        ja, texto = self._complemento_ja_selecionado()
+        if ja:
+            logger.info("[PAP] Crédito: complemento já preenchido (%r) — só Avançar", texto)
+            return self.etapa2_clicar_avancar_apos_complemento(cep, numero)
+        ok, msg_sel = self._selecionar_complemento_por_indice(indice_complemento)
         if not ok:
             return False, msg_sel or "Falha ao selecionar complemento.", None
         return self.etapa2_clicar_avancar_apos_complemento(cep, numero)
@@ -2904,31 +3020,10 @@ class PAPNioAutomation:
                 self.page.wait_for_load_state("networkidle", timeout=2000)
             except Exception:
                 self.page.wait_for_timeout(500)
-            self.page.wait_for_timeout(400)
-            # Verificar complementos
-            inp_complemento = self.page.query_selector('input[placeholder*="omplemento"], input[placeholder*="Complemento"]')
-            if inp_complemento:
-                try:
-                    inp_complemento.click()
-                    self.page.wait_for_timeout(600)
-                except Exception:
-                    pass
-            for sel_comp in [
-                'ul.sc-fQkuQJ.cUdcXF li', 'ul[class*="fQkuQJ"] li', 'ul[class*="cUdcXF"] li',
-                'input[placeholder*="omplemento"] ~ ul li', 'div:has(input[placeholder*="omplemento"]) ul li',
-            ]:
-                try:
-                    lis = self.page.query_selector_all(sel_comp)
-                    vis = [el for el in lis if el.is_visible()]
-                    if len(vis) >= 1:
-                        complementos = [{'indice': i + 1, 'texto': li.inner_text().strip()} for i, li in enumerate(vis) if li.inner_text().strip()]
-                        if complementos:
-                            self.dados_pedido['cep'] = cep
-                            self.dados_pedido['numero'] = str(numero)
-                            self.dados_pedido['referencia'] = referencia
-                            return True, "Complementos encontrados. Escolha uma opção:", {'_codigo': 'COMPLEMENTOS', 'lista': complementos}
-                except Exception:
-                    continue
+            self._wait_etapa2_ms(250, 400)
+            tratado = self._tratar_complementos_etapa2(cep, numero, referencia)
+            if tratado is not None:
+                return tratado
             # Sem complementos: clicar Avançar
             return self._etapa2_clicar_avancar_e_tratar_modal(cep, numero, referencia)
         except Exception as e:

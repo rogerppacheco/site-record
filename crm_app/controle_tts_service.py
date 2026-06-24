@@ -107,11 +107,18 @@ def _mapa_uso_credito_hoje(matriculas: list[str]) -> dict[str, int]:
     hoje = timezone.localdate()
     if not matriculas:
         return {}
-    rows = ControleTTCreditoUsoDiario.objects.filter(
-        data=hoje,
-        matricula_vendedor__in=matriculas,
-    )
-    return {r.matricula_vendedor: r.consultas for r in rows}
+    try:
+        rows = ControleTTCreditoUsoDiario.objects.filter(
+            data=hoje,
+            matricula_vendedor__in=matriculas,
+        )
+        return {r.matricula_vendedor: r.consultas for r in rows}
+    except Exception as e:
+        logger.warning(
+            "[Controle TT] Tabela de uso diário indisponível (%s) — assumindo uso zero",
+            e,
+        )
+        return {}
 
 
 def obter_matricula_tt_para_credito_pap(
