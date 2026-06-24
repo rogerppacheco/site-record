@@ -618,6 +618,29 @@ def _run_django_sync(func, timeout_seconds: int = 120):
         )
 
 
+def _run_orm_returning(callable, timeout_seconds: int = 60):
+    """Executa callable ORM em thread dedicada e retorna o valor (após Playwright async context)."""
+    result: list = [None]
+    exc_holder: list = [None]
+
+    def worker() -> None:
+        try:
+            import django.db
+            django.db.close_old_connections()
+            result[0] = callable()
+        except Exception as e:
+            exc_holder[0] = e
+
+    t = threading.Thread(target=worker, name="orm-sync-returning")
+    t.start()
+    t.join(timeout=timeout_seconds)
+    if exc_holder[0]:
+        raise exc_holder[0]
+    if t.is_alive():
+        raise TimeoutError(f"_run_orm_returning expirou após {timeout_seconds}s")
+    return result[0]
+
+
 def _executar_analise_credito_background(telefone: str, usuario_id: int, documento: str, cpf_representante: str = None):
     """
     Thread: executa análise de crédito no PAP (login BO, viabilidade fixa, etapa3 CPF, etapa4 random).
@@ -750,9 +773,12 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         max_tentativas_tt = 5
         excluir_tt: set[str] = set()
         for tentativa_tt in range(1, max_tentativas_tt + 1):
-            matricula_pedido = obter_matricula_tt_para_credito_pap(
-                matricula_fallback,
-                excluir=excluir_tt,
+            # ORM após Playwright login exige thread dedicada (SynchronousOnlyOperation).
+            matricula_pedido = _run_orm_returning(
+                lambda fb=matricula_fallback, ex=set(excluir_tt): obter_matricula_tt_para_credito_pap(
+                    fb,
+                    excluir=ex,
+                )
             )
             logger.info(
                 "[CRÉDITO] TT distribuído (tentativa %s/%s): %s",
@@ -762,7 +788,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             )
             sucesso, msg = automacao.iniciar_novo_pedido(matricula_pedido)
             if sucesso:
-                registrar_uso_tt_credito(matricula_pedido)
+                _run_django_sync(
+                    lambda m=matricula_pedido: registrar_uso_tt_credito(m)
+                )
                 break
             msg_lower = (msg or "").lower()
             tt_indisponivel = (
@@ -776,7 +804,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                     "[CRÉDITO] TT %s indisponível no PAP; tentando outro da fila.",
                     matricula_pedido,
                 )
-                pular_tt_credito_indisponivel(matricula_pedido)
+                _run_django_sync(
+                    lambda m=matricula_pedido: pular_tt_credito_indisponivel(m)
+                )
                 excluir_tt.add(matricula_pedido)
                 continue
             break
