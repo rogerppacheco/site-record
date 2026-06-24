@@ -665,6 +665,7 @@ class OperadoraDetailView(generics.RetrieveUpdateDestroyAPIView):
 class PlanoListCreateView(generics.ListCreateAPIView):
     serializer_class = PlanoSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         queryset = Plano.objects.filter(ativo=True)

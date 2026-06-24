@@ -905,7 +905,7 @@
         if(tabName === 'status') carregarStatus();
         if(tabName === 'pendencias') carregarMotivosPendencia();
         if(tabName === 'operadoras') carregarOperadoras();
-        if(tabName === 'planos') carregarPlanos();
+        if(tabName === 'planos') { carregarOperadoras(); carregarPlanos(); }
         if(tabName === 'recebimento_operadora_tab') carregarComissoesOperadora();
         if(tabName === 'campanhas_tab') { carregarDadosAuxiliaresCampanha(); carregarCampanhas(); }
         if(tabName === 'tab-lista-feriados') carregarFeriados();
@@ -2303,14 +2303,21 @@
 
     // --- CADASTROS GERAIS ---
     async function carregarOperadoras() {
-        const res = await apiFetch('/crm/operadoras/');
-        const lista = Array.isArray(res) ? res : (res?.results || []);
-        const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
-        const selPlanos = document.getElementById('plano_operadora_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
-        lista.forEach(o => {
-            tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
-            if(o.ativo) selPlanos.add(new Option(o.nome, o.id));
-        });
+        try {
+            const res = await apiFetch('/crm/operadoras/');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
+            const selPlanos = document.getElementById('plano_operadora_id');
+            if (selPlanos) selPlanos.innerHTML = '<option value="">Selecione...</option>';
+            lista.forEach(o => {
+                tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
+                if(o.ativo && selPlanos) selPlanos.add(new Option(o.nome, o.id));
+            });
+        } catch (e) {
+            console.error('carregarOperadoras:', e);
+            const selPlanos = document.getElementById('plano_operadora_id');
+            if (selPlanos) selPlanos.innerHTML = '<option value="">Erro ao carregar operadoras</option>';
+        }
     }
     var formOperadora = document.getElementById('form-operadora');
     if (formOperadora) formOperadora.onsubmit = async(e) => {
@@ -2324,22 +2331,58 @@
     window.excluirOperadora = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`, {method:'DELETE'}); carregarOperadoras(); } };
 
     async function carregarPlanos() {
-        const res = await apiFetch('/crm/planos/');
-        const lista = Array.isArray(res) ? res : (res?.results || []);
-        const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
-        lista.forEach(p => {
-            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
-        });
+        try {
+            const res = await apiFetch('/crm/planos/?page_size=500');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
+            lista.forEach(p => {
+                const comissao = p.comissao_base != null ? p.comissao_base : (p.comissao != null ? p.comissao : 0);
+                tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
+            });
+        } catch (e) {
+            console.error('carregarPlanos:', e);
+            const tbody = document.getElementById('lista-planos');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">Erro ao carregar planos: ${e.message || e}</td></tr>`;
+        }
     }
     var formPlano = document.getElementById('form-plano');
     if (formPlano) formPlano.onsubmit = async(e) => {
         e.preventDefault();
+        const operadoraId = document.getElementById('plano_operadora_id').value;
+        if (!operadoraId) {
+            alert('Selecione uma operadora na lista (aba Operadoras → cadastre NIO se necessário).');
+            return;
+        }
         const id = document.getElementById('plano_id').value;
-        const body = { nome: document.getElementById('plano_nome').value, valor: document.getElementById('plano_valor').value, comissao: document.getElementById('plano_comissao').value, operadora: document.getElementById('plano_operadora_id').value, ativo: true };
-        await apiFetch(id ? `/crm/planos/${id}/` : '/crm/planos/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
-        document.getElementById('form-plano').reset(); document.getElementById('plano_id').value=''; carregarPlanos();
+        const body = {
+            nome: document.getElementById('plano_nome').value.trim(),
+            valor: document.getElementById('plano_valor').value,
+            comissao_base: document.getElementById('plano_comissao').value || 0,
+            operadora: operadoraId,
+            ativo: true,
+        };
+        if (!body.nome) {
+            alert('Informe o nome do plano.');
+            return;
+        }
+        try {
+            await apiFetch(id ? `/crm/planos/${id}/` : '/crm/planos/', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+            document.getElementById('form-plano').reset();
+            document.getElementById('plano_id').value = '';
+            await carregarOperadoras();
+            await carregarPlanos();
+            alert(id ? 'Plano atualizado com sucesso.' : 'Plano cadastrado com sucesso.');
+        } catch (err) {
+            alert('Erro ao salvar plano: ' + (err.message || err));
+        }
     };
-    window.editarPlano = (p) => { document.getElementById('plano_id').value = p.id; document.getElementById('plano_nome').value = p.nome; document.getElementById('plano_valor').value = p.valor; document.getElementById('plano_comissao').value = p.comissao; document.getElementById('plano_operadora_id').value = p.operadora; };
+    window.editarPlano = (p) => {
+        document.getElementById('plano_id').value = p.id;
+        document.getElementById('plano_nome').value = p.nome;
+        document.getElementById('plano_valor').value = p.valor;
+        document.getElementById('plano_comissao').value = p.comissao_base != null ? p.comissao_base : (p.comissao || '');
+        document.getElementById('plano_operadora_id').value = p.operadora;
+    };
     window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
 
     async function carregarFormasPagamento() {
