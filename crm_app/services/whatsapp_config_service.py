@@ -58,14 +58,32 @@ def _credenciais_n8n_ok() -> bool:
 
 
 def build_whatsapp_config_payload() -> Dict[str, Any]:
-    cfg = WhatsAppIntegracaoConfig.load()
-    provider = get_active_whatsapp_provider_name()
     env_default = (
         getattr(settings, "WHATSAPP_PROVIDER", None)
         or os.environ.get("WHATSAPP_PROVIDER", "zapi")
         or "zapi"
     ).strip().lower()
-    return {
+    cfg = None
+    provider = env_default
+    atualizado_em = None
+    atualizado_por = None
+    db_indisponivel = False
+
+    try:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        cfg = WhatsAppIntegracaoConfig.load()
+        provider = get_active_whatsapp_provider_name()
+        atualizado_em = cfg.atualizado_em.isoformat() if cfg.atualizado_em else None
+        if cfg.atualizado_por_id:
+            atualizado_por = (
+                cfg.atualizado_por.get_full_name() or cfg.atualizado_por.username
+            )
+    except Exception:
+        db_indisponivel = True
+
+    payload: Dict[str, Any] = {
         "provider": provider,
         "providerLabel": dict(WhatsAppIntegracaoConfig.PROVIDER_CHOICES).get(
             provider, provider
@@ -75,13 +93,16 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         "evolutionConfigured": _credenciais_evolution_ok(),
         "n8nConfigured": _credenciais_n8n_ok(),
         "envDefaultProvider": env_default,
-        "atualizadoEm": cfg.atualizado_em.isoformat() if cfg.atualizado_em else None,
-        "atualizadoPor": (
-            cfg.atualizado_por.get_full_name() or cfg.atualizado_por.username
-            if cfg.atualizado_por_id
-            else None
-        ),
+        "atualizadoEm": atualizado_em,
+        "atualizadoPor": atualizado_por,
     }
+    if db_indisponivel:
+        payload["dbIndisponivel"] = True
+        payload["aviso"] = (
+            "Banco temporariamente indisponível — exibindo último provedor conhecido "
+            "ou padrão do servidor. Tente salvar novamente em instantes."
+        )
+    return payload
 
 
 def set_whatsapp_provider(provider: str, user) -> WhatsAppIntegracaoConfig:

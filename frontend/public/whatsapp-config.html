@@ -158,6 +158,7 @@
                 `Evolution: ${cfgAtual.evolutionConfigured ? 'OK' : 'ausente'}`,
                 `n8n outbound: ${cfgAtual.n8nConfigured ? 'OK' : 'ausente (só afeta envios no modo Evolution)'}`,
             ];
+            if (cfgAtual.aviso) linhas.unshift(`<span class="text-warning">${cfgAtual.aviso}</span>`);
             if (cfgAtual.atualizadoEm) linhas.push(`Última alteração: ${new Date(cfgAtual.atualizadoEm).toLocaleString('pt-BR')}${cfgAtual.atualizadoPor ? ' por ' + cfgAtual.atualizadoPor : ''}`);
             document.getElementById('cfg-status-linhas').innerHTML = linhas.map(l => `<div>${l}</div>`).join('');
             document.getElementById('zapi-cred-status').innerHTML = cfgAtual.zapiConfigured

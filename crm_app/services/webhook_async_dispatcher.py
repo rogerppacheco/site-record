@@ -74,19 +74,7 @@ def _worker_processar(payload: Dict[str, Any], ctx: WebhookRequestContext) -> No
         django.db.close_old_connections()
 
 
-def despachar_webhook_whatsapp(data: Dict[str, Any], request: Any = None) -> None:
-    """
-    Enfileira no PostgreSQL (serviço webhook) ou processa em thread daemon local.
-    """
-    payload = copy.deepcopy(data)
-
-    if webhook_usa_fila_dedicada():
-        from crm_app.whatsapp_webhook_fila import enfileirar_webhook
-
-        enfileirar_webhook(payload, base_url=_base_url_de_request(request))
-        logger.info("[WebhookAsync] Enfileirado telefone=%s", _nome_thread(payload))
-        return
-
+def _despachar_em_thread(payload: Dict[str, Any], request: Any = None) -> None:
     ctx = WebhookRequestContext(request)
     thread = threading.Thread(
         target=_worker_processar,
@@ -95,7 +83,34 @@ def despachar_webhook_whatsapp(data: Dict[str, Any], request: Any = None) -> Non
         daemon=True,
     )
     thread.start()
-    logger.debug("[WebhookAsync] Despachado em thread %s", thread.name)
+    logger.info("[WebhookAsync] Despachado em thread %s", thread.name)
+
+
+def despachar_webhook_whatsapp(data: Dict[str, Any], request: Any = None) -> None:
+    """
+    Enfileira no PostgreSQL (serviço webhook) ou processa em thread daemon local.
+    Se a fila falhar (ex.: Postgres saturado), faz fallback para thread no web.
+    """
+    payload = copy.deepcopy(data)
+
+    if webhook_usa_fila_dedicada():
+        import django.db
+
+        django.db.close_old_connections()
+        try:
+            from crm_app.whatsapp_webhook_fila import enfileirar_webhook
+
+            enfileirar_webhook(payload, base_url=_base_url_de_request(request))
+            logger.info("[WebhookAsync] Enfileirado telefone=%s", _nome_thread(payload))
+            return
+        except Exception as exc:
+            logger.warning(
+                "[WebhookAsync] Fila indisponível (%s) — fallback para thread local",
+                exc,
+            )
+            django.db.close_old_connections()
+
+    _despachar_em_thread(payload, request)
 
 
 def webhook_deve_processar_assincrono() -> bool:
