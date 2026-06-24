@@ -115,7 +115,7 @@ if database_url:
     # Usar PostgreSQL (Railway)
     DATABASES['default'] = dj_database_url.parse(
         database_url,
-        conn_max_age=config('DB_CONN_MAX_AGE', default=120, cast=int),
+        conn_max_age=config('DB_CONN_MAX_AGE', default=0, cast=int),
         ssl_require=False
     )
     # PostgreSQL settings

@@ -19,4 +19,4 @@ docs/heroku_env.txt
 .playwright_state.json
 node_modules/
 *.zip
-staticfiles/
+# staticfiles/ gerado no build Docker (collectstatic) — não copiar do host

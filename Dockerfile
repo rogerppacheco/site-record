@@ -18,6 +18,12 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Instala Playwright e browsers
 RUN pip install playwright && playwright install
 
+# Arquivos estáticos (CSS/JS) — obrigatório para WhiteNoise em produção
+ENV DJANGO_SETTINGS_MODULE=gestao_equipes.settings
+ENV SECRET_KEY=build-collectstatic-only
+ENV DEBUG=False
+RUN python manage.py collectstatic --noinput --skip-checks
+
 # Comando de inicialização
 # NÃO usar --max-requests: recycle de worker mata threads daemon (Playwright no webhook).
 # Workers/threads via GUNICORN_WORKERS e GUNICORN_THREADS (default 2/2).
