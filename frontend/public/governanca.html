@@ -304,7 +304,25 @@
                 <div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'planos')">Planos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'formasPagamento')">Pagamentos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'status')">Status</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'pendencias')">Pendências</button></li></ul></div>
                     <div class="card-body">
                         <div id="operadoras" class="tab-content active"><form id="form-operadora" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="operadora_id"><div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="operadora_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">CNPJ</label><input type="text" class="form-control" id="operadora_cnpj"></div><div class="col-md-3"><label class="form-label fw-bold">Status</label><select id="operadora_status" class="form-select" required><option value="1">Ativo</option><option value="0">Inativo</option></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>CNPJ</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-operadoras"></tbody></table></div>
-                        <div id="planos" class="tab-content" style="display:none;"><form id="form-plano" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="plano_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div><div class="col-md-2"><label class="form-label fw-bold">Valor</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div><div class="col-md-2"><label class="form-label fw-bold">Comissão</label><input type="number" class="form-control" id="plano_comissao" step="0.01"></div><div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Comissão</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table></div>
+                        <div id="planos" class="tab-content" style="display:none;">
+                            <form id="form-plano" class="row g-3 mb-4 bg-light p-3 rounded border">
+                                <input type="hidden" id="plano_id">
+                                <div class="col-12"><h6 class="text-muted mb-0">Dados do plano</h6></div>
+                                <div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Valor mensal</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div>
+                                <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Salvar plano</button></div>
+                                <div class="col-12"><hr class="my-1"><h6 class="text-muted mb-0">Comissão e vínculo com regras de pagamento</h6></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Comissão PAP (CPF)</label><input type="number" class="form-control" id="plano_comissao_pap" step="0.01" placeholder="0,00"></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Comissão CNPJ</label><input type="number" class="form-control" id="plano_comissao_cnpj" step="0.01" placeholder="0,00"></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Banda (faixas)</label><select id="plano_banda_comissao" class="form-select"><option value="">Auto (pelo nome)</option><option value="500MB">500 MB</option><option value="700MB">700 MB</option><option value="1GB">1 GB</option><option value="PERSONALIZADO">Personalizado</option></select></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa por este plano"></div>
+                                <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_faixas" checked><label class="form-check-label" for="plano_propagar_faixas">Propagar faixas</label></div></div>
+                                <div class="col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="plano_propagar_vendedores" checked><label class="form-check-label" for="plano_propagar_vendedores">Propagar vendedores</label></div></div>
+                                <div class="col-12"><small class="text-muted">Ao salvar, os valores são vinculados ao plano e propagados para <strong>Regras por Faixa</strong> (coluna da banda) e <strong>Regras por Vendedor</strong> (override por plano), quando as opções acima estiverem marcadas.</small></div>
+                            </form>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>PAP</th><th>CNPJ</th><th>Banda</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
+                        </div>
                         <div id="formasPagamento" class="tab-content" style="display:none;"><div class="input-group mb-3"><input type="text" id="nova-forma-pagamento-nome" placeholder="Nova Forma (Ex: PIX)" class="form-control"><button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button></div><ul id="lista-formas-pagamento" class="list-group"></ul></div>
                         <div id="status" class="tab-content" style="display:none;"><form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="status_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div><div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table></div>
                         <div id="pendencias" class="tab-content" style="display:none;"><form id="form-pendencia" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="pendencia_id"><div class="col-md-6"><label class="form-label fw-bold">Motivo</label><input type="text" class="form-control" id="pendencia_nome" required></div><div class="col-md-4"><label class="form-label fw-bold">Tipo</label><input type="text" class="form-control" id="pendencia_tipo" placeholder="Ex: Documentação" required></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead><tbody id="lista-pendencias"></tbody></table></div>
@@ -2336,13 +2354,16 @@
             const lista = Array.isArray(res) ? res : (res?.results || []);
             const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
             lista.forEach(p => {
-                const comissao = p.comissao_base != null ? p.comissao_base : (p.comissao != null ? p.comissao : 0);
-                tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
+                const vc = p.valores_comissao || {};
+                const pap = vc.valor_pap != null ? vc.valor_pap : (p.comissao_base != null ? p.comissao_base : 0);
+                const cnpj = vc.valor_cnpj != null ? vc.valor_cnpj : '—';
+                const banda = vc.banda_comissao || '—';
+                tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(pap)}</td><td>${cnpj === '—' ? cnpj : fmtMoeda(cnpj)}</td><td>${banda}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
             });
         } catch (e) {
             console.error('carregarPlanos:', e);
             const tbody = document.getElementById('lista-planos');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">Erro ao carregar planos: ${e.message || e}</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">Erro ao carregar planos: ${e.message || e}</td></tr>`;
         }
     }
     var formPlano = document.getElementById('form-plano');
@@ -2354,13 +2375,25 @@
             return;
         }
         const id = document.getElementById('plano_id').value;
+        const valorPap = document.getElementById('plano_comissao_pap').value;
+        const valorCnpj = document.getElementById('plano_comissao_cnpj').value;
+        const bandaSel = document.getElementById('plano_banda_comissao').value;
         const body = {
             nome: document.getElementById('plano_nome').value.trim(),
             valor: document.getElementById('plano_valor').value,
-            comissao_base: document.getElementById('plano_comissao').value || 0,
+            comissao_base: valorPap || 0,
             operadora: operadoraId,
             ativo: true,
+            valores_comissao: {
+                valor_pap: valorPap || null,
+                valor_cnpj: valorCnpj || null,
+                propagar_faixas: document.getElementById('plano_propagar_faixas').checked,
+                propagar_vendedores: document.getElementById('plano_propagar_vendedores').checked,
+            },
         };
+        if (bandaSel) body.valores_comissao.banda_comissao = bandaSel;
+        const recvOp = document.getElementById('plano_receb_operadora').value;
+        if (recvOp !== '') body.recebimento_operadora_base = recvOp;
         if (!body.nome) {
             alert('Informe o nome do plano.');
             return;
@@ -2371,16 +2404,22 @@
             document.getElementById('plano_id').value = '';
             await carregarOperadoras();
             await carregarPlanos();
-            alert(id ? 'Plano atualizado com sucesso.' : 'Plano cadastrado com sucesso.');
+            alert(id ? 'Plano atualizado. Valores propagados conforme opções marcadas.' : 'Plano cadastrado. Valores vinculados às regras de comissão.');
         } catch (err) {
             alert('Erro ao salvar plano: ' + (err.message || err));
         }
     };
     window.editarPlano = (p) => {
+        const vc = p.valores_comissao || {};
         document.getElementById('plano_id').value = p.id;
         document.getElementById('plano_nome').value = p.nome;
         document.getElementById('plano_valor').value = p.valor;
-        document.getElementById('plano_comissao').value = p.comissao_base != null ? p.comissao_base : (p.comissao || '');
+        document.getElementById('plano_comissao_pap').value = vc.valor_pap != null ? vc.valor_pap : (p.comissao_base != null ? p.comissao_base : '');
+        document.getElementById('plano_comissao_cnpj').value = vc.valor_cnpj != null ? vc.valor_cnpj : '';
+        document.getElementById('plano_banda_comissao').value = vc.banda_comissao && vc.banda_comissao !== 'PERSONALIZADO' ? vc.banda_comissao : (vc.banda_comissao === 'PERSONALIZADO' ? 'PERSONALIZADO' : '');
+        document.getElementById('plano_receb_operadora').value = p.comissao_operadora_valor != null ? p.comissao_operadora_valor : '';
+        document.getElementById('plano_propagar_faixas').checked = vc.propagar_faixas !== false;
+        document.getElementById('plano_propagar_vendedores').checked = vc.propagar_vendedores !== false;
         document.getElementById('plano_operadora_id').value = p.operadora;
     };
     window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };

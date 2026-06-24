@@ -33,6 +33,48 @@ class Plano(models.Model):
         verbose_name = "Plano"
         verbose_name_plural = "Planos"
 
+
+class PlanoValoresComissao(models.Model):
+    """Valores de pagamento de comissão vinculados ao plano (propagação para faixas e vendedores)."""
+    BANDA_CHOICES = [
+        ('500MB', '500 MB'),
+        ('700MB', '700 MB'),
+        ('1GB', '1 GB'),
+        ('PERSONALIZADO', 'Personalizado'),
+    ]
+    plano = models.OneToOneField(
+        Plano, on_delete=models.CASCADE, related_name='valores_comissao',
+    )
+    banda_comissao = models.CharField(
+        max_length=20, choices=BANDA_CHOICES, default='PERSONALIZADO',
+        verbose_name='Banda nas regras de faixa',
+    )
+    valor_pap = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Comissão PAP (CPF)',
+    )
+    valor_cnpj = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Comissão CNPJ',
+    )
+    propagar_faixas = models.BooleanField(
+        default=True,
+        help_text='Atualiza colunas da banda em Regras por Faixa (COMISSÃO).',
+    )
+    propagar_vendedores = models.BooleanField(
+        default=True,
+        help_text='Cria/atualiza vínculo por plano em cada config de vendedor.',
+    )
+
+    class Meta:
+        db_table = 'crm_plano_valores_comissao'
+        verbose_name = 'Valores de comissão do plano'
+        verbose_name_plural = 'Valores de comissão dos planos'
+
+    def __str__(self) -> str:
+        return f'Comissão {self.plano.nome}'
+
+
 class FormaPagamento(models.Model):
     nome = models.CharField(max_length=100, unique=True)
     ativo = models.BooleanField(default=True)
@@ -1136,6 +1178,33 @@ class ConfigComissaoVendedor(models.Model):
     def __str__(self):
         ref = f" {self.ano}/{self.mes}" if self.ano and self.mes else ""
         return f"Config comissão: {self.usuario.username}{ref}"
+
+
+class PlanoValoresComissaoVendedor(models.Model):
+    """Override de comissão por plano na config do vendedor (além das colunas fixas por banda)."""
+    config = models.ForeignKey(
+        ConfigComissaoVendedor, on_delete=models.CASCADE,
+        related_name='valores_por_plano',
+    )
+    plano = models.ForeignKey(
+        Plano, on_delete=models.CASCADE, related_name='valores_vendedor',
+    )
+    valor_pap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_cnpj = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_plano_valores_comissao_vendedor'
+        verbose_name = 'Comissão plano × vendedor'
+        verbose_name_plural = 'Comissões plano × vendedor'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['config', 'plano'],
+                name='crm_plano_valores_comissao_vendedor_uniq',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.plano.nome} — {self.config}'
 
 
 class Comunicado(models.Model):

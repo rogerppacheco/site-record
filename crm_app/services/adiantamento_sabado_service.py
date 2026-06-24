@@ -436,7 +436,7 @@ def valor_alvo_adiantamento_sabado_folha(
     if not chave:
         return None
     if usar_manual:
-        return get_valor_manual(config, chave)
+        return get_valor_manual(config, chave, venda.plano)
     if not faixa_regra:
         return None
     return get_valor_from_faixa(faixa_regra, chave)

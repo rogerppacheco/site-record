@@ -140,7 +140,14 @@ def carregar_valores_adiantamento_esteira_lancamentos(vendedor_id: int | None = 
 
 
 def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
-    """Valor por venda conforme primeira faixa COMISSAO ou fallback plano.comissao_base."""
+    """Valor por venda: plano vinculado → faixa COMISSÃO → comissao_base."""
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.services.plano_comissao_service import get_valor_comissao_plano
+
+    if venda.plano:
+        v_plano = get_valor_comissao_plano(venda.plano, tipo_cliente_comissao(venda))
+        if v_plano is not None:
+            return v_plano
     if faixa_adiantamento and chave:
         v = get_valor_from_faixa(faixa_adiantamento, chave)
         if v is not None:
@@ -298,8 +305,13 @@ def _agrupar_lancamentos_bulk(usuario_ids, data_inicio, data_fim):
     return dict(grupos)
 
 
-def get_valor_manual(config, chave):
-    """Retorna o valor manual da config do vendedor para a chave."""
+def get_valor_manual(config, chave, plano=None):
+    """Retorna o valor manual da config do vendedor para a chave (plano tem prioridade)."""
+    if plano and config and chave:
+        from crm_app.services.plano_comissao_service import get_valor_manual_plano
+        v_plano = get_valor_manual_plano(config, plano, chave)
+        if v_plano is not None:
+            return v_plano
     if not config or not chave:
         return None
     m = {
@@ -406,7 +418,7 @@ def valor_comissao_linha_extrato(
 
     if churn_m1:
         if usar_manual:
-            vu = get_valor_manual(config, chave)
+            vu = get_valor_manual(config, chave, venda.plano)
         else:
             vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
         base = 'churn'
@@ -423,7 +435,7 @@ def valor_comissao_linha_extrato(
                 label = f'{label} (ajuste rebaixa faixa)'
             return val_adiant, label, base
         if usar_manual:
-            vu = get_valor_manual(config, chave)
+            vu = get_valor_manual(config, chave, venda.plano)
         else:
             vu = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
         if vu is not None:
@@ -712,7 +724,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             if not chave:
                 continue
             if usar_manual:
-                valor_unit = get_valor_manual(config, chave)
+                valor_unit = get_valor_manual(config, chave, v.plano)
             else:
                 valor_unit = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
             valor_unit = valor_unit if valor_unit is not None else 0
@@ -860,7 +872,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             if not chave:
                 continue
             if usar_manual:
-                valor_unit = get_valor_manual(config, chave)
+                valor_unit = get_valor_manual(config, chave, v.plano)
             else:
                 valor_unit = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
@@ -881,7 +893,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             if not chave:
                 continue
             if usar_manual:
-                valor_unit = get_valor_manual(config, chave)
+                valor_unit = get_valor_manual(config, chave, v.plano)
             else:
                 valor_unit = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')

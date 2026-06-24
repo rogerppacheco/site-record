@@ -3,7 +3,7 @@ from rest_framework import serializers
 from django.db import transaction
 import re
 from .models import (
-    Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
+    Operadora, Plano, PlanoValoresComissao, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
@@ -30,11 +30,74 @@ class OperadoraSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class PlanoValoresComissaoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlanoValoresComissao
+        fields = [
+            'banda_comissao', 'valor_pap', 'valor_cnpj',
+            'propagar_faixas', 'propagar_vendedores',
+        ]
+
+
 class PlanoSerializer(serializers.ModelSerializer):
     operadora_nome = serializers.CharField(source='operadora.nome', read_only=True)
+    valores_comissao = PlanoValoresComissaoSerializer(required=False)
+    recebimento_operadora_base = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True, write_only=True,
+    )
+    comissao_operadora_valor = serializers.SerializerMethodField()
+
     class Meta:
         model = Plano
-        fields = '__all__'
+        fields = [
+            'id', 'nome', 'valor', 'operadora', 'operadora_nome', 'beneficios', 'ativo',
+            'comissao_base', 'valores_comissao', 'recebimento_operadora_base',
+            'comissao_operadora_valor',
+        ]
+
+    def get_comissao_operadora_valor(self, obj: Plano):
+        try:
+            return obj.comissao_operadora.valor_base
+        except ComissaoOperadora.DoesNotExist:
+            return None
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        try:
+            rep['valores_comissao'] = PlanoValoresComissaoSerializer(
+                instance.valores_comissao,
+            ).data
+        except PlanoValoresComissao.DoesNotExist:
+            rep['valores_comissao'] = None
+        return rep
+
+    def create(self, validated_data):
+        valores_data = validated_data.pop('valores_comissao', None)
+        recebimento = validated_data.pop('recebimento_operadora_base', None)
+        plano = Plano.objects.create(**validated_data)
+        from crm_app.services.plano_comissao_service import configurar_comissao_plano
+        configurar_comissao_plano(
+            plano,
+            valores_data,
+            recebimento_operadora_base=recebimento,
+        )
+        return plano
+
+    def update(self, instance, validated_data):
+        valores_data = validated_data.pop('valores_comissao', None)
+        recebimento = validated_data.pop('recebimento_operadora_base', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if valores_data is not None or recebimento is not None:
+            from crm_app.services.plano_comissao_service import configurar_comissao_plano
+            configurar_comissao_plano(
+                instance,
+                valores_data,
+                recebimento_operadora_base=recebimento,
+                sincronizar_operadora=recebimento is not None,
+            )
+        return instance
 
 class FormaPagamentoSerializer(serializers.ModelSerializer):
     class Meta:

@@ -668,14 +668,16 @@ class PlanoListCreateView(generics.ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Plano.objects.filter(ativo=True)
+        queryset = Plano.objects.filter(ativo=True).select_related(
+            'operadora', 'valores_comissao', 'comissao_operadora',
+        )
         operadora_id = self.request.query_params.get('operadora')
         if operadora_id:
             queryset = queryset.filter(operadora_id=operadora_id)
         return queryset
 
 class PlanoDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Plano.objects.all()
+    queryset = Plano.objects.select_related('operadora', 'valores_comissao', 'comissao_operadora')
     serializer_class = PlanoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
