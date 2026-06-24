@@ -9,7 +9,10 @@ from crm_app.whatsapp_webhook_normalizer import (
     detectar_provedor,
     normalizar_webhook,
 )
-from crm_app.services.whatsapp.factory import get_whatsapp_provider
+from crm_app.services.whatsapp.factory import (
+    clear_whatsapp_provider_cache,
+    get_whatsapp_provider,
+)
 from crm_app.services.whatsapp.zapi_provider import ZapiProvider
 from crm_app.services.whatsapp.n8n_outbound_provider import N8nOutboundProvider
 from crm_app.services.whatsapp.evolution_provider import EvolutionProvider
@@ -76,7 +79,7 @@ class TestWebhookNormalizer(SimpleTestCase):
 
 class TestProviderFactory(SimpleTestCase):
     def tearDown(self) -> None:
-        get_whatsapp_provider.cache_clear()
+        clear_whatsapp_provider_cache()
 
     @override_settings(WHATSAPP_PROVIDER="zapi")
     @patch(
@@ -84,7 +87,7 @@ class TestProviderFactory(SimpleTestCase):
         return_value="zapi",
     )
     def test_factory_zapi(self, _mock_provider: object) -> None:
-        get_whatsapp_provider.cache_clear()
+        clear_whatsapp_provider_cache()
         self.assertIsInstance(get_whatsapp_provider(), ZapiProvider)
 
     @override_settings(WHATSAPP_PROVIDER="evolution")
@@ -93,7 +96,16 @@ class TestProviderFactory(SimpleTestCase):
         return_value="evolution",
     )
     def test_factory_evolution(self, _mock_provider: object) -> None:
-        get_whatsapp_provider.cache_clear()
+        clear_whatsapp_provider_cache()
+        self.assertIsInstance(get_whatsapp_provider(), N8nOutboundProvider)
+
+    @patch(
+        "crm_app.services.whatsapp_config_service.get_active_whatsapp_provider_name",
+        side_effect=["zapi", "evolution"],
+    )
+    def test_factory_atualiza_quando_provedor_muda(self, _mock_provider: object) -> None:
+        clear_whatsapp_provider_cache()
+        self.assertIsInstance(get_whatsapp_provider(), ZapiProvider)
         self.assertIsInstance(get_whatsapp_provider(), N8nOutboundProvider)
 
 

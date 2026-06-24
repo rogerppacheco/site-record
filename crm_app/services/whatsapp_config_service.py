@@ -30,9 +30,9 @@ def get_active_whatsapp_provider_name() -> str:
 
 
 def clear_whatsapp_provider_cache() -> None:
-    from crm_app.services.whatsapp.factory import get_whatsapp_provider
+    from crm_app.services.whatsapp.factory import clear_whatsapp_provider_cache as _clear
 
-    get_whatsapp_provider.cache_clear()
+    _clear()
 
 
 def _credenciais_zapi_ok() -> bool:
