@@ -293,6 +293,7 @@ class PAPNioAutomation:
         self.sessao_iniciada = False
         self._pap_slot_held = False  # slot do semáforo global (liberar mesmo se login falhar antes de sessao_iniciada)
         self._trace_started = False  # Trace Playwright para inspecionar cliques em produção
+        self._cache_matriculas_pap_dropdown: List[str] = []
 
         # Storage state para manter cookies
         self.storage_state_path = os.path.join(
@@ -1954,45 +1955,120 @@ class PAPNioAutomation:
                 continue
         return []
 
+    def _matriculas_de_itens_vendedor(self, itens: List[Any]) -> List[str]:
+        """Extrai matrículas TT dos itens visíveis do dropdown."""
+        encontradas: List[str] = []
+        vistos: set[str] = set()
+        for item in itens:
+            mat = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
+            if mat and mat not in vistos:
+                vistos.add(mat)
+                encontradas.append(mat)
+        return encontradas
+
+    def _atualizar_cache_matriculas_pap(self, itens: List[Any]) -> List[str]:
+        """Guarda matrículas vistas no dropdown para o fluxo de crédito."""
+        mats = self._matriculas_de_itens_vendedor(itens)
+        if mats:
+            self._cache_matriculas_pap_dropdown = mats
+        return mats
+
+    def obter_cache_matriculas_pap_dropdown(self) -> List[str]:
+        return list(self._cache_matriculas_pap_dropdown or [])
+
+    def _abrir_dropdown_vendedor_e_coletar(self) -> List[str]:
+        """Abre o autocomplete de vendedor e coleta matrículas visíveis no PDV."""
+        if not self.page:
+            return []
+        rapido = self.optimize_for_credit
+        debounce_ms = 1000 if rapido else 1200
+        timeout_list = 10000 if rapido else 12000
+        encontradas: List[str] = []
+        vistos: set[str] = set()
+        termos = ("T", "TT", "4", "7", "A")
+        for termo in termos:
+            try:
+                matricula_input = self._query_matricula_vendedor_input()
+                if not matricula_input:
+                    continue
+                matricula_input.click()
+                matricula_input.fill("")
+                self.page.wait_for_timeout(250)
+                matricula_input.press_sequentially(termo, delay=80)
+                try:
+                    self.page.wait_for_selector(
+                        '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
+                        state="visible",
+                        timeout=timeout_list,
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(debounce_ms)
+                itens = self._coletar_itens_lista_vendedor()
+                for mat in self._matriculas_de_itens_vendedor(itens):
+                    if mat not in vistos:
+                        vistos.add(mat)
+                        encontradas.append(mat)
+                if len(encontradas) >= 5:
+                    break
+            except Exception as e:
+                logger.debug("[PAP] abrir dropdown vendedor termo=%s: %s", termo, e)
+        if encontradas:
+            self._cache_matriculas_pap_dropdown = encontradas
+        return encontradas
+
     def listar_matriculas_vendedor_no_pap(self) -> List[str]:
         """
         Lê matrículas disponíveis no autocomplete de vendedor do PDV logado.
         Usado no crédito para não escolher TT da OSAB que não existem neste portal.
         """
-        if not self.page:
-            return []
-        matricula_input = self._query_matricula_vendedor_input()
-        if not matricula_input:
-            return []
+        if self._cache_matriculas_pap_dropdown:
+            return list(self._cache_matriculas_pap_dropdown)
+        if self.page:
+            self.page.wait_for_timeout(800)
+        encontradas = self._abrir_dropdown_vendedor_e_coletar()
+        logger.info("[PAP] Matrículas no dropdown vendedor deste PDV: %s", len(encontradas))
+        if encontradas:
+            logger.info("[PAP] Amostra vendedores PDV: %s", encontradas[:10])
+        return encontradas
+
+    def _selecionar_vendedor_clicando_na_lista_aberta(self, matricula_norm: str) -> bool:
+        """Crédito: abre lista ampla do PDV e clica no item da matrícula exata."""
+        if not self.page or not matricula_norm:
+            return False
         rapido = self.optimize_for_credit
-        debounce_ms = 600 if rapido else 900
-        delay_tecla = 70 if rapido else 110
-        encontradas: List[str] = []
-        vistos: set[str] = set()
-        for termo in ("TT", "77", "65"):
+        debounce_ms = 1000 if rapido else 1200
+        timeout_list = 10000 if rapido else 12000
+        for termo_abrir in ("T", "TT", "4"):
             try:
+                matricula_input = self._query_matricula_vendedor_input()
+                if not matricula_input:
+                    return False
                 matricula_input.click()
                 matricula_input.fill("")
-                self.page.wait_for_timeout(150)
-                matricula_input.press_sequentially(termo, delay=delay_tecla)
+                self.page.wait_for_timeout(250)
+                matricula_input.press_sequentially(termo_abrir, delay=80)
                 try:
                     self.page.wait_for_selector(
                         '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
                         state="visible",
-                        timeout=5000 if rapido else 8000,
+                        timeout=timeout_list,
                     )
                 except Exception:
                     pass
                 self.page.wait_for_timeout(debounce_ms)
-                for item in self._coletar_itens_lista_vendedor():
-                    mat = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
-                    if mat and mat not in vistos:
-                        vistos.add(mat)
-                        encontradas.append(mat)
+                itens = self._coletar_itens_lista_vendedor()
+                self._atualizar_cache_matriculas_pap(itens)
+                for item in itens:
+                    mat_item = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
+                    if mat_item == matricula_norm:
+                        logger.info("[PAP] Vendedor selecionado na lista (crédito): %s", mat_item)
+                        item.click()
+                        self.page.wait_for_timeout(400)
+                        return True
             except Exception as e:
-                logger.debug("[PAP] listar vendedores termo=%s: %s", termo, e)
-        logger.info("[PAP] Matrículas no dropdown vendedor deste PDV: %s", len(encontradas))
-        return encontradas
+                logger.debug("[PAP] seleção lista crédito termo=%s: %s", termo_abrir, e)
+        return False
 
     def _selecionar_vendedor_matricula_etapa1(self, matricula_vendedor: str) -> bool:
         """
@@ -2001,6 +2077,11 @@ class PAPNioAutomation:
         matricula_input = self._query_matricula_vendedor_input()
         if not matricula_input or not self.page:
             return False
+
+        matricula_norm = (matricula_vendedor or "").strip().upper()
+        if self.optimize_for_credit and matricula_norm:
+            if self._selecionar_vendedor_clicando_na_lista_aberta(matricula_norm):
+                return True
 
         rapido = self.optimize_for_credit
         debounce_ms = 600 if rapido else 900
@@ -2199,20 +2280,28 @@ class PAPNioAutomation:
         btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
         if not btn_avancar:
             lista_items = self._coletar_itens_lista_vendedor()
+            mats_visiveis = self._atualizar_cache_matriculas_pap(lista_items)
             try:
                 n_li = len(lista_items)
                 amostras = [(i.inner_text() or "")[:80] for i in lista_items[:5]]
                 logger.warning(
-                    "[PAP] Etapa1 sem botão Avançar. matricula=%s selecionou=%s n_li=%s amostras=%s",
+                    "[PAP] Etapa1 sem botão Avançar. matricula=%s selecionou=%s n_li=%s cache=%s amostras=%s",
                     matricula_vendedor,
                     selecionou_vendedor,
                     n_li,
+                    len(mats_visiveis),
                     amostras,
                 )
             except Exception as log_e:
                 logger.warning("[PAP] Etapa1 sem botão Avançar (log lista falhou): %s", log_e)
             self._capture_screenshot_falha_etapa1("01_err_sem_bot_avancar_apos_vendedor", wait_selector=None, wait_timeout_ms=0)
             if not selecionou_vendedor:
+                if self.optimize_for_credit and mats_visiveis:
+                    return (
+                        False,
+                        f"Matrícula {matricula_vendedor} não está entre os {len(mats_visiveis)} "
+                        "vendedores deste PDV.",
+                    )
                 return (
                     False,
                     f"Matrícula {matricula_vendedor} não encontrada no PAP deste PDV. "

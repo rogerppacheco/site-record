@@ -770,7 +770,6 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         sucesso = False
         msg = ""
         t0 = time.time()
-        max_tentativas_tt = 5
         excluir_tt: set[str] = set()
 
         ok_prep, msg_prep = automacao._preparar_novo_pedido_etapa1()
@@ -786,16 +785,34 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             return
 
         matriculas_pap = automacao.listar_matriculas_vendedor_no_pap()
-        candidatos_pap = matriculas_pap if matriculas_pap else None
+        if not matriculas_pap:
+            matriculas_pap = automacao.listar_matriculas_vendedor_no_pap()
+        if not matriculas_pap:
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, "Lista de vendedores do PAP vazia")
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                "❌ Não foi possível carregar os vendedores deste PDV no PAP.\n\n"
+                "Digite *CRÉDITO* para tentar novamente.",
+            )
+            _resetar_sessao_credito(telefone)
+            return
+
+        candidatos_pap = list(matriculas_pap)
+        max_tentativas_tt = min(max(5, len(candidatos_pap)), 10)
         logger.info(
-            "[CRÉDITO] Vendedores no PAP deste PDV: %s matrícula(s)%s",
-            len(matriculas_pap),
-            f" — amostra: {matriculas_pap[:8]}" if matriculas_pap else " — fallback OSAB",
+            "[CRÉDITO] Vendedores no PAP deste PDV: %s matrícula(s) — amostra: %s",
+            len(candidatos_pap),
+            candidatos_pap[:8],
         )
 
         for tentativa_tt in range(1, max_tentativas_tt + 1):
+            cache_pap = automacao.obter_cache_matriculas_pap_dropdown()
+            if cache_pap:
+                candidatos_pap = cache_pap
             matricula_pedido = _run_orm_returning(
-                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=candidatos_pap: obter_matricula_tt_para_credito_pap(
+                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=list(candidatos_pap): obter_matricula_tt_para_credito_pap(
                     fb,
                     excluir=ex,
                     candidatos=cand,
@@ -817,6 +834,8 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             tt_indisponivel = (
                 "não encontrada no pap" in msg_lower
                 or "nao encontrada no pap" in msg_lower
+                or "não está entre os" in msg_lower
+                or "nao esta entre os" in msg_lower
                 or "não foi possível selecionar o vendedor" in msg_lower
                 or "nao foi possivel selecionar o vendedor" in msg_lower
             )
