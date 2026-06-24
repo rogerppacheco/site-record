@@ -1921,6 +1921,13 @@ class PAPNioAutomation:
             or "nao encontr" in t
         )
 
+    def _extrair_matricula_de_item_vendedor(self, texto: str) -> Optional[str]:
+        """Extrai TT123456 do texto exibido no dropdown de vendedor."""
+        if not texto:
+            return None
+        match = re.search(r"\b(TT\d+)\b", texto.strip(), re.I)
+        return match.group(1).upper() if match else None
+
     def _coletar_itens_lista_vendedor(self) -> List[Any]:
         """Itens visíveis do dropdown de vendedor (evita pegar <li> aleatórios da página)."""
         if not self.page:
@@ -1946,6 +1953,46 @@ class PAPNioAutomation:
             except Exception:
                 continue
         return []
+
+    def listar_matriculas_vendedor_no_pap(self) -> List[str]:
+        """
+        Lê matrículas disponíveis no autocomplete de vendedor do PDV logado.
+        Usado no crédito para não escolher TT da OSAB que não existem neste portal.
+        """
+        if not self.page:
+            return []
+        matricula_input = self._query_matricula_vendedor_input()
+        if not matricula_input:
+            return []
+        rapido = self.optimize_for_credit
+        debounce_ms = 600 if rapido else 900
+        delay_tecla = 70 if rapido else 110
+        encontradas: List[str] = []
+        vistos: set[str] = set()
+        for termo in ("TT", "77", "65"):
+            try:
+                matricula_input.click()
+                matricula_input.fill("")
+                self.page.wait_for_timeout(150)
+                matricula_input.press_sequentially(termo, delay=delay_tecla)
+                try:
+                    self.page.wait_for_selector(
+                        '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
+                        state="visible",
+                        timeout=5000 if rapido else 8000,
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(debounce_ms)
+                for item in self._coletar_itens_lista_vendedor():
+                    mat = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
+                    if mat and mat not in vistos:
+                        vistos.add(mat)
+                        encontradas.append(mat)
+            except Exception as e:
+                logger.debug("[PAP] listar vendedores termo=%s: %s", termo, e)
+        logger.info("[PAP] Matrículas no dropdown vendedor deste PDV: %s", len(encontradas))
+        return encontradas
 
     def _selecionar_vendedor_matricula_etapa1(self, matricula_vendedor: str) -> bool:
         """
@@ -2012,6 +2059,177 @@ class PAPNioAutomation:
             or "auditoria de pedido" in pagina_lower
         )
 
+    def _preparar_novo_pedido_etapa1(self) -> Tuple[bool, str]:
+        """Navega até o formulário da etapa 1 com o campo de vendedor visível."""
+        modo_rapido_credito = self.optimize_for_credit
+        ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+        if not ok_sessao:
+            return False, msg_sessao
+
+        if self.capture_screenshots:
+            self._capture_screenshot("01a_antes_novo_pedido", wait_selector=None, wait_timeout_ms=0)
+
+        try:
+            self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            logger.warning(f"[PAP] goto domcontentloaded: {e}, tentando load...")
+            self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=30000)
+        self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=6000)
+        except Exception:
+            try:
+                self.page.wait_for_load_state("load", timeout=20000)
+            except Exception:
+                pass
+
+        url_atual = self.page.url
+        if "pap.niointernet.com.br" in (url_atual or "") and "novo-pedido" not in (url_atual or "").lower():
+            logger.info(f"[PAP] URL sem novo-pedido ({url_atual[:80]}...), tentando menu lateral.")
+            self._clicar_menu_novo_pedido()
+            self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
+            url_atual = self.page.url
+        login_form = (
+            self.page.query_selector('#inputMatricula') or
+            self.page.query_selector('#passwordInput') or
+            self.page.query_selector('input[placeholder*="Login"]') or
+            self.page.query_selector('input[type="password"]')
+        )
+        precisa_login = (
+            "login.vtal.com" in url_atual or
+            ("login" in url_atual.lower() and "pap.niointernet.com.br" not in url_atual) or
+            login_form
+        )
+        if precisa_login:
+            sucesso, msg = self._fazer_login()
+            if not sucesso:
+                self._capture_screenshot_falha_etapa1("01_err_login_pap", wait_selector=None, wait_timeout_ms=0)
+                return False, msg
+            self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
+            self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
+            url_atual = self.page.url
+
+        if "pap.niointernet.com.br" not in url_atual:
+            logger.warning(f"[PAP] URL atual: {url_atual}")
+            self._capture_screenshot_falha_etapa1("01_err_url_fora_pap", wait_selector=None, wait_timeout_ms=0)
+            return False, f"Não foi possível acessar a página de novo pedido. URL: {url_atual[:80]}..."
+
+        if self.capture_screenshots:
+            self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=800)
+
+        self._dispensar_modais_novo_pedido()
+
+        try:
+            pagina_atual_html = self.page.content() or ""
+        except Exception:
+            pagina_atual_html = ""
+        if self._pagina_parece_auditoria_pedidos(url_atual, pagina_atual_html):
+            logger.info("[PAP] Tela de auditoria detectada; tentando menu 'Novo Pedido'.")
+            self._clicar_menu_novo_pedido()
+            self._dispensar_modais_novo_pedido()
+
+        self._redirecionar_se_rota_bloqueia_novo_pedido()
+
+        t_first = 12000 if modo_rapido_credito else 16000
+        matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credito)
+
+        if not matricula_visivel:
+            logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando menu 'Novo Pedido' e nova espera...")
+            if self._clicar_menu_novo_pedido():
+                if self.capture_screenshots:
+                    self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=800)
+                self._dispensar_modais_novo_pedido()
+                matricula_visivel = self._esperar_campo_matricula_vendedor(
+                    9000 if modo_rapido_credito else 14000,
+                    modo_rapido_credito,
+                )
+
+        if not matricula_visivel:
+            self._redirecionar_se_rota_bloqueia_novo_pedido()
+            matricula_visivel = self._esperar_campo_matricula_vendedor(
+                8000 if modo_rapido_credito else 12000,
+                modo_rapido_credito,
+            )
+
+        if not matricula_visivel:
+            logger.warning("[PAP] Ainda sem campo matrícula; recarregando rota novo-pedido uma vez...")
+            try:
+                self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=35000)
+                self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
+                self._dispensar_modais_novo_pedido()
+                matricula_visivel = self._esperar_campo_matricula_vendedor(
+                    10000 if modo_rapido_credito else 15000,
+                    modo_rapido_credito,
+                )
+            except Exception as e:
+                logger.warning(f"[PAP] Retry goto novo-pedido: {e}")
+
+        if not matricula_visivel:
+            try:
+                logger.error("[PAP] Falha etapa1 novo pedido. URL=%s", (self.page.url or "")[:160])
+            except Exception:
+                pass
+            self._capture_screenshot_falha_etapa1("01_err_campo_matricula_invisivel", wait_selector=None, wait_timeout_ms=0)
+            return False, (
+                "Não foi possível acessar a página de novo pedido "
+                "(campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
+            )
+
+        if not self._query_matricula_vendedor_input():
+            self._capture_screenshot_falha_etapa1("01_err_query_matricula_none", wait_selector=None, wait_timeout_ms=0)
+            return False, (
+                "Não foi possível localizar o campo de vendedor/matrícula no formulário. "
+                "O portal pode ter alterado a página."
+            )
+        return True, ""
+
+    def _concluir_novo_pedido_etapa1(self, matricula_vendedor: str) -> Tuple[bool, str]:
+        """Seleciona vendedor na etapa 1 e avança para a tela de CEP."""
+        selecionou_vendedor = self._selecionar_vendedor_matricula_etapa1(matricula_vendedor)
+
+        timeout_avancar = 8000 if self.optimize_for_credit else 12000
+        try:
+            self.page.wait_for_selector(
+                'button:has-text("Avançar"):not([disabled])',
+                state="visible",
+                timeout=timeout_avancar,
+            )
+        except Exception:
+            pass
+        btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+        if not btn_avancar:
+            lista_items = self._coletar_itens_lista_vendedor()
+            try:
+                n_li = len(lista_items)
+                amostras = [(i.inner_text() or "")[:80] for i in lista_items[:5]]
+                logger.warning(
+                    "[PAP] Etapa1 sem botão Avançar. matricula=%s selecionou=%s n_li=%s amostras=%s",
+                    matricula_vendedor,
+                    selecionou_vendedor,
+                    n_li,
+                    amostras,
+                )
+            except Exception as log_e:
+                logger.warning("[PAP] Etapa1 sem botão Avançar (log lista falhou): %s", log_e)
+            self._capture_screenshot_falha_etapa1("01_err_sem_bot_avancar_apos_vendedor", wait_selector=None, wait_timeout_ms=0)
+            if not selecionou_vendedor:
+                return (
+                    False,
+                    f"Matrícula {matricula_vendedor} não encontrada no PAP deste PDV. "
+                    "Verifique o cadastro em Gestão de Acessos.",
+                )
+            return False, "Não foi possível selecionar o vendedor. Verifique a matrícula."
+        if self.capture_screenshots:
+            self._highlight_element(btn_avancar, duration_ms=400)
+        btn_avancar.click()
+        self.page.wait_for_selector(SELETORES['etapa2']['cep'], state="visible", timeout=10000)
+        self._extrair_protocolo_pedido()
+        self.etapa_atual = 1
+        self.dados_pedido['matricula_vendedor'] = matricula_vendedor
+        if self.capture_screenshots:
+            self._capture_screenshot("01d_etapa1_concluida", wait_selector=SELETORES['etapa2']['cep'], wait_timeout_ms=3000)
+        return True, "Etapa 1 concluída! Vendedor selecionado."
+
     def iniciar_novo_pedido(self, matricula_vendedor: str) -> Tuple[bool, str]:
         """
         Inicia um novo pedido (Etapa 1).
@@ -2024,175 +2242,10 @@ class PAPNioAutomation:
         """
         try:
             logger.info(f"[PAP] Iniciando novo pedido - Vendedor: {matricula_vendedor}")
-            modo_rapido_credito = self.optimize_for_credit
-            ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
-            if not ok_sessao:
-                return False, msg_sessao
-
-            # Screenshot do estado atual (ex.: tela de auditoria) antes de navegar
-            if self.capture_screenshots:
-                self._capture_screenshot("01a_antes_novo_pedido", wait_selector=None, wait_timeout_ms=0)
-            
-            # Navegar para Novo Pedido
-            try:
-                self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
-            except Exception as e:
-                logger.warning(f"[PAP] goto domcontentloaded: {e}, tentando load...")
-                self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=30000)
-            self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
-            try:
-                self.page.wait_for_load_state("networkidle", timeout=6000)
-            except Exception:
-                try:
-                    self.page.wait_for_load_state("load", timeout=20000)
-                except Exception:
-                    pass  # SPA: evita Timeout 5000/4000 ao iniciar pedido
-            
-            url_atual = self.page.url
-            # Às vezes o PAP abre outra rota administrativa; forçar navegação ao fluxo novo pedido
-            if "pap.niointernet.com.br" in (url_atual or "") and "novo-pedido" not in (url_atual or "").lower():
-                logger.info(f"[PAP] URL sem novo-pedido ({url_atual[:80]}...), tentando menu lateral.")
-                self._clicar_menu_novo_pedido()
-                self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
-                url_atual = self.page.url
-            login_form = (
-                self.page.query_selector('#inputMatricula') or
-                self.page.query_selector('#passwordInput') or
-                self.page.query_selector('input[placeholder*="Login"]') or
-                self.page.query_selector('input[type="password"]')
-            )
-            precisa_login = (
-                "login.vtal.com" in url_atual or
-                ("login" in url_atual.lower() and "pap.niointernet.com.br" not in url_atual) or
-                login_form
-            )
-            if precisa_login:
-                sucesso, msg = self._fazer_login()
-                if not sucesso:
-                    self._capture_screenshot_falha_etapa1("01_err_login_pap", wait_selector=None, wait_timeout_ms=0)
-                    return False, msg
-                self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
-                self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
-                url_atual = self.page.url
-            
-            # Verificar se chegou na página correta
-            if "pap.niointernet.com.br" not in url_atual:
-                logger.warning(f"[PAP] URL atual: {url_atual}")
-                self._capture_screenshot_falha_etapa1("01_err_url_fora_pap", wait_selector=None, wait_timeout_ms=0)
-                return False, f"Não foi possível acessar a página de novo pedido. URL: {url_atual[:80]}..."
-
-            if self.capture_screenshots:
-                self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=800)
-
-            self._dispensar_modais_novo_pedido()
-
-            # No crédito, quando o PAP prende na tela de Auditoria/Pedido, antecipar fallback do menu
-            # evita esperar o timeout completo do campo de matrícula.
-            try:
-                pagina_atual_html = self.page.content() or ""
-            except Exception:
-                pagina_atual_html = ""
-            if self._pagina_parece_auditoria_pedidos(url_atual, pagina_atual_html):
-                logger.info(
-                    "[PAP] Tela de auditoria detectada; tentando menu 'Novo Pedido'."
-                )
-                self._clicar_menu_novo_pedido()
-                self._dispensar_modais_novo_pedido()
-
-            self._redirecionar_se_rota_bloqueia_novo_pedido()
-
-            t_first = 12000 if modo_rapido_credito else 16000
-            matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credito)
-
-            if not matricula_visivel:
-                logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando menu 'Novo Pedido' e nova espera...")
-                if self._clicar_menu_novo_pedido():
-                    if self.capture_screenshots:
-                        self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=800)
-                    self._dispensar_modais_novo_pedido()
-                    matricula_visivel = self._esperar_campo_matricula_vendedor(
-                        9000 if modo_rapido_credito else 14000,
-                        modo_rapido_credito,
-                    )
-
-            if not matricula_visivel:
-                self._redirecionar_se_rota_bloqueia_novo_pedido()
-                matricula_visivel = self._esperar_campo_matricula_vendedor(
-                    8000 if modo_rapido_credito else 12000,
-                    modo_rapido_credito,
-                )
-
-            if not matricula_visivel:
-                logger.warning("[PAP] Ainda sem campo matrícula; recarregando rota novo-pedido uma vez...")
-                try:
-                    self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=35000)
-                    self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
-                    self._dispensar_modais_novo_pedido()
-                    matricula_visivel = self._esperar_campo_matricula_vendedor(
-                        10000 if modo_rapido_credito else 15000,
-                        modo_rapido_credito,
-                    )
-                except Exception as e:
-                    logger.warning(f"[PAP] Retry goto novo-pedido: {e}")
-
-            if not matricula_visivel:
-                try:
-                    logger.error("[PAP] Falha etapa1 novo pedido. URL=%s", (self.page.url or "")[:160])
-                except Exception:
-                    pass
-                self._capture_screenshot_falha_etapa1("01_err_campo_matricula_invisivel", wait_selector=None, wait_timeout_ms=0)
-                return False, "Não foi possível acessar a página de novo pedido (campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
-
-            if not self._query_matricula_vendedor_input():
-                self._capture_screenshot_falha_etapa1("01_err_query_matricula_none", wait_selector=None, wait_timeout_ms=0)
-                return False, "Não foi possível localizar o campo de vendedor/matrícula no formulário. O portal pode ter alterado a página."
-
-            selecionou_vendedor = self._selecionar_vendedor_matricula_etapa1(matricula_vendedor)
-
-            # Clicar Avançar (cria o pedido e gera o protocolo)
-            timeout_avancar = 8000 if self.optimize_for_credit else 12000
-            try:
-                self.page.wait_for_selector(
-                    'button:has-text("Avançar"):not([disabled])',
-                    state="visible",
-                    timeout=timeout_avancar,
-                )
-            except Exception:
-                pass
-            btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
-            if not btn_avancar:
-                lista_items = self._coletar_itens_lista_vendedor()
-                try:
-                    n_li = len(lista_items)
-                    amostras = [(i.inner_text() or "")[:80] for i in lista_items[:5]]
-                    logger.warning(
-                        "[PAP] Etapa1 sem botão Avançar. matricula=%s selecionou=%s n_li=%s amostras=%s",
-                        matricula_vendedor,
-                        selecionou_vendedor,
-                        n_li,
-                        amostras,
-                    )
-                except Exception as log_e:
-                    logger.warning("[PAP] Etapa1 sem botão Avançar (log lista falhou): %s", log_e)
-                self._capture_screenshot_falha_etapa1("01_err_sem_bot_avancar_apos_vendedor", wait_selector=None, wait_timeout_ms=0)
-                if not selecionou_vendedor:
-                    return (
-                        False,
-                        f"Matrícula {matricula_vendedor} não encontrada no PAP deste PDV. "
-                        "Verifique o cadastro em Gestão de Acessos.",
-                    )
-                return False, "Não foi possível selecionar o vendedor. Verifique a matrícula."
-            if self.capture_screenshots:
-                self._highlight_element(btn_avancar, duration_ms=400)
-            btn_avancar.click()
-            self.page.wait_for_selector(SELETORES['etapa2']['cep'], state="visible", timeout=10000)
-            self._extrair_protocolo_pedido()
-            self.etapa_atual = 1
-            self.dados_pedido['matricula_vendedor'] = matricula_vendedor
-            if self.capture_screenshots:
-                self._capture_screenshot("01d_etapa1_concluida", wait_selector=SELETORES['etapa2']['cep'], wait_timeout_ms=3000)
-            return True, "Etapa 1 concluída! Vendedor selecionado."
-                
+            ok_prep, msg_prep = self._preparar_novo_pedido_etapa1()
+            if not ok_prep:
+                return False, msg_prep
+            return self._concluir_novo_pedido_etapa1(matricula_vendedor)
         except Exception as e:
             logger.error(f"[PAP] Erro na Etapa 1: {e}")
             try:

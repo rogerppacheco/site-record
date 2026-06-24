@@ -5,7 +5,7 @@ Usado pela API interna, VENDER (fila OSAB) e CRÉDITO (menor carga do dia).
 import logging
 import random
 from datetime import timedelta
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from django.conf import settings
 from django.db.models import F, Max, Q
@@ -117,25 +117,35 @@ def _mapa_uso_credito_hoje(matriculas: list[str]) -> dict[str, int]:
 def obter_matricula_tt_para_credito_pap(
     matricula_fallback: str,
     excluir: Optional[Set[str]] = None,
+    candidatos: Optional[List[str]] = None,
 ) -> str:
     """
     Escolhe TT para consulta de crédito distribuindo carga no dia:
     - prioriza quem tem MENOS consultas hoje;
     - respeita teto PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA;
     - em empate, sorteia entre os candidatos (evita sempre o mesmo TT).
+
+    Se candidatos for informado (ex.: matrículas lidas do dropdown do PAP),
+    restringe a escolha a essa lista — evita TT da OSAB que não existem no PDV.
     """
     matricula_fallback = (matricula_fallback or "").strip()
     excluir_norm = {(m or "").strip().upper() for m in (excluir or set()) if (m or "").strip()}
 
-    lista = controle_tts_listar_ordenado()
-    matriculas = [
-        str(x["matricula_vendedor"]).strip()
-        for x in lista
-        if x.get("matricula_vendedor")
-    ]
+    if candidatos is not None:
+        matriculas = [str(x).strip() for x in candidatos if str(x).strip()]
+        origem = "PAP"
+    else:
+        lista = controle_tts_listar_ordenado()
+        matriculas = [
+            str(x["matricula_vendedor"]).strip()
+            for x in lista
+            if x.get("matricula_vendedor")
+        ]
+        origem = "OSAB"
     if not matriculas:
         logger.warning(
-            "[Controle TT] Crédito: fila OSAB vazia — fallback %s",
+            "[Controle TT] Crédito: fila %s vazia — fallback %s",
+            origem,
             matricula_fallback or "(vazio)",
         )
         return matricula_fallback
@@ -164,7 +174,8 @@ def obter_matricula_tt_para_credito_pap(
     empate = [m for m in candidatos if uso(m) == min_uso]
     escolhido = random.choice(empate)
     logger.info(
-        "[Controle TT] Crédito: TT=%s uso_hoje=%s min=%s empate=%s teto=%s",
+        "[Controle TT] Crédito (%s): TT=%s uso_hoje=%s min=%s empate=%s teto=%s",
+        origem,
         escolhido,
         uso(escolhido),
         min_uso,

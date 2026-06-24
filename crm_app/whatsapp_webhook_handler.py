@@ -772,12 +772,33 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         t0 = time.time()
         max_tentativas_tt = 5
         excluir_tt: set[str] = set()
+
+        ok_prep, msg_prep = automacao._preparar_novo_pedido_etapa1()
+        if not ok_prep:
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg_prep)
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"❌ Erro ao iniciar pedido: {msg_prep}\n\nDigite *CRÉDITO* para tentar novamente.",
+            )
+            _resetar_sessao_credito(telefone)
+            return
+
+        matriculas_pap = automacao.listar_matriculas_vendedor_no_pap()
+        candidatos_pap = matriculas_pap if matriculas_pap else None
+        logger.info(
+            "[CRÉDITO] Vendedores no PAP deste PDV: %s matrícula(s)%s",
+            len(matriculas_pap),
+            f" — amostra: {matriculas_pap[:8]}" if matriculas_pap else " — fallback OSAB",
+        )
+
         for tentativa_tt in range(1, max_tentativas_tt + 1):
-            # ORM após Playwright login exige thread dedicada (SynchronousOnlyOperation).
             matricula_pedido = _run_orm_returning(
-                lambda fb=matricula_fallback, ex=set(excluir_tt): obter_matricula_tt_para_credito_pap(
+                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=candidatos_pap: obter_matricula_tt_para_credito_pap(
                     fb,
                     excluir=ex,
+                    candidatos=cand,
                 )
             )
             logger.info(
@@ -786,7 +807,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 max_tentativas_tt,
                 matricula_pedido,
             )
-            sucesso, msg = automacao.iniciar_novo_pedido(matricula_pedido)
+            sucesso, msg = automacao._concluir_novo_pedido_etapa1(matricula_pedido)
             if sucesso:
                 _run_django_sync(
                     lambda m=matricula_pedido: registrar_uso_tt_credito(m)
