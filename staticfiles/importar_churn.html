@@ -200,7 +200,7 @@
             <div class="required-columns">
                 <strong class="text-dark">Colunas obrigatórias na planilha:</strong><br>
                 <span class="column-tag">DT_RETIRADA</span>
-                <span class="column-tag">NUMERO_PEDIDO</span>
+                <span class="column-tag">PEDIDO</span>
             </div>
         </div>
 
@@ -329,7 +329,7 @@
                 const token = localStorage.getItem('accessToken');
                 atualizarProgresso(30, 'Enviando arquivo...');
                 
-                const response = await fetch('/api/bonus-m10/importar-churn/', {
+                const response = await fetch('/api/crm/import/churn/', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                     body: formData

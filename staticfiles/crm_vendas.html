@@ -205,8 +205,17 @@
                     <p class="text-muted mb-0 small">Gerencie vendas e acompanhe o status.</p>
                 </div>
                 <div class="crm-vendas-toolbar-acoes ms-md-auto">
-                    <button type="button" id="btn-exportar-excel" class="btn btn-sm btn-success d-none" onclick="exportarExcelDiretoria()" title="Exportar planilha (Diretoria/Admin/BackOffice)">
+                    <button type="button" id="btn-exportar-excel-filtro" class="btn btn-sm btn-outline-success d-none" onclick="exportarExcelFiltrado()" title="Exportar vendas do filtro (vendas do mês + instaladas no mês)">
+                        <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-md-inline ms-1">Excel filtro</span>
+                    </button>
+                    <button type="button" id="btn-exportar-excel" class="btn btn-sm btn-success d-none" onclick="exportarExcelDiretoria()" title="Exportar todas as vendas ativas (base completa, ignora filtros)">
                         <i class="bi bi-file-earmark-excel-fill"></i><span class="d-none d-md-inline ms-1">Baixar Base</span>
+                    </button>
+                    <button type="button" id="btn-classificar-mei-historico" class="btn btn-sm btn-outline-primary d-none" onclick="classificarMeiHistorico()" title="Classificar MEI/NMEI de todos os cadastros com CNPJ ainda sem classificação">
+                        <i class="bi bi-building-check"></i><span class="d-none d-md-inline ms-1">Classificar CNPJs</span>
+                    </button>
+                    <button type="button" id="btn-corrigir-razao-cnpj" class="btn btn-sm btn-outline-secondary d-none" onclick="corrigirRazaoSocialHistorico()" title="Atualizar razão social dos clientes CNPJ conforme a Receita Federal">
+                        <i class="bi bi-building"></i><span class="d-none d-md-inline ms-1">Corrigir razões CNPJ</span>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-success" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
                         <i class="bi bi-chat-heart"></i><span class="d-none d-md-inline ms-1">Boas Vindas</span>
@@ -473,14 +482,14 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-light">
-                    <h5 class="modal-title fw-bold text-danger"><i class="bi bi-geo-alt-fill"></i> CEP Não Encontrado</h5>
+                    <h5 class="modal-title fw-bold text-danger" id="modal-cep-titulo"><i class="bi bi-geo-alt-fill"></i> CEP Não Encontrado</h5>
                     <button type="button" class="btn-close" onclick="acaoCepManual(false)"></button>
                 </div>
                 <div class="modal-body text-center">
-                    <p class="mb-3">O CEP informado não retornou nenhum endereço na base dos Correios.</p>
-                    <p class="text-muted small">Deseja preencher o endereço manualmente?</p>
+                    <p class="mb-3" id="modal-cep-mensagem">O CEP informado não retornou nenhum endereço na base dos Correios.</p>
+                    <p class="text-muted small" id="modal-cep-submensagem">Deseja preencher o endereço manualmente?</p>
                 </div>
-                <div class="modal-footer justify-content-center">
+                <div class="modal-footer justify-content-center" id="modal-cep-botoes">
                     <button type="button" class="btn btn-outline-secondary" onclick="acaoCepManual(false)">Não, corrigir CEP</button>
                     <button type="button" class="btn btn-primary fw-bold" onclick="acaoCepManual(true)">Sim, preencher manual</button>
                 </div>
@@ -784,6 +793,11 @@
             inputCpf.addEventListener('input', function(e) { 
                 e.target.value = e.target.value.replace(/\D/g, ''); 
                 e.target.classList.remove('is-invalid'); 
+                const doc = e.target.value.replace(/\D/g, '');
+                if (doc.length === 14) {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => validarCpfCnpjInput(e.target), 250);
+                }
             });
             inputCpf.addEventListener('blur', validarCpfCnpjInput);
             
@@ -889,11 +903,67 @@
             }
         }
 
+        async function consultarDadosCnpjReceita(cnpjLimpo) {
+            if (!cnpjLimpo || cnpjLimpo.length !== 14) return null;
+            const q = encodeURIComponent(cnpjLimpo);
+            const endpoints = [
+                `/crm/vendas/consultar-cnpj/?cnpj=${q}`,
+                `/crm/clientes/dados-cnpj/?cnpj=${q}`,
+            ];
+            let ultimoErro = null;
+            for (const url of endpoints) {
+                try {
+                    const dados = await apiFetch(url);
+                    if (dados && (dados.razao_social || dados.erro)) return dados;
+                } catch (e) {
+                    ultimoErro = e;
+                    console.warn('Consulta CNPJ Receita falhou em', url, e);
+                }
+            }
+            return ultimoErro ? { erro: ultimoErro.detail || ultimoErro.erro || 'Não foi possível consultar o CNPJ.' } : null;
+        }
+
         async function verificarCpfOnBlur(input) {
             const cpf = input.value.replace(/\D/g, '');
-            input.classList.remove('is-invalid', 'is-valid');
-            if (cpf.length === 0) return; 
+            if (cpf.length === 0) return;
             verificarRegraCNPJ(cpf);
+            let razaoSocialReceita = null;
+            const feedbackCpf = document.getElementById('feedback-cpf');
+            if (cpf.length === 14) {
+                const inputNome = document.getElementById('input-nome');
+                if (inputNome) {
+                    inputNome.value = 'CONSULTANDO RECEITA...';
+                    inputNome.readOnly = true;
+                }
+                const dadosCnpj = await consultarDadosCnpjReceita(cpf);
+                if (dadosCnpj && dadosCnpj.razao_social) {
+                    razaoSocialReceita = dadosCnpj.razao_social;
+                    if (inputNome) {
+                        inputNome.value = razaoSocialReceita;
+                        inputNome.readOnly = false;
+                    }
+                    if (feedbackCpf) {
+                        let msg = 'Razão social preenchida conforme a Receita Federal.';
+                        if (dadosCnpj.classificacao_mei) {
+                            msg += ` (${dadosCnpj.classificacao_mei === 'MEI' ? 'MEI' : 'NMEI'})`;
+                        }
+                        feedbackCpf.textContent = msg;
+                        feedbackCpf.className = 'form-text text-success mt-1';
+                    }
+                } else {
+                    if (inputNome) {
+                        inputNome.value = '';
+                        inputNome.readOnly = false;
+                    }
+                    if (feedbackCpf) {
+                        const msgErro = (dadosCnpj && dadosCnpj.erro)
+                            || (dadosCnpj && dadosCnpj.detail)
+                            || 'Não foi possível obter a razão social. Tente novamente em alguns segundos.';
+                        feedbackCpf.textContent = msgErro;
+                        feedbackCpf.className = 'form-text text-warning mt-1';
+                    }
+                }
+            }
             if (cpf.length === 11) { 
                 let valido = true;
                 if (/^(\d)\1{10}$/.test(cpf)) valido = false;
@@ -923,10 +993,20 @@
                         cliente = res.results.find(c => c.cpf_cnpj && c.cpf_cnpj.replace(/\D/g, '') === cpf);
                     }
                     if (cliente) {
-                        preencherFormularioCliente(cliente, true); 
+                        preencherFormularioCliente(cliente, true);
+                        if (razaoSocialReceita) {
+                            const inputNome = document.getElementById('input-nome');
+                            if (inputNome) inputNome.value = razaoSocialReceita;
+                        }
                         if (cliente.vendas_count > 0) { abrirModalAvisoCliente(cliente); }
                     } else {
-                        alternarBloqueioCampos(false); limparCamposCliente();
+                        // Cliente ainda não existe na base: mantém razão social consultada na Receita.
+                        alternarBloqueioCampos(false);
+                        limparCamposCliente();
+                        if (razaoSocialReceita) {
+                            const inputNome = document.getElementById('input-nome');
+                            if (inputNome) inputNome.value = razaoSocialReceita;
+                        }
                     }
                 } catch(e) { console.error(e); alternarBloqueioCampos(false); 
                 } finally { input.classList.remove('input-loading'); }
@@ -976,30 +1056,94 @@
             ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         }
 
+        const CEP_MODAL_TEXTOS = {
+            not_found: {
+                titulo: 'CEP Não Encontrado',
+                mensagem: 'O CEP informado não retornou nenhum endereço na base dos Correios.',
+                sub: 'Deseja preencher o endereço manualmente?',
+                manual: true,
+            },
+            unavailable: {
+                titulo: 'Consulta de CEP indisponível',
+                mensagem: 'Não foi possível consultar o CEP no momento (serviço externo indisponível ou sem resposta).',
+                sub: 'Você pode tentar de novo em instantes ou preencher o endereço manualmente.',
+                manual: true,
+            },
+            unauthorized: {
+                titulo: 'Sessão expirada',
+                mensagem: 'Sua sessão expirou. Atualize a página e faça login novamente para consultar o CEP.',
+                sub: '',
+                manual: false,
+            },
+        };
+
+        function limparCamposEnderecoNovaVenda() {
+            ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+        }
+
+        function mostrarModalCep(tipo, mensagemCustom) {
+            const cfg = CEP_MODAL_TEXTOS[tipo] || CEP_MODAL_TEXTOS.unavailable;
+            const tituloEl = document.getElementById('modal-cep-titulo');
+            const msgEl = document.getElementById('modal-cep-mensagem');
+            const subEl = document.getElementById('modal-cep-submensagem');
+            const botoesEl = document.getElementById('modal-cep-botoes');
+            if (tituloEl) tituloEl.innerHTML = `<i class="bi bi-geo-alt-fill"></i> ${cfg.titulo}`;
+            if (msgEl) msgEl.textContent = mensagemCustom || cfg.mensagem;
+            if (subEl) {
+                subEl.textContent = cfg.sub || '';
+                subEl.style.display = cfg.sub ? '' : 'none';
+            }
+            if (botoesEl) botoesEl.style.display = cfg.manual ? '' : 'none';
+            modalCep.show();
+        }
+
         async function buscarCepNovaVenda(e) { 
             if(origemCadastroAtual === 'APP') return;
             const cep = e.target.value.replace(/\D/g, ''); 
             if (cep.length !== 8) return; 
             const fields = ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'];
             fields.forEach(id => document.getElementById(id).value = '...');
+            let d = {};
             try {
                 const token = localStorage.getItem('accessToken');
                 const headers = {};
                 if (token) headers['Authorization'] = `Bearer ${token}`;
                 const res = await fetch(`/api/crm/viacep/${cep}/`, { headers });
-                const d = await res.json(); 
-                if (!res.ok) {
-                    modalCep.show();
+                try { d = await res.json(); } catch (_) {}
+                if (res.status === 401) {
+                    limparCamposEnderecoNovaVenda();
+                    logout();
                     return;
                 }
-                if(!d.erro) { 
+                if (res.status === 403) {
+                    limparCamposEnderecoNovaVenda();
+                    mostrarModalCep('unauthorized', d.message || d.detail || d.error);
+                    return;
+                }
+                if (!res.ok) {
+                    limparCamposEnderecoNovaVenda();
+                    const tipo = d.code === 'not_found' ? 'not_found' : 'unavailable';
+                    mostrarModalCep(tipo, d.message || d.error);
+                    return;
+                }
+                const erroCep = d.erro === true || d.erro === 'true';
+                if (!erroCep) { 
                     document.getElementById('nova-logradouro').value = (d.logradouro || '').toUpperCase(); 
                     document.getElementById('nova-bairro').value = (d.bairro || '').toUpperCase(); 
                     document.getElementById('nova-cidade').value = (d.localidade || '').toUpperCase(); 
                     document.getElementById('nova-estado').value = (d.uf || '').toUpperCase(); 
                     document.getElementById('nova-numero').focus();
-                } else { modalCep.show(); }
-            } catch(err) { modalCep.show(); } 
+                } else {
+                    limparCamposEnderecoNovaVenda();
+                    mostrarModalCep('not_found', d.message);
+                }
+            } catch(err) {
+                limparCamposEnderecoNovaVenda();
+                mostrarModalCep('unavailable');
+            } 
         }
 
         function acaoCepManual(manual) {
@@ -1742,8 +1886,15 @@
                 }
                 if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
+                    document.getElementById('btn-exportar-excel-filtro').classList.remove('d-none');
                     const wAtivo = document.getElementById('filtro-dash-vendedor-ativo-wrap');
                     if (wAtivo) wAtivo.classList.remove('d-none');
+                }
+                if (['Diretoria', 'Admin'].includes(userProfile)) {
+                    const btnMei = document.getElementById('btn-classificar-mei-historico');
+                    if (btnMei) btnMei.classList.remove('d-none');
+                    const btnRazao = document.getElementById('btn-corrigir-razao-cnpj');
+                    if (btnRazao) btnRazao.classList.remove('d-none');
                 }
             } catch(e) {}
         }
@@ -1841,8 +1992,255 @@
             modalDetalhe.show();
         }
 
+        function montarParamsExportVendasFiltrado() {
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
+            const vendedor = document.getElementById('filtro-vendedor').value;
+            const busca = document.getElementById('filtro-busca').value;
+            const tabLista = document.querySelector('#abas-navegacao .nav-link.active');
+            const tabView = tabLista ? tabLista.getAttribute('data-view') : 'minhas_vendas';
+            const view = tabView === 'minhas_vendas' ? 'minhas_vendas' : 'geral';
+            const params = new URLSearchParams();
+            params.set('view', view);
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            if (busca) params.set('search', busca);
+            if (view === 'geral' && vendedor) params.set('consultor_id', vendedor);
+            if (statusEsteiraAtual) params.set('status', statusEsteiraAtual);
+            return params.toString();
+        }
+
+        function exportarExcelFiltrado() {
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
+            if (!inicio || !fim) {
+                alert('Informe data início e fim para exportar o filtro.');
+                return;
+            }
+            const msg = `Exportar Excel com o filtro da tela?\n\nPeríodo: ${inicio} a ${fim}\n`
+                + 'Inclui: vendas criadas no mês + instaladas no mês (data efetiva, venda pode ser de outro mês).';
+            if (!confirm(msg)) return;
+            const btn = document.getElementById('btn-exportar-excel-filtro');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...';
+            btn.disabled = true;
+            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/?${montarParamsExportVendasFiltrado()}`, {
+                method: 'GET',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') },
+            })
+            .then(response => {
+                if (response.status === 403) throw new Error('Acesso negado. Apenas Diretoria, Admin ou BackOffice.');
+                if (!response.ok) throw new Error('Erro ao gerar arquivo.');
+                const cd = response.headers.get('Content-Disposition');
+                const m = cd && /filename="([^"]+)"/.exec(cd);
+                const filename = (m && m[1]) ? m[1] : `Base_Vendas_Filtrada_${inicio}_${fim}.xlsx`;
+                return response.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => { alert(err.message); })
+            .finally(() => { btn.innerHTML = originalText; btn.disabled = false; });
+        }
+
+        let classificarMeiHistoricoEmAndamento = false;
+
+        async function classificarMeiHistorico() {
+            if (classificarMeiHistoricoEmAndamento) return;
+            if (!['Diretoria', 'Admin'].includes(userProfile)) {
+                alert('Acesso negado. Apenas Diretoria ou Admin.');
+                return;
+            }
+            const reclassificarTodos = confirm(
+                'Deseja RECLASSIFICAR todos os CNPJs já classificados?\n\n' +
+                'Clique OK = sim, reclassificar todos (corrige classificações antigas).\n' +
+                'Clique Cancelar = só os que ainda estão sem MEI/NMEI.'
+            );
+            if (!confirm(
+                (reclassificarTodos
+                    ? 'Serão reconsultados TODOS os clientes com CNPJ (14 dígitos) na BrasilAPI.\n\n'
+                    : 'Serão classificados os CNPJs (14 dígitos) que ainda não têm MEI/NMEI.\n\n') +
+                'CPF não será consultado. Pode levar vários minutos.\n\n' +
+                'Continuar?'
+            )) return;
+
+            const btn = document.getElementById('btn-classificar-mei-historico');
+            const textoOriginal = btn ? btn.innerHTML : '';
+            classificarMeiHistoricoEmAndamento = true;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Classificando...';
+            }
+
+            let totalMei = 0;
+            let totalNmei = 0;
+            let totalErros = 0;
+            let totalVendas = 0;
+            let totalProcessados = 0;
+            let totalPendentesInicial = null;
+            let restantesFinais = null;
+            let numeroLote = 0;
+            let offsetLote = 0;
+
+            try {
+                while (true) {
+                    const r = await apiFetch(
+                        '/crm/vendas/classificar-mei-historico/?limite=20',
+                        {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                limite: 20,
+                                offset: offsetLote,
+                                primeiro_lote: numeroLote === 0,
+                                forcar_todos: reclassificarTodos,
+                            }),
+                        }
+                    );
+                    numeroLote += 1;
+                    if (!r) break;
+                    if (totalPendentesInicial === null) {
+                        totalPendentesInicial = r.total_pendentes || 0;
+                    }
+                    totalMei += r.mei || 0;
+                    totalNmei += r.nmei || 0;
+                    totalErros += r.erros || 0;
+                    totalVendas += r.vendas_atualizadas || 0;
+                    totalProcessados += r.processados_lote || 0;
+                    restantesFinais = r.restantes ?? restantesFinais;
+                    offsetLote = (r.proximo_offset != null) ? r.proximo_offset : offsetLote;
+                    if (btn && totalPendentesInicial > 0) {
+                        const feitos = reclassificarTodos
+                            ? (r.proximo_offset ?? offsetLote)
+                            : (totalPendentesInicial - (r.restantes ?? 0));
+                        const pct = Math.min(100, Math.round((feitos / totalPendentesInicial) * 100));
+                        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${pct}% (${feitos}/${totalPendentesInicial})`;
+                    }
+                    if (r.concluido || (r.processados_lote || 0) === 0) break;
+                }
+                const classificados = totalMei + totalNmei;
+                let msg =
+                    'Classificação concluída!\n\n' +
+                    `Pendentes no início: ${totalPendentesInicial ?? '?'}\n` +
+                    `CNPJs classificados (MEI + NMEI): ${classificados}\n` +
+                    `  • MEI: ${totalMei}\n` +
+                    `  • NMEI: ${totalNmei}\n` +
+                    `Vendas atualizadas: ${totalVendas}\n`;
+                if (restantesFinais === 0) {
+                    msg += 'Nenhum CNPJ pendente restante.\n';
+                } else if (restantesFinais != null) {
+                    msg += `Ainda pendentes: ${restantesFinais} (rode novamente se necessário).\n`;
+                }
+                if (totalErros) msg += `Erros: ${totalErros}\n`;
+                if (totalProcessados > classificados + totalErros) {
+                    msg += `\nNota: ${totalProcessados} lotes contabilizados; use MEI+NMEI como total de clientes classificados.`;
+                }
+                alert(msg);
+                aplicarFiltros();
+            } catch (e) {
+                let msg = 'Erro ao classificar CNPJs.';
+                if (e && e.detail) msg = e.detail;
+                alert(msg);
+            } finally {
+                classificarMeiHistoricoEmAndamento = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = textoOriginal;
+                }
+            }
+        }
+
+        let corrigirRazaoSocialEmAndamento = false;
+
+        async function corrigirRazaoSocialHistorico() {
+            if (corrigirRazaoSocialEmAndamento) return;
+            if (!['Diretoria', 'Admin'].includes(userProfile)) {
+                alert('Acesso negado. Apenas Diretoria ou Admin.');
+                return;
+            }
+            const revisarTodos = confirm(
+                'Corrigir razão social dos CNPJs na base?\n\n' +
+                'OK = revisar TODOS os CNPJs (mesmo os que já parecem corretos).\n' +
+                'Cancelar = só os nomes diferentes da Receita Federal.'
+            );
+            if (!confirm(
+                (revisarTodos
+                    ? 'Serão consultados TODOS os clientes com CNPJ na BrasilAPI.\n\n'
+                    : 'Serão corrigidos apenas os nomes que diferem da Receita Federal.\n\n') +
+                'Pode levar vários minutos. Continuar?'
+            )) return;
+
+            const btn = document.getElementById('btn-corrigir-razao-cnpj');
+            const textoOriginal = btn ? btn.innerHTML : '';
+            corrigirRazaoSocialEmAndamento = true;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Corrigindo...';
+            }
+
+            let totalAtualizados = 0;
+            let totalIguais = 0;
+            let totalErros = 0;
+            let totalCnpj = null;
+            let offsetLote = 0;
+            let numeroLote = 0;
+
+            try {
+                while (true) {
+                    const r = await apiFetch(
+                        '/crm/vendas/corrigir-razao-social-cnpj/?limite=20',
+                        {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                limite: 20,
+                                offset: offsetLote,
+                                forcar_todos: revisarTodos,
+                            }),
+                        }
+                    );
+                    numeroLote += 1;
+                    if (!r) break;
+                    if (totalCnpj === null) totalCnpj = r.total_cnpj || 0;
+                    totalAtualizados += r.atualizados || 0;
+                    totalIguais += r.iguais || 0;
+                    totalErros += r.erros || 0;
+                    offsetLote = r.proximo_offset ?? offsetLote;
+                    if (btn && revisarTodos && totalCnpj > 0) {
+                        const feitos = r.proximo_offset ?? offsetLote;
+                        const pct = Math.min(100, Math.round((feitos / totalCnpj) * 100));
+                        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${pct}% (${feitos}/${totalCnpj})`;
+                    } else if (btn && !revisarTodos && r.restantes != null) {
+                        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Restam ~${r.restantes}`;
+                    }
+                    if (r.concluido || (r.processados_lote || 0) === 0) break;
+                }
+                alert(
+                    'Correção de razão social concluída!\n\n' +
+                    `CNPJs na base: ${totalCnpj ?? '?'}\n` +
+                    `Nomes atualizados: ${totalAtualizados}\n` +
+                    `Já corretos (lote): ${totalIguais}\n` +
+                    (totalErros ? `Erros: ${totalErros}\n` : '')
+                );
+                aplicarFiltros();
+            } catch (e) {
+                alert((e && e.detail) ? e.detail : 'Erro ao corrigir razões sociais.');
+            } finally {
+                corrigirRazaoSocialEmAndamento = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = textoOriginal;
+                }
+            }
+        }
+
         function exportarExcelDiretoria() {
-            if(!confirm("Deseja baixar a base completa de vendas em Excel (todas as vendas ativas, com Data Criação e Data Instalação)?")) return;
+            if(!confirm("Deseja baixar a BASE COMPLETA de vendas em Excel?\n\nTodas as vendas ativas — ignora os filtros da tela.")) return;
             const btn = document.getElementById('btn-exportar-excel');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...'; btn.disabled = true;
@@ -2250,11 +2648,16 @@
             }
 
             try {
-                await apiFetch(url, { method: method, body: JSON.stringify(data) });
+                const resposta = await apiFetch(url, { method: method, body: JSON.stringify(data) });
                 modalNovaVenda.hide(); form.reset(); document.getElementById('id-venda-edicao').value = '';
                 document.getElementById('titulo-modal-venda').innerHTML = 'Registrar Venda';
-                aplicarFiltros(); 
-                alert(idEdicao ? 'Venda atualizada!' : 'Venda registrada!');
+                aplicarFiltros();
+                let msgSucesso = idEdicao ? 'Venda atualizada!' : 'Venda registrada!';
+                if (!idEdicao && resposta && resposta.classificacao_mei) {
+                    const rotulo = resposta.classificacao_mei_descricao || resposta.classificacao_mei;
+                    msgSucesso += `\n\nClassificação CNPJ: ${rotulo}`;
+                }
+                alert(msgSucesso);
             } catch (error) { 
                 let msg = "Erro ao salvar.";
                 if (error && typeof error === 'object') {

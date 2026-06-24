@@ -30,7 +30,7 @@
         .admin-sidebar::-webkit-scrollbar-track { background: #f1f1f1; }
         .admin-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
         .admin-content {
-            flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px; width: calc(100% - 280px); 
+            flex: 1; margin-left: 280px; padding: 2rem; max-width: calc(100vw - 300px); width: calc(100% - 280px);
         }
 
         .nav-section-title {
@@ -67,6 +67,164 @@
         .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; line-height: 1.5; border-radius: 0.2rem; }
         #iframe-calendario { width: 100%; height: 750px; border: none; display: block; }
         .input-meta, .input-premio { border: 1px solid #ced4da !important; padding: 0.2rem 0.5rem !important; }
+
+        /* Matriz de comissão — legibilidade e scroll */
+        #wrap-matriz-comissao {
+            overflow: auto;
+            max-height: min(72vh, 820px);
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+        }
+        #wrap-matriz-comissao::after {
+            content: '';
+            position: sticky;
+            left: 0;
+            bottom: 0;
+            display: block;
+            height: 0;
+        }
+        .matriz-scroll-hint {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+        .matriz-scroll-hint i { vertical-align: -2px; }
+        #tabela-matriz-comissao {
+            width: max-content;
+            min-width: 100%;
+            margin-bottom: 0;
+            font-size: 0.9rem;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        #tabela-matriz-comissao thead th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #e8eef5;
+            color: #1e293b;
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            vertical-align: middle;
+            padding: 0.55rem 0.45rem;
+            border-bottom: 2px solid #94a3b8;
+            white-space: nowrap;
+        }
+        #tabela-matriz-comissao thead tr:nth-child(2) th {
+            top: 2.35rem;
+            font-size: 0.72rem;
+            background: #f1f5f9;
+        }
+        #tabela-matriz-comissao tbody td {
+            padding: 0.35rem 0.4rem;
+            vertical-align: middle;
+            border-color: #e2e8f0;
+        }
+        #tabela-matriz-comissao tbody tr:nth-child(even) td { background: #fafbfc; }
+        #tabela-matriz-comissao tbody tr:nth-child(even) .matriz-sticky,
+        #tabela-matriz-comissao tbody tr:nth-child(even) .mat-col-acoes { background: #fafbfc; }
+        #tabela-matriz-comissao tbody tr:nth-child(odd) .matriz-sticky,
+        #tabela-matriz-comissao tbody tr:nth-child(odd) .mat-col-acoes { background: #fff; }
+        #tabela-matriz-comissao tbody tr:hover td { background: #f0f7ff; }
+        #tabela-matriz-comissao tbody tr:hover .matriz-sticky,
+        #tabela-matriz-comissao tbody tr:hover .mat-col-acoes { background: #f0f7ff !important; }
+        #tabela-matriz-comissao .matriz-sticky {
+            position: sticky;
+            z-index: 4;
+            background: inherit;
+            box-shadow: 4px 0 6px -2px rgba(15, 23, 42, 0.08);
+        }
+        #tabela-matriz-comissao thead .matriz-sticky {
+            z-index: 6;
+            background: #e8eef5;
+        }
+        #tabela-matriz-comissao thead tr:nth-child(2) .matriz-sticky { background: #f1f5f9; }
+        #tabela-matriz-comissao .matriz-sticky-1 { left: 0; min-width: 108px; }
+        #tabela-matriz-comissao .matriz-sticky-2 { left: 108px; min-width: 118px; }
+        #tabela-matriz-comissao .matriz-sticky-3 { left: 226px; min-width: 150px; }
+        #tabela-matriz-comissao .matriz-sticky-4 { left: 376px; min-width: 72px; }
+        #tabela-matriz-comissao .matriz-sticky-5 { left: 448px; min-width: 72px; }
+        #tabela-matriz-comissao .matriz-plano-header {
+            min-width: 196px;
+            max-width: 220px;
+            white-space: normal;
+            line-height: 1.25;
+            text-align: center;
+            font-size: 0.72rem;
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 700;
+            color: #0f4c81;
+        }
+        #tabela-matriz-comissao .matriz-plano-sub {
+            min-width: 98px;
+            width: 98px;
+            text-align: center;
+        }
+        #tabela-matriz-comissao .matriz-plano-group-a { background: #f8fafc !important; }
+        #tabela-matriz-comissao .matriz-plano-group-b { background: #f0f9ff !important; }
+        #tabela-matriz-comissao .mat-input-meta {
+            min-width: 0;
+            width: 100%;
+            font-size: 0.85rem;
+            padding: 0.35rem 0.45rem;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+        }
+        #tabela-matriz-comissao .mat-input-meta:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        #tabela-matriz-comissao .mat-input-money {
+            min-width: 92px;
+            width: 92px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            padding: 0.4rem 0.5rem;
+            color: #0f172a;
+            background: #fff;
+            border: 1px solid #94a3b8;
+            border-radius: 6px;
+        }
+        #tabela-matriz-comissao .mat-input-money:focus {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+        }
+        #tabela-matriz-comissao .mat-input-money:not(:placeholder-shown),
+        #tabela-matriz-comissao .mat-input-money[value]:not([value=""]) {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+        #tabela-matriz-comissao .mat-col-acoes {
+            min-width: 52px;
+            text-align: center;
+            position: sticky;
+            right: 0;
+            z-index: 4;
+            background: inherit;
+            box-shadow: -4px 0 6px -2px rgba(15, 23, 42, 0.08);
+        }
+        #tabela-matriz-comissao thead .mat-col-acoes {
+            z-index: 6;
+            background: #e8eef5;
+        }
+        .matriz-vendedor-planos { font-size: 0.9rem; }
+        .matriz-vendedor-planos th { background: #e8eef5; font-size: 0.8rem; }
+        .matriz-vendedor-planos td.plano-nome { font-weight: 600; color: #1e293b; min-width: 220px; }
+        .matriz-vendedor-planos .mat-input-money {
+            max-width: 140px;
+            margin-left: auto;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
 
         @media (max-width: 992px) {
             .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; top: 80px; height: calc(100vh - 80px); }
@@ -220,7 +378,13 @@
                             <div class="d-flex gap-2 mb-2">
                                 <button type="button" class="btn btn-sm btn-success" onclick="salvarMatrizComissao()"><i class="bi bi-check-lg"></i> Salvar matriz</button>
                             </div>
-                            <div class="table-responsive" id="wrap-matriz-comissao"><table class="table table-bordered table-sm align-middle mb-0" id="tabela-matriz-comissao"><thead class="table-light" id="thead-matriz-comissao"></thead><tbody id="tbody-matriz-comissao"></tbody></table></div>
+                            <p class="matriz-scroll-hint mb-2"><i class="bi bi-arrows-expand"></i> Role horizontalmente para ver todos os planos. Colunas da esquerda (perfil e faixa) permanecem fixas.</p>
+                            <div id="wrap-matriz-comissao">
+                                <table class="table table-bordered align-middle mb-0" id="tabela-matriz-comissao">
+                                    <thead id="thead-matriz-comissao"></thead>
+                                    <tbody id="tbody-matriz-comissao"></tbody>
+                                </table>
+                            </div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
                             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -2558,6 +2722,16 @@
     // --- Regras por Faixa (REGRAS_FAIXAS) ---
     let _matrizComissaoCache = null;
 
+    function escMatriz(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    function fmtMatrizValor(v) {
+        if (v == null || v === '') return '';
+        const n = Number(v);
+        return Number.isFinite(n) ? n.toFixed(2) : '';
+    }
+
     function renderMatrizComissao(data) {
         const thead = document.getElementById('thead-matriz-comissao');
         const tbody = document.getElementById('tbody-matriz-comissao');
@@ -2565,30 +2739,55 @@
         const planos = data.planos || [];
         if (!planos.length) {
             thead.innerHTML = '';
-            tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center p-3">Cadastre planos em Cadastros Gerais → Planos.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center p-4">Cadastre planos em Cadastros Gerais → Planos.</td></tr>';
             return;
         }
-        let h1 = '<tr><th rowspan="2">Perfil</th><th rowspan="2">Final.</th><th rowspan="2">Faixa</th><th rowspan="2">Min</th><th rowspan="2">Max</th>';
-        planos.forEach(p => { h1 += `<th colspan="2" class="text-center small" title="${p.nome}">${p.nome.length > 22 ? p.nome.slice(0, 20) + '…' : p.nome}</th>`; });
-        h1 += '<th rowspan="2"></th></tr>';
+        let h1 = '<tr>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-1">Perfil</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-2">Finalidade</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-3">Faixa</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-4">Mín</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-5">Máx</th>';
+        planos.forEach((p, i) => {
+            const grp = i % 2 === 0 ? 'matriz-plano-group-a' : 'matriz-plano-group-b';
+            h1 += `<th colspan="2" class="matriz-plano-header ${grp}" title="${escMatriz(p.nome)}">${escMatriz(p.nome)}</th>`;
+        });
+        h1 += '<th rowspan="2" class="mat-col-acoes"></th></tr>';
         let h2 = '<tr>';
-        planos.forEach(() => { h2 += '<th class="small">PAP</th><th class="small">CNPJ</th>'; });
+        planos.forEach((p, i) => {
+            const grp = i % 2 === 0 ? 'matriz-plano-group-a' : 'matriz-plano-group-b';
+            h2 += `<th class="matriz-plano-sub ${grp}">PAP</th><th class="matriz-plano-sub ${grp}">CNPJ</th>`;
+        });
         h2 += '</tr>';
         thead.innerHTML = h1 + h2;
         tbody.innerHTML = '';
         (data.faixas || []).forEach((f, idx) => {
+            const perfil = f.perfil || 'Vendedor';
+            const fin = f.finalidade || 'COMISSAO';
             let row = `<tr data-faixa-id="${f.id || ''}" data-faixa-idx="${idx}">
-                <td><input class="form-control form-control-sm mat-f-perfil" value="${f.perfil || ''}" placeholder="Vendedor"></td>
-                <td><select class="form-select form-select-sm mat-f-fin"><option value="COMISSAO" ${f.finalidade === 'COMISSAO' ? 'selected' : ''}>Comissão</option><option value="ADIANTAMENTO" ${f.finalidade === 'ADIANTAMENTO' ? 'selected' : ''}>Adiant.</option></select></td>
-                <td><input class="form-control form-control-sm mat-f-nome" value="${(f.faixa_nome || '').replace(/"/g, '&quot;')}"></td>
-                <td><input type="number" class="form-control form-control-sm mat-f-min" value="${f.min_vendas ?? 0}"></td>
-                <td><input type="number" class="form-control form-control-sm mat-f-max" value="${f.max_vendas != null && f.max_vendas !== 99999 ? f.max_vendas : ''}" placeholder="∞"></td>`;
-            planos.forEach(p => {
+                <td class="matriz-sticky matriz-sticky-1">
+                    <select class="form-select form-select-sm mat-input-meta mat-f-perfil">
+                        <option value="Vendedor" ${perfil === 'Vendedor' ? 'selected' : ''}>Vendedor</option>
+                        <option value="Supervisor" ${perfil === 'Supervisor' ? 'selected' : ''}>Supervisor</option>
+                    </select>
+                </td>
+                <td class="matriz-sticky matriz-sticky-2">
+                    <select class="form-select form-select-sm mat-input-meta mat-f-fin">
+                        <option value="COMISSAO" ${fin === 'COMISSAO' ? 'selected' : ''}>Comissão</option>
+                        <option value="ADIANTAMENTO" ${fin === 'ADIANTAMENTO' ? 'selected' : ''}>Adiantamento</option>
+                    </select>
+                </td>
+                <td class="matriz-sticky matriz-sticky-3"><input class="form-control form-control-sm mat-input-meta mat-f-nome" value="${escMatriz(f.faixa_nome)}" placeholder="Ex: Faixa 1"></td>
+                <td class="matriz-sticky matriz-sticky-4"><input type="number" min="0" class="form-control form-control-sm mat-input-meta mat-f-min text-center" value="${f.min_vendas ?? 0}"></td>
+                <td class="matriz-sticky matriz-sticky-5"><input type="number" min="0" class="form-control form-control-sm mat-input-meta mat-f-max text-center" value="${f.max_vendas != null && f.max_vendas !== 99999 ? f.max_vendas : ''}" placeholder="∞" title="Vazio = sem teto"></td>`;
+            planos.forEach((p, i) => {
                 const v = (f.valores_por_plano || {})[String(p.id)] || {};
-                row += `<td><input type="number" step="0.01" class="form-control form-control-sm mat-v-pap" data-plano="${p.id}" value="${v.valor_pap != null ? v.valor_pap : ''}"></td>`;
-                row += `<td><input type="number" step="0.01" class="form-control form-control-sm mat-v-cnpj" data-plano="${p.id}" value="${v.valor_cnpj != null ? v.valor_cnpj : ''}"></td>`;
+                const grp = i % 2 === 0 ? 'matriz-plano-group-a' : 'matriz-plano-group-b';
+                const tit = escMatriz(p.nome);
+                row += `<td class="${grp}"><input type="number" step="0.01" min="0" class="mat-input-money mat-v-pap" data-plano="${p.id}" value="${fmtMatrizValor(v.valor_pap)}" placeholder="0,00" title="PAP — ${tit}"></td>`;
+                row += `<td class="${grp}"><input type="number" step="0.01" min="0" class="mat-input-money mat-v-cnpj" data-plano="${p.id}" value="${fmtMatrizValor(v.valor_cnpj)}" placeholder="0,00" title="CNPJ — ${tit}"></td>`;
             });
-            row += `<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removerLinhaMatriz(${idx})" title="Remover linha">🗑</button></td></tr>`;
+            row += `<td class="mat-col-acoes"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removerLinhaMatriz(${idx})" title="Remover faixa"><i class="bi bi-trash"></i></button></td></tr>`;
             tbody.innerHTML += row;
         });
     }
@@ -2775,13 +2974,21 @@
     function renderValoresPlanosVendedor(valoresPorPlano, manual) {
         const box = document.getElementById('cfg_valores_planos_container');
         if (!box) return;
-        box.innerHTML = '';
-        (valoresPorPlano || []).forEach(v => {
-            const ro = manual ? '' : 'readonly';
-            box.innerHTML += `<div class="col-12"><div class="small fw-bold text-muted mb-1">${v.plano_nome}</div></div>
-                <div class="col-md-3"><label class="form-label small">PAP</label><input type="number" step="0.01" class="form-control form-control-sm cfg-plano-pap" data-plano-id="${v.plano_id}" value="${v.valor_pap != null ? v.valor_pap : ''}" ${ro}></div>
-                <div class="col-md-3"><label class="form-label small">CNPJ</label><input type="number" step="0.01" class="form-control form-control-sm cfg-plano-cnpj" data-plano-id="${v.plano_id}" value="${v.valor_cnpj != null ? v.valor_cnpj : ''}" ${ro}></div>`;
+        if (!valoresPorPlano || !valoresPorPlano.length) {
+            box.innerHTML = '<div class="col-12 text-muted small">Nenhum plano cadastrado.</div>';
+            return;
+        }
+        const ro = manual ? '' : 'readonly';
+        let html = '<div class="col-12"><div class="table-responsive border rounded"><table class="table table-sm matriz-vendedor-planos mb-0"><thead><tr><th>Plano</th><th class="text-end">PAP (R$)</th><th class="text-end">CNPJ (R$)</th></tr></thead><tbody>';
+        valoresPorPlano.forEach(v => {
+            html += `<tr>
+                <td class="plano-nome">${escMatriz(v.plano_nome)}</td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm mat-input-money cfg-plano-pap" data-plano-id="${v.plano_id}" value="${fmtMatrizValor(v.valor_pap)}" placeholder="—" ${ro}></td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm mat-input-money cfg-plano-cnpj" data-plano-id="${v.plano_id}" value="${fmtMatrizValor(v.valor_cnpj)}" placeholder="—" ${ro}></td>
+            </tr>`;
         });
+        html += '</tbody></table></div></div>';
+        box.innerHTML = html;
     }
 
     function coletarValoresPlanosVendedor() {

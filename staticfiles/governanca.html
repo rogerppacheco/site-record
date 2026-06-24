@@ -289,8 +289,8 @@
                         <div id="adiantamentos_descontos_tab" class="tab-content" style="display:none;">
                             <div id="subtab-registrar" class="subtab-adiant-content">
                                 <div class="row g-3">
-                                    <div class="col-md-3"><div class="card border-success shadow-sm h-100"><div class="card-header py-2 bg-success text-white"><h6 class="mb-0 fw-bold"><i class="bi bi-trophy"></i> Novo Bônus/Premiação</h6></div><div class="card-body"><form id="form-bonus-premiacao" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="bp_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="bp_tipo" class="form-select form-select-sm" disabled><option value="BONUS_PREMIACAO" selected>Bônus/Premiação</option></select></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="bp_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="bp_valor" step="0.01" min="0.01" required placeholder="0,00"></div></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="bp_obs" class="form-control form-control-sm" rows="2" placeholder="Ex.: Meta batida, campanha avulsa"></textarea></div><button type="button" id="btn-registrar-bonus" class="btn btn-success btn-sm w-100">Registrar</button></form><p class="small text-muted mt-2 mb-0">Adiantamento CNPJ e de comissão são feitos apenas pela <strong>esteira</strong> (Instaladas).</p></div></div></div>
-                                    <div class="col-md-3"><div class="card border-danger shadow-sm h-100"><div class="card-header py-2" style="background-color:#b02a37; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="desc_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="button" id="btn-registrar-desconto" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div>
+                                    <div class="col-md-3"><div class="card border-success shadow-sm h-100"><div class="card-header py-2 bg-success text-white"><h6 class="mb-0 fw-bold"><i class="bi bi-trophy"></i> Novo Bônus/Premiação</h6></div><div class="card-body"><form id="form-bonus-premiacao" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="bp_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="bp_tipo" class="form-select form-select-sm" disabled><option value="BONUS_PREMIACAO" selected>Bônus/Premiação</option></select></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data (mês da folha)</label><input type="date" id="bp_data" class="form-control form-control-sm" required><div class="form-text" style="font-size:0.7rem;">Define em qual mês o bônus entra na folha (não é a data do cadastro).</div></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="bp_valor" step="0.01" min="0.01" required placeholder="0,00"></div></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="bp_obs" class="form-control form-control-sm" rows="2" placeholder="Ex.: Meta batida, campanha avulsa"></textarea></div><button type="button" id="btn-registrar-bonus" class="btn btn-success btn-sm w-100">Registrar</button></form><p class="small text-muted mt-2 mb-0">Adiantamento CNPJ e de comissão são feitos apenas pela <strong>esteira</strong> (Instaladas).</p></div></div></div>
+                                    <div class="col-md-3"><div class="card border-danger shadow-sm h-100"><div class="card-header py-2" style="background-color:#b02a37; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data (mês da folha)</label><input type="date" id="desc_data" class="form-control form-control-sm" required><div class="form-text" style="font-size:0.7rem;">Define em qual mês o desconto entra na folha (não é a data do cadastro).</div></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="button" id="btn-registrar-desconto" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div>
                                     <div class="col-md-6"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div>
                                 </div>
                             </div>
@@ -327,6 +327,12 @@
 
             <section id="automacao-section" class="content-section">
                 <h3 class="mb-4">Automação de Mensagens (WhatsApp)</h3>
+
+                <div class="alert alert-info d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+                    <span><i class="bi bi-whatsapp"></i> Conexão, provedor (Z-API / Evolution) e QR Code estão em <strong>Área Interna → WhatsApp</strong>.</span>
+                    <a href="/whatsapp-config/" class="btn btn-sm btn-primary">Abrir configuração</a>
+                </div>
+
                 <div class="row">
                     <div class="col-lg-5">
                         <div class="card border-success shadow-sm">
@@ -1861,17 +1867,37 @@
 
                 const btnExcluir = document.createElement('button');
                 btnExcluir.className = 'btn btn-xs btn-excluir';
-                btnExcluir.innerHTML = '<i class="bi bi-trash"></i>';
+                btnExcluir.innerHTML = '<i class="bi bi-person-x"></i>';
+                btnExcluir.title = 'Inativar usuário';
                 btnExcluir.onclick = () => inativarUsuario(user.id);
 
                 acoesCell.appendChild(btnEditar);
                 acoesCell.appendChild(btnExcluir);
+
+                if (isSuperuser) {
+                    const btnExcluirDefinitivo = document.createElement('button');
+                    btnExcluirDefinitivo.className = 'btn btn-xs btn-danger ms-1';
+                    btnExcluirDefinitivo.innerHTML = '<i class="bi bi-trash3-fill"></i>';
+                    btnExcluirDefinitivo.title = 'Excluir definitivamente';
+                    btnExcluirDefinitivo.onclick = () => excluirUsuarioDefinitivo(user.id, user.username);
+                    acoesCell.appendChild(btnExcluirDefinitivo);
+                }
             } else {
                 const btnReativar = document.createElement('button');
                 btnReativar.className = 'btn btn-xs btn-outline-success';
                 btnReativar.innerHTML = '<i class="bi bi-check-circle"></i>';
+                btnReativar.title = 'Reativar usuário';
                 btnReativar.onclick = () => reativarUsuario(user.id);
                 acoesCell.appendChild(btnReativar);
+
+                if (isSuperuser) {
+                    const btnExcluirDefinitivo = document.createElement('button');
+                    btnExcluirDefinitivo.className = 'btn btn-xs btn-danger ms-1';
+                    btnExcluirDefinitivo.innerHTML = '<i class="bi bi-trash3-fill"></i>';
+                    btnExcluirDefinitivo.title = 'Excluir definitivamente';
+                    btnExcluirDefinitivo.onclick = () => excluirUsuarioDefinitivo(user.id, user.username);
+                    acoesCell.appendChild(btnExcluirDefinitivo);
+                }
             }
 
             row.appendChild(acoesCell);
@@ -2255,6 +2281,23 @@
             await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
             const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
             carregarUsuarios(statusAtual, paginacaoAtual.page);
+        }
+    }
+
+    async function excluirUsuarioDefinitivo(id, username) {
+        const nome = username || `ID ${id}`;
+        const confirmar = confirm(
+            `ATENÇÃO: esta ação remove permanentemente o usuário ${nome} e dados relacionados.\n\nDeseja continuar?`
+        );
+        if (!confirmar) return;
+
+        try {
+            await apiFetch(`/usuarios/${id}/excluir-definitivo/`, { method: 'DELETE' });
+            const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            await carregarUsuarios(statusAtual, paginacaoAtual.page);
+            alert('Usuário excluído definitivamente.');
+        } catch (e) {
+            alert('Erro ao excluir definitivamente: ' + (e.message || e));
         }
     }
 
@@ -2973,7 +3016,8 @@
         const tbody = document.getElementById('lista-regras-auto');
         tbody.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
         try {
-            const lista = await apiFetch('/regras-automacao/');
+            const res = await apiFetch('/regras-automacao/');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
             tbody.innerHTML = '';
             if(lista.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhuma regra ativa.</td></tr>'; return; }
             lista.forEach(r => {

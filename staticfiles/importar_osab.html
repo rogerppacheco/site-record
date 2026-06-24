@@ -296,8 +296,9 @@
         const checkboxSection = document.getElementById('checkboxSection');
         let selectedFile = null;
 
-        // Verificar permissão para mostrar opção de WhatsApp
+        // Verificar permissão para mostrar opção de WhatsApp e carregar histórico
         document.addEventListener('DOMContentLoaded', async function() {
+            // Verificar permissão WhatsApp
             const token = localStorage.getItem('accessToken');
             if (token) {
                 try {
@@ -312,6 +313,10 @@
                     console.warn('Verificação de permissão falhou. Checkbox permanecerá oculto.');
                 }
             }
+            
+            // Carregar histórico e iniciar auto-refresh
+            carregarHistoricoImportacoes();
+            refreshIntervalId = setInterval(carregarHistoricoImportacoes, 3000);
         });
 
         // Eventos de drag & drop
@@ -390,45 +395,71 @@
                     body: formData
                 });
 
-                atualizarProgresso(70, 'Processando dados...');
-                const data = await response.json();
-                atualizarProgresso(90, 'Finalizando...');
-
-                // Download automático se houver log
-                if (data.arquivo_excel_b64) {
-                    try {
-                        const link = document.createElement('a');
-                        link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + data.arquivo_excel_b64;
-                        link.download = data.nome_arquivo_sugestao || 'log_importacao_osab.xlsx';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    } catch (e) {
-                        console.error('Erro ao baixar log:', e);
-                    }
+                atualizarProgresso(70, 'Processando em segundo plano...');
+                
+                // Verificar se a resposta é JSON válido
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    throw new Error('Servidor retornou resposta inválida. Tente novamente ou contate o administrador.');
                 }
 
                 if (response.ok) {
-                    atualizarProgresso(100, 'Concluído!');
+                    // Download automático se houver log
+                    if (data.arquivo_excel_b64) {
+                        try {
+                            const link = document.createElement('a');
+                            link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + data.arquivo_excel_b64;
+                            link.download = data.nome_arquivo_sugestao || 'log_importacao_osab.xlsx';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        } catch (e) {
+                            console.error('Erro ao baixar log:', e);
+                        }
+                    }
+                    atualizarProgresso(100, 'Importação iniciada!');
                     setTimeout(() => {
-                        mostrarResultado('success', data, deveEnviar);
+                        document.getElementById('resultadoImportacao').innerHTML = `
+                            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                <h5><i class="bi bi-hourglass-split"></i> Importação em Processamento</h5>
+                                <p class="mb-0">O arquivo está sendo importado em segundo plano. Atualize a página em alguns minutos para ver o resultado no histórico.</p>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        `;
+                        document.getElementById('resultadoImportacao').style.display = 'block';
                         progressContainer.style.display = 'none';
                         
-                        // Atualizar histórico após upload
-                        setTimeout(() => carregarHistoricoImportacoes(), 1000);
+                        // Limpar arquivo selecionado
+                        selectedFile = null;
+                        fileInfo.style.display = 'none';
+                        btnUpload.disabled = true;
+                        fileInput.value = '';
+                        
+                        // Reiniciar auto-refresh do histórico
+                        if (refreshIntervalId) clearInterval(refreshIntervalId);
+                        refreshIntervalId = setInterval(carregarHistoricoImportacoes, 3000);
+                        carregarHistoricoImportacoes();
                     }, 500);
                 } else {
                     mostrarResultado('error', data);
                     progressContainer.style.display = 'none';
                 }
             } catch (error) {
-                loadingOverlay.style.display = 'none';
+                document.getElementById('resultadoImportacao').innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <h5><i class="bi bi-x-circle"></i> Erro ao conectar</h5>
+                        <p class="mb-0">Erro: ${error.message}</p>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+                document.getElementById('resultadoImportacao').style.display = 'block';
                 progressContainer.style.display = 'none';
-                mostrarResultado('error', { error: 'Erro ao conectar com servidor' });
             }
         });
 
-        function mostrarResultado(tipo, data, enviouWhatsapp = false) {
+        function mostrarResultado(tipo, data) {
             const resultado = document.getElementById('resultadoImportacao');
             resultado.style.display = 'block';
             
@@ -440,22 +471,11 @@
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
-                
-                // Limpar arquivo selecionado
-                selectedFile = null;
-                fileInfo.style.display = 'none';
-                btnUpload.disabled = true;
-                fileInput.value = '';
-                
-                // Reiniciar auto-refresh do histórico
-                if (refreshIntervalId) clearInterval(refreshIntervalId);
-                refreshIntervalId = setInterval(carregarHistoricoOSAB, 3000);
-                carregarHistoricoOSAB();
             } else {
                 resultado.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <h5><i class="bi bi-x-circle"></i> Erro na Importação</h5>
-                        <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
+                        <p class="mb-0">${data.error || data.detail || 'Erro desconhecido'}</p>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
@@ -465,47 +485,41 @@
         }
 
         // Carregar histórico de importações OSAB
-        let autoRefreshInterval = null;
+        let refreshIntervalId = null;
 
         async function carregarHistoricoImportacoes() {
-            const accessToken = localStorage.getItem('accessToken');
-            if (!accessToken) return;
-
             try {
+                const token = localStorage.getItem('accessToken');
                 const response = await fetch('/api/bonus-m10/logs-osab/', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-
+                
                 if (!response.ok) {
-                    throw new Error('Erro ao carregar histórico');
+                    console.error('[OSAB] Erro ao buscar logs:', response.status, response.statusText);
+                    return;
                 }
-
+                
                 const data = await response.json();
                 
-                if (data.success && data.logs && data.logs.length > 0) {
+                if (data.success && data.logs) {
+                    const historico = document.getElementById('historicoImportacoes');
+                    
+                    if (data.logs.length === 0) {
+                        historico.innerHTML = '<p class="text-center text-muted py-4">Nenhuma importação realizada</p>';
+                        return;
+                    }
+                    
                     exibirHistorico(data.logs);
                     
-                    // Se houver importações PROCESSANDO, continuar auto-refresh
+                    // Parar auto-refresh se não há importação PROCESSANDO
                     const temProcessando = data.logs.some(log => log.status === 'PROCESSANDO');
-                    if (temProcessando && !autoRefreshInterval) {
-                        iniciarAutoRefresh();
-                    } else if (!temProcessando && autoRefreshInterval) {
-                        pararAutoRefresh();
+                    if (!temProcessando && refreshIntervalId) {
+                        clearInterval(refreshIntervalId);
+                        refreshIntervalId = null;
                     }
-                } else {
-                    document.getElementById('historicoImportacoes').innerHTML = `
-                        <p class="text-center text-muted">Nenhuma importação encontrada</p>
-                    `;
                 }
             } catch (error) {
                 console.error('Erro ao carregar histórico:', error);
-                document.getElementById('historicoImportacoes').innerHTML = `
-                    <p class="text-center text-danger">Erro ao carregar histórico</p>
-                `;
             }
         }
 
@@ -530,7 +544,7 @@
             `;
 
             logs.forEach(log => {
-                const statusBadge = getStatusBadge(log.status, log.status_display);
+                let statusBadge = getStatusBadge(log.status, log.status_display);
                 const duracao = log.duracao_segundos 
                     ? `${log.duracao_segundos}s` 
                     : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
@@ -541,6 +555,19 @@
                 const usuarioLogin = log.usuario_username != null && log.usuario_username !== ''
                     ? String(log.usuario_username)
                     : '-';
+                
+                // Status detalhado durante processamento
+                if (log.status === 'PROCESSANDO' && log.total_registros > 0) {
+                    const processadas = log.total_processadas || 0;
+                    const percent = Math.round((processadas / log.total_registros) * 100);
+                    if (log.mensagem && log.mensagem.includes('Salvando')) {
+                        statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> ${log.mensagem}</span>`;
+                    } else if (processadas > 0) {
+                        statusBadge = `<span class="badge bg-info"><i class="bi bi-arrow-repeat"></i> Processando ${processadas}/${log.total_registros} (${percent}%)</span>`;
+                    } else if (log.mensagem) {
+                        statusBadge = `<span class="badge bg-info"><i class="bi bi-arrow-repeat"></i> ${log.mensagem}</span>`;
+                    }
+                }
                 
                 html += `
                     <tr>
@@ -556,6 +583,10 @@
                             ${log.atualizados > 0 ? `<span class="badge bg-info">${log.atualizados} atualizados</span> ` : ''}
                             ${log.ja_corretos > 0 ? `<span class="badge bg-secondary">${log.ja_corretos} já corretos</span>` : ''}
                             ${whatsapp}
+                            ${log.download_url ? `<button class="btn btn-sm btn-outline-primary ms-2" onclick="baixarRelatorioOSAB(${log.id})">Baixar relatório</button>` : ''}
+                            ${log.pode_reverter ? `<button class="btn btn-sm btn-outline-warning ms-2" onclick="reverterImportacaoOSAB(${log.id}, ${log.atualizados || 0})" title="Restaura o estado das vendas antes desta importação">Reverter importação</button>` : ''}
+                            ${log.status === 'REVERTIDO' && log.revertido_em ? `<small class="text-muted d-block mt-1">Revertido em ${log.revertido_em}</small>` : ''}
+                            ${log.status === 'PROCESSANDO' ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="cancelarImportacaoOSAB(${log.id})">Cancelar</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -574,33 +605,135 @@
                 'PROCESSANDO': '<span class="badge bg-primary"><i class="spinner-border spinner-border-sm me-1"></i> Processando</span>',
                 'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Sucesso</span>',
                 'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Erro</span>',
-                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>'
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>',
+                'REVERTIDO': '<span class="badge bg-dark"><i class="bi bi-arrow-counterclockwise me-1"></i> Revertido</span>'
             };
             return badges[status] || `<span class="badge bg-secondary">${display}</span>`;
         }
 
-        function iniciarAutoRefresh() {
-            if (autoRefreshInterval) return;
-            
-            autoRefreshInterval = setInterval(() => {
-                carregarHistoricoImportacoes();
-            }, 5000); // Atualiza a cada 5 segundos
-            
-            console.log('Auto-refresh OSAB iniciado');
-        }
+        async function baixarRelatorioOSAB(logId) {
+            try {
+                const token = localStorage.getItem('accessToken');
+                if (!token) {
+                    alert('Erro: Token de autenticação não encontrado. Faça login novamente.');
+                    return;
+                }
 
-        function pararAutoRefresh() {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
-                console.log('Auto-refresh OSAB parado');
+                const response = await fetch(`/api/crm/logs-osab/${logId}/relatorio/`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    let errorMessage = `Erro ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.error || errorData.detail || errorData.message || errorMessage;
+                    } catch (e) {
+                        // Se não conseguir fazer parse do JSON, usa mensagem padrão
+                        errorMessage = `Erro ${response.status}: ${response.statusText}`;
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                
+                // Extrair nome do arquivo do header Content-Disposition ou usar padrão
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = `relatorio_osab_${logId}.xlsx`;
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/i) || contentDisposition.match(/filename\*=UTF-8''(.+)/i);
+                    if (filenameMatch) {
+                        filename = filenameMatch[1];
+                        // Decodificar URL encoding se necessário
+                        try {
+                            filename = decodeURIComponent(filename);
+                        } catch (e) {
+                            // Se falhar, usar como está
+                        }
+                        // Remover underscore antes da extensão se existir (múltiplas ocorrências)
+                        filename = filename.replace(/\.xlsx_+$/g, '.xlsx');  // .xlsx_ ou .xlsx__
+                        filename = filename.replace(/_+\.xlsx$/g, '.xlsx');  // _xlsx ou __xlsx
+                        // Garantir que termina com .xlsx
+                        if (!filename.endsWith('.xlsx')) {
+                            filename = filename.replace(/\.xlsx_.*$/, '.xlsx');
+                            if (!filename.endsWith('.xlsx')) {
+                                filename += '.xlsx';
+                            }
+                        }
+                    }
+                }
+                
+                link.setAttribute('download', filename);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Erro ao baixar relatório:', error);
+                alert('Erro ao baixar relatório: ' + error.message);
             }
         }
 
-        // Carregar histórico ao carregar a página
-        document.addEventListener('DOMContentLoaded', function() {
-            carregarHistoricoImportacoes();
-        });
+        async function reverterImportacaoOSAB(logId, qtdAtualizadas) {
+            const msg = (
+                `Deseja reverter esta importação?\n\n` +
+                `Será restaurado o estado anterior das vendas alteradas ` +
+                `(cerca de ${qtdAtualizadas || '?'} registro(s)).\n\n` +
+                `Vendas editadas manualmente depois da importação também serão sobrescritas. ` +
+                `Esta ação não desfaz mensagens WhatsApp já enviadas.`
+            );
+            if (!confirm(msg)) return;
+            try {
+                const accessToken = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/crm/logs-osab/${logId}/reverter/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha ao reverter importação.');
+                }
+
+                alert(data.message || 'Importação revertida com sucesso.');
+                carregarHistoricoImportacoes();
+            } catch (error) {
+                console.error('Erro ao reverter importação:', error);
+                alert(error.message || 'Erro ao reverter importação.');
+            }
+        }
+
+        async function cancelarImportacaoOSAB(logId) {
+            if (!confirm('Deseja cancelar esta importação?')) return;
+            try {
+                const accessToken = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/crm/logs-osab/${logId}/cancelar/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha ao cancelar importação.');
+                }
+
+                alert('Importação cancelada com sucesso.');
+                carregarHistoricoImportacoes();
+            } catch (error) {
+                console.error('Erro ao cancelar importação:', error);
+                alert(error.message || 'Erro ao cancelar importação.');
+            }
+        }
+
 
         function logout() {
             localStorage.removeItem('accessToken');

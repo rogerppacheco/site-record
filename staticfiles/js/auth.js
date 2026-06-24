@@ -625,17 +625,7 @@ async function renovarTokenManual() {
         } else {
             timeDisplay.textContent = 'Sessão expirada';
             if (timeDisplayModal) timeDisplayModal.textContent = 'Sessão expirada';
-            if (window.showAlert) {
-                window.showAlert('Erro ao renovar token. Faça login novamente.', 'warning');
-            } else {
-                alert('Erro ao renovar token. Faça login novamente.');
-            }
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('user_profile');
-            localStorage.removeItem('user_permissions');
-            localStorage.removeItem('last_login');
-            setTimeout(() => { window.location.href = '/'; }, 1500);
+            handleSessaoExpirada('Sua sessão expirou. Faça login novamente.');
         }
         setTimeout(() => {
             indicator.style.opacity = '1';
@@ -663,7 +653,10 @@ async function renovarTokenAPI() {
 
     const doRefresh = async () => {
         const refresh = localStorage.getItem('refreshToken');
-        if (!refresh) throw new Error('Sem refresh token');
+        if (!refresh) {
+            handleSessaoExpirada('Sua sessão expirou. Faça login novamente.');
+            throw new Error('Sem refresh token');
+        }
 
         const response = await fetch('/api/auth/token/refresh/', {
             method: 'POST',
@@ -693,6 +686,22 @@ async function renovarTokenAPI() {
     } finally {
         refreshPromise = null;
     }
+}
+
+function handleSessaoExpirada(message) {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user_profile');
+    localStorage.removeItem('user_permissions');
+    localStorage.removeItem('last_login');
+    
+    if (window.showAlert) {
+        window.showAlert(message, 'warning');
+    }
+    
+    setTimeout(() => {
+        window.location.href = '/';
+    }, 1500);
 }
 
 // Parar monitoramento ao sair da página

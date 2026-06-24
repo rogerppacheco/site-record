@@ -43,6 +43,11 @@
         .filter-row th { background-color: #e9ecef !important; padding: 5px !important; }
         .filter-input { font-size: 0.75rem; border: 1px solid #ced4da; border-radius: 2px; padding: 4px; width: 100%; }
         .filter-input:focus { outline: none; border-color: #86b7fe; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
+        .extrato-comissao-table .filter-row select.filter-input { padding: 2px 4px; }
+        .extrato-comissao-table th { white-space: nowrap; }
+        .extrato-valor-referencia { color: #6c757d; font-style: italic; }
+        .extrato-valor-antecipada { color: #0dcaf0; }
+        .extrato-valor-churn { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -108,7 +113,10 @@
                                 <i class="bi bi-file-earmark-pdf"></i> Exportar PDF
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-success px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-excel-resumo" onclick="exportarResumoComissionamentoXlsx()" title="Baixar resumo em Excel com todos os vendedores do mês">
-                                <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+                                <i class="bi bi-file-earmark-excel"></i> Excel Resumo
+                            </button>
+                            <button type="button" class="btn btn-sm btn-success px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-excel-extrato" onclick="exportarExtratoComissionamentoXlsx()" title="Baixar extrato de vendas (mesma tabela da tela)">
+                                <i class="bi bi-table"></i> Excel Extrato
                             </button>
                         </div>
                     </div>
@@ -213,33 +221,302 @@
         // --- FOLHA FORMATO EXCEL (dropdown = vendedores com venda no mês, um card por vez) ---
         let folhaExcelCache = { dados: null, periodo: '' };
 
+        function blocoResumoCnpjMei(r) {
+            const cv = r.cnpj_comissao_visual || {};
+            const mei = Number(cv.qtd_cnpj_mei || 0);
+            const nmei = Number(cv.qtd_cnpj_nmei || 0);
+            const cpf = Number(cv.qtd_cpf || 0);
+            if (!mei && !nmei) return '';
+            return `<div class="px-3 pt-3 pb-0">
+                <div class="alert alert-info py-2 px-3 small mb-0">
+                    <strong>Comissão por tipo de cliente</strong>
+                    <span class="d-block mt-1 text-muted">
+                        CNPJ <strong>MEI</strong> entra nas linhas <strong>PAP</strong> (mesma tabela que CPF).
+                        CNPJ <strong>NMEI</strong> entra nas linhas <strong>CNPJ</strong>. Adiant. CNPJ só para NMEI.
+                    </span>
+                    <span class="d-block mt-2">
+                        ${cpf ? `<span class="badge bg-secondary me-1">CPF ${cpf}</span>` : ''}
+                        ${mei ? `<span class="badge bg-primary me-1">CNPJ MEI ${mei} → PAP</span>` : ''}
+                        ${nmei ? `<span class="badge bg-dark me-1">CNPJ NMEI ${nmei} → CNPJ</span>` : ''}
+                    </span>
+                </div>
+            </div>`;
+        }
+
+        function rotuloPlanoComMei(p) {
+            const q = Number(p.qtd_cnpj_mei || 0);
+            let nome = p.plano || '';
+            if (q > 0 && /PAP/i.test(nome)) {
+                nome += ` <span class="text-muted fw-normal small" title="Vendas com CNPJ classificado MEI, pagas pela tabela PAP">(${q} CNPJ MEI)</span>`;
+            }
+            return nome;
+        }
+
+        function badgeMeiExtrato(e) {
+            const m = (e.classificacao_mei || '-').toString().toUpperCase();
+            if (m === 'MEI') return '<span class="badge bg-primary" title="CNPJ MEI — tabela PAP">MEI</span>';
+            if (m === 'NMEI') return '<span class="badge bg-dark" title="CNPJ NMEI — tabela CNPJ">NMEI</span>';
+            return '<span class="text-muted">-</span>';
+        }
+
+        function fmtValorComissaoExtrato(e) {
+            if (e.valor_comissao == null || e.valor_comissao === '') return '<span class="text-muted">—</span>';
+            const cod = (e.comissao_tipo_codigo || '').toLowerCase();
+            let cls = 'money-col fw-bold';
+            if (cod === 'antecipada' || (e.comissao_tipo || '').toLowerCase().includes('antecipada')) cls += ' extrato-valor-antecipada';
+            else if (cod === 'referencia') cls += ' extrato-valor-referencia';
+            else if (cod === 'churn') cls += ' extrato-valor-churn';
+            return `<span class="${cls}">${fmtMoney(e.valor_comissao)}</span>`;
+        }
+
+        function fmtTipoComissaoExtrato(e) {
+            const txt = e.comissao_tipo || '—';
+            const cod = (e.comissao_tipo_codigo || '').toLowerCase();
+            let cls = 'small';
+            if (txt.includes('sábado')) cls += ' text-info';
+            else if (txt.includes('esteira')) cls += ' text-primary';
+            else if (cod === 'churn') cls += ' text-danger';
+            else if (cod === 'a_pagar') cls += ' fw-bold';
+            else if (cod === 'referencia') cls += ' text-muted';
+            return `<span class="${cls}">${txt}</span>`;
+        }
+
+        function montarTabelaExtrato(v) {
+            const extratoLista = (v.extrato || []);
+            const normaliza = (txt) => (txt || '').toString().trim().toUpperCase();
+            const parseBrDateToSort = (dt) => {
+                const s = (dt || '').toString().trim();
+                const p = s.split('/');
+                if (p.length !== 3) return '';
+                const [dd, mm, yyyy] = p;
+                if (!dd || !mm || !yyyy) return '';
+                return `${yyyy.padStart(4, '0')}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+            };
+            const blocoInfo = (e) => {
+                const situacao = normaliza(e.situacao);
+                const isChurn = normaliza(e.churn) === 'SIM';
+                const isCancelada = situacao.includes('CANCELADA');
+                if (situacao === 'INSTALADA' && !isChurn) return { ordem: 0, titulo: 'INSTALADAS', statusGrupo: 'INSTALADA' };
+                if (situacao === 'INSTALADA' && isChurn) return { ordem: 1, titulo: 'INSTALADAS COM CHURN', statusGrupo: 'INSTALADA (CHURN)' };
+                if (isCancelada) return { ordem: 2, titulo: 'CANCELADAS', statusGrupo: situacao || 'CANCELADA' };
+                return { ordem: 3, titulo: 'DEMAIS STATUS', statusGrupo: situacao || '-' };
+            };
+            const blocos = [
+                { ordem: 0, titulo: 'INSTALADAS', itens: [] },
+                { ordem: 1, titulo: 'INSTALADAS COM CHURN', itens: [] },
+                { ordem: 2, titulo: 'CANCELADAS', itens: [] },
+                { ordem: 3, titulo: 'DEMAIS STATUS', itens: [] }
+            ];
+            extratoLista.forEach(e => {
+                const b = blocoInfo(e);
+                blocos[b.ordem].itens.push({ ...e, _statusGrupo: b.statusGrupo });
+            });
+
+            const cols = [
+                { key: 'nome', label: 'NOME', filter: 'text' },
+                { key: 'dacc', label: 'DACC', filter: 'select' },
+                { key: 'cnpj', label: 'CNPJ', filter: 'select' },
+                { key: 'classificacao_mei', label: 'MEI/NMEI', filter: 'select' },
+                { key: 'plano', label: 'PLANO', filter: 'text' },
+                { key: 'dt_pedido', label: 'DT PEDIDO', filter: 'text' },
+                { key: 'dt_inst', label: 'DT INST', filter: 'text' },
+                { key: 'os', label: 'OS', filter: 'text' },
+                { key: 'situacao', label: 'SITUAÇÃO', filter: 'text' },
+                { key: 'churn', label: 'CHURN', filter: 'select' },
+                { key: 'adiantada', label: 'ADIANT.', filter: 'select' },
+                { key: 'valor_comissao', label: 'COMISSÃO', filter: 'text', align: 'end' },
+                { key: 'comissao_tipo', label: 'TIPO COMISSÃO', filter: 'text' },
+            ];
+
+            let html = `<div class="p-2 border-top small text-muted fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Extrato (${extratoLista.length} vendas)</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarExtratoComissionamentoXlsx()" title="Baixar extrato em Excel (mesmas colunas da tabela)">
+                        <i class="bi bi-file-earmark-excel"></i> Excel
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm extrato-limpar-filtros">Limpar filtros</button>
+                </div>
+            </div>
+            <div class="table-responsive"><table class="table table-sm table-striped mb-0 small extrato-comissao-table"><thead class="table-light">
+                <tr>${cols.map(c => `<th class="${c.align === 'end' ? 'text-end' : ''}">${c.label}</th>`).join('')}</tr>
+                <tr class="filter-row">${cols.map(c => {
+                    if (c.filter === 'select') {
+                        let opts = '<option value="">Todos</option>';
+                        if (c.key === 'classificacao_mei') {
+                            opts += '<option value="MEI">MEI</option><option value="NMEI">NMEI</option><option value="-">-</option>';
+                        } else {
+                            opts += '<option value="SIM">SIM</option><option value="NÃO">NÃO</option><option value="-">-</option>';
+                        }
+                        return `<th><select class="filter-input extrato-filter-input" data-col="${c.key}">${opts}</select></th>`;
+                    }
+                    return `<th><input type="text" class="filter-input extrato-filter-input" data-col="${c.key}" placeholder="Filtrar..." autocomplete="off"></th>`;
+                }).join('')}</tr>
+            </thead><tbody>`;
+
+            blocos.forEach(b => {
+                if (!b.itens.length) return;
+                html += `<tr class="table-secondary extrato-bloco-row" data-bloco="${b.ordem}"><td colspan="${cols.length}" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
+                const itensOrdenados = [...b.itens].sort((a, b2) => {
+                    const d1 = parseBrDateToSort(a.dt_pedido) || '9999-99-99';
+                    const d2 = parseBrDateToSort(b2.dt_pedido) || '9999-99-99';
+                    if (d1 !== d2) return d1.localeCompare(d2);
+                    return (a.nome || '').localeCompare(b2.nome || '');
+                });
+                itensOrdenados.forEach(e => {
+                    const isChurn = normaliza(e.churn) === 'SIM';
+                    const isAdiant = normaliza(e.adiantada) === 'SIM';
+                    const situacao = normaliza(e.situacao);
+                    const isCancelada = situacao.includes('CANCELADA');
+                    const isInstalada = situacao === 'INSTALADA';
+                    const isVerde = isInstalada && !isChurn;
+                    const rowClass = (isChurn || isCancelada)
+                        ? 'table-danger'
+                        : (isVerde ? 'table-success' : 'table-warning');
+                    const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
+                    const meiTxt = (e.classificacao_mei || '-').toString().toUpperCase();
+                    const dataAttrs = cols.map(c => {
+                        let val = c.key === 'classificacao_mei' ? meiTxt : (e[c.key] != null ? String(e[c.key]) : '');
+                        if (c.key === 'valor_comissao' && e.valor_comissao != null) val = String(e.valor_comissao);
+                        return `data-${c.key}="${(val || '').replace(/"/g, '&quot;')}"`;
+                    }).join(' ');
+                    html += `<tr class="extrato-data-row ${rowClass}" data-bloco="${b.ordem}" ${dataAttrs}${rowStyle}>
+                        <td>${e.nome || ''}</td>
+                        <td>${e.dacc || ''}</td>
+                        <td>${e.cnpj || ''}</td>
+                        <td class="text-center">${badgeMeiExtrato(e)}</td>
+                        <td>${e.plano || ''}</td>
+                        <td>${e.dt_pedido || ''}</td>
+                        <td>${e.dt_inst || ''}</td>
+                        <td>${e.os || ''}</td>
+                        <td>${e.situacao || ''}</td>
+                        <td>${e.churn || ''}</td>
+                        <td class="text-center">${e.adiantada || '-'}</td>
+                        <td class="text-end">${fmtValorComissaoExtrato(e)}</td>
+                        <td>${fmtTipoComissaoExtrato(e)}</td>
+                    </tr>`;
+                });
+            });
+            html += '</tbody></table></div>';
+            return html;
+        }
+
+        function aplicarFiltrosExtrato(cardEl) {
+            if (!cardEl) return;
+            const table = cardEl.querySelector('.extrato-comissao-table');
+            if (!table) return;
+            const filtros = {};
+            table.querySelectorAll('.extrato-filter-input').forEach(inp => {
+                const col = inp.dataset.col;
+                const val = (inp.value || '').trim().toUpperCase();
+                if (val) filtros[col] = val;
+            });
+            const dataRows = table.querySelectorAll('tbody tr.extrato-data-row');
+            dataRows.forEach(tr => {
+                let visivel = true;
+                for (const [col, val] of Object.entries(filtros)) {
+                    const cell = (tr.dataset[col] || '').toUpperCase();
+                    if (col === 'classificacao_mei') {
+                        if (cell !== val && !(val === '-' && (cell === '' || cell === '-'))) { visivel = false; break; }
+                    } else if (!cell.includes(val)) {
+                        visivel = false;
+                        break;
+                    }
+                }
+                tr.style.display = visivel ? '' : 'none';
+            });
+            table.querySelectorAll('tbody tr.extrato-bloco-row').forEach(blocoTr => {
+                const bloco = blocoTr.dataset.bloco;
+                const alguma = [...table.querySelectorAll(`tbody tr.extrato-data-row[data-bloco="${bloco}"]`)]
+                    .some(r => r.style.display !== 'none');
+                blocoTr.style.display = alguma ? '' : 'none';
+            });
+        }
+
+        function initExtratoFiltros(container) {
+            if (!container) return;
+            container.querySelectorAll('.extrato-comissao-table').forEach(table => {
+                const card = table.closest('.card');
+                table.querySelectorAll('.extrato-filter-input').forEach(inp => {
+                    inp.addEventListener('input', () => aplicarFiltrosExtrato(card));
+                    inp.addEventListener('change', () => aplicarFiltrosExtrato(card));
+                });
+                const btnLimpar = card && card.querySelector('.extrato-limpar-filtros');
+                if (btnLimpar) {
+                    btnLimpar.onclick = () => {
+                        table.querySelectorAll('.extrato-filter-input').forEach(inp => { inp.value = ''; });
+                        aplicarFiltrosExtrato(card);
+                    };
+                }
+            });
+        }
+
         function montarCardFolha(v) {
             const r = v.resumo || {};
             const porPlano = r.por_plano || [];
+            const totalInstaladosFaixa = r.qtd_instalada_faixa_complemento != null
+                ? r.qtd_instalada_faixa_complemento
+                : (r.total_qtd_vendas_folha != null ? r.total_qtd_vendas_folha : null);
             let html = `<div class="card border shadow-sm mb-4">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span class="fw-bold">${v.vendedor_nome}</span>
-                    <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
+                    <div class="d-flex align-items-center flex-wrap gap-1">
+                        <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
+                        ${totalInstaladosFaixa != null ? `<span class="badge bg-secondary" title="Total de vendas instaladas no mês (base da faixa)">Instalados: ${totalInstaladosFaixa}</span>` : ''}
+                        ${r.faixa_complemento_sabado && r.faixa_complemento_sabado !== r.faixa_aplicada ? `<span class="badge bg-info" title="Faixa usada no complemento do adiantamento sábado (total instaladas: ${r.qtd_instalada_faixa_complemento || '?'})">Compl. sábado: ${r.faixa_complemento_sabado}</span>` : ''}
+                    </div>
                 </div>
+                ${blocoResumoCnpjMei(r)}
+                ${(r.alertas_folha && r.alertas_folha.length) ? (function(){
+                    const linhas = r.alertas_folha.map(a =>
+                        `<li><strong>#${a.venda_id}</strong> OS ${a.os || '—'} — ${a.nome || 'Cliente'} (${a.situacao || '—'})</li>`
+                    ).join('');
+                    return `<div class="px-3 pt-2"><div class="alert alert-warning py-2 px-3 small mb-0">
+                        <strong><i class="bi bi-exclamation-triangle"></i> Atenção — adiantamento sábado sem data de abertura da O.S.</strong>
+                        <ul class="mb-0 mt-1">${linhas}</ul>
+                        <span class="text-muted">Corrija a data de abertura no cadastro da venda para o estorno entrar na folha.</span>
+                    </div></div>`;
+                })() : ''}
                 <div class="card-body p-0">
                     <table class="table table-sm table-bordered mb-0">
                         <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR JÁ ADIANT.</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
                         <tbody>`;
-            let sumQtdAnt = 0, sumValAdiant = 0, sumValorTotalInst = 0;
+            let sumQtdAnt = 0, sumValAdiant = 0, sumValComplemento = 0, sumValorTotalInst = 0;
             porPlano.forEach(p => {
                 const qtdAnt = p.qtd_antecipada || 0;
                 const valAdiant = p.valor_total_antecipado != null ? p.valor_total_antecipado : 0;
+                const valComp = p.valor_total_complemento_sabado != null ? p.valor_total_complemento_sabado : 0;
                 sumQtdAnt += qtdAnt;
                 sumValAdiant += valAdiant;
-                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0) {
+                sumValComplemento += valComp;
+                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0 || valComp > 0) {
                     sumValorTotalInst += Number(p.valor_total_instalados || 0);
-                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${qtdAnt > 0 ? fmtMoney(valAdiant) : '—'}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+                    const valTotalSab = (valAdiant + valComp);
+                    const colAdiant = qtdAnt > 0
+                        ? (valComp !== 0
+                            ? `${fmtMoney(valAdiant)} <span class="text-muted small">+ ${fmtMoney(valComp)} comp.</span>`
+                            : fmtMoney(valAdiant))
+                        : '—';
+                    html += `<tr><td>${rotuloPlanoComMei(p)}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${colAdiant}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
                 }
             });
             const totalQtdPagar = r.total_qtd_instalada_a_pagar != null ? r.total_qtd_instalada_a_pagar : 0;
-            html += `<tr class="table-light fw-bold"><td>TOTAL</td><td class="text-center">${totalQtdPagar}</td><td class="text-center">${sumQtdAnt}</td><td class="text-end text-info">${sumQtdAnt > 0 ? fmtMoney(sumValAdiant) : '—'}</td><td class="text-end">—</td><td class="text-end">${fmtMoney(sumValorTotalInst)}</td><td class="text-end">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+            const totalQtdVendasFolha = r.total_qtd_vendas_folha != null ? r.total_qtd_vendas_folha : (totalQtdPagar + sumQtdAnt);
+            const complementoSabTotal = r.complemento_sabado_total != null ? r.complemento_sabado_total : sumValComplemento;
+            const colTotalAdiant = sumQtdAnt > 0
+                ? (sumValComplemento !== 0
+                    ? `${fmtMoney(sumValAdiant)} <span class="text-muted small">+ ${fmtMoney(sumValComplemento)} comp.</span>`
+                    : fmtMoney(sumValAdiant))
+                : '—';
+            html += `<tr class="table-light fw-bold"><td>TOTAL</td><td class="text-center">${totalQtdPagar}</td><td class="text-center">${sumQtdAnt}</td><td class="text-end text-info">${colTotalAdiant}</td><td class="text-end">—</td><td class="text-end">${fmtMoney(sumValorTotalInst)}</td><td class="text-end">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+                <div class="px-3 py-2 border-top bg-light small d-flex justify-content-between flex-wrap gap-2">
+                    <span><strong>Total vendas a pagar:</strong> ${totalQtdPagar}</span>
+                    <span><strong>Total vendas antecipadas:</strong> ${sumQtdAnt}</span>
+                    <span class="text-primary fw-bold"><strong>Total vendas no mês (pagas):</strong> ${totalQtdVendasFolha}</span>
+                </div>
                 <div class="p-3 border-top bg-white">
                     <div class="row small mb-2">
+                        <div class="col">Comissão (a pagar): <span class="fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</span></div>
+                        ${complementoSabTotal !== 0 ? `<div class="col">Complemento sábado: <span class="text-success fw-bold">+ ${fmtMoney(complementoSabTotal)}</span></div>` : ''}
                         <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
                         <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
                         <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
@@ -282,7 +559,19 @@
                         b += linhaRef('Sábado — quitado na instalação', 'adiantamento_sabado_quitado_instalacao');
                         b += linhaRef('Adiantamento na esteira / instalados', 'adiantamento_esteira_instalados');
                         b += linhaRef('Não classificado', 'adiantamento_nao_classificado');
-                        b += `<div class="d-flex justify-content-between text-info mt-1 border-top pt-1"><span>Total adiantado <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
+                        b += `<div class="d-flex justify-content-between text-info mt-1 border-top pt-1"><span>Total pago no sábado <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
+                        const compSab = (i.complemento_sabado || {});
+                        if (Number(compSab.valor_complemento || 0) !== 0) {
+                            b += `<div class="d-flex justify-content-between text-success mt-1"><span><i class="bi bi-plus-circle"></i> Complemento sábado pendente <strong>(${compSab.quantidade || 0} un.)</strong>${compSab.faixa_nome ? ' — faixa <strong>' + compSab.faixa_nome + '</strong>' : ''}</span><span class="fw-bold">+ ${fmtMoney(compSab.valor_complemento || 0)}</span></div>`;
+                            b += `<div class="d-flex justify-content-between text-primary mt-1"><span>Total venda sábado (pago + complemento)</span><span class="fw-bold">${fmtMoney(compSab.valor_alvo || 0)}</span></div>`;
+                            const det = compSab.detalhes_vendas || [];
+                            if (det.length) {
+                                b += '<div class="small text-muted ms-2 mt-1">Detalhe por venda (MEI usa tabela PAP):</div>';
+                                det.forEach(d => {
+                                    b += `<div class="small text-muted ms-3">#${d.venda_id} OS ${d.os || '-'} | ${d.chave || d.plano} | MEI: ${d.classificacao_mei || '-'} | pago ${fmtMoney(d.pago)} → alvo ${fmtMoney(d.alvo)} = <strong>${d.complemento >= 0 ? '+' : ''}${fmtMoney(d.complemento)}</strong></div>`;
+                                });
+                            }
+                        }
                         if (i.por_plano && i.por_plano.length) {
                             i.por_plano.forEach(row => {
                                 if (row.qtd > 0) b += `<div class="small text-muted ms-2">${row.plano}: ${row.qtd} un. → ${fmtMoney(row.valor_total)}</div>`;
@@ -301,61 +590,8 @@
                         return bloco;
                     })() : ''}
                 </div>
-                <div class="p-2 border-top small text-muted fw-bold">Extrato (${(v.extrato || []).length} vendas)</div>
-                <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class="text-center">ADIANT.</th></tr></thead><tbody>`;
-            const extratoLista = (v.extrato || []);
-            const normaliza = (txt) => (txt || '').toString().trim().toUpperCase();
-            const parseBrDateToSort = (dt) => {
-                const s = (dt || '').toString().trim();
-                const p = s.split('/');
-                if (p.length !== 3) return '';
-                const [dd, mm, yyyy] = p;
-                if (!dd || !mm || !yyyy) return '';
-                return `${yyyy.padStart(4, '0')}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-            };
-            const blocoInfo = (e) => {
-                const situacao = normaliza(e.situacao);
-                const isChurn = normaliza(e.churn) === 'SIM';
-                const isCancelada = situacao.includes('CANCELADA');
-                if (situacao === 'INSTALADA' && !isChurn) return { ordem: 0, titulo: 'INSTALADAS', statusGrupo: 'INSTALADA' };
-                if (situacao === 'INSTALADA' && isChurn) return { ordem: 1, titulo: 'INSTALADAS COM CHURN', statusGrupo: 'INSTALADA (CHURN)' };
-                if (isCancelada) return { ordem: 2, titulo: 'CANCELADAS', statusGrupo: situacao || 'CANCELADA' };
-                return { ordem: 3, titulo: 'DEMAIS STATUS', statusGrupo: situacao || '-' };
-            };
-            const blocos = [
-                { ordem: 0, titulo: 'INSTALADAS', itens: [] },
-                { ordem: 1, titulo: 'INSTALADAS COM CHURN', itens: [] },
-                { ordem: 2, titulo: 'CANCELADAS', itens: [] },
-                { ordem: 3, titulo: 'DEMAIS STATUS', itens: [] }
-            ];
-            extratoLista.forEach(e => {
-                const b = blocoInfo(e);
-                blocos[b.ordem].itens.push({ ...e, _statusGrupo: b.statusGrupo });
-            });
-            blocos.forEach(b => {
-                if (!b.itens.length) return;
-                html += `<tr class="table-secondary"><td colspan="10" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
-                const itensOrdenados = [...b.itens].sort((a, b2) => {
-                    const d1 = parseBrDateToSort(a.dt_pedido) || '9999-99-99';
-                    const d2 = parseBrDateToSort(b2.dt_pedido) || '9999-99-99';
-                    if (d1 !== d2) return d1.localeCompare(d2); // mais antiga primeiro
-                    return (a.nome || '').localeCompare(b2.nome || '');
-                });
-                itensOrdenados.forEach(e => {
-                    const isChurn = normaliza(e.churn) === 'SIM';
-                    const isAdiant = normaliza(e.adiantada) === 'SIM';
-                    const situacao = normaliza(e.situacao);
-                    const isCancelada = situacao.includes('CANCELADA');
-                    const isInstalada = situacao === 'INSTALADA';
-                    const isVerde = isInstalada && !isChurn;
-                    const rowClass = (isChurn || isCancelada)
-                        ? 'table-danger'
-                        : (isVerde ? 'table-success' : 'table-warning');
-                    const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
-                    html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
-                });
-            });
-            html += `</tbody></table></div></div></div>`;
+                ${montarTabelaExtrato(v)}
+            </div></div>`;
             return html;
         }
 
@@ -374,6 +610,7 @@
                 return;
             }
             container.innerHTML = `<div class="mb-3 fw-bold text-secondary">Período: ${folhaExcelCache.periodo}</div>` + montarCardFolha(v);
+            initExtratoFiltros(container);
         }
 
         async function carregarFolhaExcel() {
@@ -571,6 +808,76 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = origText;
+            }
+        }
+
+        async function exportarExtratoComissionamentoXlsx() {
+            const vendedorId = document.getElementById('folha-excel-vendedor')?.value;
+            const selMulti = document.getElementById('folha-excel-vendedores-multi');
+            const idsMulti = selMulti ? Array.from(selMulti.selectedOptions).map(o => parseInt(o.value, 10)).filter(Boolean) : [];
+            const idsEnvio = idsMulti.length > 0 ? idsMulti : (vendedorId ? [parseInt(vendedorId, 10)] : []);
+            const ano = document.getElementById('filtro-ano')?.value;
+            const mes = document.getElementById('filtro-mes')?.value;
+            if (!idsEnvio.length) {
+                alert('Selecione um vendedor no dropdown ou marque um/mais vendedores no campo de envio em lote.');
+                return;
+            }
+            const btn = document.getElementById('btn-exportar-excel-extrato');
+            const origText = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            }
+            try {
+                const res = await axios.post(
+                    `${apiUrl}exportar-extrato-excel/`,
+                    {
+                        vendedor_id: vendedorId ? parseInt(vendedorId, 10) : null,
+                        vendedores_ids: idsEnvio,
+                        ano: parseInt(ano, 10),
+                        mes: parseInt(mes, 10)
+                    },
+                    { responseType: 'blob' }
+                );
+                const cd = res.headers['content-disposition'] || '';
+                let filename = idsEnvio.length === 1
+                    ? `extrato_comissao_${String(mes).padStart(2, '0')}_${ano}.xlsx`
+                    : `extratos_comissao_${String(mes).padStart(2, '0')}_${ano}.zip`;
+                const mStar = /filename\*=UTF-8''([^;\n]+)/i.exec(cd);
+                const mQuoted = /filename="([^"]+)"/i.exec(cd);
+                if (mStar && mStar[1]) {
+                    filename = decodeURIComponent(mStar[1].trim());
+                } else if (mQuoted && mQuoted[1]) {
+                    filename = mQuoted[1].trim();
+                }
+                const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                let msg = err.message || 'Erro ao exportar extrato.';
+                if (err.response && err.response.data instanceof Blob) {
+                    try {
+                        const t = await err.response.data.text();
+                        const j = JSON.parse(t);
+                        msg = j.error || j.detail || msg;
+                    } catch (_) {
+                        msg = 'Falha ao gerar o arquivo.';
+                    }
+                } else if (err.response?.data?.error) {
+                    msg = err.response.data.error;
+                }
+                alert('Erro: ' + msg);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origText;
+                }
             }
         }
 

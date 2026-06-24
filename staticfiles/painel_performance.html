@@ -20,10 +20,35 @@
         .table-excel tfoot td { background-color: #2c3e50; color: white; font-weight: bold; padding: 8px; text-align: center; position: sticky; bottom: 0; z-index: 2; }
         .bg-green-soft { background-color: #d1e7dd !important; color: #0f5132; }
         .bg-red-soft { background-color: #f8d7da !important; color: #842029; opacity: 0.8; }
+        tr.row-perf-zero td, tr.row-perf-below-faixa td { background-color: #f8d7da !important; color: #842029; }
+        tr.row-perf-1-2 td { background-color: #fff3cd !important; color: #664d03; }
+        tr.row-perf-3-5 td { background-color: #cfe2ff !important; color: #084298; }
+        tr.row-perf-6-plus td { background-color: #146c43 !important; color: #fff; }
+        tr.row-perf-faixa-1 td { background-color: #fff3cd !important; color: #664d03; }
+        tr.row-perf-faixa-2 td { background-color: #ffe49c !important; color: #78450a; }
+        tr.row-perf-faixa-3 td { background-color: #cfe2ff !important; color: #084298; }
+        tr.row-perf-faixa-4 td { background-color: #0d6efd !important; color: #fff; }
+        tr.row-perf-faixa-5 td, tr.row-perf-faixa-6 td { background-color: #146c43 !important; color: #fff; }
+        tr.row-perf-zero td.bg-total-column,
+        tr.row-perf-below-faixa td.bg-total-column,
+        tr.row-perf-1-2 td.bg-total-column,
+        tr.row-perf-3-5 td.bg-total-column,
+        tr.row-perf-6-plus td.bg-total-column,
+        tr.row-perf-faixa-1 td.bg-total-column,
+        tr.row-perf-faixa-2 td.bg-total-column,
+        tr.row-perf-faixa-3 td.bg-total-column,
+        tr.row-perf-faixa-4 td.bg-total-column,
+        tr.row-perf-faixa-5 td.bg-total-column,
+        tr.row-perf-faixa-6 td.bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; }
         .bg-header-group { background-color: #e7eef7 !important; color: #1e3a5f !important; font-weight: 600; }
         .bg-info { background-color: #0d6efd !important; }
         .bg-success { background-color: #198754 !important; }
         .bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; font-weight: bold; }
+        .metric-up { background-color: #d1e7dd; color: #0f5132; font-weight: 700; }
+        .metric-down { background-color: #f8d7da; color: #842029; font-weight: 700; }
+        .metric-flat { background-color: #f8f9fa; color: #495057; font-weight: 700; }
+        .meta-hit { background-color: #d1e7dd; color: #0f5132; font-weight: 700; }
+        .meta-miss { background-color: #fff3cd; color: #664d03; font-weight: 700; }
         #capture-area { position: absolute; left: -9999px; top: -9999px; width: 1200px; background: white; padding: 20px; }
         #capture-area .table-excel thead th { position: static !important; }
         #capture-area .table-excel tfoot td { position: static !important; }
@@ -41,6 +66,12 @@
             font-weight: 700;
         }
         .top-action-wrap { width: 180px; }
+        .gestao-filtros-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
@@ -94,7 +125,7 @@
         <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm flex-wrap gap-2">
             <div><h4 class="fw-bold text-dark mb-0"><i class="bi bi-bar-chart-line-fill text-primary"></i> Painel de Performance</h4></div>
             
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
                 <button class="btn btn-sm btn-outline-dark top-action-btn" onclick="abrirConfiguracaoRobo()">
                     <i class="bi bi-robot"></i> Robô Automático
                 </button>
@@ -111,6 +142,7 @@
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('HOJE')">Base de Hoje</button></li>
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('SEMANAL')">Base Semanal</button></li>
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('MENSAL')">Base Mensal</button></li>
+                        <li><button class="dropdown-item" type="button" onclick="exportarPerformance('GESTAO')">Base Gestão</button></li>
                     </ul>
                 </div>
                 
@@ -168,6 +200,7 @@
             <li class="nav-item"><button class="nav-link active" id="tab-hoje" data-bs-toggle="pill" data-bs-target="#content-hoje">Hoje</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-semana" data-bs-toggle="pill" data-bs-target="#content-semana">Semanal</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-mes" data-bs-toggle="pill" data-bs-target="#content-mes">Mensal</button></li>
+            <li class="nav-item"><button class="nav-link" id="tab-gestao" data-bs-toggle="pill" data-bs-target="#content-gestao">Gestão</button></li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
@@ -179,6 +212,114 @@
             </div>
             <div class="tab-pane fade" id="content-mes">
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+            </div>
+            <div class="tab-pane fade" id="content-gestao">
+                <div class="card border-0 shadow">
+                    <div class="card-body">
+                        <div class="gestao-filtros-header">
+                            <h6 class="fw-bold mb-0">Filtros da Gestão</h6>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" id="btn-toggle-filtros-gestao" onclick="toggleFiltrosGestao()">Esconder filtros</button>
+                        </div>
+                        <div class="row g-2 mb-3" id="gestao-filtros-wrap">
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Visão</label>
+                                <select id="gestao-visao" class="form-select form-select-sm" onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <option value="VENDEDOR">Vendedor</option>
+                                    <option value="CANAL_CLUSTER">Canal/Cluster</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">Métrica</label>
+                                <select id="gestao-tipo" class="form-select form-select-sm" onchange="carregarDados()">
+                                    <option value="BRUTA">Venda Bruta</option>
+                                    <option value="INSTALADA">Venda Instalada</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold" title="Define qual mês civil é o M-0 da série (demais colunas são meses anteriores).">Mês base (âncora M-0)</label>
+                                <select id="gestao-ref-offset" class="form-select form-select-sm" onchange="onChangeRefOffset()">
+                                    <option value="0">M-0</option>
+                                    <option value="1">M-1</option>
+                                    <option value="2">M-2</option>
+                                    <option value="3">M-3</option>
+                                    <option value="4">M-4</option>
+                                    <option value="5">M-5</option>
+                                    <option value="6">M-6</option>
+                                    <option value="7">M-7</option>
+                                    <option value="8">M-8</option>
+                                    <option value="9">M-9</option>
+                                    <option value="10">M-10</option>
+                                    <option value="11">M-11</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">Modo comparação</label>
+                                <select id="gestao-modo-comp" class="form-select form-select-sm" onchange="onChangeModoComparacaoGestao()">
+                                    <option value="ESPECIFICA">Mês específico</option>
+                                    <option value="SEQUENCIAL">Sequencial (mês anterior)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">Histórico (meses)</label>
+                                <input type="number" min="1" max="12" value="6" id="gestao-meses" class="form-control form-control-sm" onchange="onChangeHistoricoMeses()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Comparar com (mês/ano)</label>
+                                <input type="month" id="gestao-comp-mes" class="form-control form-control-sm" onchange="carregarDados()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Ordenação</label>
+                                <select id="gestao-ordenacao" class="form-select form-select-sm" title="Ordenação da tabela de gestão" onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <option value="VAR_PCT_DESC">Maior crescimento (%)</option>
+                                    <option value="VAR_PCT_ASC">Maior queda (%)</option>
+                                    <option value="ATING_DESC">Maior atingimento de meta</option>
+                                    <option value="REF_DESC">Maior total mês ref.</option>
+                                    <option value="ALFA_ASC">Ordem alfabética</option>
+                                </select>
+                            </div>
+                            <div class="col-12 border-top pt-2 mt-1">
+                                <span class="small fw-bold text-muted me-2">Colunas da tabela:</span>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="gestao-show-volumes" checked onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <label class="form-check-label small" for="gestao-show-volumes">Meta e volumes M-0…</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="gestao-show-mm-pairs" checked onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <label class="form-check-label small" for="gestao-show-mm-pairs">Variações mês→mês (Δ e %)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="gestao-show-ref-comp" checked onchange="renderGestao(window.__gestaoPayload || null)">
+                                    <label class="form-check-label small" for="gestao-show-ref-comp">Bloco Ref × Comp + %CC + Aprov + Meta ating.</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="table-responsive mb-3">
+                            <div id="gestao-resumo-comparacao" class="small fw-bold text-primary mb-2"></div>
+                            <table class="table-excel">
+                                <thead id="thead-gestao"></thead>
+                                <tbody id="tbody-gestao"></tbody>
+                            </table>
+                        </div>
+                        <h6 class="fw-bold">Comparativo Mês a Mês (Sequencial)</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table-excel">
+                                <thead>
+                                    <tr><th>Mês Ref</th><th>Mês Anterior</th><th>Total Ref</th><th>Total Ant.</th><th>Var. Abs</th><th>Var. %</th></tr>
+                                </thead>
+                                <tbody id="tbody-gestao-mes-a-mes"></tbody>
+                            </table>
+                        </div>
+                        <h6 class="fw-bold">Comparativo Semanal (S1..S4)</h6>
+                        <div class="table-responsive">
+                            <table class="table-excel">
+                                <thead>
+                                    <tr><th>Semana</th><th>Total Ref</th><th>Total Comp</th><th>Var. Abs</th><th>Var. %</th></tr>
+                                </thead>
+                                <tbody id="tbody-gestao-semana"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
@@ -322,6 +463,9 @@
         const modalRobo = new bootstrap.Modal(document.getElementById('modalConfigRobo'));
         const modalManual = new bootstrap.Modal(document.getElementById('modalEnvioManual'));
         const modalSeletor = new bootstrap.Modal(document.getElementById('modalSeletor'));
+        let gestaoFiltrosVisiveis = true;
+        let regrasFaixaComissao = [];
+        let periodoPerformance = { dias_semana_decorridos: 1 };
 
         function paramsPeriodoPerformance() {
             const params = new URLSearchParams();
@@ -363,13 +507,30 @@
                     const elMes = document.getElementById('filtro-mes-livre');
                     if (elMes) elMes.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                 }
+                const mesComp = new Date();
+                mesComp.setMonth(mesComp.getMonth() - 1);
+                const elComp = document.getElementById('gestao-comp-mes');
+                if (elComp) elComp.value = `${mesComp.getFullYear()}-${String(mesComp.getMonth() + 1).padStart(2, '0')}`;
                 if (!perfilExportExcel) {
                     document.getElementById('dropdown-export-performance')?.classList.add('d-none');
                 }
             } catch (e) {}
             atualizarModoEnvioRobo();
-            carregarDados();
+            carregarRegrasFaixaComissao().finally(() => carregarDados());
         });
+
+        async function carregarRegrasFaixaComissao() {
+            try {
+                const res = await axios.get('/api/crm/regras-comissao-faixa/', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const lista = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+                regrasFaixaComissao = lista.filter(r => (r.finalidade || 'COMISSAO') === 'COMISSAO');
+            } catch (e) {
+                console.warn('Não foi possível carregar regras por faixa:', e);
+                regrasFaixaComissao = [];
+            }
+        }
 
         function parseHorariosEspecificos(valor) {
             return (valor || '')
@@ -404,14 +565,29 @@
             if (canal) params.set('canal', canal);
             if (cluster) params.set('cluster', cluster);
             params.set('vendedor_ativo', vendedorAtivo || 'todos');
+            const gm = document.getElementById('gestao-meses')?.value;
+            const gc = document.getElementById('gestao-comp-mes')?.value;
+            const gv = document.getElementById('gestao-visao')?.value;
+            const gt = document.getElementById('gestao-tipo')?.value;
+            const gr = document.getElementById('gestao-ref-offset')?.value;
+            const gmc = document.getElementById('gestao-modo-comp')?.value;
+            if (gm) params.set('gestao_meses', gm);
+            if (gc) params.set('gestao_comp_mes', gc);
+            if (gv) params.set('gestao_visao', gv);
+            if (gt) params.set('gestao_tipo', gt);
+            if (gr !== undefined && gr !== null) params.set('gestao_ref_offset', gr);
+            if (gmc) params.set('gestao_modo_comp', gmc);
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
                 if (response.data.aviso) {
                     console.warn(response.data.aviso);
                 }
+                periodoPerformance = response.data.periodo || {};
                 renderHoje(response.data.hoje);
                 renderSemana(response.data.semana);
                 renderMes(response.data.mes);
+                window.__gestaoPayload = response.data.gestao || null;
+                renderGestao(window.__gestaoPayload);
             } catch (e) { console.error(e); }
         }
 
@@ -424,6 +600,18 @@
             params.set('canal', canal);
             params.set('cluster', cluster);
             params.set('vendedor_ativo', (vaEl ? vaEl.value : 'todos') || 'todos');
+            const gm = document.getElementById('gestao-meses')?.value;
+            const gc = document.getElementById('gestao-comp-mes')?.value;
+            const gv = document.getElementById('gestao-visao')?.value;
+            const gt = document.getElementById('gestao-tipo')?.value;
+            const gr = document.getElementById('gestao-ref-offset')?.value;
+            const gmc = document.getElementById('gestao-modo-comp')?.value;
+            if (gm) params.set('gestao_meses', gm);
+            if (gc) params.set('gestao_comp_mes', gc);
+            if (gv) params.set('gestao_visao', gv);
+            if (gt) params.set('gestao_tipo', gt);
+            if (gr !== undefined && gr !== null) params.set('gestao_ref_offset', gr);
+            if (gmc) params.set('gestao_modo_comp', gmc);
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
                 const response = await axios.get(url, {
@@ -449,12 +637,82 @@
             }
         }
 
-        // Funções de Renderização
-        function cellClass(v) { return v > 0 ? 'bg-green-soft fw-bold' : 'bg-red-soft opacity-50'; }
+        // Funções de Renderização — Hoje: 0 vermelho | 1-2 amarelo | 3-5 azul | 6+ verde
+        function _perfN(v) { return Number(v) || 0; }
+        function rowClass(v) {
+            const n = _perfN(v);
+            if (n === 0) return 'row-perf-zero';
+            if (n <= 2) return 'row-perf-1-2';
+            if (n <= 5) return 'row-perf-3-5';
+            return 'row-perf-6-plus';
+        }
+        function cellClass(v) { return rowClass(v) + ' fw-bold'; }
+
+        function _safeMinMaxRegra(r) {
+            const minV = r.min_vendas != null ? Number(r.min_vendas) : 0;
+            const maxV = r.max_vendas != null ? Number(r.max_vendas) : 999999;
+            return [minV, maxV];
+        }
+
+        function _regrasFaixaAplicaveis(usuarioId, perfil) {
+            const individuais = regrasFaixaComissao.filter(r => r.vendedor === usuarioId);
+            if (individuais.length) return individuais;
+            const p = (perfil || 'Vendedor');
+            return regrasFaixaComissao.filter(r => !r.vendedor && (r.perfil || '') === p);
+        }
+
+        function indiceFaixaComissao(usuarioId, perfil, instaladas) {
+            const regras = _regrasFaixaAplicaveis(usuarioId, perfil);
+            if (!regras.length) return -1;
+            const ordenadas = [...regras].sort((a, b) => _safeMinMaxRegra(a)[0] - _safeMinMaxRegra(b)[0]);
+            const qtd = _perfN(instaladas);
+            const [primeiraMin] = _safeMinMaxRegra(ordenadas[0]);
+            if (qtd < primeiraMin) return -1;
+            let faixa = null;
+            for (const r of [...regras].sort((a, b) => _safeMinMaxRegra(b)[0] - _safeMinMaxRegra(a)[0])) {
+                const [minV, maxV] = _safeMinMaxRegra(r);
+                if (qtd >= minV && qtd <= maxV) { faixa = r; break; }
+            }
+            if (!faixa) return -1;
+            return ordenadas.findIndex(r => r.id === faixa.id);
+        }
+
+        function rowClassMensal(item) {
+            const idx = indiceFaixaComissao(item.usuario_id, item.perfil_comissao, item.instaladas);
+            if (idx < 0) return 'row-perf-below-faixa';
+            const n = Math.min(idx + 1, 6);
+            return `row-perf-faixa-${n}`;
+        }
+
+        function mediaDiariaSemana(totalSemana, diasDecorridos) {
+            const dias = Math.max(1, _perfN(diasDecorridos) || 1);
+            return Math.round(_perfN(totalSemana) / dias);
+        }
+
+        function rowClassSemanal(item) {
+            const dias = periodoPerformance.dias_semana_decorridos || 1;
+            return rowClass(mediaDiariaSemana(item.total, dias));
+        }
+        function ordenarListaPerf(lista) {
+            const ordem = (c) => {
+                const x = String(c || '').toUpperCase().replace(/\s/g, '_');
+                if (x === 'CLUSTER_1' || x === 'CLUSTER1') return 1;
+                if (x === 'CLUSTER_2' || x === 'CLUSTER2') return 2;
+                if (x === 'CLUSTER_3' || x === 'CLUSTER3') return 3;
+                return 99;
+            };
+            return [...(lista || [])].sort((a, b) => {
+                const ca = ordem(a.cluster), cb = ordem(b.cluster);
+                if (ca !== cb) return ca - cb;
+                return String(a.vendedor || '').localeCompare(String(b.vendedor || ''), 'pt-BR');
+            });
+        }
         
         function renderHoje(lista) {
+            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
+            const rows = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
             let h='', tV=0, tC=0;
-            lista.forEach(i => { tV+=i.total; tC+=i.cc; h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td>${i.canal||'-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`; });
+            rows.forEach(i => { tV+=i.total; tC+=i.cc; h+=`<tr class="${rowClass(i.total)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td>${i.canal||'-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`; });
             // Linha de TOTAL logo após o cabeçalho
             const pct = tV > 0 ? ((tC/tV)*100).toFixed(1) : 0;
             const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${tC}</td><td>${pct}%</td></tr>`;
@@ -465,9 +723,11 @@
         }
         
         function renderSemana(lista) {
+            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
+            const rows = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
             let h='', tS=0, tC=0;
             let dias_total = [0, 0, 0, 0, 0, 0]; // seg, ter, qua, qui, sex, sab
-            lista.forEach(i => {
+            rows.forEach(i => {
                 tS+=i.total;
                 tC+=i.cc;
                 // Somar dias da semana
@@ -476,7 +736,7 @@
                         dias_total[d] += (i.dias[d] || 0);
                     }
                 }
-                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td>${i.dias[0]}</td><td>${i.dias[1]}</td><td>${i.dias[2]}</td><td>${i.dias[3]}</td><td>${i.dias[4]}</td><td>${i.dias[5]}</td><td class="bg-total-column">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`;
+                h+=`<tr class="${rowClassSemanal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td>${i.dias[0]}</td><td>${i.dias[1]}</td><td>${i.dias[2]}</td><td>${i.dias[3]}</td><td>${i.dias[4]}</td><td>${i.dias[5]}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`;
             });
             // Linha de TOTAL logo após o cabeçalho
             const pct = tS > 0 ? ((tC/tS)*100).toFixed(1) : 0;
@@ -488,8 +748,10 @@
         }
         
         function renderMes(lista) {
+            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
+            const rows = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
             let h='', tT=0, tI=0, tCC=0, tCI=0, tPend=0, tAgend=0, tCanc=0;
-            lista.forEach(i => {
+            rows.forEach(i => {
                 tT += i.total;
                 tI += i.instaladas;
                 tCC += i.cc_total;
@@ -498,7 +760,7 @@
                 tAgend += i.agend;
                 tCanc += i.canc;
                 const aval = (i.avaliacao_cluster || '—').replace(/</g, '&lt;');
-                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+                h+=`<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column fw-bold">${i.total}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
             });
             // Calcular totais
             const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
@@ -510,6 +772,237 @@
             document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
             // Remover tfoot
             document.getElementById('tfoot-mes').innerHTML = '';
+        }
+
+        function _gestaoClsDelta(va) {
+            const n = Number(va || 0);
+            return n > 0 ? 'metric-up' : (n < 0 ? 'metric-down' : 'metric-flat');
+        }
+
+        function _gestaoPairCells(serie, labels) {
+            const ser = serie || [];
+            let html = '';
+            for (let i = 0; i < ser.length - 1; i++) {
+                const a = Number(ser[i] || 0);
+                const b = Number(ser[i + 1] || 0);
+                const va = a - b;
+                const vp = b > 0 ? ((va / b) * 100) : (a > 0 ? 100 : 0);
+                const title = labels[i] && labels[i + 1]
+                    ? `${labels[i].mes} vs ${labels[i + 1].mes}`
+                    : '';
+                html += `<td class="${_gestaoClsDelta(va)}" title="${title}">${va}</td>`;
+                html += `<td class="${_gestaoClsDelta(vp)}" title="${title}">${vp.toFixed(2)}%</td>`;
+            }
+            return html;
+        }
+
+        function renderGestao(payload) {
+            const thead = document.getElementById('thead-gestao');
+            const tbody = document.getElementById('tbody-gestao');
+            const tsem = document.getElementById('tbody-gestao-semana');
+            const tMesAMes = document.getElementById('tbody-gestao-mes-a-mes');
+            const resumoComp = document.getElementById('gestao-resumo-comparacao');
+            if (!payload) {
+                thead.innerHTML = '';
+                tbody.innerHTML = '<tr><td>Sem dados</td></tr>';
+                tsem.innerHTML = '<tr><td colspan="5">Sem dados</td></tr>';
+                if (tMesAMes) tMesAMes.innerHTML = '<tr><td colspan="6">Sem dados</td></tr>';
+                if (resumoComp) resumoComp.innerHTML = '';
+                return;
+            }
+            const showVol = document.getElementById('gestao-show-volumes')?.checked !== false;
+            const showMm = document.getElementById('gestao-show-mm-pairs')?.checked !== false;
+            const showRc = document.getElementById('gestao-show-ref-comp')?.checked !== false;
+
+            const visao = (document.getElementById('gestao-visao')?.value || 'VENDEDOR').toUpperCase();
+            const tipoMetrica = (payload.tipo_metrica || document.getElementById('gestao-tipo')?.value || 'BRUTA').toUpperCase();
+            const labelPrincipal = tipoMetrica === 'INSTALADA' ? 'Instaladas' : 'Vendas';
+            const refOffsetEl = document.getElementById('gestao-ref-offset');
+            if (refOffsetEl && payload.ref_offset != null) refOffsetEl.value = String(payload.ref_offset);
+            const modoCompEl = document.getElementById('gestao-modo-comp');
+            if (modoCompEl && payload.modo_comparacao) modoCompEl.value = payload.modo_comparacao;
+            const compMesEl = document.getElementById('gestao-comp-mes');
+            if (compMesEl && payload.mes_comp && payload.modo_comparacao === 'SEQUENCIAL') {
+                compMesEl.value = payload.mes_comp;
+            }
+            const labels = payload.labels || [];
+            const mesM0 = labels[0]?.mes || payload.mes_ref;
+            const nMeses = payload.meses_historico || labels.length;
+            if (resumoComp) {
+                resumoComp.innerHTML =
+                    `Série temporal: <strong>M-0 = ${mesM0}</strong> (${nMeses} meses no histórico, conforme filtro). ` +
+                    `Comparando <strong>Ref: ${payload.mes_ref}</strong> com <strong>Comp: ${payload.mes_comp}</strong> ` +
+                    `(Métrica: <strong>${tipoMetrica === 'INSTALADA' ? 'Venda Instalada' : 'Venda Bruta'}</strong>).`;
+            }
+            onChangeModoComparacaoGestao(false);
+            const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
+            const ord = (document.getElementById('gestao-ordenacao')?.value || 'VAR_PCT_DESC').toUpperCase();
+            const rows = [...rowsRaw];
+            rows.sort((a, b) => {
+                if (ord === 'VAR_PCT_ASC') return (Number(a.var_pct) || 0) - (Number(b.var_pct) || 0);
+                if (ord === 'ATING_DESC') return (Number(b.atingimento_meta) || 0) - (Number(a.atingimento_meta) || 0);
+                if (ord === 'REF_DESC') return (Number(b.ref_total) || 0) - (Number(a.ref_total) || 0);
+                if (ord === 'ALFA_ASC') return String(a.grupo || '').localeCompare(String(b.grupo || ''), 'pt-BR');
+                return (Number(b.var_pct) || 0) - (Number(a.var_pct) || 0);
+            });
+
+            let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th>';
+            if (showVol) {
+                h += '<th>Meta</th>';
+                labels.forEach(lb => { h += `<th>${lb.label} (${lb.mes})</th>`; });
+            }
+            if (showMm && labels.length > 1) {
+                for (let i = 0; i < labels.length - 1; i++) {
+                    const a = labels[i].mes;
+                    const b = labels[i + 1].mes;
+                    h += `<th title="${a} vs ${b}">Δ M${i}→M${i + 1}</th><th title="${a} vs ${b}">% M${i}→M${i + 1}</th>`;
+                }
+            }
+            if (showRc) {
+                h += `<th>${labelPrincipal} Ref (${payload.mes_ref})</th><th>${labelPrincipal} Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th>`;
+            }
+            h += '</tr>';
+            thead.innerHTML = h;
+
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="40">Sem dados para os filtros selecionados</td></tr>';
+            } else {
+                let b = '';
+                const totSerie = new Array(labels.length).fill(0);
+                let totMeta = 0;
+                let totRef = 0;
+                let totComp = 0;
+                let totVarAbs = 0;
+                let somaPctCcPondNum = 0;
+                let somaAprovPondNum = 0;
+                rows.forEach(r => {
+                    (r.serie || []).forEach((v, idx) => {
+                        totSerie[idx] += Number(v || 0);
+                    });
+                    const varAbs = Number(r.var_abs || 0);
+                    const varPct = Number(r.var_pct || 0);
+                    const ating = Number(r.atingimento_meta || 0);
+                    const clsVar = varAbs > 0 ? 'metric-up' : (varAbs < 0 ? 'metric-down' : 'metric-flat');
+                    const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
+                    const clsMeta = ating >= 100 ? 'meta-hit' : 'meta-miss';
+                    b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td>`;
+                    if (showVol) {
+                        b += `<td>${r.meta||0}</td>`;
+                        (r.serie || []).forEach((v) => {
+                            b += `<td>${Number(v || 0)}</td>`;
+                        });
+                    }
+                    if (showMm && labels.length > 1) {
+                        b += _gestaoPairCells(r.serie, labels);
+                    }
+                    if (showRc) {
+                        b += `<td class="bg-total-column">${r.ref_total}</td><td>${r.comp_total}</td><td class="${clsVar}">${r.var_abs}</td><td class="${clsVarPct}">${r.var_pct}%</td><td>${r.pct_cc_ref}%</td><td>${r.aprov_ref}%</td><td class="${clsMeta}">${r.atingimento_meta}%</td>`;
+                    }
+
+                    const meta = Number(r.meta || 0);
+                    const ref = Number(r.ref_total || 0);
+                    const comp = Number(r.comp_total || 0);
+                    const pctCc = Number(r.pct_cc_ref || 0);
+                    const aprov = Number(r.aprov_ref || 0);
+                    totMeta += meta;
+                    totRef += ref;
+                    totComp += comp;
+                    totVarAbs += varAbs;
+                    somaPctCcPondNum += (pctCc * ref);
+                    somaAprovPondNum += (aprov * ref);
+                    b += '</tr>';
+                });
+                const totVarPct = totComp > 0 ? ((totVarAbs / totComp) * 100) : (totRef > 0 ? 100 : 0);
+                const totPctCc = totRef > 0 ? (somaPctCcPondNum / totRef) : 0;
+                const totAprov = totRef > 0 ? (somaAprovPondNum / totRef) : 0;
+                const totAting = totMeta > 0 ? ((totRef / totMeta) * 100) : 0;
+                const clsTotVar = totVarAbs > 0 ? 'metric-up' : (totVarAbs < 0 ? 'metric-down' : 'metric-flat');
+                const clsTotVarPct = totVarPct > 0 ? 'metric-up' : (totVarPct < 0 ? 'metric-down' : 'metric-flat');
+                const clsTotMeta = totAting >= 100 ? 'meta-hit' : 'meta-miss';
+                let linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td>`;
+                if (showVol) {
+                    linhaTotal += `<td>${totMeta}</td>`;
+                    totSerie.forEach(v => { linhaTotal += `<td>${v}</td>`; });
+                }
+                if (showMm && labels.length > 1) {
+                    linhaTotal += _gestaoPairCells(totSerie, labels);
+                }
+                if (showRc) {
+                    linhaTotal += `<td>${totRef}</td><td>${totComp}</td><td class="${clsTotVar}">${totVarAbs}</td><td class="${clsTotVarPct}">${totVarPct.toFixed(2)}%</td><td>${totPctCc.toFixed(2)}%</td><td>${totAprov.toFixed(2)}%</td><td class="${clsTotMeta}">${totAting.toFixed(2)}%</td>`;
+                }
+                linhaTotal += '</tr>';
+                b = linhaTotal + b;
+                tbody.innerHTML = b;
+
+                if (tMesAMes) {
+                    let monthRows = '';
+                    for (let i = 0; i < labels.length - 1; i++) {
+                        const mesRef = labels[i];
+                        const mesAnt = labels[i + 1];
+                        const totalRef = Number(totSerie[i] || 0);
+                        const totalAnt = Number(totSerie[i + 1] || 0);
+                        const varAbsMm = totalRef - totalAnt;
+                        const varPctMm = totalAnt > 0 ? ((varAbsMm / totalAnt) * 100) : (totalRef > 0 ? 100 : 0);
+                        const clsAbsMm = varAbsMm > 0 ? 'metric-up' : (varAbsMm < 0 ? 'metric-down' : 'metric-flat');
+                        const clsPctMm = varPctMm > 0 ? 'metric-up' : (varPctMm < 0 ? 'metric-down' : 'metric-flat');
+                        monthRows += `<tr><td>${mesRef.mes}</td><td>${mesAnt.mes}</td><td>${totalRef}</td><td>${totalAnt}</td><td class="${clsAbsMm}">${varAbsMm}</td><td class="${clsPctMm}">${varPctMm.toFixed(2)}%</td></tr>`;
+                    }
+                    tMesAMes.innerHTML = monthRows || '<tr><td colspan="6">Sem meses suficientes para comparar</td></tr>';
+                }
+            }
+
+            const sem = payload.semanal_comparativo || [];
+            if (!sem.length) {
+                tsem.innerHTML = '<tr><td colspan="5">Sem dados semanais</td></tr>';
+            } else {
+                tsem.innerHTML = sem.map(s => {
+                    const varAbs = Number(s.var_abs || 0);
+                    const varPct = Number(s.var_pct || 0);
+                    const clsVar = varAbs > 0 ? 'metric-up' : (varAbs < 0 ? 'metric-down' : 'metric-flat');
+                    const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
+                    return `<tr><td>${s.semana}</td><td>${s.ref_total}</td><td>${s.comp_total}</td><td class="${clsVar}">${s.var_abs}</td><td class="${clsVarPct}">${s.var_pct}%</td></tr>`;
+                }).join('');
+            }
+        }
+
+        function toggleFiltrosGestao() {
+            const wrap = document.getElementById('gestao-filtros-wrap');
+            const btn = document.getElementById('btn-toggle-filtros-gestao');
+            if (!wrap || !btn) return;
+            gestaoFiltrosVisiveis = !gestaoFiltrosVisiveis;
+            wrap.style.display = gestaoFiltrosVisiveis ? '' : 'none';
+            btn.textContent = gestaoFiltrosVisiveis ? 'Esconder filtros' : 'Mostrar filtros';
+        }
+
+        function onChangeHistoricoMeses() {
+            const el = document.getElementById('gestao-meses');
+            if (el) {
+                let v = parseInt(el.value, 10);
+                if (!Number.isInteger(v)) v = 6;
+                v = Math.max(1, Math.min(12, v));
+                el.value = String(v);
+            }
+            carregarDados();
+        }
+
+        function onChangeRefOffset() {
+            const elRef = document.getElementById('gestao-ref-offset');
+            const elHist = document.getElementById('gestao-meses');
+            if (elRef && elHist) {
+                const ref = parseInt(elRef.value, 10) || 0;
+                const hist = Math.max(1, Math.min(12, parseInt(elHist.value, 10) || 6));
+                if (ref >= hist) {
+                    elRef.value = String(hist - 1);
+                }
+            }
+            carregarDados();
+        }
+
+        function onChangeModoComparacaoGestao(recarregar = true) {
+            const modo = (document.getElementById('gestao-modo-comp')?.value || 'ESPECIFICA').toUpperCase();
+            const compMes = document.getElementById('gestao-comp-mes');
+            if (compMes) compMes.disabled = (modo === 'SEQUENCIAL');
+            if (recarregar) carregarDados();
         }
 
         // --- LÓGICA DO ROBÔ ---
