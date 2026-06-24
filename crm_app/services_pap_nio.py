@@ -1166,49 +1166,112 @@ class PAPNioAutomation:
                 continue
         return False
 
-    def _clicar_menu_consulta_os(self) -> bool:
-        """
-        Clica no item do menu lateral "Consulta OS" (ou navega para a URL).
-        Retorna True se encontrou e acessou a tela, False caso contrário.
-        """
-        rapido = self.optimize_for_credit
-        # Tentar navegação direta primeiro
+    _SELETOR_CONSULTA_OS_PRONTA = (
+        'input.input-text-filter[placeholder*="CPF"], '
+        'button:has-text("Filtros"), button.btn-filters-new'
+    )
+
+    def _tela_consulta_os_carregada(self, timeout_ms: int = 5000) -> bool:
+        """Verifica se a tela Consulta OS está pronta (URL ou controles visíveis)."""
+        if not self.page:
+            return False
+        url = (self.page.url or "").lower()
+        if "consulta-os" in url:
+            try:
+                self.page.wait_for_selector(
+                    self._SELETOR_CONSULTA_OS_PRONTA,
+                    state="visible",
+                    timeout=timeout_ms,
+                )
+            except Exception:
+                pass
+            return True
         try:
-            ok_sessao, _ = self.garantir_sessao_ativa()
-            if not ok_sessao:
-                return False
-            self.page.goto(PAP_CONSULTA_OS_URL, wait_until="domcontentloaded", timeout=30000)
-            self.page.wait_for_timeout(400 if rapido else 1500)
-            if rapido:
+            self.page.wait_for_selector(
+                self._SELETOR_CONSULTA_OS_PRONTA,
+                state="visible",
+                timeout=timeout_ms,
+            )
+            return True
+        except Exception:
+            return False
+
+    def _abrir_menu_lateral_se_fechado(self) -> None:
+        """Abre drawer/menu lateral quando colapsado (viewports menores)."""
+        if not self.page:
+            return
+        try:
+            loc_abrir = self.page.get_by_role(
+                "button", name=re.compile(r"menu|abrir|navega", re.I)
+            )
+            if loc_abrir.count() > 0:
+                botao = loc_abrir.first
+                if botao.is_visible():
+                    logger.info("[PAP] Abrindo menu lateral (botão menu)")
+                    botao.click(timeout=4000)
+                    self.page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+    def _clicar_menu_consulta_os_via_sidebar(self) -> bool:
+        """Clica em Consulta OS no menu lateral (padrão estável pós-login em SPA)."""
+        if not self.page:
+            return False
+        self._abrir_menu_lateral_se_fechado()
+
+        def _apos_clique() -> None:
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.wait_for_load_state("domcontentloaded", timeout=12000)
+            except Exception:
+                pass
+
+        for nome, loc in (
+            (
+                "link role Consulta OS",
+                self.page.get_by_role("link", name=re.compile(r"Consulta\s+OS", re.I)),
+            ),
+            (
+                "menuitem Consulta OS",
+                self.page.get_by_role("menuitem", name=re.compile(r"Consulta\s+OS", re.I)),
+            ),
+            (
+                "aside/nav link",
+                self.page.locator("aside a, nav a, [role='navigation'] a").filter(
+                    has_text=re.compile(r"Consulta\s+OS", re.I)
+                ),
+            ),
+            ("a[href*=consulta-os]", self.page.locator("a[href*='consulta-os']")),
+            ("button texto Consulta OS", self.page.locator("button:has-text('Consulta OS')")),
+        ):
+            try:
+                if loc.count() < 1:
+                    continue
+                alvo = loc.first
+                alvo.wait_for(state="visible", timeout=8000)
                 try:
-                    self.page.wait_for_selector(
-                        'input.input-text-filter[placeholder*="CPF"], '
-                        'button:has-text("Filtros"), button.btn-filters-new',
-                        state="visible",
-                        timeout=8000,
-                    )
+                    alvo.scroll_into_view_if_needed(timeout=5000)
                 except Exception:
                     pass
-            else:
-                try:
-                    self.page.wait_for_load_state("networkidle", timeout=6000)
-                except Exception:
+                logger.info("[PAP] Clicando menu Consulta OS (%s)", nome)
+                if self.capture_screenshots:
                     try:
-                        self.page.wait_for_load_state("load", timeout=15000)
+                        handle = alvo.element_handle()
+                        if handle:
+                            self._highlight_element(handle, duration_ms=500)
                     except Exception:
                         pass
-            if "consulta-os" in (self.page.url or "").lower() or "pap.niointernet.com.br" in (self.page.url or ""):
-                logger.info("[PAP] Navegação para Consulta OS OK (URL direta)")
+                alvo.click(timeout=12000, force=True)
+                _apos_clique()
                 return True
-        except Exception as e:
-            logger.warning(f"[PAP] goto Consulta OS: {e}")
+            except Exception as e:
+                logger.debug("[PAP] Menu Consulta OS (%s): %s", nome, e)
+                continue
 
         seletores_menu = [
             'a[href*="consulta-os"]',
             'a:has-text("Consulta OS")',
             'span:has-text("Consulta OS")',
-            'div.sc-kAzzGY:has(img)',
-            '[class*="sc-kAzzGY"]:has(img)',
             "//span[contains(text(),'Consulta OS')]",
             "//a[contains(@href,'consulta-os')]",
         ]
@@ -1219,16 +1282,83 @@ class PAPNioAutomation:
                 else:
                     el = self.page.query_selector(sel)
                 if el and el.is_visible():
-                    logger.info(f"[PAP] Clicando no menu 'Consulta OS' (seletor: {sel[:50]}...)")
+                    logger.info("[PAP] Clicando menu Consulta OS (seletor: %s...)", sel[:50])
                     if self.capture_screenshots:
                         self._highlight_element(el, duration_ms=500)
                     el.click()
-                    self.page.wait_for_timeout(2000)
-                    self.page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    _apos_clique()
                     return True
             except Exception as e:
-                logger.debug(f"[PAP] Menu Consulta OS seletor {sel[:30]}: {e}")
+                logger.debug("[PAP] Menu Consulta OS seletor %s: %s", sel[:30], e)
                 continue
+        return False
+
+    def _navegar_consulta_os_url_direta(self, rapido: bool) -> bool:
+        """
+        Navega via URL direta. ERR_ABORTED é comum em SPA (redirect interrompe goto);
+        valida pela tela, não só pela exceção do Playwright.
+        """
+        if not self.page:
+            return False
+        try:
+            self.page.goto(PAP_CONSULTA_OS_URL, wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            logger.warning("[PAP] goto Consulta OS: %s", e)
+
+        self.page.wait_for_timeout(400 if rapido else 1500)
+        timeout_pronta = 10000 if rapido else 15000
+        if self._tela_consulta_os_carregada(timeout_pronta):
+            logger.info("[PAP] Navegação para Consulta OS OK (URL direta)")
+            return True
+
+        if not rapido:
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=6000)
+            except Exception:
+                try:
+                    self.page.wait_for_load_state("load", timeout=15000)
+                except Exception:
+                    pass
+            if self._tela_consulta_os_carregada(5000):
+                logger.info("[PAP] Navegação para Consulta OS OK (URL direta, após load)")
+                return True
+        return False
+
+    def _clicar_menu_consulta_os(self) -> bool:
+        """
+        Acessa a tela Consulta OS (menu lateral ou URL).
+        Retorna True se a tela ficou pronta, False caso contrário.
+        """
+        rapido = self.optimize_for_credit
+        ok_sessao, _ = self.garantir_sessao_ativa()
+        if not ok_sessao:
+            return False
+
+        if self._tela_consulta_os_carregada(2000):
+            logger.info("[PAP] Já na tela Consulta OS")
+            return True
+
+        # SPA do PAP pode ainda estar finalizando redirect pós-login
+        self._aguardar_pagina_estavel(retries=2, delay_ms=1500 if rapido else 2500)
+        self.page.wait_for_timeout(800 if rapido else 2000)
+
+        for tentativa in range(1, 3):
+            # Menu antes do goto: mesmo padrão do fluxo de crédito (Novo Pedido)
+            if self._clicar_menu_consulta_os_via_sidebar():
+                if self._tela_consulta_os_carregada(12000 if rapido else 20000):
+                    logger.info("[PAP] Navegação para Consulta OS OK (menu lateral)")
+                    return True
+
+            if self._navegar_consulta_os_url_direta(rapido):
+                return True
+
+            logger.warning(
+                "[PAP] Tentativa %s/2 Consulta OS sem sucesso (url=%s)",
+                tentativa,
+                (self.page.url or "")[:120],
+            )
+            self.page.wait_for_timeout(1000)
+
         return False
 
     def abrir_consulta_os_e_filtrar_cpf(self, cpf: str) -> Tuple[bool, str]:
