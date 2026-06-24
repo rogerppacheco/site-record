@@ -108,24 +108,48 @@ DATABASES = {
 
 # 2. Produção: PostgreSQL (Railway) ou MySQL (JawsDB - Heroku)
 # Suporta DATABASE_URL (PostgreSQL no Railway) ou JAWSDB_URL (MySQL no Heroku)
-database_url = config('DATABASE_URL', default=None)  # Railway PostgreSQL
+from gestao_equipes.database import django_database_options, is_pgbouncer_enabled
+
+database_url = config('DATABASE_URL', default=None)  # Railway PostgreSQL (PgBouncer quando ativo)
+database_unpooled_url = config('DATABASE_UNPOOLED_URL', default=None)
 jawsdb_url = config('JAWSDB_URL', default=None)      # Heroku MySQL
 
+_pgbouncer_active = bool(database_url and is_pgbouncer_enabled())
+
 if database_url:
-    # Usar PostgreSQL (Railway)
+    # Com PgBouncer: conn_max_age=0 evita segurar conexões no app (multiplexação no pooler).
+    _default_conn_max_age = 0 if _pgbouncer_active else config('DB_CONN_MAX_AGE', default=0, cast=int)
+    if _pgbouncer_active and config('DB_CONN_MAX_AGE', default=0, cast=int) > 0:
+        print(
+            "[DB] PgBouncer ativo: DB_CONN_MAX_AGE ignorado (use 0 com transaction pooling)"
+        )
+
     DATABASES['default'] = dj_database_url.parse(
         database_url,
-        conn_max_age=config('DB_CONN_MAX_AGE', default=0, cast=int),
-        ssl_require=False
+        conn_max_age=_default_conn_max_age,
+        ssl_require=False,
     )
-    # PostgreSQL settings
     DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql'
-    DATABASES['default']['OPTIONS'] = {
-        'connect_timeout': 10,
-    }
+    DATABASES['default']['OPTIONS'] = django_database_options(pooled=_pgbouncer_active)
+
+    # Modo transaction do PgBouncer não suporta server-side cursors nem locks de sessão.
+    if _pgbouncer_active:
+        DISABLE_SERVER_SIDE_CURSORS = True
+
+    # Conexão direta ao Postgres para advisory locks, LISTEN/NOTIFY e operações de sessão.
+    if database_unpooled_url:
+        DATABASES['unpooled'] = dj_database_url.parse(
+            database_unpooled_url,
+            conn_max_age=0,
+            ssl_require=False,
+        )
+        DATABASES['unpooled']['ENGINE'] = 'django.db.backends.postgresql'
+        DATABASES['unpooled']['OPTIONS'] = django_database_options(pooled=False)
+
     _h = DATABASES['default'].get('HOST') or 'localhost'
     _n = DATABASES['default'].get('NAME')
-    print(f"OK - PostgreSQL: host={_h!r} db={_n!r}")
+    _pool_label = "PgBouncer" if _pgbouncer_active else "direct"
+    print(f"OK - PostgreSQL ({_pool_label}): host={_h!r} db={_n!r}")
 
 elif jawsdb_url:
     # Usar MySQL (JawsDB - Heroku)

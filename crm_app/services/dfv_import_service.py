@@ -21,7 +21,7 @@ from io import BytesIO, StringIO
 from datetime import datetime, timedelta
 
 import pandas as pd
-from django.db import transaction, connection
+from django.db import transaction, connection, connections
 from django.db.models import Q
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -126,18 +126,25 @@ class DFVImportService:
             except Exception as e:
                 logger.error(f"[DFV] Erro ao atualizar progresso: {e}", exc_info=True)
 
+    def _lock_db_connection(self):
+        """Advisory locks exigem sessão dedicada — incompatível com PgBouncer transaction mode."""
+        if 'unpooled' in connections:
+            return connections['unpooled']
+        return connection
+
     def _acquire_db_lock(self) -> None:
         """
         Garante que apenas uma importação DFV rode por vez no Postgres.
         Evita contenção de locks durante remoção de duplicados/criação.
         """
-        if connection.vendor != 'postgresql':
+        lock_conn = self._lock_db_connection()
+        if lock_conn.vendor != 'postgresql':
             return
 
         inicio = time.monotonic()
         while True:
             try:
-                with connection.cursor() as cursor:
+                with lock_conn.cursor() as cursor:
                     cursor.execute("SELECT pg_try_advisory_lock(%s)", [self.DB_IMPORT_LOCK_KEY])
                     locked = cursor.fetchone()[0]
             except Exception as e:
@@ -161,10 +168,11 @@ class DFVImportService:
 
     def _release_db_lock(self) -> None:
         """Libera o lock global de importação no Postgres."""
-        if connection.vendor != 'postgresql':
+        lock_conn = self._lock_db_connection()
+        if lock_conn.vendor != 'postgresql':
             return
         try:
-            with connection.cursor() as cursor:
+            with lock_conn.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_unlock(%s)", [self.DB_IMPORT_LOCK_KEY])
         except Exception as e:
             logger.warning(f"[DFV] Não foi possível liberar lock de importação: {e}")
