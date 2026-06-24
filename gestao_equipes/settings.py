@@ -412,6 +412,8 @@ PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS = config('PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS', 
 
 # Reduz esperas fixas no Playwright (login, consulta crédito, STATUS online). PAP_STATUS_FAST_MODE=false restaura waits longos.
 PAP_CREDITO_FAST_MODE = config('PAP_CREDITO_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
+# Máximo de consultas de crédito por TT/dia (distribui carga; evita bloqueio na Nio)
+PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA = config('PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA', default=6, cast=int)
 PAP_STATUS_FAST_MODE = config('PAP_STATUS_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 
 # Sync noturno da esteira (AGENDADO/PENDENCIADA) via PAP

@@ -884,6 +884,26 @@ class ControleTTDiaTratado(models.Model):
         return f"{self.matricula_vendedor} em {self.data} ({self.tipo})"
 
 
+class ControleTTCreditoUsoDiario(models.Model):
+    """
+    Contador de consultas de crédito por TT/dia.
+    Usado para distribuir o volume entre matrículas e evitar concentração na Nio.
+    """
+    matricula_vendedor = models.CharField(max_length=50, db_index=True)
+    data = models.DateField(db_index=True)
+    consultas = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "crm_controle_tt_credito_uso_diario"
+        verbose_name = "Controle TT uso crédito (dia)"
+        verbose_name_plural = "Controle TT uso crédito (dia)"
+        unique_together = [("matricula_vendedor", "data")]
+        ordering = ["data", "matricula_vendedor"]
+
+    def __str__(self) -> str:
+        return f"{self.matricula_vendedor} em {self.data}: {self.consultas} consulta(s)"
+
+
 class CicloPagamento(models.Model):
     ano = models.IntegerField(null=True, blank=True)
     mes = models.CharField(max_length=20, null=True, blank=True)

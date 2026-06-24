@@ -634,6 +634,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         atualizar_historico_consulta_pap_resultado,
     )
     from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
+    from crm_app.controle_tts_service import (
+        obter_matricula_tt_para_credito_pap,
+        pular_tt_credito_indisponivel,
+        registrar_uso_tt_credito,
+    )
     from crm_app.whatsapp_service import WhatsAppService
     from crm_app.cadastro_venda_whatsapp import validar_cpf_ou_cnpj_whatsapp
     import re
@@ -737,9 +742,44 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             return
         logger.info("[CRÉDITO] Tempo: login=%ss (acumulado=%ss)", tempos['login'], round(time.time() - tempo_inicio, 1))
 
-        matricula_pedido = usuario.matricula_pap or bo_usuario.matricula_pap
+        matricula_fallback = (usuario.matricula_pap or bo_usuario.matricula_pap or "").strip()
+        matricula_pedido = None
+        sucesso = False
+        msg = ""
         t0 = time.time()
-        sucesso, msg = automacao.iniciar_novo_pedido(matricula_pedido)
+        max_tentativas_tt = 5
+        excluir_tt: set[str] = set()
+        for tentativa_tt in range(1, max_tentativas_tt + 1):
+            matricula_pedido = obter_matricula_tt_para_credito_pap(
+                matricula_fallback,
+                excluir=excluir_tt,
+            )
+            logger.info(
+                "[CRÉDITO] TT distribuído (tentativa %s/%s): %s",
+                tentativa_tt,
+                max_tentativas_tt,
+                matricula_pedido,
+            )
+            sucesso, msg = automacao.iniciar_novo_pedido(matricula_pedido)
+            if sucesso:
+                registrar_uso_tt_credito(matricula_pedido)
+                break
+            msg_lower = (msg or "").lower()
+            tt_indisponivel = (
+                "não encontrada no pap" in msg_lower
+                or "nao encontrada no pap" in msg_lower
+                or "não foi possível selecionar o vendedor" in msg_lower
+                or "nao foi possivel selecionar o vendedor" in msg_lower
+            )
+            if tt_indisponivel and tentativa_tt < max_tentativas_tt:
+                logger.warning(
+                    "[CRÉDITO] TT %s indisponível no PAP; tentando outro da fila.",
+                    matricula_pedido,
+                )
+                pular_tt_credito_indisponivel(matricula_pedido)
+                excluir_tt.add(matricula_pedido)
+                continue
+            break
         tempos['pedido'] = round(time.time() - t0, 1)
         if not sucesso:
             automacao._fechar_sessao()
