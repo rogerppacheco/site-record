@@ -1892,6 +1892,126 @@ class PAPNioAutomation:
                 pass
             return None, None, None, None
 
+    def _variantes_busca_matricula_vendedor(self, matricula: str) -> List[str]:
+        """Gera termos de busca para o autocomplete de vendedor (formato do PAP varia)."""
+        m = (matricula or "").strip()
+        if not m:
+            return []
+        variantes: List[str] = []
+        for candidato in (m, m.upper(), m.lower()):
+            if candidato and candidato not in variantes:
+                variantes.append(candidato)
+        digitos = re.sub(r"\D", "", m)
+        if digitos and digitos not in variantes:
+            variantes.append(digitos)
+        upper = m.upper()
+        if upper.startswith("TT") and len(upper) > 2:
+            sem_prefixo = upper[2:]
+            if sem_prefixo not in variantes:
+                variantes.append(sem_prefixo)
+        return variantes
+
+    def _texto_item_vendedor_invalido(self, texto: str) -> bool:
+        t = (texto or "").lower().strip()
+        return (
+            not t
+            or "nenhum resultado" in t
+            or "sem resultado" in t
+            or "não encontr" in t
+            or "nao encontr" in t
+        )
+
+    def _coletar_itens_lista_vendedor(self) -> List[Any]:
+        """Itens visíveis do dropdown de vendedor (evita pegar <li> aleatórios da página)."""
+        if not self.page:
+            return []
+        seletores = [
+            '[role="listbox"] [role="option"]',
+            '[role="listbox"] li',
+            'ul[role="listbox"] li',
+            'ul[class*="menu"] li',
+            'ul[class*="dropdown"] li',
+            'ul[class*="autocomplete"] li',
+            SELETORES["etapa1"]["lista_vendedores"],
+        ]
+        for sel in seletores:
+            try:
+                itens = [el for el in self.page.query_selector_all(sel) if el.is_visible()]
+                validos = [
+                    el for el in itens
+                    if not self._texto_item_vendedor_invalido(el.inner_text() or "")
+                ]
+                if validos:
+                    return validos
+            except Exception:
+                continue
+        return []
+
+    def _selecionar_vendedor_matricula_etapa1(self, matricula_vendedor: str) -> bool:
+        """
+        Preenche o autocomplete de vendedor na etapa 1 e seleciona a opção correspondente.
+        """
+        matricula_input = self._query_matricula_vendedor_input()
+        if not matricula_input or not self.page:
+            return False
+
+        rapido = self.optimize_for_credit
+        debounce_ms = 600 if rapido else 900
+        delay_tecla = 70 if rapido else 110
+
+        for termo in self._variantes_busca_matricula_vendedor(matricula_vendedor):
+            try:
+                matricula_input.click()
+                matricula_input.fill("")
+                self.page.wait_for_timeout(150)
+                matricula_input.press_sequentially(termo, delay=delay_tecla)
+                try:
+                    self.page.wait_for_selector(
+                        '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
+                        state="visible",
+                        timeout=5000 if rapido else 8000,
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(debounce_ms)
+
+                digitos_termo = re.sub(r"\D", "", termo)
+                for item in self._coletar_itens_lista_vendedor():
+                    texto = (item.inner_text() or "").strip()
+                    if self._texto_item_vendedor_invalido(texto):
+                        continue
+                    texto_upper = texto.upper()
+                    termo_upper = termo.upper()
+                    digitos_texto = re.sub(r"\D", "", texto)
+                    if (
+                        termo_upper in texto_upper
+                        or (digitos_termo and digitos_termo in digitos_texto)
+                    ):
+                        logger.info(
+                            "[PAP] Vendedor selecionado (termo=%s): %s",
+                            termo,
+                            texto[:80],
+                        )
+                        item.click()
+                        self.page.wait_for_timeout(400)
+                        return True
+            except Exception as e:
+                logger.debug("[PAP] Busca vendedor termo=%s: %s", termo, e)
+                continue
+        return False
+
+    def _pagina_parece_auditoria_pedidos(self, url: str, pagina_html: str) -> bool:
+        """Detecta tela de auditoria sem confundir com /novo-pedido."""
+        url_lower = (url or "").lower()
+        if "novo-pedido" in url_lower:
+            return False
+        pagina_lower = (pagina_html or "").lower()
+        return (
+            "auditoria" in url_lower
+            or "auditoria de pedidos" in pagina_lower
+            or "auditoria de pedido" in pagina_lower
+        )
+
     def iniciar_novo_pedido(self, matricula_vendedor: str) -> Tuple[bool, str]:
         """
         Inicia um novo pedido (Etapa 1).
@@ -1968,33 +2088,16 @@ class PAPNioAutomation:
 
             # No crédito, quando o PAP prende na tela de Auditoria/Pedido, antecipar fallback do menu
             # evita esperar o timeout completo do campo de matrícula.
-            if modo_rapido_credito:
-                try:
-                    pagina_atual = (self.page.content() or "").lower()
-                except Exception:
-                    pagina_atual = ""
-                url_lower = (url_atual or "").lower()
-                preso_em_auditoria = (
-                    "auditoria" in url_lower
-                    or "pedido" in url_lower
-                    or "auditoria de pedidos" in pagina_atual
+            try:
+                pagina_atual_html = self.page.content() or ""
+            except Exception:
+                pagina_atual_html = ""
+            if self._pagina_parece_auditoria_pedidos(url_atual, pagina_atual_html):
+                logger.info(
+                    "[PAP] Tela de auditoria detectada; tentando menu 'Novo Pedido'."
                 )
-                if preso_em_auditoria:
-                    logger.info("[PAP] Modo rápido crédito: tela de auditoria detectada, tentando menu 'Novo Pedido' imediatamente.")
-                    self._clicar_menu_novo_pedido()
-                    self._dispensar_modais_novo_pedido()
-
-            # Venda (WPP): mesma heurística — SPA às vezes permanece em auditoria mesmo com URL de admin
-            if not modo_rapido_credito:
-                try:
-                    pagina_atual = (self.page.content() or "").lower()
-                except Exception:
-                    pagina_atual = ""
-                url_lower = (url_atual or "").lower()
-                if "auditoria" in url_lower or "auditoria de pedidos" in pagina_atual:
-                    logger.info("[PAP] Tela de auditoria detectada (venda); tentando menu 'Novo Pedido'.")
-                    self._clicar_menu_novo_pedido()
-                    self._dispensar_modais_novo_pedido()
+                self._clicar_menu_novo_pedido()
+                self._dispensar_modais_novo_pedido()
 
             self._redirecionar_se_rota_bloqueia_novo_pedido()
 
@@ -2040,44 +2143,44 @@ class PAPNioAutomation:
                 self._capture_screenshot_falha_etapa1("01_err_campo_matricula_invisivel", wait_selector=None, wait_timeout_ms=0)
                 return False, "Não foi possível acessar a página de novo pedido (campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
 
-            matricula_input = self._query_matricula_vendedor_input()
-            if not matricula_input:
+            if not self._query_matricula_vendedor_input():
                 self._capture_screenshot_falha_etapa1("01_err_query_matricula_none", wait_selector=None, wait_timeout_ms=0)
                 return False, "Não foi possível localizar o campo de vendedor/matrícula no formulário. O portal pode ter alterado a página."
 
-            # Focar no campo para abrir lista
-            matricula_input.click()
-            # Aguardar lista de vendedores aparecer
-            self.page.wait_for_selector(SELETORES['etapa1']['lista_vendedores'], state="visible", timeout=5000)
-            # Digitar matrícula
-            matricula_input.fill(matricula_vendedor)
-            # Aguardar lista atualizar e clicar na opção
-            self.page.wait_for_timeout(300)  # debounce do autocomplete
-            lista_items = self.page.query_selector_all(SELETORES['etapa1']['lista_vendedores'])
-            for item in lista_items:
-                if matricula_vendedor in item.inner_text():
-                    item.click()
-                    break
+            selecionou_vendedor = self._selecionar_vendedor_matricula_etapa1(matricula_vendedor)
 
             # Clicar Avançar (cria o pedido e gera o protocolo)
+            timeout_avancar = 8000 if self.optimize_for_credit else 12000
             try:
-                self.page.wait_for_selector('button:has-text("Avançar"):not([disabled])', state="visible", timeout=5000)
+                self.page.wait_for_selector(
+                    'button:has-text("Avançar"):not([disabled])',
+                    state="visible",
+                    timeout=timeout_avancar,
+                )
             except Exception:
                 pass
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if not btn_avancar:
+                lista_items = self._coletar_itens_lista_vendedor()
                 try:
                     n_li = len(lista_items)
                     amostras = [(i.inner_text() or "")[:80] for i in lista_items[:5]]
                     logger.warning(
-                        "[PAP] Etapa1 sem botão Avançar. matricula=%s n_li=%s amostras=%s",
+                        "[PAP] Etapa1 sem botão Avançar. matricula=%s selecionou=%s n_li=%s amostras=%s",
                         matricula_vendedor,
+                        selecionou_vendedor,
                         n_li,
                         amostras,
                     )
                 except Exception as log_e:
                     logger.warning("[PAP] Etapa1 sem botão Avançar (log lista falhou): %s", log_e)
                 self._capture_screenshot_falha_etapa1("01_err_sem_bot_avancar_apos_vendedor", wait_selector=None, wait_timeout_ms=0)
+                if not selecionou_vendedor:
+                    return (
+                        False,
+                        f"Matrícula {matricula_vendedor} não encontrada no PAP deste PDV. "
+                        "Verifique o cadastro em Gestão de Acessos.",
+                    )
                 return False, "Não foi possível selecionar o vendedor. Verifique a matrícula."
             if self.capture_screenshots:
                 self._highlight_element(btn_avancar, duration_ms=400)
