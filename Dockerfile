@@ -22,6 +22,8 @@ RUN pip install playwright && playwright install
 ENV DJANGO_SETTINGS_MODULE=gestao_equipes.settings
 ENV SECRET_KEY=build-collectstatic-only
 ENV DEBUG=False
+ENV EMAIL_HOST_USER=build@localhost
+ENV EMAIL_HOST_PASSWORD=build
 RUN python manage.py collectstatic --noinput --skip-checks
 
 # Comando de inicialização
