@@ -22,6 +22,14 @@ class WhatsAppService:
     def __init__(self) -> None:
         self._provider = get_whatsapp_provider()
 
+    @property
+    def instance_id(self) -> str:
+        return getattr(self._provider, "instance_id", "") or ""
+
+    @property
+    def token(self) -> str:
+        return getattr(self._provider, "token", "") or ""
+
     def _formatar_telefone(self, telefone):
         return formatar_telefone_br(telefone)
 

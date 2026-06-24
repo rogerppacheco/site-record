@@ -345,11 +345,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const submitBtn = loginForm.querySelector('button[type="submit"]');
             const originalText = submitBtn ? submitBtn.innerText : 'Entrar';
             if(submitBtn) { submitBtn.innerText = 'Entrando...'; submitBtn.disabled = true; }
-
-            const u = document.getElementById('username').value;
-            const p = document.getElementById('password').value;
-            await login(u, p); 
-            if(submitBtn) { submitBtn.innerText = originalText; submitBtn.disabled = false; }
+            try {
+                const u = document.getElementById('username').value;
+                const p = document.getElementById('password').value;
+                await login(u, p);
+            } finally {
+                if(submitBtn) { submitBtn.innerText = originalText; submitBtn.disabled = false; }
+            }
         });
     }
 
@@ -359,22 +361,29 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 async function login(username, password) {
-    const csrftoken = getCookie('csrftoken'); 
+    const csrftoken = getCookie('csrftoken');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
     try {
         const response = await fetch(`${API_URL}/api/auth/login/`, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken 
+                'X-CSRFToken': csrftoken
             },
             mode: 'same-origin',
             body: JSON.stringify({ username, password }),
-            credentials: 'include'
+            credentials: 'include',
+            signal: controller.signal,
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            alert('Falha na autenticação: ' + (errorData.detail || 'Usuário ou senha inválidos.'));
+            let msg = 'Usuário ou senha inválidos.';
+            try {
+                const errorData = await response.json();
+                msg = errorData.detail || msg;
+            } catch (_) { /* corpo não-JSON */ }
+            alert('Falha na autenticação: ' + msg);
             throw new Error('Falha na autenticação');
         }
 
@@ -411,8 +420,14 @@ async function login(username, password) {
             return false;
         }
     } catch (error) {
-        console.error('Erro geral durante o login:', error);
+        if (error && error.name === 'AbortError') {
+            alert('O servidor demorou demais para responder. Tente novamente em alguns segundos ou avise o suporte.');
+        } else {
+            console.error('Erro geral durante o login:', error);
+        }
         return false;
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
