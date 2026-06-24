@@ -1929,8 +1929,19 @@ class PAPNioAutomation:
         match = re.search(r"\b(TT\d+)\b", texto.strip(), re.I)
         return match.group(1).upper() if match else None
 
-    def _coletar_itens_lista_vendedor(self) -> List[Any]:
-        """Itens visíveis do dropdown de vendedor (evita pegar <li> aleatórios da página)."""
+    def _debounce_lista_vendedor_ms(self, paciente: bool = False) -> int:
+        """Headless no servidor precisa de mais tempo para o autocomplete do PAP."""
+        if paciente or self.headless:
+            return 3200 if self.optimize_for_credit else 4000
+        return 1200 if self.optimize_for_credit else 1500
+
+    def _timeout_lista_vendedor_ms(self, paciente: bool = False) -> int:
+        if paciente or self.headless:
+            return 18000 if self.optimize_for_credit else 22000
+        return 12000 if self.optimize_for_credit else 15000
+
+    def _coletar_itens_lista_vendedor(self, relaxar_visibilidade: bool = False) -> List[Any]:
+        """Itens do dropdown de vendedor. Em headless, relaxa is_visible() se necessário."""
         if not self.page:
             return []
         seletores = [
@@ -1940,17 +1951,35 @@ class PAPNioAutomation:
             'ul[class*="menu"] li',
             'ul[class*="dropdown"] li',
             'ul[class*="autocomplete"] li',
+            'ul[class*="fQkuQJ"] li',
+            'ul[class*="cUdcXF"] li',
             SELETORES["etapa1"]["lista_vendedores"],
         ]
+
+        def _filtrar(itens: List[Any], exigir_visivel: bool) -> List[Any]:
+            candidatos = itens
+            if exigir_visivel:
+                candidatos = [el for el in itens if el.is_visible()]
+            return [
+                el for el in candidatos
+                if not self._texto_item_vendedor_invalido(el.inner_text() or "")
+                and self._extrair_matricula_de_item_vendedor(el.inner_text() or "")
+            ]
+
         for sel in seletores:
             try:
-                itens = [el for el in self.page.query_selector_all(sel) if el.is_visible()]
-                validos = [
-                    el for el in itens
-                    if not self._texto_item_vendedor_invalido(el.inner_text() or "")
-                ]
+                itens = self.page.query_selector_all(sel)
+                validos = _filtrar(itens, exigir_visivel=True)
                 if validos:
                     return validos
+                if relaxar_visibilidade or self.headless:
+                    validos = _filtrar(itens, exigir_visivel=False)
+                    if validos:
+                        logger.info(
+                            "[PAP] Lista vendedor coletada (visibilidade relaxada): %s itens",
+                            len(validos),
+                        )
+                        return validos
             except Exception:
                 continue
         return []
@@ -2009,47 +2038,101 @@ class PAPNioAutomation:
                 unicos.append(t)
         return unicos
 
-    def _disparar_itens_lista_vendedor(self, matricula_alvo: Optional[str] = None) -> List[Any]:
+    def _focar_campo_vendedor(self) -> bool:
+        """Clica e foca o autocomplete de vendedor (scroll no headless)."""
+        matricula_input = self._query_matricula_vendedor_input()
+        if not matricula_input or not self.page:
+            return False
+        try:
+            matricula_input.scroll_into_view_if_needed()
+        except Exception:
+            pass
+        try:
+            matricula_input.click()
+            matricula_input.focus()
+            return True
+        except Exception as e:
+            logger.warning("[PAP] Falha ao focar campo vendedor: %s", e)
+            return False
+
+    def _disparar_itens_lista_vendedor(
+        self, matricula_alvo: Optional[str] = None, paciente: bool = False
+    ) -> List[Any]:
         """Tenta abrir o dropdown de vendedor e retorna itens visíveis."""
         if not self.page:
             return []
-        rapido = self.optimize_for_credit
-        debounce_ms = 1200 if rapido else 1500
-        timeout_list = 12000 if rapido else 15000
+        debounce_ms = self._debounce_lista_vendedor_ms(paciente=paciente)
+        timeout_list = self._timeout_lista_vendedor_ms(paciente=paciente)
         seletor_lista = '[role="listbox"] li, [role="option"], ul[class*="menu"] li'
+        relaxar = paciente or self.headless
+
+        if not self._focar_campo_vendedor():
+            logger.warning("[PAP] Campo vendedor não encontrado ao abrir lista")
+            return []
 
         matricula_input = self._query_matricula_vendedor_input()
         if not matricula_input:
             return []
 
+        gatilhos_prioritarios = ("999999", "478091", "478", "TT478091")
+        for gatilho in gatilhos_prioritarios:
+            try:
+                if not self._focar_campo_vendedor():
+                    continue
+                matricula_input = self._query_matricula_vendedor_input()
+                if not matricula_input:
+                    continue
+                matricula_input.fill("")
+                self.page.wait_for_timeout(400 if paciente else 300)
+                matricula_input.fill(gatilho)
+                try:
+                    self.page.wait_for_selector(seletor_lista, state="attached", timeout=timeout_list)
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(debounce_ms)
+                itens = self._coletar_itens_lista_vendedor(relaxar_visibilidade=relaxar)
+                if itens:
+                    logger.info(
+                        "[PAP] Lista vendedor aberta com fill '%s' (%s itens, headless=%s)",
+                        gatilho,
+                        len(itens),
+                        self.headless,
+                    )
+                    return itens
+            except Exception as e:
+                logger.debug("[PAP] fill lista vendedor gatilho=%s: %s", gatilho, e)
+
         try:
-            matricula_input.click()
-            matricula_input.fill("")
-            self.page.wait_for_timeout(350)
-            matricula_input.press("ArrowDown")
-            self.page.wait_for_timeout(debounce_ms)
-            itens = self._coletar_itens_lista_vendedor()
-            if itens:
-                logger.info("[PAP] Lista vendedor aberta com ArrowDown (%s itens)", len(itens))
-                return itens
+            if self._focar_campo_vendedor():
+                matricula_input = self._query_matricula_vendedor_input()
+                if matricula_input:
+                    matricula_input.fill("")
+                    self.page.wait_for_timeout(400)
+                    matricula_input.press("ArrowDown")
+                    self.page.wait_for_timeout(debounce_ms)
+                    itens = self._coletar_itens_lista_vendedor(relaxar_visibilidade=relaxar)
+                    if itens:
+                        logger.info("[PAP] Lista vendedor aberta com ArrowDown (%s itens)", len(itens))
+                        return itens
         except Exception as e:
             logger.debug("[PAP] ArrowDown lista vendedor: %s", e)
 
         for termo in self._termos_gatilho_lista_vendedor(matricula_alvo):
             try:
+                if not self._focar_campo_vendedor():
+                    continue
                 matricula_input = self._query_matricula_vendedor_input()
                 if not matricula_input:
                     continue
-                matricula_input.click()
                 matricula_input.fill("")
                 self.page.wait_for_timeout(300)
-                matricula_input.press_sequentially(termo, delay=90)
+                matricula_input.press_sequentially(termo, delay=100 if paciente else 90)
                 try:
-                    self.page.wait_for_selector(seletor_lista, state="visible", timeout=timeout_list)
+                    self.page.wait_for_selector(seletor_lista, state="attached", timeout=timeout_list)
                 except Exception:
                     pass
                 self.page.wait_for_timeout(debounce_ms)
-                itens = self._coletar_itens_lista_vendedor()
+                itens = self._coletar_itens_lista_vendedor(relaxar_visibilidade=relaxar)
                 if itens:
                     logger.info(
                         "[PAP] Lista vendedor aberta com gatilho '%s' (%s itens)",
@@ -2062,17 +2145,19 @@ class PAPNioAutomation:
                 logger.debug("[PAP] gatilho lista vendedor termo=%s: %s", termo, e)
         return []
 
-    def _abrir_dropdown_vendedor_e_coletar(self) -> List[str]:
+    def _abrir_dropdown_vendedor_e_coletar(self, paciente: bool = False) -> List[str]:
         """Abre o autocomplete de vendedor e coleta matrículas visíveis no PDV."""
         if not self.page:
             return []
-        itens = self._disparar_itens_lista_vendedor()
+        itens = self._disparar_itens_lista_vendedor(paciente=paciente)
         encontradas = self._matriculas_de_itens_vendedor(itens)
         if encontradas:
             self._cache_matriculas_pap_dropdown = encontradas
         return encontradas
 
-    def listar_matriculas_vendedor_no_pap(self, forcar_recarga: bool = False) -> List[str]:
+    def listar_matriculas_vendedor_no_pap(
+        self, forcar_recarga: bool = False, paciente: bool = False
+    ) -> List[str]:
         """
         Lê matrículas disponíveis no autocomplete de vendedor do PDV logado.
         Usado no crédito para não escolher TT da OSAB que não existem neste portal.
@@ -2080,8 +2165,11 @@ class PAPNioAutomation:
         if not forcar_recarga and self._cache_matriculas_pap_dropdown:
             return list(self._cache_matriculas_pap_dropdown)
         if self.page:
-            self.page.wait_for_timeout(1500 if self.optimize_for_credit else 2000)
-        encontradas = self._abrir_dropdown_vendedor_e_coletar()
+            espera = 4000 if (paciente or self.headless) else 1500
+            if self.optimize_for_credit and not paciente and not self.headless:
+                espera = 1500
+            self.page.wait_for_timeout(espera)
+        encontradas = self._abrir_dropdown_vendedor_e_coletar(paciente=paciente)
         logger.info("[PAP] Matrículas no dropdown vendedor deste PDV: %s", len(encontradas))
         if encontradas:
             logger.info("[PAP] Amostra vendedores PDV: %s", encontradas[:10])
@@ -2091,7 +2179,7 @@ class PAPNioAutomation:
         """Crédito: abre lista ampla do PDV e clica no item da matrícula exata."""
         if not self.page or not matricula_norm:
             return False
-        itens = self._disparar_itens_lista_vendedor(matricula_norm)
+        itens = self._disparar_itens_lista_vendedor(matricula_norm, paciente=self.headless)
         self._atualizar_cache_matriculas_pap(itens)
         for item in itens:
             mat_item = self._extrair_matricula_de_item_vendedor(item.inner_text() or "")
@@ -2136,7 +2224,7 @@ class PAPNioAutomation:
                 self.page.wait_for_timeout(debounce_ms)
 
                 digitos_termo = re.sub(r"\D", "", termo)
-                for item in self._coletar_itens_lista_vendedor():
+                for item in self._coletar_itens_lista_vendedor(relaxar_visibilidade=self.headless):
                     texto = (item.inner_text() or "").strip()
                     if self._texto_item_vendedor_invalido(texto):
                         continue

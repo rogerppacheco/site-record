@@ -789,6 +789,13 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             automacao._cache_matriculas_pap_dropdown = []
             matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(forcar_recarga=True)
         if not matriculas_pap:
+            automacao._cache_matriculas_pap_dropdown = []
+            logger.warning("[CRÉDITO] Lista vendedores vazia — tentativa paciente (headless)")
+            matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(
+                forcar_recarga=True,
+                paciente=True,
+            )
+        if not matriculas_pap:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             _marcar_hist(False, "Lista de vendedores do PAP vazia")
