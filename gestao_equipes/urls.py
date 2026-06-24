@@ -11,6 +11,12 @@ from gestao_equipes.views_health import HealthView, MetricsView, ReadyView
 # --- IMPORTS DAS VIEWS NECESSÁRIAS ---
 from usuarios.views import LoginView
 from core.views import calendario_fiscal_view, RegraAutomacaoViewSet, PainelSegundaView
+from crm_app.views_whatsapp_admin import (
+    whatsapp_config_api,
+    whatsapp_disconnect_api,
+    whatsapp_qrcode_api,
+    whatsapp_status_api,
+)
 from crm_app.views import (
     page_painel_performance, 
     page_cdoi_novo,
@@ -26,7 +32,7 @@ from crm_app.views import (
     page_validacao_recompra,
     page_record_apoia,
     page_conhecimento_ia,
-    listar_grupos_whatsapp_api,  # Importando a função de grupos
+    listar_grupos_whatsapp_api,
     SafraM10ListView,
     DashboardM10View,
     DashboardFPDView,
@@ -71,8 +77,12 @@ urlpatterns = [
     # 1. Registra as rotas do router (inclui /api/regras-automacao/)
     path('api/', include(router.urls)),
     
-    # 2. Rota específica para grupos do WhatsApp que estava dando 404
+    # 2. Rotas WhatsApp (grupos + conexão Evolution admin)
     path('api/whatsapp/groups/', listar_grupos_whatsapp_api, name='whatsapp-groups-direct'),
+    path('api/whatsapp/config/', whatsapp_config_api, name='whatsapp-config'),
+    path('api/whatsapp/status/', whatsapp_status_api, name='whatsapp-status'),
+    path('api/whatsapp/qrcode/', whatsapp_qrcode_api, name='whatsapp-qrcode'),
+    path('api/whatsapp/disconnect/', whatsapp_disconnect_api, name='whatsapp-disconnect'),
 
     # APIS DO SISTEMA (Back-end)
     path('api/', include('djoser.urls')),
@@ -92,6 +102,7 @@ urlpatterns = [
     path('crm-vendas/', TemplateView.as_view(template_name='public/crm_vendas.html'), name='crm_vendas'),
     path('gestao-acessos/', TemplateView.as_view(template_name='public/gestao-acessos.html'), name='gestao-acessos'),
     path('governanca/', TemplateView.as_view(template_name='public/governanca.html'), name='governanca'),
+    path('whatsapp-config/', TemplateView.as_view(template_name='public/whatsapp-config.html'), name='whatsapp-config'),
     path('funil-vendas/', TemplateView.as_view(template_name='public/funil-vendas.html'), name='funil-vendas'),
     path('presenca/', TemplateView.as_view(template_name='public/presenca.html'), name='presenca'),
     path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),

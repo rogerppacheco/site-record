@@ -1,12 +1,11 @@
-import requests
 import logging
-# from decouple import config  <-- REMOVIDO PARA CORRIGIR O ERRO
-import os  # <-- ADICIONADO PARA CORREÇÃO
 import base64
 import io
 from datetime import datetime
 
-# Tenta importar o Pillow para geração de imagens
+from crm_app.services.whatsapp.factory import get_whatsapp_provider
+from crm_app.services.whatsapp.phone_utils import destino_zapi, formatar_telefone_br
+
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
@@ -16,260 +15,42 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class WhatsAppService:
-    def __init__(self):
-        # --- CORREÇÃO DO ERRO DE INSTANCE NOT FOUND ---
-        # Substituimos o 'config' pelo 'os.environ.get' para garantir que ele pegue
-        # as variáveis reais do servidor Railway e não de arquivos .env antigos.
-        self.instance_id = os.environ.get('ZAPI_INSTANCE_ID', '')
-        self.token = os.environ.get('ZAPI_TOKEN', '')
-        self.client_token = os.environ.get('ZAPI_CLIENT_TOKEN', '')
-        
-        # URL Base da API
-        self.base_url = f"https://api.z-api.io/instances/{self.instance_id}/token/{self.token}"
+    """Facade: variacao de texto, geracao de imagens e delegacao ao provider."""
 
-        if not self.instance_id or not self.token:
-            logger.error("Z-API CRITICO: Credenciais não encontradas nas variáveis de ambiente!")
-
-    def _get_headers(self):
-        headers = {
-            'Content-Type': 'application/json'
-        }
-        if self.client_token:
-            headers['client-token'] = self.client_token
-        return headers
-
-    def _send_request(self, url, payload=None, method='POST'):
-        """
-        Método auxiliar central para envio de requisições.
-        Resolve o erro 'object has no attribute _send_request'.
-        """
-        logger.debug("[Z-API] %s %s", method, url)
-        if payload and logger.isEnabledFor(logging.DEBUG):
-            if 'document' in payload and isinstance(payload.get('document'), str):
-                payload_log = payload.copy()
-                doc_size = len(payload['document'])
-                payload_log['document'] = f"[BASE64: {doc_size} chars]"
-                logger.debug("[Z-API] Payload: %s", payload_log)
-            else:
-                logger.debug("[Z-API] Payload: %s", payload)
-
-        try:
-            # Timeout maior para documentos (arquivos grandes podem demorar mais)
-            timeout_val = 60 if 'send-document' in url else (15 if method == 'GET' else 30)
-            
-            if method == 'GET':
-                response = requests.get(url, headers=self._get_headers(), timeout=timeout_val)
-            else:
-                response = requests.post(url, json=payload, headers=self._get_headers(), timeout=timeout_val)
-            
-            logger.debug("[Z-API] Status %s, %s chars", response.status_code, len(response.text))
-            
-            if response.status_code not in [200, 201]:
-                logger.error(f"[Z-API] ❌ Erro HTTP {response.status_code}")
-                logger.error(f"[Z-API] Response completa: {response.text}")
-                # Tentar parsear JSON mesmo com erro para retornar a mensagem de erro
-                try:
-                    error_json = response.json()
-                    return error_json  # Retornar o erro como dict para tratamento
-                except:
-                    return None
-            
-            try:
-                json_response = response.json()
-                logger.debug("[Z-API] JSON ok")
-                return json_response
-            except ValueError as ve:
-                logger.warning(f"[Z-API] ⚠️ Resposta não é JSON (ValueError: {ve})")
-                logger.warning(f"[Z-API] Response text (primeiros 200 chars): {response.text[:200]}")
-                return response.text
-
-        except requests.exceptions.Timeout as te:
-            logger.error(f"[Z-API] ❌ Timeout Error: {te}")
-            return None
-        except requests.exceptions.ConnectionError as ce:
-            logger.error(f"[Z-API] ❌ Connection Error: {ce}")
-            return None
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[Z-API] ❌ Request Exception: {type(e).__name__}: {e}")
-            print(f"[Z-API] ❌ REQUEST EXCEPTION: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-        except Exception as e:
-            logger.error(f"[Z-API] ❌ Generic Error: {type(e).__name__}: {e}")
-            print(f"[Z-API] ❌ ERRO GENÉRICO: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+    def __init__(self) -> None:
+        self._provider = get_whatsapp_provider()
 
     def _formatar_telefone(self, telefone):
-        if not telefone:
-            return ""
-        telefone_limpo = "".join(filter(str.isdigit, str(telefone)))
-        # Brasil: remover 55 no início para normalizar
-        if telefone_limpo.startswith("55") and len(telefone_limpo) > 11:
-            telefone_limpo = telefone_limpo[2:]
-        # Celular no Brasil: DDD (2) + 9 + 8 dígitos = 11. Se veio 10 (DDD+8, ex: MG 3188804000), inserir 9 após DDD
-        if len(telefone_limpo) == 10 and telefone_limpo[2:3] != "9":
-            telefone_limpo = telefone_limpo[:2] + "9" + telefone_limpo[2:]
-        if len(telefone_limpo) == 10 or len(telefone_limpo) == 11:
-            telefone_limpo = f"55{telefone_limpo}"
-        return telefone_limpo
+        return formatar_telefone_br(telefone)
 
     def _destino_send_text(self, telefone_ou_grupo):
-        """
-        Normaliza o destinatário para send-text: número (Brasil) ou ID de grupo.
-        - Grupos formato novo Z-API: "120363019502650977-group"
-        - Grupos formato antigo WhatsApp: "5531999999999-1623281429"
-        """
-        if not telefone_ou_grupo:
-            return ""
+        return destino_zapi(telefone_ou_grupo)
 
-        s = str(telefone_ou_grupo).strip()
-
-        # 1) Já está no formato novo da Z-API
-        if "-group" in s:
-            return s
-
-        # 2) Formato antigo do WhatsApp: 5511999999999-1623281429 ou 5531999999999-...
-        #    Mantém exatamente como veio, sem tentar remontar o ID.
-        if "-" in s and s.replace("-", "").isdigit():
-            # Ex.: "553194588810-1624885503"
-            return s
-
-        # 3) Formato @g.us -> converte para id-group
-        if "@g.us" in s:
-            parte = s.split("@g.us")[0].strip()
-            digitos = "".join(filter(str.isdigit, parte))
-            if digitos.startswith("55") and len(digitos) > 15:
-                digitos = digitos[2:]
-            return digitos + "-group" if digitos else s
-
-        # 4) Heurística: só dígitos com 15+ caracteres = ID de grupo novo
-        digitos = "".join(filter(str.isdigit, s))
-        if len(digitos) >= 15:
-            if digitos.startswith("55") and len(digitos) > 15:
-                digitos = digitos[2:]
-            return digitos + "-group"
-
-        # 5) Caso contrário, tratar como número de telefone
-        return self._formatar_telefone(telefone_ou_grupo)
-
-    # ---------------------------------------------------------
-    # 1. VERIFICAR SE NÚMERO TEM WHATSAPP
-    # ---------------------------------------------------------
     def verificar_numero_existe(self, telefone):
-        telefone_limpo = self._formatar_telefone(telefone)
-        url = f"{self.base_url}/phone-exists/{telefone_limpo}"
-        
-        if not self.instance_id or not self.token:
-            print("Z-API: Credenciais não encontradas.")
-            return True 
+        return self._provider.verificar_numero_existe(telefone)
 
-        data = self._send_request(url, method='GET')
-        
-        if isinstance(data, dict):
-            # Verificar se a resposta contém erro da Z-API
-            # Ex: {"message":"Whatsapp did not respond","error":"Bad Request","statusCode":400}
-            if 'error' in data or data.get('statusCode', 200) != 200:
-                erro_msg = data.get('message', data.get('error', 'Erro desconhecido'))
-                logger.warning(f"[Z-API] ⚠️ Erro ao verificar número {telefone_limpo}: {erro_msg}")
-                print(f"Z-API Erro: {telefone_limpo} - {erro_msg}")
-                # Retorna None para indicar que não foi possível verificar
-                # A view tratará isso como "não bloquear o cadastro"
-                return None
-            
-            # Resposta normal com o campo 'exists'
-            exists = data.get('exists', False)
-            print(f"Z-API Sucesso: {telefone_limpo} existe? {exists}")
-            return exists
-        return True # Fallback
-
-    # ---------------------------------------------------------
-    # 2. ENVIAR MENSAGEM DE TEXTO
-    # ---------------------------------------------------------
     def enviar_mensagem_texto(self, telefone, mensagem, variar=True):
-        """
-        Envia mensagem de texto via Z-API.
-        variar=True: aplica variação de palavras (sinônimos) para reduzir bloqueios; desative para comandos exatos.
-        """
         try:
             if variar and mensagem and len(mensagem) > 20:
                 from crm_app.whatsapp_variacao import aplicar_variacao, aplicar_variacao_lote
-                # Mensagens longas (ex.: boas-vindas): aplicar várias substituições no mesmo texto
                 if len(mensagem) > 400:
                     mensagem = aplicar_variacao_lote(mensagem, chance_substituir=0.5)
                 else:
                     mensagem = aplicar_variacao(mensagem, chance_substituir=0.5)
         except Exception as e:
-            logger.debug("[WhatsAppService] Variação de mensagem não aplicada: %s", e)
-        url = f"{self.base_url}/send-text"
-        telefone_limpo = self._destino_send_text(telefone)
-
-        logger.debug(
-            "[WhatsAppService] send-text %s len=%s",
-            telefone_limpo,
-            len(mensagem or ''),
-        )
-
-        payload = {
-            "phone": telefone_limpo,
-            "message": mensagem
-        }
-
-        resp = self._send_request(url, payload)
-        if resp:
-            logger.debug("[WhatsAppService] send-text ok")
-            return True, resp
-        else:
-            logger.error(f"[WhatsAppService] Erro: resposta vazia ou None")
-            return False, "Erro ao enviar - resposta vazia"
+            logger.debug("[WhatsAppService] Variacao nao aplicada: %s", e)
+        return self._provider.enviar_mensagem_texto_raw(telefone, mensagem)
 
     def enviar_mensagem_com_botoes_reply(
         self, telefone, mensagem, button_actions, title=None, footer=None
     ):
-        """
-        Z-API POST /send-button-actions — botões tipo REPLY (e outros permitidos pela API).
-        button_actions: lista de dicts com id, type (ex.: REPLY), label; opcionalmente url/phone para URL/CALL.
-        Retorna (True, resp) em sucesso; (False, None) para fallback texto.
-        """
-        try:
-            if not button_actions:
-                return False, None
-            url = f"{self.base_url}/send-button-actions"
-            telefone_limpo = self._destino_send_text(telefone)
-            payload = {
-                "phone": telefone_limpo,
-                "message": (mensagem or "").strip(),
-                "buttonActions": button_actions,
-            }
-            if title:
-                payload["title"] = title
-            if footer:
-                payload["footer"] = footer
-            logger.info(
-                "[WhatsAppService] send-button-actions (%s botão/ões)",
-                len(button_actions),
-            )
-            resp = self._send_request(url, payload)
-            if not resp or not isinstance(resp, dict):
-                return False, None
-            if resp.get("error"):
-                logger.warning("[WhatsAppService] send-button-actions erro: %s", resp)
-                return False, None
-            if resp.get("messageId") or resp.get("zaapId") or resp.get("id"):
-                return True, resp
-            return False, None
-        except Exception as e:
-            logger.warning("[WhatsAppService] enviar_mensagem_com_botoes_reply: %s", e)
-            return False, None
+        return self._provider.enviar_mensagem_com_botoes_reply(
+            telefone, mensagem, button_actions, title=title, footer=footer
+        )
 
     def enviar_resumo_pap_com_botao_confirmar(self, telefone, resumo, texto_extra=""):
-        """
-        Envia o resumo do PAP com um botão de resposta *SIM* (Z-API /send-button-actions, tipo REPLY).
-        Reduz erro de digitação do cliente. Retorna (True, resp) em sucesso; (False, None) para usar fallback texto.
-        """
         message = f"{resumo}{texto_extra}".strip()
         return self.enviar_mensagem_com_botoes_reply(
             telefone,
@@ -277,360 +58,21 @@ class WhatsAppService:
             [{"id": "pap_confirmar_sim", "type": "REPLY", "label": "SIM"}],
         )
 
-    # ---------------------------------------------------------
-    # 3. ENVIAR IMAGEM (BASE64)
-    # ---------------------------------------------------------
     def enviar_imagem_b64(self, telefone, img_b64, caption=""):
-        """
-        Envia imagem em Base64 com legenda (caption) via Z-API.
-        Aceita número (5531999999999) ou ID de grupo (120363024223594143-group).
-        Retorna o dict da resposta em caso de sucesso (messageId/zaapId presentes).
-        Retorna None se a API indicar erro ou não confirmar envio (para o histórico não marcar como enviado à toa).
-        """
-        url = f"{self.base_url}/send-image"
-        telefone_limpo = self._destino_send_text(telefone)  # Suporta grupos (-group) e números
+        return self._provider.enviar_imagem_b64(telefone, img_b64, caption=caption)
 
-        # Z-API exige o prefixo data:image/png;base64,
-        if "base64," not in img_b64:
-            img_b64 = "data:image/png;base64," + img_b64
-
-        payload = {
-            "phone": telefone_limpo,
-            "image": img_b64,
-            "caption": caption or ""
-        }
-
-        try:
-            resp = self._send_request(url, payload)
-            if not resp:
-                logger.error(f"[WhatsAppService] Envio de imagem: resposta vazia ou None para {telefone_limpo}")
-                return None
-            if not isinstance(resp, dict):
-                logger.warning(f"[WhatsAppService] Envio de imagem: resposta não é dict para {telefone_limpo}: {type(resp)}")
-                return None
-            # Z-API pode retornar 200 com body de erro (ex: {"error": true, "message": "..."})
-            if resp.get("error"):
-                msg = resp.get("message") or resp.get("error") or "Erro desconhecido"
-                logger.error(f"[WhatsAppService] Z-API erro ao enviar imagem para {telefone_limpo}: {msg}")
-                return None
-            # Sucesso real: resposta deve conter messageId ou zaapId (mensagem criada no WhatsApp)
-            if resp.get("messageId") or resp.get("zaapId") or resp.get("id"):
-                logger.info(f"[WhatsAppService] Imagem enviada com sucesso para {telefone_limpo} (messageId/zaapId presente)")
-                return resp
-            logger.warning(f"[WhatsAppService] Resposta Z-API sem messageId/zaapId (mensagem pode não ter sido criada): {resp}")
-            return None
-        except Exception as e:
-            logger.error(f"Erro ao enviar imagem Z-API: {e}")
-            return None
-
-    # Alias para compatibilidade (caso a view chame com outro nome)
     def enviar_imagem_base64_direto(self, telefone, img_b64, caption=""):
         return self.enviar_imagem_b64(telefone, img_b64, caption)
 
-    # ---------------------------------------------------------
-    # 4. ENVIAR PDF (BASE64 OU URL)
-    # ---------------------------------------------------------
     def enviar_pdf_url(self, telefone, pdf_url, nome_arquivo="extrato.pdf", caption=None):
-        """
-        Envia documento (PDF, Word, Excel, etc) via URL pública usando Z-API.
-        Z-API requer: /send-document/{extension}
-        Recomendado para arquivos grandes (>5MB).
-        
-        Args:
-            telefone: Número do destinatário
-            pdf_url: URL pública do PDF
-            nome_arquivo: Nome do arquivo
-            caption: Mensagem de legenda (opcional, será enviada como mensagem separada se não suportado)
-        """
-        # Extrair extensão do arquivo para incluir na URL (ex: pdf, docx, xlsx)
-        extensao = 'pdf'  # padrão
-        if '.' in nome_arquivo:
-            extensao = nome_arquivo.split('.')[-1].lower()
-        
-        url = f"{self.base_url}/send-document/{extensao}"
-        telefone_limpo = self._formatar_telefone(telefone)
-        
-        logger.info(f"[WhatsAppService] 📄 INICIANDO ENVIO DE PDF VIA URL")
-        logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
-        logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
-        logger.info(f"[WhatsAppService] URL do PDF: {pdf_url}")
-        if caption:
-            logger.info(f"[WhatsAppService] Caption: {caption[:100]}...")
-        print(f"[PDF-ENVIO] Enviando PDF via URL: {nome_arquivo} para {telefone_limpo}")
-        print(f"[PDF-ENVIO] URL: {pdf_url}")
-        if caption:
-            print(f"[PDF-ENVIO] Caption: {caption[:100]}...")
-        
-        payload = {
-            "phone": telefone_limpo,
-            "document": pdf_url,  # Z-API aceita URL ou base64
-            "fileName": nome_arquivo
-        }
-        
-        # Tentar adicionar caption (Z-API pode não suportar diretamente, mas vamos tentar)
-        # Se não funcionar, enviaremos a mensagem separadamente após o envio
-        if caption:
-            # Algumas APIs aceitam "caption" ou "message" como parâmetro
-            payload["caption"] = caption
-            logger.info(f"[WhatsAppService] Adicionando caption ao payload")
-        
-        logger.info(f"[WhatsAppService] Payload preparado:")
-        logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
-        logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
-        logger.info(f"[WhatsAppService]   - document (URL): {pdf_url}")
-        logger.info(f"[WhatsAppService] URL completa: {url}")
-        logger.info(f"[WhatsAppService] Extensão usada: {extensao}")
-        print(f"[PDF-ENVIO] Enviando requisição para: {url}")
-        print(f"[PDF-ENVIO] Extensão: {extensao}, Payload: phone={telefone_limpo}, fileName={nome_arquivo}, document={pdf_url}")
-        
-        try:
-            resp = self._send_request(url, payload)
-            logger.info(f"[WhatsAppService] Resposta recebida do _send_request: {resp}")
-            print(f"[PDF-ENVIO] Resposta da API: {resp}")
-            
-            if resp:
-                # Verificar se a resposta contém erro
-                if isinstance(resp, dict) and resp.get('error'):
-                    erro_msg = resp.get('message', resp.get('error', 'Erro desconhecido'))
-                    logger.error(f"[WhatsAppService] ❌ Erro da API Z-API: {erro_msg}")
-                    logger.error(f"[WhatsAppService] Resposta completa: {resp}")
-                    print(f"[PDF-ENVIO] ❌ ERRO DA API: {erro_msg}")
-                    return False
-                
-                # Verificar se tem campos de sucesso (messageId, zaapId, id)
-                if isinstance(resp, dict) and (resp.get('messageId') or resp.get('zaapId') or resp.get('id')):
-                    message_id = resp.get('messageId') or resp.get('zaapId') or resp.get('id')
-                    logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso via URL: {nome_arquivo}")
-                    logger.info(f"[WhatsAppService] MessageId: {message_id}")
-                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado via URL (MessageId: {message_id})")
-                    
-                    # Se caption foi fornecido, retornar para que seja enviado imediatamente após
-                    # (Z-API pode não suportar caption diretamente no envio)
-                    if caption:
-                        logger.info(f"[WhatsAppService] Caption fornecido, será retornado para envio imediato após PDF")
-                        # O caption será enviado pelo webhook_handler imediatamente após o PDF
-                        # para aparecer junto na mesma conversa
-                    
-                    return True
-                else:
-                    logger.warning(f"[WhatsAppService] ⚠️ Resposta inesperada: {resp}")
-                    print(f"[PDF-ENVIO] ⚠️ AVISO: Resposta inesperada")
-                    return False
-            else:
-                logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia ou None")
-                print(f"[PDF-ENVIO] ❌ ERRO: Resposta vazia ou None")
-                return False
-        except Exception as e:
-            logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento via URL: {type(e).__name__}: {e}")
-            print(f"[PDF-ENVIO] ❌ EXCEÇÃO: {type(e).__name__}: {e}")
-            import traceback
-            tb_str = traceback.format_exc()
-            logger.error(f"[WhatsAppService] Traceback completo:\n{tb_str}")
-            print(f"[PDF-ENVIO] Traceback: {tb_str}")
-            return False
-    
+        return self._provider.enviar_pdf_url(telefone, pdf_url, nome_arquivo, caption=caption)
+
     def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf", caption=None):
-        """
-        Envia documento (PDF, Word, Excel, etc) em Base64 via Z-API.
-        Z-API requer: /send-document/{extension}
-        
-        Args:
-            telefone: Número do destinatário
-            base64_data: PDF em base64
-            nome_arquivo: Nome do arquivo
-            caption: Mensagem de legenda (opcional, será enviada como mensagem separada se não suportado)
-        """
-        # Extrair extensão do arquivo para incluir na URL (ex: pdf, docx, xlsx)
-        extensao = 'pdf'  # padrão
-        if '.' in nome_arquivo:
-            extensao = nome_arquivo.split('.')[-1].lower()
-        
-        url = f"{self.base_url}/send-document/{extensao}"
-        telefone_limpo = self._formatar_telefone(telefone)
-        
-        logger.info(f"[WhatsAppService] 📄 INICIANDO ENVIO DE PDF")
-        logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
-        logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
-        logger.info(f"[WhatsAppService] Tamanho base64 original: {len(base64_data)} chars")
-        if caption:
-            logger.info(f"[WhatsAppService] Caption: {caption[:100]}...")
-        
-        # Calcular tamanho aproximado em MB (base64 tem ~33% de overhead)
-        tamanho_mb = (len(base64_data) * 3 / 4) / (1024 * 1024)
-        logger.info(f"[WhatsAppService] Tamanho aproximado do arquivo: {tamanho_mb:.2f} MB")
-        
-        # Avisar se arquivo muito grande (WhatsApp limita a 100MB, mas Z-API pode ter limite menor para base64)
-        if tamanho_mb > 10:
-            logger.warning(f"[WhatsAppService] ⚠️ Arquivo grande ({tamanho_mb:.2f} MB). Z-API pode ter limitações para base64 grande.")
-            logger.warning(f"[WhatsAppService] ⚠️ Se falhar, considere usar URL pública ao invés de base64.")
-        
-        logger.info(f"[WhatsAppService] Primeiros 100 chars base64: {base64_data[:100]}...")
-        print(f"[PDF-ENVIO] Iniciando envio de PDF: {nome_arquivo} para {telefone_limpo}")
-        print(f"[PDF-ENVIO] Tamanho base64: {len(base64_data)} chars (~{tamanho_mb:.2f} MB)")
-        
-        # Z-API documentação exige data URI para base64: "data:application/pdf;base64,..."
-        base64_original = base64_data
-        if base64_data.startswith('data:'):
-            if 'base64,' in base64_data:
-                base64_data = base64_data.split('base64,', 1)[1]
-        base64_data = base64_data.replace("\r", "").replace("\n", "")
-        document_value = f"data:application/pdf;base64,{base64_data}"
-        
-        # Validar base64
-        try:
-            import base64 as b64_module
-            # Tentar decodificar para validar
-            b64_module.b64decode(base64_data[:100])  # Testar apenas os primeiros chars
-            logger.info(f"[WhatsAppService] ✅ Base64 válido (teste de decodificação)")
-        except Exception as e:
-            logger.error(f"[WhatsAppService] ❌ Base64 inválido: {e}")
-            print(f"[PDF-ENVIO] ERRO: Base64 inválido - {e}")
-        
-        payload = {
-            "phone": telefone_limpo,
-            "document": document_value,
-            "fileName": nome_arquivo
-        }
-        
-        # Tentar adicionar caption (Z-API pode não suportar diretamente, mas vamos tentar)
-        if caption:
-            payload["caption"] = caption
-            logger.info(f"[WhatsAppService] Adicionando caption ao payload")
-        
-        logger.info(f"[WhatsAppService] Payload preparado:")
-        logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
-        logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
-        logger.info(f"[WhatsAppService]   - document (data URI, tamanho): {len(document_value)} chars")
-        logger.info(f"[WhatsAppService] URL completa: {url}")
-        logger.info(f"[WhatsAppService] Extensão usada: {extensao}")
-        print(f"[PDF-ENVIO] Enviando requisição para: {url}")
-        print(f"[PDF-ENVIO] Extensão: {extensao}, Payload size: phone={telefone_limpo}, fileName={nome_arquivo}, document={len(base64_data)} chars")
-        
-        try:
-            resp = self._send_request(url, payload)
-            logger.info(f"[WhatsAppService] Resposta recebida do _send_request: {resp}")
-            print(f"[PDF-ENVIO] Resposta da API: {resp}")
-            
-            if resp:
-                # Verificar se a resposta contém erro
-                if isinstance(resp, dict) and resp.get('error'):
-                    erro_msg = resp.get('message', resp.get('error', 'Erro desconhecido'))
-                    logger.error(f"[WhatsAppService] ❌ Erro da API Z-API: {erro_msg}")
-                    logger.error(f"[WhatsAppService] Resposta completa: {resp}")
-                    logger.error(f"[WhatsAppService] Arquivo: {nome_arquivo}, Tamanho: {tamanho_mb:.2f} MB")
-                    
-                    # Mensagem específica para erro de base64 não lido
-                    if 'Base64' in erro_msg or 'could not be read' in erro_msg:
-                        logger.error(f"[WhatsAppService] 💡 SUGESTÃO: Este erro geralmente ocorre com arquivos grandes (>5MB).")
-                        logger.error(f"[WhatsAppService] 💡 Considere usar URL pública ao invés de base64 para arquivos grandes.")
-                    
-                    print(f"[PDF-ENVIO] ❌ ERRO DA API: {erro_msg}")
-                    print(f"[PDF-ENVIO] Arquivo: {nome_arquivo}, Tamanho: {tamanho_mb:.2f} MB")
-                    return False
-                
-                # Verificar se tem campos de sucesso (messageId, zaapId, id)
-                if isinstance(resp, dict) and (resp.get('messageId') or resp.get('zaapId') or resp.get('id')):
-                    message_id = resp.get('messageId') or resp.get('zaapId') or resp.get('id')
-                    logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso: {nome_arquivo}")
-                    logger.info(f"[WhatsAppService] MessageId: {message_id}")
-                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado (MessageId: {message_id})")
-                    
-                    # Se caption foi fornecido, retornar para que seja enviado imediatamente após
-                    # (Z-API pode não suportar caption diretamente no envio)
-                    if caption:
-                        logger.info(f"[WhatsAppService] Caption fornecido, será retornado para envio imediato após PDF")
-                        # O caption será enviado pelo webhook_handler imediatamente após o PDF
-                        # para aparecer junto na mesma conversa
-                    
-                    return True
-                else:
-                    # Resposta não tem erro, mas também não tem indicadores de sucesso
-                    logger.warning(f"[WhatsAppService] ⚠️ Resposta inesperada: {resp}")
-                    print(f"[PDF-ENVIO] ⚠️ AVISO: Resposta inesperada")
-                    return False
-            else:
-                logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia ou None")
-                logger.error(f"[WhatsAppService] Tipo da resposta: {type(resp)}")
-                print(f"[PDF-ENVIO] ❌ ERRO: Resposta vazia ou None")
-                return False
-        except Exception as e:
-            logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: {e}")
-            logger.error(f"[WhatsAppService] Tipo do erro: {type(e).__name__}")
-            import traceback
-            tb_str = traceback.format_exc()
-            logger.error(f"[WhatsAppService] Traceback completo:\n{tb_str}")
-            print(f"[PDF-ENVIO] ❌ EXCEÇÃO: {type(e).__name__}: {e}")
-            print(f"[PDF-ENVIO] Traceback: {tb_str}")
-            return False
+        return self._provider.enviar_pdf_b64(telefone, base64_data, nome_arquivo, caption=caption)
 
-    # ---------------------------------------------------------
-    # 5. LISTAR GRUPOS (Z-API)
-    # ---------------------------------------------------------
     def listar_grupos(self):
-        """
-        Retorna a lista de grupos que o número conectado participa.
-        Usa paginação da Z-API (page, pageSize) para trazer todos os grupos.
-        Se a API não suportar paginação, tenta uma única chamada sem parâmetros.
-        """
-        page_size = 100
-        page = 1
-        todos = []
-        url_com_params = f"{self.base_url}/groups?page={page}&pageSize={page_size}"
-        data = self._send_request(url_com_params, method='GET')
-        # Se retornar erro ou estrutura sem lista, tenta sem paginação (API antiga)
-        if not data or (isinstance(data, dict) and 'error' in data):
-            data = self._send_request(f"{self.base_url}/groups", method='GET')
-        if data:
-            if isinstance(data, list):
-                todos = data
-            elif isinstance(data, dict) and 'response' in data:
-                r = data['response']
-                todos = r if isinstance(r, list) else []
-            elif isinstance(data, dict) and 'groups' in data:
-                g = data['groups']
-                todos = g if isinstance(g, list) else []
-        # Se temos uma lista e ela veio da primeira página com paginação, buscar próximas páginas
-        if todos and len(todos) == page_size:
-            page = 2
-            while True:
-                url = f"{self.base_url}/groups?page={page}&pageSize={page_size}"
-                chunk_data = self._send_request(url, method='GET')
-                chunk = []
-                if chunk_data:
-                    if isinstance(chunk_data, list):
-                        chunk = chunk_data
-                    elif isinstance(chunk_data, dict) and 'response' in chunk_data:
-                        r = chunk_data['response']
-                        chunk = r if isinstance(r, list) else []
-                    elif isinstance(chunk_data, dict) and 'groups' in chunk_data:
-                        g = chunk_data['groups']
-                        chunk = g if isinstance(g, list) else []
-                if not chunk:
-                    break
-                todos.extend(chunk)
-                if len(chunk) < page_size:
-                    break
-                page += 1
-                if page > 50:
-                    break
-        # Formata e remove duplicatas por id
-        seen = set()
-        lista_formatada = []
-        for g in todos:
-            if not isinstance(g, dict):
-                continue
-            g_id = g.get('id') or g.get('phone') or g.get('chatId')
-            if not g_id or g_id in seen:
-                continue
-            seen.add(g_id)
-            g_name = g.get('name') or g.get('subject') or g.get('contactName') or 'Sem Nome'
-            lista_formatada.append({'id': str(g_id), 'name': g_name})
-        return lista_formatada
+        return self._provider.listar_grupos()
 
-    # ---------------------------------------------------------
-    # 6. FUNÇÕES LEGADAS / AUXILIARES
-    # ---------------------------------------------------------
-    
     def _gerar_imagem_resumo_bytes(self, dados):
         if not Image: return None
         return None

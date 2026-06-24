@@ -6778,6 +6778,9 @@ def processar_webhook_whatsapp(data, request=None):
     """
     from django.conf import settings as django_settings
 
+    from crm_app.whatsapp_webhook_normalizer import normalizar_webhook
+    data = normalizar_webhook(data)
+
     if getattr(django_settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
         from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_zapi
         rapido = avaliar_fastpath_zapi(data)

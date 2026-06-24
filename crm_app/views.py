@@ -135,14 +135,15 @@ from rest_framework import status
 # --- RESTAURAÇÃO: WebhookWhatsAppView ---
 # URL de produção: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
 # URL alternativa: https://site-record-production.up.railway.app/api/crm/webhook-whatsapp/
-# Configurar no Z-API: Método POST, Eventos: Mensagens recebidas
+# Configurar webhook: Z-API ou Evolution (instancia site_record_zap)
+# URL: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
 class WebhookWhatsAppView(APIView):
     permission_classes = [AllowAny]  # Permite acesso sem autenticação para webhooks
 
     def post(self, request, *args, **kwargs):
         """
         Endpoint para receber eventos do WhatsApp e processar fluxos.
-        Sempre retorna uma resposta HTTP para evitar 502 (ngrok/Z-API).
+        Sempre retorna uma resposta HTTP para evitar 502 (ngrok/Z-API/Evolution).
         """
         import logging
         from django.conf import settings
@@ -163,9 +164,12 @@ class WebhookWhatsAppView(APIView):
             logger_webhook.exception(f"[WebhookWhatsAppView] Erro ao ler request.data: {e}")
             return Response({'status': 'ok', 'mensagem': 'Payload inválido'}, status=200)
 
+        from crm_app.whatsapp_webhook_normalizer import normalizar_webhook
+        data = normalizar_webhook(data)
+
         if getattr(settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
-            from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_zapi
-            rapido = avaliar_fastpath_zapi(data)
+            from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_webhook
+            rapido = avaliar_fastpath_webhook(data)
             if rapido is not None:
                 if settings.DEBUG:
                     logger_webhook.debug(

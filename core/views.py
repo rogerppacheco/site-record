@@ -29,7 +29,7 @@ class IsAdminDiretoria(BasePermission):
 
 
 class RegraAutomacaoViewSet(viewsets.ModelViewSet):
-    queryset = RegraAutomacao.objects.all()
+    queryset = RegraAutomacao.objects.all().order_by("-id")
     serializer_class = RegraAutomacaoSerializer
     # --- CORREÇÃO: Adicionado JWTAuthentication para aceitar o Token do Frontend ---
     authentication_classes = (CsrfExemptSessionAuthentication, BasicAuthentication, JWTAuthentication)

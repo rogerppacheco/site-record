@@ -1,11 +1,13 @@
 """
-Filtro leve para webhooks Z-API: descarta ruído antes de importar whatsapp_webhook_handler.
+Filtro leve para webhooks WhatsApp (Z-API / Evolution): descarta ruido antes do handler.
 """
 from __future__ import annotations
 
 import logging
 import re
 from typing import Any, Dict, Optional
+
+from crm_app.whatsapp_webhook_normalizer import detectar_provedor, normalizar_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +90,11 @@ def _from_me(data: Dict[str, Any]) -> bool:
 
 
 def _is_group(data: Dict[str, Any], telefone: str) -> bool:
-    return bool(data.get('isGroup') or ('-group' in telefone))
+    return bool(
+        data.get('isGroup')
+        or ('-group' in telefone)
+        or ('@g.us' in telefone)
+    )
 
 
 def _tem_midia(data: Dict[str, Any]) -> bool:
@@ -137,6 +143,16 @@ def _tem_referencia_ou_clique_botao(data: Any, _depth: int = 0) -> bool:
         if isinstance(sub, dict) and _tem_referencia_ou_clique_botao(sub, _depth + 1):
             return True
     return False
+
+
+def avaliar_fastpath_webhook(data: Any) -> Optional[Dict[str, str]]:
+    """
+    Retorna resposta HTTP (status/mensagem) para encerrar sem o handler completo.
+    None = continuar processamento normal.
+    """
+    if isinstance(data, dict) and detectar_provedor(data) == "evolution":
+        data = normalizar_webhook(data)
+    return avaliar_fastpath_zapi(data)
 
 
 def avaliar_fastpath_zapi(data: Any) -> Optional[Dict[str, str]]:

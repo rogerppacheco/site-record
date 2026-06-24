@@ -3495,3 +3495,41 @@ class FunilVendaWppEvento(models.Model):
 
     def __str__(self):
         return f"{self.tentativa_id} {self.etapa_codigo} @ {self.criado_em}"
+
+
+class WhatsAppIntegracaoConfig(models.Model):
+    """Configuração única do provedor WhatsApp (Z-API ou Evolution+n8n)."""
+
+    PROVIDER_ZAPI = "zapi"
+    PROVIDER_EVOLUTION = "evolution"
+    PROVIDER_CHOICES = (
+        (PROVIDER_ZAPI, "Z-API (legado / plano B)"),
+        (PROVIDER_EVOLUTION, "Evolution + n8n (Opção B)"),
+    )
+
+    provider = models.CharField(
+        max_length=20,
+        choices=PROVIDER_CHOICES,
+        default=PROVIDER_ZAPI,
+        verbose_name="Provedor ativo",
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Config. integração WhatsApp"
+        verbose_name_plural = "Config. integração WhatsApp"
+
+    def __str__(self) -> str:
+        return f"WhatsApp: {self.get_provider_display()}"
+
+    @classmethod
+    def load(cls) -> "WhatsAppIntegracaoConfig":
+        obj, _ = cls.objects.get_or_create(pk=1, defaults={"provider": cls.PROVIDER_ZAPI})
+        return obj

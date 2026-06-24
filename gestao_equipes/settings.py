@@ -253,10 +253,21 @@ CLOUDFLARE_R2_PUBLIC_URL = config('CLOUDFLARE_R2_PUBLIC_URL', default='')
 # Prefixo raiz no bucket; cada funcionalidade usa subpasta própria (Record_Apoia, CDOI, etc.)
 R2_FOLDER_ROOT = config('R2_FOLDER_ROOT', default='CDOI_Record_Vertical')
 
-# --- CONFIGURAÇÕES Z-API ---
+# --- WHATSAPP: Z-API (legado) ou Evolution API ---
+WHATSAPP_PROVIDER = config('WHATSAPP_PROVIDER', default='zapi').strip().lower()
 ZAPI_INSTANCE_ID = config('ZAPI_INSTANCE_ID', default='')
 ZAPI_TOKEN = config('ZAPI_TOKEN', default='')
 ZAPI_CLIENT_TOKEN = config('ZAPI_CLIENT_TOKEN', default='')
+EVOLUTION_API_URL = config(
+    'EVOLUTION_API_URL',
+    default='https://evolution-api-production-8bbb.up.railway.app',
+)
+EVOLUTION_API_KEY = config('EVOLUTION_API_KEY', default='')
+EVOLUTION_INSTANCE_NAME = config('EVOLUTION_INSTANCE_NAME', default='site_record_zap')
+# Outbound híbrido (Opção B): texto/mídia URL via n8n → Evolution
+N8N_OUTBOUND_WEBHOOK_URL = config('N8N_OUTBOUND_WEBHOOK_URL', default='')
+N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
+OUTBOUND_WEBHOOK_URL = config('OUTBOUND_WEBHOOK_URL', default='')
 # Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
 WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
 # Telefones adicionais ignorados pelo webhook (vírgula). 12981750292 já está bloqueado no código.
