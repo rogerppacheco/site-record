@@ -11,10 +11,21 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
 def is_pgbouncer_enabled() -> bool:
-    """Pooler ativo quando há URL unpooled separada ou flag explícita."""
-    if os.environ.get("PGBOUNCER_ENABLED", "").lower() in ("1", "true", "yes"):
+    """
+    Pooler ativo somente quando runtime usa URL diferente da direta.
+
+    DATABASE_UNPOOLED_URL sozinha (ex.: rollback Django) nao ativa modo pooler.
+    """
+    flag = os.environ.get("PGBOUNCER_ENABLED", "").lower()
+    if flag in ("0", "false", "no"):
+        return False
+    if flag in ("1", "true", "yes"):
         return True
-    return bool(os.environ.get("DATABASE_UNPOOLED_URL"))
+    pooled = os.environ.get("DATABASE_URL", "")
+    unpooled = os.environ.get("DATABASE_UNPOOLED_URL", "")
+    if pooled and unpooled and pooled != unpooled:
+        return True
+    return False
 
 
 def append_query_param(url: str, key: str, value: str) -> str:

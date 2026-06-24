@@ -136,8 +136,8 @@ if database_url:
     if _pgbouncer_active:
         DISABLE_SERVER_SIDE_CURSORS = True
 
-    # Conexão direta ao Postgres para advisory locks, LISTEN/NOTIFY e operações de sessão.
-    if database_unpooled_url:
+    # Conexão direta ao Postgres para advisory locks (somente com PgBouncer no runtime).
+    if _pgbouncer_active and database_unpooled_url:
         DATABASES['unpooled'] = dj_database_url.parse(
             database_unpooled_url,
             conn_max_age=0,

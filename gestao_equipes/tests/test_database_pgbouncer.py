@@ -13,14 +13,34 @@ from gestao_equipes.database import (
 )
 
 
-def test_is_pgbouncer_enabled_by_unpooled_url() -> None:
-    with mock.patch.dict(os.environ, {"DATABASE_UNPOOLED_URL": "postgresql://x/y"}, clear=False):
+def test_is_pgbouncer_enabled_when_urls_differ() -> None:
+    env = {
+        "DATABASE_URL": "postgresql://x/pooler:6432/db",
+        "DATABASE_UNPOOLED_URL": "postgresql://x/postgres:5432/db",
+    }
+    with mock.patch.dict(os.environ, env, clear=True):
         assert is_pgbouncer_enabled() is True
 
 
-def test_is_pgbouncer_enabled_by_flag() -> None:
-    with mock.patch.dict(os.environ, {"PGBOUNCER_ENABLED": "true"}, clear=True):
-        assert is_pgbouncer_enabled() is True
+def test_is_pgbouncer_disabled_when_urls_equal() -> None:
+    url = "postgresql://x/maglev:56422/railway"
+    env = {
+        "DATABASE_URL": url,
+        "DATABASE_UNPOOLED_URL": url,
+        "PGBOUNCER_ENABLED": "false",
+    }
+    with mock.patch.dict(os.environ, env, clear=True):
+        assert is_pgbouncer_enabled() is False
+
+
+def test_is_pgbouncer_disabled_by_explicit_flag() -> None:
+    env = {
+        "DATABASE_URL": "postgresql://x/pooler/db",
+        "DATABASE_UNPOOLED_URL": "postgresql://x/direct/db",
+        "PGBOUNCER_ENABLED": "false",
+    }
+    with mock.patch.dict(os.environ, env, clear=True):
+        assert is_pgbouncer_enabled() is False
 
 
 def test_build_prisma_pooled_url_adds_pgbouncer_param() -> None:
