@@ -13,7 +13,7 @@
     <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.bootstrap5.min.css" rel="stylesheet">
 
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
     
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -1465,13 +1465,15 @@
                     
                     // Botão de reemissão aparece para canceladas, pendenciadas e instaladas
                     const btnReemissao = (isCancelada || isPendenciada || isInstalada) ? 
-                        `<button onclick="abrirModalReemissao(${v.id})" class="btn btn-sm btn-outline-warning me-1" title="Reemissão"><i class="bi bi-arrow-repeat"></i></button>` : '';
+                        `<button onclick="abrirModalReemissao(${v.id})" class="btn btn-icon btn-icon-warning" title="Reemissão" aria-label="Reemissão"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>` : '';
                     
                     const botoes = `
+                        <div class="btn-icon-group justify-content-end">
                         ${btnReemissao}
-                        <button onclick="reenviarWhatsApp(${v.id})" class="btn btn-sm btn-outline-success me-1" title="Reenviar Aprovação"><i class="bi bi-whatsapp"></i></button>
-                        <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-editar me-1" title="Editar"><i class="bi bi-pencil"></i></button>
-                        <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-excluir" title="Excluir"><i class="bi bi-trash"></i></button>
+                        <button onclick="reenviarWhatsApp(${v.id})" class="btn btn-icon btn-icon-success" title="Reenviar Aprovação" aria-label="Reenviar aprovação"><i class="bi bi-whatsapp" aria-hidden="true"></i></button>
+                        <button onclick="editarVenda(${v.id})" class="btn btn-icon btn-icon-primary" title="Editar" aria-label="Editar venda"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                        <button onclick="excluirVenda(${v.id})" class="btn btn-icon btn-icon-danger" title="Excluir" aria-label="Excluir venda"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                        </div>
                     `;
 
                     return [

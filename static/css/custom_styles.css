@@ -1037,10 +1037,10 @@ footer a:hover { text-decoration: underline; }
 /* ========================================================================== */
 
 /* Qualquer botão com "editar" na classe vira btn-editar */
-button[onclick*="editar"],
-button[onclick*="Editar"],
-.btn-outline-warning:has(+ .btn-outline-danger),
-.btn.btn-sm.btn-outline-warning {
+button[onclick*="editar"]:not(.btn-icon),
+button[onclick*="Editar"]:not(.btn-icon),
+.btn-outline-warning:has(+ .btn-outline-danger):not(.btn-icon),
+.btn.btn-sm.btn-outline-warning:not(.btn-icon) {
     background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%) !important;
     color: white !important;
     border: none !important;
@@ -1052,22 +1052,22 @@ button[onclick*="Editar"],
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
-button[onclick*="editar"]:hover,
-button[onclick*="Editar"]:hover,
-.btn-outline-warning:has(+ .btn-outline-danger):hover,
-.btn.btn-sm.btn-outline-warning:hover {
+button[onclick*="editar"]:not(.btn-icon):hover,
+button[onclick*="Editar"]:not(.btn-icon):hover,
+.btn-outline-warning:has(+ .btn-outline-danger):not(.btn-icon):hover,
+.btn.btn-sm.btn-outline-warning:not(.btn-icon):hover {
     background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%) !important;
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(13, 110, 253, 0.3) !important;
 }
 
 /* Qualquer botão com "excluir" na classe vira btn-excluir */
-button[onclick*="excluir"],
-button[onclick*="Excluir"],
-.btn-outline-danger[onclick*="excluir"],
-.btn-outline-danger[onclick*="Excluir"],
-.btn-action-delete,
-.btn.btn-sm.btn-outline-danger {
+button[onclick*="excluir"]:not(.btn-icon),
+button[onclick*="Excluir"]:not(.btn-icon),
+.btn-outline-danger[onclick*="excluir"]:not(.btn-icon),
+.btn-outline-danger[onclick*="Excluir"]:not(.btn-icon),
+.btn-action-delete:not(.btn-icon),
+.btn.btn-sm.btn-outline-danger:not(.btn-icon) {
     background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
     color: white !important;
     border: none !important;
@@ -1079,12 +1079,12 @@ button[onclick*="Excluir"],
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
-button[onclick*="excluir"]:hover,
-button[onclick*="Excluir"]:hover,
-.btn-outline-danger[onclick*="excluir"]:hover,
-.btn-outline-danger[onclick*="Excluir"]:hover,
-.btn-action-delete:hover,
-.btn.btn-sm.btn-outline-danger:hover {
+button[onclick*="excluir"]:not(.btn-icon):hover,
+button[onclick*="Excluir"]:not(.btn-icon):hover,
+.btn-outline-danger[onclick*="excluir"]:not(.btn-icon):hover,
+.btn-outline-danger[onclick*="Excluir"]:not(.btn-icon):hover,
+.btn-action-delete:not(.btn-icon):hover,
+.btn.btn-sm.btn-outline-danger:not(.btn-icon):hover {
     background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(220, 53, 69, 0.3) !important;
@@ -1862,21 +1862,192 @@ td[data-label="Ações"] {
     white-space: nowrap;
 }
 
-.table td:last-child .btn,
-.table td:last-child button,
-.table td:last-child a.btn,
-td[data-label="Acoes"] .btn,
-td[data-label="Ações"] .btn {
+.table td:last-child .btn:not(.btn-icon),
+.table td:last-child button:not(.btn-icon),
+.table td:last-child a.btn:not(.btn-icon),
+td[data-label="Acoes"] .btn:not(.btn-icon),
+td[data-label="Ações"] .btn:not(.btn-icon) {
     min-width: 96px;
     justify-content: center;
 }
 
 @media (max-width: 768px) {
-    .table td:last-child .btn,
-    .table td:last-child button,
-    .table td:last-child a.btn,
-    td[data-label="Acoes"] .btn,
-    td[data-label="Ações"] .btn {
+    .table td:last-child .btn:not(.btn-icon),
+    .table td:last-child button:not(.btn-icon),
+    .table td:last-child a.btn:not(.btn-icon),
+    td[data-label="Acoes"] .btn:not(.btn-icon),
+    td[data-label="Ações"] .btn:not(.btn-icon) {
         width: 100%;
     }
+}
+
+/* ==========================================================================
+   BOTOES SOMENTE ICONE - v14.1
+   ========================================================================== */
+
+:root {
+    --btn-icon-size: 2rem;
+    --btn-icon-size-sm: 1.75rem;
+    --btn-icon-size-lg: 2.25rem;
+}
+
+.btn.btn-icon,
+button.btn-icon,
+a.btn-icon {
+    --btn-icon-size-local: var(--btn-icon-size);
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: var(--btn-icon-size-local) !important;
+    height: var(--btn-icon-size-local) !important;
+    min-width: var(--btn-icon-size-local) !important;
+    min-height: var(--btn-icon-size-local) !important;
+    max-width: var(--btn-icon-size-local);
+    max-height: var(--btn-icon-size-local);
+    padding: 0 !important;
+    border-radius: 50% !important;
+    font-size: 0.875rem;
+    line-height: 1 !important;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(20, 31, 55, 0.1);
+    transform: none !important;
+    filter: none !important;
+    overflow: visible;
+    position: relative;
+}
+
+.btn.btn-icon::before,
+button.btn-icon::before,
+a.btn-icon::before {
+    display: none !important;
+    content: none !important;
+}
+
+.btn.btn-icon-sm {
+    --btn-icon-size-local: var(--btn-icon-size-sm);
+    font-size: 0.8rem;
+}
+
+.btn.btn-icon-lg {
+    --btn-icon-size-local: var(--btn-icon-size-lg);
+    font-size: 0.95rem;
+}
+
+.btn.btn-icon .bi,
+.btn.btn-icon i {
+    font-size: 1em;
+    line-height: 1;
+    position: static;
+    z-index: auto;
+    pointer-events: none;
+}
+
+.btn.btn-icon-neutral,
+.btn.btn-icon.btn-outline-secondary {
+    background: var(--btn-bg-neutral) !important;
+    border: 1px solid var(--btn-border-neutral) !important;
+    color: var(--btn-text-neutral) !important;
+}
+
+.btn.btn-icon-neutral:hover,
+.btn.btn-icon.btn-outline-secondary:hover {
+    background: var(--btn-bg-neutral-hover) !important;
+    border-color: #bec8d8 !important;
+    color: #0d6efd !important;
+    box-shadow: 0 2px 6px rgba(20, 31, 55, 0.14);
+}
+
+.btn.btn-icon-primary {
+    background: #0d6efd !important;
+    border: 1px solid #0d6efd !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-icon-primary:hover {
+    background: #0b5ed7 !important;
+    border-color: #0b5ed7 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.28);
+}
+
+.btn.btn-icon-success {
+    background: #ffffff !important;
+    border: 1px solid #198754 !important;
+    color: #198754 !important;
+}
+
+.btn.btn-icon-success:hover {
+    background: #198754 !important;
+    border-color: #198754 !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-icon-warning {
+    background: #ffffff !important;
+    border: 1px solid #fd7e14 !important;
+    color: #c45a00 !important;
+}
+
+.btn.btn-icon-warning:hover {
+    background: #fd7e14 !important;
+    border-color: #fd7e14 !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-icon-danger {
+    background: #dc3545 !important;
+    border: 1px solid #dc3545 !important;
+    color: #ffffff !important;
+}
+
+.btn.btn-icon-danger:hover {
+    background: #bb2d3b !important;
+    border-color: #bb2d3b !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.28);
+}
+
+.btn.btn-icon-info {
+    background: #ffffff !important;
+    border: 1px solid #0dcaf0 !important;
+    color: #087990 !important;
+}
+
+.btn.btn-icon-info:hover {
+    background: #0dcaf0 !important;
+    border-color: #0dcaf0 !important;
+    color: #ffffff !important;
+}
+
+.btn-icon-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+}
+
+.btn-icon-grid {
+    display: inline-grid;
+    grid-template-columns: repeat(2, var(--btn-icon-size));
+    grid-template-rows: repeat(2, var(--btn-icon-size));
+    gap: 0.25rem;
+    align-items: center;
+    justify-items: center;
+}
+
+.btn-icon-grid.btn-icon-grid-sm {
+    grid-template-columns: repeat(2, var(--btn-icon-size-sm));
+    grid-template-rows: repeat(2, var(--btn-icon-size-sm));
+}
+
+.btn-icon-slot {
+    display: block;
+    width: var(--btn-icon-size);
+    height: var(--btn-icon-size);
+}
+
+.btn-icon-grid-sm .btn-icon-slot {
+    width: var(--btn-icon-size-sm);
+    height: var(--btn-icon-size-sm);
 }

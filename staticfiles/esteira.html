@@ -8,7 +8,7 @@
     <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <style>
         /* --- ESTILO DE CARDS FLUTUANTES NA TABELA --- */
@@ -69,7 +69,7 @@
             min-width: 100%;
             table-layout: auto;
             --esteira-sticky-w1: 9rem;
-            --esteira-sticky-w2: 5.5rem;
+            --esteira-sticky-w2: 6.5rem;
         }
         .table-esteira thead th {
             white-space: nowrap;
@@ -88,28 +88,16 @@
         .table-esteira th.esteira-col-comissao-cb,
         .table-esteira td.esteira-col-comissao-cb { min-width: 3rem; text-align: center; }
         .table-esteira th.esteira-col-acoes,
-        .table-esteira td.esteira-col-acoes { min-width: 5.5rem; max-width: 5.5rem; white-space: normal; vertical-align: middle; }
+        .table-esteira td.esteira-col-acoes {
+            min-width: 6.5rem;
+            max-width: 6.5rem;
+            white-space: normal;
+            vertical-align: middle;
+            padding-left: 0.35rem !important;
+            padding-right: 0.35rem !important;
+        }
         .esteira-acoes-grid {
-            display: inline-grid;
-            grid-template-columns: repeat(2, 2rem);
-            grid-template-rows: repeat(2, 2rem);
-            gap: 0.2rem;
-        }
-        .esteira-acoes-grid .btn {
-            width: 2rem;
-            height: 2rem;
-            padding: 0 !important;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-        }
-        .esteira-acoes-grid .btn .bi {
-            font-size: 0.95rem;
-        }
-        .esteira-acoes-slot {
-            width: 2rem;
-            height: 2rem;
+            margin: 0 auto;
         }
         .table-esteira th.esteira-col-os,
         .table-esteira td.esteira-col-os { min-width: 7.5rem; }
@@ -497,7 +485,7 @@
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes .esteira-acoes-grid {
                 margin-left: auto;
             }
-            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes .btn {
+            #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td.esteira-col-acoes .btn-icon {
                 flex: 0 0 auto;
             }
             #esteira-scroll-main .table-esteira tbody tr.esteira-row-venda td .d-flex.align-items-center {
@@ -1888,21 +1876,21 @@
         }
 
         function montarGridAcoesEsteira(vendaId, opts) {
-            const slot = '<span class="esteira-acoes-slot" aria-hidden="true"></span>';
+            const slot = '<span class="btn-icon-slot" aria-hidden="true"></span>';
             const btnEnd = opts.endereco
-                ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="copiarEndereco(this)" data-endereco="${opts.endereco}" title="Copiar endereço completo"><i class="bi bi-geo-alt"></i></button>`
+                ? `<button type="button" class="btn btn-icon btn-icon-neutral" onclick="copiarEndereco(this)" data-endereco="${opts.endereco}" title="Copiar endereço completo" aria-label="Copiar endereço"><i class="bi bi-geo-alt" aria-hidden="true"></i></button>`
                 : slot;
             const btnTel = opts.telefone
-                ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="copiarTelefone(this)" data-telefone="${opts.telefone}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>`
+                ? `<button type="button" class="btn btn-icon btn-icon-neutral" onclick="copiarTelefone(this)" data-telefone="${opts.telefone}" title="Copiar telefone" aria-label="Copiar telefone"><i class="bi bi-telephone" aria-hidden="true"></i></button>`
                 : slot;
             let btnWpp = slot;
             if (opts.mostrarReagendar) {
-                btnWpp = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="enviarPossoReagendar(${vendaId}, this)" title="Consultar consultor: posso reagendar?" aria-label="Posso reagendar?"><i class="bi bi-calendar-plus"></i></button>`;
+                btnWpp = `<button type="button" class="btn btn-icon btn-icon-info" onclick="enviarPossoReagendar(${vendaId}, this)" title="Consultar consultor: posso reagendar?" aria-label="Posso reagendar?"><i class="bi bi-calendar-plus" aria-hidden="true"></i></button>`;
             } else if (opts.mostrarAntecip) {
-                btnWpp = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning"></i></button>`;
+                btnWpp = `<button type="button" class="btn btn-icon btn-icon-warning" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning" aria-hidden="true"></i></button>`;
             }
-            const btnEdit = `<button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil"></i></button>`;
-            return `<div class="esteira-acoes-grid">${btnEnd}${btnTel}${btnWpp}${btnEdit}</div>`;
+            const btnEdit = `<button type="button" class="btn btn-icon btn-icon-primary" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil" aria-hidden="true"></i></button>`;
+            return `<div class="btn-icon-grid esteira-acoes-grid">${btnEnd}${btnTel}${btnWpp}${btnEdit}</div>`;
         }
 
         var esteiraScrollSyncLock = false;

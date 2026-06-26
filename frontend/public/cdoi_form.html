@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
     <style>
         /* Estilos específicos para a página CDOI */
         .card { 
@@ -1082,7 +1082,7 @@
             lista.forEach(i => {
             let btns = '<div class="d-flex gap-1 justify-content-center">';
             btns += `<button class="btn btn-sm btn-editar" onclick='editarTudo(${i.id})' title="Editar"><i class="bi bi-pencil-square"></i></button>`;
-            if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")' title="Atualizar Status"><i class="bi bi-arrow-repeat"></i></button>`;
+            if (i.can_edit) btns += `<button class="btn btn-icon btn-icon-info" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")' title="Atualizar Status" aria-label="Atualizar status"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>`;
             btns += `<button class="btn btn-sm btn-success" onclick='gerarLinkPreVenda(${i.id})' title="Gerar Link de Pré-venda"><i class="bi bi-link-45deg"></i></button>`;
             btns += `<button class="btn btn-sm btn-info" onclick='verPreVendas(${i.id})' title="Ver Pré-vendas"><i class="bi bi-people"></i></button>`;
             btns += `<button class="btn btn-sm btn-excluir" onclick='excluir(${i.id})' title="Excluir"><i class="bi bi-trash"></i></button>`;

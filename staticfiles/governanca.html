@@ -9,7 +9,7 @@
     <link rel="icon" type="image/png" href="{% static 'logo.png' %}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
     <style>
         /* Layout de Administração */
         body { overflow-x: hidden; background-color: var(--cor-fundo); }
@@ -30,7 +30,7 @@
         .admin-sidebar::-webkit-scrollbar-track { background: #f1f1f1; }
         .admin-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
         .admin-content {
-            flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px; width: calc(100% - 280px); 
+            flex: 1; margin-left: 280px; padding: 2rem; max-width: calc(100vw - 300px); width: calc(100% - 280px);
         }
 
         .nav-section-title {
@@ -67,6 +67,164 @@
         .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; line-height: 1.5; border-radius: 0.2rem; }
         #iframe-calendario { width: 100%; height: 750px; border: none; display: block; }
         .input-meta, .input-premio { border: 1px solid #ced4da !important; padding: 0.2rem 0.5rem !important; }
+
+        /* Matriz de comissão — legibilidade e scroll */
+        #wrap-matriz-comissao {
+            overflow: auto;
+            max-height: min(72vh, 820px);
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+        }
+        #wrap-matriz-comissao::after {
+            content: '';
+            position: sticky;
+            left: 0;
+            bottom: 0;
+            display: block;
+            height: 0;
+        }
+        .matriz-scroll-hint {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+        .matriz-scroll-hint i { vertical-align: -2px; }
+        #tabela-matriz-comissao {
+            width: max-content;
+            min-width: 100%;
+            margin-bottom: 0;
+            font-size: 0.9rem;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        #tabela-matriz-comissao thead th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #e8eef5;
+            color: #1e293b;
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            vertical-align: middle;
+            padding: 0.55rem 0.45rem;
+            border-bottom: 2px solid #94a3b8;
+            white-space: nowrap;
+        }
+        #tabela-matriz-comissao thead tr:nth-child(2) th {
+            top: 2.35rem;
+            font-size: 0.72rem;
+            background: #f1f5f9;
+        }
+        #tabela-matriz-comissao tbody td {
+            padding: 0.35rem 0.4rem;
+            vertical-align: middle;
+            border-color: #e2e8f0;
+        }
+        #tabela-matriz-comissao tbody tr:nth-child(even) td { background: #fafbfc; }
+        #tabela-matriz-comissao tbody tr:nth-child(even) .matriz-sticky,
+        #tabela-matriz-comissao tbody tr:nth-child(even) .mat-col-acoes { background: #fafbfc; }
+        #tabela-matriz-comissao tbody tr:nth-child(odd) .matriz-sticky,
+        #tabela-matriz-comissao tbody tr:nth-child(odd) .mat-col-acoes { background: #fff; }
+        #tabela-matriz-comissao tbody tr:hover td { background: #f0f7ff; }
+        #tabela-matriz-comissao tbody tr:hover .matriz-sticky,
+        #tabela-matriz-comissao tbody tr:hover .mat-col-acoes { background: #f0f7ff !important; }
+        #tabela-matriz-comissao .matriz-sticky {
+            position: sticky;
+            z-index: 4;
+            background: inherit;
+            box-shadow: 4px 0 6px -2px rgba(15, 23, 42, 0.08);
+        }
+        #tabela-matriz-comissao thead .matriz-sticky {
+            z-index: 6;
+            background: #e8eef5;
+        }
+        #tabela-matriz-comissao thead tr:nth-child(2) .matriz-sticky { background: #f1f5f9; }
+        #tabela-matriz-comissao .matriz-sticky-1 { left: 0; min-width: 108px; }
+        #tabela-matriz-comissao .matriz-sticky-2 { left: 108px; min-width: 118px; }
+        #tabela-matriz-comissao .matriz-sticky-3 { left: 226px; min-width: 150px; }
+        #tabela-matriz-comissao .matriz-sticky-4 { left: 376px; min-width: 72px; }
+        #tabela-matriz-comissao .matriz-sticky-5 { left: 448px; min-width: 72px; }
+        #tabela-matriz-comissao .matriz-plano-header {
+            min-width: 196px;
+            max-width: 220px;
+            white-space: normal;
+            line-height: 1.25;
+            text-align: center;
+            font-size: 0.72rem;
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 700;
+            color: #0f4c81;
+        }
+        #tabela-matriz-comissao .matriz-plano-sub {
+            min-width: 98px;
+            width: 98px;
+            text-align: center;
+        }
+        #tabela-matriz-comissao .matriz-plano-group-a { background: #f8fafc !important; }
+        #tabela-matriz-comissao .matriz-plano-group-b { background: #f0f9ff !important; }
+        #tabela-matriz-comissao .mat-input-meta {
+            min-width: 0;
+            width: 100%;
+            font-size: 0.85rem;
+            padding: 0.35rem 0.45rem;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+        }
+        #tabela-matriz-comissao .mat-input-meta:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        #tabela-matriz-comissao .mat-input-money {
+            min-width: 92px;
+            width: 92px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            padding: 0.4rem 0.5rem;
+            color: #0f172a;
+            background: #fff;
+            border: 1px solid #94a3b8;
+            border-radius: 6px;
+        }
+        #tabela-matriz-comissao .mat-input-money:focus {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+        }
+        #tabela-matriz-comissao .mat-input-money:not(:placeholder-shown),
+        #tabela-matriz-comissao .mat-input-money[value]:not([value=""]) {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+        #tabela-matriz-comissao .mat-col-acoes {
+            min-width: 52px;
+            text-align: center;
+            position: sticky;
+            right: 0;
+            z-index: 4;
+            background: inherit;
+            box-shadow: -4px 0 6px -2px rgba(15, 23, 42, 0.08);
+        }
+        #tabela-matriz-comissao thead .mat-col-acoes {
+            z-index: 6;
+            background: #e8eef5;
+        }
+        .matriz-vendedor-planos { font-size: 0.9rem; }
+        .matriz-vendedor-planos th { background: #e8eef5; font-size: 0.8rem; }
+        .matriz-vendedor-planos td.plano-nome { font-weight: 600; color: #1e293b; min-width: 220px; }
+        .matriz-vendedor-planos .mat-input-money {
+            max-width: 140px;
+            margin-left: auto;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
 
         @media (max-width: 992px) {
             .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; top: 80px; height: calc(100vh - 80px); }
@@ -216,8 +374,17 @@
                                     <a href="#" id="link-export-faixa" class="btn btn-sm btn-outline-primary" onclick="exportarRegrasFaixa(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Use <strong>Finalidade</strong> = &quot;Adiantamento&quot; para a faixa que define a &quot;Comissão est.&quot; na esteira (valores 500MB/700/1GB CNPJ). Faixas com Finalidade &quot;Pagamento de comissão&quot; entram no cálculo da folha (MIN/MAX); &quot;Adiantamento&quot; não entra na folha.</p>
-                            <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>Finalidade</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
+                            <p class="small text-muted mb-2">Cada <strong>coluna é um plano cadastrado</strong>. Crie faixas conforme a quantidade de instaladas (MIN/MAX). Valores PAP (CPF) e CNPJ por plano em cada faixa. Finalidade &quot;Adiantamento&quot; não entra na folha de pagamento.</p>
+                            <div class="d-flex gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-success" onclick="salvarMatrizComissao()"><i class="bi bi-check-lg"></i> Salvar matriz</button>
+                            </div>
+                            <p class="matriz-scroll-hint mb-2"><i class="bi bi-arrows-expand"></i> Role horizontalmente para ver todos os planos. Colunas da esquerda (perfil e faixa) permanecem fixas.</p>
+                            <div id="wrap-matriz-comissao">
+                                <table class="table table-bordered align-middle mb-0" id="tabela-matriz-comissao">
+                                    <thead id="thead-matriz-comissao"></thead>
+                                    <tbody id="tbody-matriz-comissao"></tbody>
+                                </table>
+                            </div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
                             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -255,14 +422,7 @@
                                         </div>
                                     </div>
                                     <div class="row g-2 mb-2"><div class="col-12 small text-muted fw-bold">Valores por plano (R$) — preencha se valor manual = SIM</div></div>
-                                    <div class="row g-2">
-                                        <div class="col-md-4"><label class="form-label small">500MB PAP</label><input type="number" id="cfg_500mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">700MB PAP</label><input type="number" id="cfg_700mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">1GB PAP</label><input type="number" id="cfg_1gb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">500MB CNPJ</label><input type="number" id="cfg_500mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">700MB CNPJ</label><input type="number" id="cfg_700mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                        <div class="col-md-4"><label class="form-label small">1GB CNPJ</label><input type="number" id="cfg_1gb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
-                                    </div>
+                                    <div class="row g-2" id="cfg_valores_planos_container"></div>
                                     <hr class="my-3">
                                     <div class="row g-2">
                                         <div class="col-md-3"><label class="form-label small">Desconto Boleto (R$)</label><input type="number" id="cfg_desconto_boleto" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
@@ -304,7 +464,19 @@
                 <div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'planos')">Planos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'formasPagamento')">Pagamentos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'status')">Status</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'pendencias')">Pendências</button></li></ul></div>
                     <div class="card-body">
                         <div id="operadoras" class="tab-content active"><form id="form-operadora" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="operadora_id"><div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="operadora_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">CNPJ</label><input type="text" class="form-control" id="operadora_cnpj"></div><div class="col-md-3"><label class="form-label fw-bold">Status</label><select id="operadora_status" class="form-select" required><option value="1">Ativo</option><option value="0">Inativo</option></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>CNPJ</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-operadoras"></tbody></table></div>
-                        <div id="planos" class="tab-content" style="display:none;"><form id="form-plano" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="plano_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div><div class="col-md-2"><label class="form-label fw-bold">Valor</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div><div class="col-md-2"><label class="form-label fw-bold">Comissão</label><input type="number" class="form-control" id="plano_comissao" step="0.01"></div><div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Comissão</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table></div>
+                        <div id="planos" class="tab-content" style="display:none;">
+                            <form id="form-plano" class="row g-3 mb-4 bg-light p-3 rounded border">
+                                <input type="hidden" id="plano_id">
+                                <div class="col-12"><h6 class="text-muted mb-0">Dados do plano</h6></div>
+                                <div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Valor mensal</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa"></div>
+                                <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Salvar plano</button></div>
+                                <div class="col-12"><small class="text-muted">Ao salvar, o plano ganha <strong>colunas próprias</strong> em Comissionamento → Regras por Faixa e Regras por Vendedor.</small></div>
+                            </form>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
+                        </div>
                         <div id="formasPagamento" class="tab-content" style="display:none;"><div class="input-group mb-3"><input type="text" id="nova-forma-pagamento-nome" placeholder="Nova Forma (Ex: PIX)" class="form-control"><button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button></div><ul id="lista-formas-pagamento" class="list-group"></ul></div>
                         <div id="status" class="tab-content" style="display:none;"><form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="status_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div><div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table></div>
                         <div id="pendencias" class="tab-content" style="display:none;"><form id="form-pendencia" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="pendencia_id"><div class="col-md-6"><label class="form-label fw-bold">Motivo</label><input type="text" class="form-control" id="pendencia_nome" required></div><div class="col-md-4"><label class="form-label fw-bold">Tipo</label><input type="text" class="form-control" id="pendencia_tipo" placeholder="Ex: Documentação" required></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead><tbody id="lista-pendencias"></tbody></table></div>
@@ -905,7 +1077,7 @@
         if(tabName === 'status') carregarStatus();
         if(tabName === 'pendencias') carregarMotivosPendencia();
         if(tabName === 'operadoras') carregarOperadoras();
-        if(tabName === 'planos') carregarPlanos();
+        if(tabName === 'planos') { carregarOperadoras(); carregarPlanos(); }
         if(tabName === 'recebimento_operadora_tab') carregarComissoesOperadora();
         if(tabName === 'campanhas_tab') { carregarDadosAuxiliaresCampanha(); carregarCampanhas(); }
         if(tabName === 'tab-lista-feriados') carregarFeriados();
@@ -2303,14 +2475,21 @@
 
     // --- CADASTROS GERAIS ---
     async function carregarOperadoras() {
-        const res = await apiFetch('/crm/operadoras/');
-        const lista = Array.isArray(res) ? res : (res?.results || []);
-        const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
-        const selPlanos = document.getElementById('plano_operadora_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
-        lista.forEach(o => {
-            tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
-            if(o.ativo) selPlanos.add(new Option(o.nome, o.id));
-        });
+        try {
+            const res = await apiFetch('/crm/operadoras/');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
+            const selPlanos = document.getElementById('plano_operadora_id');
+            if (selPlanos) selPlanos.innerHTML = '<option value="">Selecione...</option>';
+            lista.forEach(o => {
+                tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
+                if(o.ativo && selPlanos) selPlanos.add(new Option(o.nome, o.id));
+            });
+        } catch (e) {
+            console.error('carregarOperadoras:', e);
+            const selPlanos = document.getElementById('plano_operadora_id');
+            if (selPlanos) selPlanos.innerHTML = '<option value="">Erro ao carregar operadoras</option>';
+        }
     }
     var formOperadora = document.getElementById('form-operadora');
     if (formOperadora) formOperadora.onsubmit = async(e) => {
@@ -2324,29 +2503,65 @@
     window.excluirOperadora = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`, {method:'DELETE'}); carregarOperadoras(); } };
 
     async function carregarPlanos() {
-        const res = await apiFetch('/crm/planos/');
-        const lista = Array.isArray(res) ? res : (res?.results || []);
-        const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
-        lista.forEach(p => {
-            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
-        });
+        try {
+            const res = await apiFetch('/crm/planos/?page_size=500');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
+            lista.forEach(p => {
+                tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
+            });
+        } catch (e) {
+            console.error('carregarPlanos:', e);
+            const tbody = document.getElementById('lista-planos');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Erro ao carregar planos: ${e.message || e}</td></tr>`;
+        }
     }
     var formPlano = document.getElementById('form-plano');
     if (formPlano) formPlano.onsubmit = async(e) => {
         e.preventDefault();
+        const operadoraId = document.getElementById('plano_operadora_id').value;
+        if (!operadoraId) {
+            alert('Selecione uma operadora na lista (aba Operadoras → cadastre NIO se necessário).');
+            return;
+        }
         const id = document.getElementById('plano_id').value;
-        const body = { nome: document.getElementById('plano_nome').value, valor: document.getElementById('plano_valor').value, comissao: document.getElementById('plano_comissao').value, operadora: document.getElementById('plano_operadora_id').value, ativo: true };
-        await apiFetch(id ? `/crm/planos/${id}/` : '/crm/planos/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
-        document.getElementById('form-plano').reset(); document.getElementById('plano_id').value=''; carregarPlanos();
+        const body = {
+            nome: document.getElementById('plano_nome').value.trim(),
+            valor: document.getElementById('plano_valor').value,
+            operadora: operadoraId,
+            ativo: true,
+        };
+        const recvOp = document.getElementById('plano_receb_operadora').value;
+        if (recvOp !== '') body.recebimento_operadora_base = recvOp;
+        if (!body.nome) {
+            alert('Informe o nome do plano.');
+            return;
+        }
+        try {
+            await apiFetch(id ? `/crm/planos/${id}/` : '/crm/planos/', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+            document.getElementById('form-plano').reset();
+            document.getElementById('plano_id').value = '';
+            await carregarOperadoras();
+            await carregarPlanos();
+            alert(id ? 'Plano atualizado. Ajuste comissões em Comissionamento → Regras por Faixa.' : 'Plano cadastrado. Defina os valores em Comissionamento → Regras por Faixa.');
+        } catch (err) {
+            alert('Erro ao salvar plano: ' + (err.message || err));
+        }
     };
-    window.editarPlano = (p) => { document.getElementById('plano_id').value = p.id; document.getElementById('plano_nome').value = p.nome; document.getElementById('plano_valor').value = p.valor; document.getElementById('plano_comissao').value = p.comissao; document.getElementById('plano_operadora_id').value = p.operadora; };
+    window.editarPlano = (p) => {
+        document.getElementById('plano_id').value = p.id;
+        document.getElementById('plano_nome').value = p.nome;
+        document.getElementById('plano_valor').value = p.valor;
+        document.getElementById('plano_receb_operadora').value = p.comissao_operadora_valor != null ? p.comissao_operadora_valor : '';
+        document.getElementById('plano_operadora_id').value = p.operadora;
+    };
     window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
 
     async function carregarFormasPagamento() {
         const res = await apiFetch('/crm/formas-pagamento/');
         const lista = Array.isArray(res) ? res : (res?.results || []);
         const ul = document.getElementById('lista-formas-pagamento'); ul.innerHTML = '';
-        lista.forEach(f => ul.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">${f.nome} <div class="d-flex gap-2"><button class="btn btn-sm btn-editar" onclick="editarFormaPagamento(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirFormaPagamento(${f.id})"><i class="bi bi-trash"></i></button></div></li>`);
+        lista.forEach(f => ul.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">${f.nome} <div class="btn-icon-group"><button class="btn btn-icon btn-icon-primary" onclick="editarFormaPagamento(${f.id}, '${f.nome}')" title="Editar" aria-label="Editar"><i class="bi bi-pencil" aria-hidden="true"></i></button><button class="btn btn-icon btn-icon-danger" onclick="excluirFormaPagamento(${f.id})" title="Excluir" aria-label="Excluir"><i class="bi bi-trash" aria-hidden="true"></i></button></div></li>`);
     }
     window.editarFormaPagamento = async(id, nome) => {
         const novoNome = prompt('Novo nome:', nome);
@@ -2368,7 +2583,7 @@
         const lista = Array.isArray(res) ? res : (res?.results || []);
         listaStatusGlobal = lista;
         const tbody = document.getElementById('lista-status'); tbody.innerHTML = '';
-        lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarStatus(${s.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`);
+        lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td class="text-end"><div class="btn-icon-group justify-content-end"><button class="btn btn-icon btn-icon-primary" onclick="editarStatus(${s.id})" title="Editar" aria-label="Editar"><i class="bi bi-pencil" aria-hidden="true"></i></button><button class="btn btn-icon btn-icon-danger" onclick="excluirStatus(${s.id})" title="Excluir" aria-label="Excluir"><i class="bi bi-trash" aria-hidden="true"></i></button></div></td></tr>`);
     }
     window.editarStatus = (id) => {
         const s = listaStatusGlobal.find(item => item.id === id);
@@ -2403,7 +2618,7 @@
         const lista = Array.isArray(res) ? res : (res?.results || []);
         listaPendenciasGlobal = lista;
         const tbody = document.getElementById('lista-pendencias'); tbody.innerHTML = '';
-        lista.forEach(p => tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarPendencia(${p.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirPendencia(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`);
+        lista.forEach(p => tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td class="text-end"><div class="btn-icon-group justify-content-end"><button class="btn btn-icon btn-icon-primary" onclick="editarPendencia(${p.id})" title="Editar" aria-label="Editar"><i class="bi bi-pencil" aria-hidden="true"></i></button><button class="btn btn-icon btn-icon-danger" onclick="excluirPendencia(${p.id})" title="Excluir" aria-label="Excluir"><i class="bi bi-trash" aria-hidden="true"></i></button></div></td></tr>`);
     }
     window.editarPendencia = (id) => {
         const p = listaPendenciasGlobal.find(item => item.id === id);
@@ -2505,23 +2720,132 @@
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
 
     // --- Regras por Faixa (REGRAS_FAIXAS) ---
-    async function carregarRegrasFaixa() {
-        const lista = await apiFetch('/crm/regras-comissao-faixa/');
-        const tbody = document.getElementById('lista-regras-faixa');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        const regras = Array.isArray(lista) ? lista : (lista?.results || []);
-        if (!regras.length) { tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">Nenhuma regra por faixa. Importe um Excel ou cadastre manualmente.</td></tr>'; return; }
-        const finalidadeLabel = (f) => (f === 'ADIANTAMENTO' ? 'Adiantamento' : (f === 'COMISSAO' ? 'Comissão' : (f || 'Comissão')));
-        regras.forEach(r => {
-            const perfil = r.vendedor_username || r.perfil || '-';
-            tbody.innerHTML += `<tr>
-                <td>${perfil}</td><td><span class="badge ${r.finalidade === 'ADIANTAMENTO' ? 'bg-info' : 'bg-secondary'}">${finalidadeLabel(r.finalidade)}</span></td><td>${r.faixa_nome || ''}</td><td>${r.min_vendas}</td><td>${r.max_vendas}</td>
-                <td>${r.valor_500mb_pap != null ? r.valor_500mb_pap : ''}</td><td>${r.valor_700mb_pap != null ? r.valor_700mb_pap : ''}</td><td>${r.valor_1gb_pap != null ? r.valor_1gb_pap : ''}</td>
-                <td>${r.valor_500mb_cnpj != null ? r.valor_500mb_cnpj : ''}</td><td>${r.valor_700mb_cnpj != null ? r.valor_700mb_cnpj : ''}</td><td>${r.valor_1gb_cnpj != null ? r.valor_1gb_cnpj : ''}</td>
-                <td><button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalEditarRegraFaixa(${r.id})" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirRegraFaixa(${r.id})" title="Excluir"><i class="bi bi-trash"></i></button></td>
-            </tr>`;
+    let _matrizComissaoCache = null;
+
+    function escMatriz(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    function fmtMatrizValor(v) {
+        if (v == null || v === '') return '';
+        const n = Number(v);
+        return Number.isFinite(n) ? n.toFixed(2) : '';
+    }
+
+    function renderMatrizComissao(data) {
+        const thead = document.getElementById('thead-matriz-comissao');
+        const tbody = document.getElementById('tbody-matriz-comissao');
+        if (!thead || !tbody) return;
+        const planos = data.planos || [];
+        if (!planos.length) {
+            thead.innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center p-4">Cadastre planos em Cadastros Gerais → Planos.</td></tr>';
+            return;
+        }
+        let h1 = '<tr>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-1">Perfil</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-2">Finalidade</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-3">Faixa</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-4">Mín</th>'
+            + '<th rowspan="2" class="matriz-sticky matriz-sticky-5">Máx</th>';
+        planos.forEach((p, i) => {
+            const grp = i % 2 === 0 ? 'matriz-plano-group-a' : 'matriz-plano-group-b';
+            h1 += `<th colspan="2" class="matriz-plano-header ${grp}" title="${escMatriz(p.nome)}">${escMatriz(p.nome)}</th>`;
         });
+        h1 += '<th rowspan="2" class="mat-col-acoes"></th></tr>';
+        let h2 = '<tr>';
+        planos.forEach((p, i) => {
+            const grp = i % 2 === 0 ? 'matriz-plano-group-a' : 'matriz-plano-group-b';
+            h2 += `<th class="matriz-plano-sub ${grp}">PAP</th><th class="matriz-plano-sub ${grp}">CNPJ</th>`;
+        });
+        h2 += '</tr>';
+        thead.innerHTML = h1 + h2;
+        tbody.innerHTML = '';
+        (data.faixas || []).forEach((f, idx) => {
+            const perfil = f.perfil || 'Vendedor';
+            const fin = f.finalidade || 'COMISSAO';
+            let row = `<tr data-faixa-id="${f.id || ''}" data-faixa-idx="${idx}">
+                <td class="matriz-sticky matriz-sticky-1">
+                    <select class="form-select form-select-sm mat-input-meta mat-f-perfil">
+                        <option value="Vendedor" ${perfil === 'Vendedor' ? 'selected' : ''}>Vendedor</option>
+                        <option value="Supervisor" ${perfil === 'Supervisor' ? 'selected' : ''}>Supervisor</option>
+                    </select>
+                </td>
+                <td class="matriz-sticky matriz-sticky-2">
+                    <select class="form-select form-select-sm mat-input-meta mat-f-fin">
+                        <option value="COMISSAO" ${fin === 'COMISSAO' ? 'selected' : ''}>Comissão</option>
+                        <option value="ADIANTAMENTO" ${fin === 'ADIANTAMENTO' ? 'selected' : ''}>Adiantamento</option>
+                    </select>
+                </td>
+                <td class="matriz-sticky matriz-sticky-3"><input class="form-control form-control-sm mat-input-meta mat-f-nome" value="${escMatriz(f.faixa_nome)}" placeholder="Ex: Faixa 1"></td>
+                <td class="matriz-sticky matriz-sticky-4"><input type="number" min="0" class="form-control form-control-sm mat-input-meta mat-f-min text-center" value="${f.min_vendas ?? 0}"></td>
+                <td class="matriz-sticky matriz-sticky-5"><input type="number" min="0" class="form-control form-control-sm mat-input-meta mat-f-max text-center" value="${f.max_vendas != null && f.max_vendas !== 99999 ? f.max_vendas : ''}" placeholder="∞" title="Vazio = sem teto"></td>`;
+            planos.forEach((p, i) => {
+                const v = (f.valores_por_plano || {})[String(p.id)] || {};
+                const grp = i % 2 === 0 ? 'matriz-plano-group-a' : 'matriz-plano-group-b';
+                const tit = escMatriz(p.nome);
+                row += `<td class="${grp}"><input type="number" step="0.01" min="0" class="mat-input-money mat-v-pap" data-plano="${p.id}" value="${fmtMatrizValor(v.valor_pap)}" placeholder="0,00" title="PAP — ${tit}"></td>`;
+                row += `<td class="${grp}"><input type="number" step="0.01" min="0" class="mat-input-money mat-v-cnpj" data-plano="${p.id}" value="${fmtMatrizValor(v.valor_cnpj)}" placeholder="0,00" title="CNPJ — ${tit}"></td>`;
+            });
+            row += `<td class="mat-col-acoes"><button type="button" class="btn btn-icon btn-icon-danger" onclick="removerLinhaMatriz(${idx})" title="Remover faixa" aria-label="Remover faixa"><i class="bi bi-trash" aria-hidden="true"></i></button></td></tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    window.removerLinhaMatriz = async function(idx) {
+        if (!_matrizComissaoCache || !_matrizComissaoCache.faixas) return;
+        const f = _matrizComissaoCache.faixas[idx];
+        if (f && f.id && !confirm('Excluir esta faixa permanentemente?')) return;
+        if (f && f.id) {
+            try { await apiFetch(`/crm/regras-comissao-faixa/${f.id}/`, { method: 'DELETE' }); } catch (e) { alert(e.message || e); return; }
+        }
+        _matrizComissaoCache.faixas.splice(idx, 1);
+        renderMatrizComissao(_matrizComissaoCache);
+    };
+
+    async function salvarMatrizComissao() {
+        const tbody = document.getElementById('tbody-matriz-comissao');
+        if (!tbody) return;
+        const faixas = [];
+        tbody.querySelectorAll('tr[data-faixa-idx]').forEach(tr => {
+            const vals = {};
+            tr.querySelectorAll('.mat-v-pap').forEach(inp => {
+                const pid = inp.dataset.plano;
+                const cnpjInp = tr.querySelector(`.mat-v-cnpj[data-plano="${pid}"]`);
+                vals[pid] = {
+                    valor_pap: inp.value === '' ? null : parseFloat(inp.value),
+                    valor_cnpj: !cnpjInp || cnpjInp.value === '' ? null : parseFloat(cnpjInp.value),
+                };
+            });
+            const maxRaw = tr.querySelector('.mat-f-max')?.value;
+            faixas.push({
+                id: tr.dataset.faixaId ? parseInt(tr.dataset.faixaId, 10) : null,
+                perfil: tr.querySelector('.mat-f-perfil')?.value || null,
+                finalidade: tr.querySelector('.mat-f-fin')?.value || 'COMISSAO',
+                faixa_nome: tr.querySelector('.mat-f-nome')?.value || '',
+                min_vendas: parseInt(tr.querySelector('.mat-f-min')?.value || '0', 10),
+                max_vendas: maxRaw === '' || maxRaw == null ? 99999 : parseInt(maxRaw, 10),
+                valores_por_plano: vals,
+            });
+        });
+        try {
+            await apiFetch('/crm/comissao-matriz/', { method: 'PUT', body: JSON.stringify({ faixas }) });
+            alert('Matriz de comissão salva.');
+            await carregarRegrasFaixa();
+        } catch (e) {
+            alert('Erro ao salvar matriz: ' + (e.message || e));
+        }
+    }
+
+    async function carregarRegrasFaixa() {
+        try {
+            const data = await apiFetch('/crm/comissao-matriz/');
+            _matrizComissaoCache = data;
+            renderMatrizComissao(data);
+        } catch (e) {
+            const tbody = document.getElementById('tbody-matriz-comissao');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || e}</td></tr>`;
+        }
     }
     async function exportarRegrasFaixa() {
         const token = localStorage.getItem('accessToken');
@@ -2579,27 +2903,17 @@
     };
 
     window.abrirModalNovaFaixa = async function() {
-        const selVendedor = document.getElementById('regra_faixa_vendedor');
-        const users = await apiFetch('/crm/config-comissao-vendedor/');
-        const lista = Array.isArray(users) ? users : (users?.results || []);
-        selVendedor.innerHTML = '<option value="">— Nenhum —</option>';
-        lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
-        document.getElementById('modalRegraFaixaTitulo').textContent = 'Nova faixa';
-        document.getElementById('regra_faixa_id').value = '';
-        document.getElementById('regra_faixa_finalidade').value = 'COMISSAO';
-        document.getElementById('regra_faixa_perfil').value = 'Vendedor';
-        document.getElementById('regra_faixa_vendedor').value = '';
-        document.getElementById('regra_faixa_nome').value = '';
-        document.getElementById('regra_faixa_min').value = '0';
-        document.getElementById('regra_faixa_max').value = '';
-        document.getElementById('regra_faixa_500mb_pap').value = '';
-        document.getElementById('regra_faixa_700mb_pap').value = '';
-        document.getElementById('regra_faixa_1gb_pap').value = '';
-        document.getElementById('regra_faixa_500mb_cnpj').value = '';
-        document.getElementById('regra_faixa_700mb_cnpj').value = '';
-        document.getElementById('regra_faixa_1gb_cnpj').value = '';
-        const modal = new bootstrap.Modal(document.getElementById('modalEditarRegraFaixa'));
-        modal.show();
+        if (!_matrizComissaoCache) await carregarRegrasFaixa();
+        const planos = _matrizComissaoCache?.planos || [];
+        const vals = {};
+        planos.forEach(p => { vals[String(p.id)] = { valor_pap: null, valor_cnpj: null }; });
+        _matrizComissaoCache.faixas = _matrizComissaoCache.faixas || [];
+        _matrizComissaoCache.faixas.push({
+            id: null, perfil: 'Vendedor', finalidade: 'COMISSAO', faixa_nome: 'Nova faixa',
+            min_vendas: 0, max_vendas: 99999, valores_por_plano: vals,
+        });
+        renderMatrizComissao(_matrizComissaoCache);
+        document.getElementById('wrap-matriz-comissao')?.scrollIntoView({ behavior: 'smooth' });
     };
 
     async function salvarRegraFaixaModal() {
@@ -2657,11 +2971,45 @@
         });
     }
 
+    function renderValoresPlanosVendedor(valoresPorPlano, manual) {
+        const box = document.getElementById('cfg_valores_planos_container');
+        if (!box) return;
+        if (!valoresPorPlano || !valoresPorPlano.length) {
+            box.innerHTML = '<div class="col-12 text-muted small">Nenhum plano cadastrado.</div>';
+            return;
+        }
+        const ro = manual ? '' : 'readonly';
+        let html = '<div class="col-12"><div class="table-responsive border rounded"><table class="table table-sm matriz-vendedor-planos mb-0"><thead><tr><th>Plano</th><th class="text-end">PAP (R$)</th><th class="text-end">CNPJ (R$)</th></tr></thead><tbody>';
+        valoresPorPlano.forEach(v => {
+            html += `<tr>
+                <td class="plano-nome">${escMatriz(v.plano_nome)}</td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm mat-input-money cfg-plano-pap" data-plano-id="${v.plano_id}" value="${fmtMatrizValor(v.valor_pap)}" placeholder="—" ${ro}></td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm mat-input-money cfg-plano-cnpj" data-plano-id="${v.plano_id}" value="${fmtMatrizValor(v.valor_cnpj)}" placeholder="—" ${ro}></td>
+            </tr>`;
+        });
+        html += '</tbody></table></div></div>';
+        box.innerHTML = html;
+    }
+
+    function coletarValoresPlanosVendedor() {
+        const out = [];
+        document.querySelectorAll('.cfg-plano-pap').forEach(inp => {
+            const pid = parseInt(inp.dataset.planoId, 10);
+            const cnpj = document.querySelector(`.cfg-plano-cnpj[data-plano-id="${pid}"]`);
+            out.push({
+                plano_id: pid,
+                valor_pap: inp.value === '' ? null : parseFloat(inp.value),
+                valor_cnpj: !cnpj || cnpj.value === '' ? null : parseFloat(cnpj.value),
+            });
+        });
+        return out;
+    }
+
     function toggleManualValoresForm() {
         const manual = document.getElementById('cfg_manual').value === 'SIM';
-        ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) { el.readOnly = !manual; if (!manual) el.value = ''; }
+        document.querySelectorAll('.cfg-plano-pap, .cfg-plano-cnpj').forEach(el => {
+            el.readOnly = !manual;
+            if (!manual) el.value = '';
         });
     }
 
@@ -2686,12 +3034,7 @@
             document.getElementById('cfg_manual').value = c.usar_valor_manual ? 'SIM' : 'NÃO';
             const elDescontaBoletoPap = document.getElementById('cfg_desconta_boleto_pap');
             if (elDescontaBoletoPap) elDescontaBoletoPap.value = c.desconta_boleto_pap !== false ? 'SIM' : 'NÃO';
-            document.getElementById('cfg_500mb_pap').value = val(c, 'valor_500mb_pap_manual');
-            document.getElementById('cfg_700mb_pap').value = val(c, 'valor_700mb_pap_manual');
-            document.getElementById('cfg_1gb_pap').value = val(c, 'valor_1gb_pap_manual');
-            document.getElementById('cfg_500mb_cnpj').value = val(c, 'valor_500mb_cnpj_manual');
-            document.getElementById('cfg_700mb_cnpj').value = val(c, 'valor_700mb_cnpj_manual');
-            document.getElementById('cfg_1gb_cnpj').value = val(c, 'valor_1gb_cnpj_manual');
+            renderValoresPlanosVendedor(c.valores_por_plano || [], c.usar_valor_manual);
             document.getElementById('cfg_desconto_boleto').value = val(c, 'desconto_boleto');
             document.getElementById('cfg_desconto_inclusao').value = val(c, 'desconto_inclusao');
             document.getElementById('cfg_desconto_instalacao').value = val(c, 'desconto_instalacao');
@@ -2701,7 +3044,14 @@
         } catch (e) {
             document.getElementById('regras-vendedor-nome').textContent = sel.options[sel.selectedIndex].text;
             document.getElementById('cfg_manual').value = 'NÃO';
-            ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj','cfg_desconto_boleto','cfg_desconto_inclusao','cfg_desconto_instalacao','cfg_adiantar_cnpj'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            try {
+                const mat = await apiFetch('/crm/comissao-matriz/');
+                const vazios = (mat.planos || []).map(p => ({ plano_id: p.id, plano_nome: p.nome, valor_pap: null, valor_cnpj: null }));
+                renderValoresPlanosVendedor(vazios, false);
+            } catch (_) {
+                renderValoresPlanosVendedor([], false);
+            }
+            ['cfg_desconto_boleto','cfg_desconto_inclusao','cfg_desconto_instalacao','cfg_adiantar_cnpj'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const elDescontaBoletoPap2 = document.getElementById('cfg_desconta_boleto_pap'); if (elDescontaBoletoPap2) elDescontaBoletoPap2.value = 'SIM';
             toggleManualValoresForm();
             if (card) card.style.display = 'block';
@@ -2719,12 +3069,7 @@
         const body = {
             usar_valor_manual: manual,
             desconta_boleto_pap: document.getElementById('cfg_desconta_boleto_pap') && document.getElementById('cfg_desconta_boleto_pap').value === 'SIM',
-            valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
-            valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
-            valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
-            valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
-            valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
-            valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+            valores_por_plano: manual ? coletarValoresPlanosVendedor() : [],
             desconto_boleto: document.getElementById('cfg_desconto_boleto').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_boleto').value),
             desconto_inclusao: document.getElementById('cfg_desconto_inclusao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_inclusao').value),
             desconto_instalacao: document.getElementById('cfg_desconto_instalacao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_instalacao').value),
@@ -2745,12 +3090,7 @@
         const manual = document.getElementById('cfg_manual').value === 'SIM';
         const bodyBase = {
             usar_valor_manual: true,
-            valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
-            valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
-            valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
-            valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
-            valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
-            valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+            valores_por_plano: coletarValoresPlanosVendedor(),
             desconto_boleto: document.getElementById('cfg_desconto_boleto').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_boleto').value),
             desconto_inclusao: document.getElementById('cfg_desconto_inclusao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_inclusao').value),
             desconto_instalacao: document.getElementById('cfg_desconto_instalacao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_instalacao').value),
