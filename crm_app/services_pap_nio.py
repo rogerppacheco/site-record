@@ -305,6 +305,35 @@ class PAPNioAutomation:
         """Garante que o diretório de sessões existe"""
         os.makedirs(STORAGE_STATE_DIR, exist_ok=True)
 
+    def _invalidar_storage_state(self) -> None:
+        """Remove cookies salvos quando a sessão expirou (evita loop SAML + timeout no login)."""
+        try:
+            if os.path.exists(self.storage_state_path):
+                os.remove(self.storage_state_path)
+                logger.info("[PAP] Storage state invalidado: %s", self.storage_state_path)
+        except OSError as exc:
+            logger.warning("[PAP] Falha ao remover storage state: %s", exc)
+
+    def _recriar_contexto_sem_storage(self) -> None:
+        """Novo contexto sem cookies — após sessão expirada ou falha de login."""
+        self._invalidar_storage_state()
+        if self.page:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+        if self.context:
+            try:
+                self.context.close()
+            except Exception:
+                pass
+        self.context = self.browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            viewport={"width": 1280, "height": 960},
+        )
+        self.page = self.context.new_page()
+        self.page.set_default_timeout(25000)
+
     def _capture_screenshot(
         self,
         step_name: str,
@@ -565,19 +594,24 @@ class PAPNioAutomation:
                 except Exception as e:
                     logger.warning(f"[PAP] Trace não iniciado: {e}")
 
-            # Navegar para o PAP (reduzir waits para acelerar "Acesso reservado")
-            self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            self.page.wait_for_timeout(400 if self.optimize_for_credit else 1000)
-            try:
-                self.page.wait_for_load_state("networkidle", timeout=8000)
-            except Exception:
+            # Navegar para o PAP (modo rápido evita networkidle — economiza ~10–20s no STATUS)
+            goto_timeout = 45000 if self.optimize_for_credit else 60000
+            self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=goto_timeout)
+            self.page.wait_for_timeout(200 if self.optimize_for_credit else 1000)
+            if self.optimize_for_credit:
                 try:
-                    # SPAs/SSO muitas vezes não disparam "load" após domcontentloaded — não falhar a sessão por isso
-                    self.page.wait_for_load_state("load", timeout=20000)
+                    self.page.wait_for_load_state("load", timeout=8000)
                 except Exception:
                     pass
-            # Dar tempo para redirects (ex.: PAP -> SSO); evita "Execution context was destroyed" ao ler url/query_selector
-            self.page.wait_for_timeout(1000 if self.optimize_for_credit else 2500)
+            else:
+                try:
+                    self.page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    try:
+                        self.page.wait_for_load_state("load", timeout=20000)
+                    except Exception:
+                        pass
+            self.page.wait_for_timeout(400 if self.optimize_for_credit else 2500)
 
             # Verificar se precisa fazer login (URL ou formulário de login visível).
             # Retry se a página navegou e o contexto anterior foi destruído.
@@ -685,15 +719,16 @@ class PAPNioAutomation:
                     self._aguardar_pagina_estavel()
                 
                 # Aguardar formulário (evita query_selector durante redirect SSO)
+                sel_timeout = 10000 if self.optimize_for_credit else 15000
                 self.page.wait_for_selector(
                     '#inputMatricula, input[placeholder*="Login"], input[name*="matricula"], input[type="text"]',
                     state="visible",
-                    timeout=15000,
+                    timeout=sel_timeout,
                 )
                 self.page.wait_for_selector(
                     '#passwordInput, input[type="password"], input[placeholder*="Senha"]',
                     state="visible",
-                    timeout=10000,
+                    timeout=8000 if self.optimize_for_credit else 10000,
                 )
                 
                 # Preencher matrícula e senha (tentar vários seletores)
@@ -770,13 +805,18 @@ class PAPNioAutomation:
                 logger.error(f"[PAP] Erro no login (tentativa {tentativa}): {e}")
                 if self._contexto_destruido(e) and tentativa < max_tentativas:
                     logger.warning("[PAP] Contexto destruído no login — aguardando redirect e tentando de novo...")
-                    self.page.wait_for_timeout(3000)
+                    self.page.wait_for_timeout(1500 if self.optimize_for_credit else 3000)
                     continue
                 if tentativa < max_tentativas:
                     try:
+                        logger.warning(
+                            "[PAP] Reiniciando contexto sem cookies (tentativa %s/%s)",
+                            tentativa + 1,
+                            max_tentativas,
+                        )
+                        self._recriar_contexto_sem_storage()
                         self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
                         self._aguardar_pagina_estavel()
-                        self.page.wait_for_selector(SELETORES['login']['matricula'], state="visible", timeout=15000)
                     except Exception:
                         pass
                     continue
@@ -1344,13 +1384,16 @@ class PAPNioAutomation:
         self.page.wait_for_timeout(800 if rapido else 2000)
 
         for tentativa in range(1, 3):
-            # Menu antes do goto: mesmo padrão do fluxo de crédito (Novo Pedido)
+            # STATUS (modo rápido): URL direta primeiro — evita ~6s abrindo menu lateral
+            if rapido and self._navegar_consulta_os_url_direta(rapido):
+                return True
+
             if self._clicar_menu_consulta_os_via_sidebar():
                 if self._tela_consulta_os_carregada(12000 if rapido else 20000):
                     logger.info("[PAP] Navegação para Consulta OS OK (menu lateral)")
                     return True
 
-            if self._navegar_consulta_os_url_direta(rapido):
+            if not rapido and self._navegar_consulta_os_url_direta(rapido):
                 return True
 
             logger.warning(

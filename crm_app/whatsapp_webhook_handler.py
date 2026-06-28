@@ -8706,6 +8706,7 @@ def processar_webhook_whatsapp(data, request=None):
                         },
                         _executar_consulta_status_online_background,
                         (telefone_formatado, cpf_para_consulta, None, run_id),
+                        prioridade=1,
                     )
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
                 else:
@@ -8743,6 +8744,7 @@ def processar_webhook_whatsapp(data, request=None):
                         },
                         _executar_consulta_status_online_background,
                         (telefone_formatado, cpf_para_consulta, os_limpo, run_id),
+                        prioridade=1,
                     )
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
                 else:
