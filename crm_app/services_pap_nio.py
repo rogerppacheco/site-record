@@ -729,6 +729,33 @@ class PAPNioAutomation:
                 raise
         return "", ""
 
+    def _formulario_login_visivel(self) -> Optional[Any]:
+        """Detecta formulário de login tolerando redirect SSO em andamento."""
+        if not self.page:
+            return None
+        for tentativa in range(3):
+            try:
+                return (
+                    self.page.query_selector('#inputMatricula')
+                    or self.page.query_selector('#passwordInput')
+                    or self.page.query_selector('input[placeholder*="Login"]')
+                    or self.page.query_selector('input[type="password"]')
+                )
+            except Exception as e:
+                if self._contexto_destruido(e) and tentativa < 2:
+                    logger.warning(
+                        "[PAP] Página ainda navegando ao checar login, aguardando..."
+                    )
+                    self._aguardar_pagina_estavel(retries=2, delay_ms=2000)
+                    continue
+                raise
+        return None
+
+    def _ler_url_atual(self) -> str:
+        """Lê URL atual com retry quando o SSO ainda redireciona."""
+        url, _ = self._ler_url_e_conteudo()
+        return url
+
     def _fazer_login(self) -> Tuple[bool, str]:
         """
         Realiza o login no PAP via Vtal.
@@ -2669,6 +2696,7 @@ class PAPNioAutomation:
             logger.warning(f"[PAP] goto domcontentloaded: {e}, tentando load...")
             self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=30000)
         self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
+        self._aguardar_pagina_estavel()
         try:
             self.page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
@@ -2677,18 +2705,13 @@ class PAPNioAutomation:
             except Exception:
                 pass
 
-        url_atual = self.page.url
+        url_atual = self._ler_url_atual()
         if "pap.niointernet.com.br" in (url_atual or "") and "novo-pedido" not in (url_atual or "").lower():
             logger.info(f"[PAP] URL sem novo-pedido ({url_atual[:80]}...), tentando menu lateral.")
             self._clicar_menu_novo_pedido()
             self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
-            url_atual = self.page.url
-        login_form = (
-            self.page.query_selector('#inputMatricula') or
-            self.page.query_selector('#passwordInput') or
-            self.page.query_selector('input[placeholder*="Login"]') or
-            self.page.query_selector('input[type="password"]')
-        )
+            url_atual = self._ler_url_atual()
+        login_form = self._formulario_login_visivel()
         precisa_login = (
             "login.vtal.com" in url_atual or
             ("login" in url_atual.lower() and "pap.niointernet.com.br" not in url_atual) or
@@ -2701,7 +2724,8 @@ class PAPNioAutomation:
                 return False, msg
             self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
             self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
-            url_atual = self.page.url
+            self._aguardar_pagina_estavel()
+            url_atual = self._ler_url_atual()
 
         if "pap.niointernet.com.br" not in url_atual:
             logger.warning(f"[PAP] URL atual: {url_atual}")
