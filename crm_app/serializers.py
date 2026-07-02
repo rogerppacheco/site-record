@@ -207,21 +207,22 @@ class RegraComissaoFaixaSerializer(serializers.ModelSerializer):
 
 class ConfigComissaoVendedorSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='usuario.username', read_only=True)
-    valores_por_plano = serializers.ListField(child=serializers.DictField(), required=False)
+    valores_por_plano = serializers.SerializerMethodField()
 
     class Meta:
         model = ConfigComissaoVendedor
         fields = '__all__'
         extra_kwargs = {'usuario': {'read_only': True}}
 
-    def to_representation(self, instance):
+    def get_valores_por_plano(self, instance: ConfigComissaoVendedor) -> list[dict]:
         from crm_app.services.comissao_matriz_service import listar_valores_manuais_vendedor
-        rep = super().to_representation(instance)
-        rep['valores_por_plano'] = listar_valores_manuais_vendedor(instance)
-        return rep
+        return listar_valores_manuais_vendedor(instance)
 
     def update(self, instance, validated_data):
-        valores = validated_data.pop('valores_por_plano', None)
+        valores = None
+        if hasattr(self, 'initial_data') and isinstance(self.initial_data, dict):
+            if 'valores_por_plano' in self.initial_data:
+                valores = self.initial_data.get('valores_por_plano')
         instance = super().update(instance, validated_data)
         if valores is not None:
             from crm_app.services.comissao_matriz_service import salvar_valores_manuais_vendedor

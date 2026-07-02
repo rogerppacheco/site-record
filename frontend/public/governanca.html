@@ -1081,6 +1081,15 @@
         if(tabName === 'recebimento_operadora_tab') carregarComissoesOperadora();
         if(tabName === 'campanhas_tab') { carregarDadosAuxiliaresCampanha(); carregarCampanhas(); }
         if(tabName === 'tab-lista-feriados') carregarFeriados();
+        if(tabName === 'regras_vendedores_tab') {
+            const mesEl = document.getElementById('regras_vendedor_mes');
+            if (mesEl && !mesEl.value) {
+                const d = new Date();
+                mesEl.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            }
+            atualizarDropdownVendedores();
+            preencherFormConfigVendedor();
+        }
     }
     function openSubTabAdiant(evt, subTabId) {
         if (evt) evt.preventDefault();
@@ -2954,21 +2963,33 @@
     function val(c, key) { const v = c[key]; return (v !== null && v !== undefined && v !== '') ? v : ''; }
 
     async function atualizarDropdownVendedores() {
-        const mesEl = document.getElementById('regras_vendedor_mes');
-        const anoMes = mesEl && mesEl.value ? mesEl.value.split('-') : [];
-        const ano = anoMes[0] || '';
-        const mes = anoMes[1] || '';
-        const url = ano && mes ? `/crm/config-comissao-vendedor/?ano=${ano}&mes=${mes}` : '/crm/config-comissao-vendedor/';
-        const lista = await apiFetch(url);
-        const configs = Array.isArray(lista) ? lista : (lista?.results || []);
         const sel = document.getElementById('regras_vendedor_select');
         if (!sel) return;
-        sel.innerHTML = '<option value="">— Selecione um vendedor —</option>';
-        configs.forEach(c => {
-            const uid = c.usuario_id ?? c.usuario;
-            const nome = c.username || ('ID ' + uid);
-            sel.appendChild(new Option(nome, uid));
-        });
+        sel.innerHTML = '<option value="">Carregando vendedores...</option>';
+        try {
+            const mesEl = document.getElementById('regras_vendedor_mes');
+            const anoMes = mesEl && mesEl.value ? mesEl.value.split('-') : [];
+            const ano = anoMes[0] || '';
+            const mes = anoMes[1] || '';
+            const url = ano && mes
+                ? `/crm/config-comissao-vendedor/?ano=${ano}&mes=${mes}`
+                : '/crm/config-comissao-vendedor/';
+            const lista = await apiFetch(url);
+            const configs = Array.isArray(lista) ? lista : (lista?.results || []);
+            sel.innerHTML = '<option value="">— Selecione um vendedor —</option>';
+            configs.forEach(c => {
+                const uid = c.usuario_id ?? c.usuario ?? c.id;
+                if (!uid) return;
+                const nome = c.username || c.nome_exibicao || ('ID ' + uid);
+                sel.appendChild(new Option(nome, uid));
+            });
+            if (configs.length === 0) {
+                sel.innerHTML = '<option value="">Nenhum vendedor ativo encontrado</option>';
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="">Erro ao carregar vendedores</option>';
+            console.error('atualizarDropdownVendedores:', e);
+        }
     }
 
     function renderValoresPlanosVendedor(valoresPorPlano, manual) {
