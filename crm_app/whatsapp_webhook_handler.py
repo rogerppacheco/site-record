@@ -784,28 +784,38 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             _resetar_sessao_credito(telefone)
             return
 
-        matriculas_pap = automacao.listar_matriculas_vendedor_no_pap()
-        if not matriculas_pap:
-            automacao._cache_matriculas_pap_dropdown = []
-            matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(forcar_recarga=True)
-        if not matriculas_pap:
-            automacao._cache_matriculas_pap_dropdown = []
-            logger.warning("[CRÉDITO] Lista vendedores vazia — tentativa paciente (headless)")
-            matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(
-                forcar_recarga=True,
-                paciente=True,
+        usar_pool_osab = bool(
+            headless or getattr(settings, "PAP_CREDITO_SKIP_LISTA_VENDEDORES", False)
+        )
+        matriculas_pap: list[str] = []
+        if usar_pool_osab:
+            logger.info(
+                "[CRÉDITO] Seleção direta (headless=%s) — pool OSAB sem depender do dropdown",
+                headless,
             )
+        else:
+            matriculas_pap = automacao.listar_matriculas_vendedor_no_pap()
+            if not matriculas_pap:
+                automacao._cache_matriculas_pap_dropdown = []
+                matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(forcar_recarga=True)
+            if not matriculas_pap:
+                automacao._cache_matriculas_pap_dropdown = []
+                logger.warning("[CRÉDITO] Lista vendedores vazia — tentativa paciente (headless)")
+                matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(
+                    forcar_recarga=True,
+                    paciente=True,
+                )
 
-        usar_pool_osab = False
-        if not matriculas_pap:
-            automacao._capture_screenshot_falha_etapa1(
-                "01_err_lista_vendedores_vazia",
-                wait_selector=None,
-                wait_timeout_ms=0,
-            )
-            logger.warning(
-                "[CRÉDITO] Dropdown vazio após 3 tentativas — fallback seleção direta (pool OSAB)"
-            )
+        if usar_pool_osab or not matriculas_pap:
+            if not usar_pool_osab and not matriculas_pap:
+                automacao._capture_screenshot_falha_etapa1(
+                    "01_err_lista_vendedores_vazia",
+                    wait_selector=None,
+                    wait_timeout_ms=0,
+                )
+                logger.warning(
+                    "[CRÉDITO] Dropdown vazio após tentativas — fallback seleção direta (pool OSAB)"
+                )
             usar_pool_osab = True
             candidatos_pap: list = []
             max_tentativas_tt = 8

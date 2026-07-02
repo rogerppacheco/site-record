@@ -1231,7 +1231,7 @@ class PAPNioAutomation:
             return []
         try:
             raw = self.page.evaluate(
-                """() => {
+                """(headless) => {
                     const re = /\\bTT\\d{4,}\\b/gi;
                     const seen = new Set();
                     const out = [];
@@ -1239,7 +1239,8 @@ class PAPNioAutomation:
                         ...document.querySelectorAll('[role="listbox"], [class*="Popper"], [class*="popper"], [class*="Autocomplete"], [id^="menu-"]'),
                     ];
                     for (const root of roots) {
-                        if (!root || root.offsetParent === null) continue;
+                        if (!root) continue;
+                        if (!headless && root.offsetParent === null) continue;
                         const text = (root.innerText || root.textContent || '').trim();
                         if (!text) continue;
                         let m;
@@ -1252,7 +1253,8 @@ class PAPNioAutomation:
                         }
                     }
                     return out;
-                }"""
+                }""",
+                self.headless,
             )
             if isinstance(raw, list):
                 return [str(m).upper() for m in raw if m]
@@ -2478,6 +2480,90 @@ class PAPNioAutomation:
                 return True
         return False
 
+    def _botao_avancar_etapa1_habilitado(self) -> bool:
+        """Indica se a etapa 1 aceita avançar (vendedor selecionado)."""
+        if not self.page:
+            return False
+        try:
+            btn = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+            return btn is not None
+        except Exception:
+            return False
+
+    def _clicar_opcao_vendedor_via_js(self, matricula_norm: str) -> bool:
+        """Clica na opção do autocomplete via DOM (headless, sem depender de is_visible)."""
+        if not self.page or not matricula_norm:
+            return False
+        try:
+            clicou = self.page.evaluate(
+                """(matricula) => {
+                    const alvo = (matricula || '').toUpperCase();
+                    const digitos = alvo.replace(/\\D/g, '');
+                    const seletores = [
+                        '[role="option"]',
+                        '[role="listbox"] li',
+                        '.MuiAutocomplete-option',
+                        'li[class*="option"]',
+                        'li',
+                    ];
+                    for (const sel of seletores) {
+                        for (const el of document.querySelectorAll(sel)) {
+                            const txt = (el.innerText || el.textContent || '').trim().toUpperCase();
+                            if (!txt || txt.includes('NENHUM') || txt.includes('SEM RESULTADO')) {
+                                continue;
+                            }
+                            const txtDigitos = txt.replace(/\\D/g, '');
+                            if (txt.includes(alvo) || (digitos && txtDigitos.includes(digitos))) {
+                                el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                                el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                                el.click();
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }""",
+                matricula_norm,
+            )
+            if clicou:
+                self.page.wait_for_timeout(800)
+                if self._botao_avancar_etapa1_habilitado():
+                    logger.info("[PAP] Vendedor selecionado via JS: %s", matricula_norm)
+                    return True
+        except Exception as exc:
+            logger.debug("[PAP] JS click vendedor: %s", exc)
+        return False
+
+    def _selecionar_vendedor_por_teclado(self, matricula_norm: str) -> bool:
+        """Digita a matrícula e confirma com teclado (ArrowDown/Enter)."""
+        if not self.page or not matricula_norm:
+            return False
+        if not self._focar_campo_vendedor():
+            return False
+        if not self._digitar_no_campo_vendedor(matricula_norm):
+            return False
+        debounce_ms = self._debounce_lista_vendedor_ms(paciente=self.headless)
+        self.page.wait_for_timeout(debounce_ms)
+        matricula_input = self._query_matricula_vendedor_input()
+        if not matricula_input:
+            return False
+        sequencias = (["ArrowDown", "Enter"], ["Enter"], ["Tab"])
+        for seq in sequencias:
+            try:
+                for tecla in seq:
+                    matricula_input.press(tecla)
+                    self.page.wait_for_timeout(450)
+                if self._botao_avancar_etapa1_habilitado():
+                    logger.info(
+                        "[PAP] Vendedor confirmado por teclado (%s): %s",
+                        "+".join(seq),
+                        matricula_norm,
+                    )
+                    return True
+            except Exception as exc:
+                logger.debug("[PAP] teclado vendedor seq=%s: %s", seq, exc)
+        return False
+
     def _selecionar_vendedor_matricula_etapa1(self, matricula_vendedor: str) -> bool:
         """
         Preenche o autocomplete de vendedor na etapa 1 e seleciona a opção correspondente.
@@ -2487,8 +2573,17 @@ class PAPNioAutomation:
             return False
 
         matricula_norm = (matricula_vendedor or "").strip().upper()
-        if self.optimize_for_credit and matricula_norm:
-            if self._selecionar_vendedor_clicando_na_lista_aberta(matricula_norm):
+        if matricula_norm and (self.optimize_for_credit or self.headless):
+            for metodo, fn in (
+                ("teclado", lambda: self._selecionar_vendedor_por_teclado(matricula_norm)),
+                ("js", lambda: self._clicar_opcao_vendedor_via_js(matricula_norm)),
+            ):
+                try:
+                    if fn():
+                        return True
+                except Exception as exc:
+                    logger.debug("[PAP] seleção vendedor (%s): %s", metodo, exc)
+            if self.optimize_for_credit and self._selecionar_vendedor_clicando_na_lista_aberta(matricula_norm):
                 return True
 
         rapido = self.optimize_for_credit
