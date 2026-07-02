@@ -316,6 +316,7 @@ class PAPNioAutomation:
         self._cache_matriculas_pap_dropdown: List[str] = []
         self._vendedores_api_matriculas: List[str] = []
         self._listener_vendedor_ativo: bool = False
+        self._credito_apis_pos_avancar: set[str] = set()
 
         # Storage state para manter cookies
         self.storage_state_path = os.path.join(
@@ -697,6 +698,97 @@ class PAPNioAutomation:
         msg = str(exc).lower()
         return "execution context was destroyed" in msg or "context was destroyed" in msg
 
+    def _pagina_navegando(self, exc: Exception) -> bool:
+        """Playwright rejeita leitura de URL/DOM durante redirect (SSO, novo-pedido)."""
+        msg = str(exc).lower()
+        return self._contexto_destruido(exc) or (
+            "page is navigating" in msg or "unable to retrieve content" in msg
+        )
+
+    def _page_content_seguro(self, tentativas: int = 3, pausa_ms: int = 600) -> str:
+        """Lê HTML com retry quando o PAP ainda está redirecionando."""
+        if not self.page:
+            return ""
+        ultimo_erro: Optional[Exception] = None
+        for tentativa in range(tentativas):
+            try:
+                return self.page.content() or ""
+            except Exception as exc:
+                ultimo_erro = exc
+                if self._pagina_navegando(exc) and tentativa < tentativas - 1:
+                    self.page.wait_for_timeout(pausa_ms)
+                    continue
+                break
+        if ultimo_erro:
+            logger.debug("[PAP] _page_content_seguro falhou: %s", ultimo_erro)
+        return ""
+
+    def _pagina_indica_credito_negado(self, pagina_texto: str) -> bool:
+        """Evita falso 'negado' em textos genéricos da etapa de ofertas."""
+        lower = (pagina_texto or "").lower()
+        if "crédito negado" in lower or "credito negado" in lower:
+            return True
+        if "negado" in lower and "aprovado" not in lower:
+            return any(
+                termo in lower
+                for termo in ("crédito", "credito", "análise de crédito", "analise de credito")
+            )
+        return False
+
+    def _etapa5_pagamento_visivel(self) -> bool:
+        """Detecta etapa 5 (ofertas/pagamento) mesmo quando o PAP pula o modal de crédito."""
+        if not self.page:
+            return False
+        try:
+            radios = self.page.evaluate(
+                """() => {
+                    const vals = ['BOLETO','CREDITO','DACC'];
+                    for (const inp of document.querySelectorAll('input[type="radio"]')) {
+                        if (vals.includes(inp.value)) return true;
+                    }
+                    return false;
+                }"""
+            )
+            if radios:
+                return True
+        except Exception:
+            pass
+        for sel in (
+            'input[value="BOLETO"]',
+            'input[value="CREDITO"]',
+            'input[value="DACC"]',
+            'span:has-text("Forma de pagamento")',
+            'div:has-text("Escolher ofertas")',
+        ):
+            try:
+                el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    return True
+            except Exception:
+                continue
+        pagina_lower = self._page_content_seguro(tentativas=2, pausa_ms=400).lower()
+        if pagina_lower:
+            if "ofertas" in pagina_lower and (
+                "pagamento" in pagina_lower or "forma de pagamento" in pagina_lower
+            ):
+                return True
+        apis = getattr(self, "_credito_apis_pos_avancar", set()) or set()
+        if apis.intersection({"analise_credito", "proposta_credito", "ofertas"}):
+            return True
+        return False
+
+    def _marcar_api_credito_pos_avancar(self, url: str) -> None:
+        """Registra APIs do PAP disparadas após Avançar na etapa de contato."""
+        url_lower = (url or "").lower()
+        if "pap-api.niointernet.com.br" not in url_lower:
+            return
+        if "analisecredito" in url_lower:
+            self._credito_apis_pos_avancar.add("analise_credito")
+        if "propostacredito" in url_lower:
+            self._credito_apis_pos_avancar.add("proposta_credito")
+        if "vendas/ofertas" in url_lower:
+            self._credito_apis_pos_avancar.add("ofertas")
+
     def _aguardar_pagina_estavel(self, retries: int = 3, delay_ms: int = 2500) -> None:
         """Aguarda redirects SSO terminarem antes de ler URL/DOM."""
         if not self.page:
@@ -718,11 +810,11 @@ class PAPNioAutomation:
 
     def _ler_url_e_conteudo(self) -> Tuple[str, str]:
         """Lê URL e HTML com retry quando o SSO ainda está redirecionando."""
-        for tentativa in range(3):
+        for tentativa in range(4):
             try:
                 return (self.page.url or ""), (self.page.content() or "")
             except Exception as e:
-                if self._contexto_destruido(e) and tentativa < 2:
+                if self._pagina_navegando(e) and tentativa < 3:
                     logger.warning("[PAP] Página ainda navegando (login), aguardando...")
                     self.page.wait_for_timeout(2500)
                     continue
@@ -753,8 +845,18 @@ class PAPNioAutomation:
 
     def _ler_url_atual(self) -> str:
         """Lê URL atual com retry quando o SSO ainda redireciona."""
-        url, _ = self._ler_url_e_conteudo()
-        return url
+        if not self.page:
+            return ""
+        for tentativa in range(4):
+            try:
+                return self.page.url or ""
+            except Exception as e:
+                if self._pagina_navegando(e) and tentativa < 3:
+                    logger.warning("[PAP] URL indisponível durante navegação, aguardando...")
+                    self.page.wait_for_timeout(2000)
+                    continue
+                raise
+        return ""
 
     def _fazer_login(self) -> Tuple[bool, str]:
         """
@@ -1173,6 +1275,7 @@ class PAPNioAutomation:
             try:
                 if response.status < 200 or response.status >= 300:
                     return
+                self._marcar_api_credito_pos_avancar(response.url or "")
                 ctype = (response.headers.get("content-type") or "").lower()
                 if "json" not in ctype:
                     return
@@ -3593,7 +3696,7 @@ class PAPNioAutomation:
                 cep, numero, referencia,
                 motivo_log="formulário CPF visível (PAP pulou modal de viabilidade)",
             )
-        pagina_lower = (self.page.content() or "").lower()
+        pagina_lower = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
         if "posse encontrada" in pagina_lower or (
             "pedido" in pagina_lower and "em andamento" in pagina_lower
         ):
@@ -4029,6 +4132,7 @@ class PAPNioAutomation:
             
             # Clicar Avançar para disparar análise de crédito
             t_avancar = time.time()
+            self._credito_apis_pos_avancar = set()
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if btn_avancar:
                 btn_avancar.click()
@@ -4073,30 +4177,25 @@ class PAPNioAutomation:
             modal_apareceu = False
             etapa5_apos_credito = False
             poll_iteracao = 0
-            loops_modal = 30 if modo_rapido_credito else 24
-            pausa_modal_ms = 450 if modo_rapido_credito else 500
+            loops_modal = 40 if modo_rapido_credito else 28
+            pausa_modal_ms = 500 if modo_rapido_credito else 600
             for _ in range(loops_modal):
                 self.page.wait_for_timeout(pausa_modal_ms)
                 poll_iteracao += 1
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
-                pagina_texto = (self.page.content() or "").lower()
-                etapa5_visivel = (
-                    'pagamento' in pagina_texto and 'ofertas' in pagina_texto
-                ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
+                pagina_texto = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
+                etapa5_visivel = self._etapa5_pagamento_visivel()
                 modal_credito = self.page.query_selector('h2:has-text("Resultado da análise de crédito")')
-                negado_pagina = (
-                    "crédito negado" in pagina_texto
-                    or "credito negado" in pagina_texto
-                    or ("negado" in pagina_texto and "aprovado" not in pagina_texto)
-                )
+                negado_pagina = self._pagina_indica_credito_negado(pagina_texto)
                 if parar_no_modal_credito and etapa5_visivel and not negado_pagina:
                     etapa5_apos_credito = True
                     logger.info(
                         "[PAP] [CRÉDITO] Etapa4: etapa pagamento visível sem modal "
-                        "(PAP pulou popup — tratando como aprovação todas as formas, poll=%d)",
+                        "(PAP pulou popup — tratando como aprovação todas as formas, poll=%d, apis=%s)",
                         poll_iteracao,
+                        sorted(self._credito_apis_pos_avancar),
                     )
                     break
                 # Só atalho quando NÃO é fluxo crédito: etapa 5 visível e modal não apareceu = todas as formas
@@ -4135,13 +4234,28 @@ class PAPNioAutomation:
                         self._fechar_modal_erro_ops()
                         return False, PAP_ERRO_PORTAL_NIO, None, None
                     pass
+            if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
+                for extra in range(16):
+                    self.page.wait_for_timeout(500)
+                    pagina_extra = self._page_content_seguro(tentativas=2, pausa_ms=300).lower()
+                    if self._pagina_indica_credito_negado(pagina_extra):
+                        break
+                    if self._etapa5_pagamento_visivel():
+                        etapa5_apos_credito = True
+                        logger.info(
+                            "[PAP] [CRÉDITO] Etapa4: etapa pagamento detectada após poll "
+                            "(extra=%d, apis=%s)",
+                            extra + 1,
+                            sorted(self._credito_apis_pos_avancar),
+                        )
+                        break
             self.page.wait_for_timeout(300 if modo_rapido_credito else 800)
             if parar_no_modal_credito and modal_apareceu:
                 logger.info("[PAP] [CRÉDITO] Etapa4: total desde Avançar até leitura/screenshot=%.1fs", time.time() - t_avancar)
             if self.verificar_modal_erro_ops_visivel():
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None, None
-            pagina_texto = (self.page.content() or "").lower()
+            pagina_texto = self._page_content_seguro().lower()
             if parar_no_modal_credito and not modal_apareceu and etapa5_apos_credito:
                 screenshot_b64 = None
                 try:
@@ -4164,22 +4278,19 @@ class PAPNioAutomation:
                     screenshot_b64,
                 )
             if parar_no_modal_credito and not modal_apareceu:
-                neg_sem_modal = (
-                    "crédito negado" in pagina_texto
-                    or "credito negado" in pagina_texto
-                    or ("negado" in pagina_texto and "aprovado" not in pagina_texto)
-                )
+                neg_sem_modal = self._pagina_indica_credito_negado(pagina_texto)
                 if not neg_sem_modal:
                     logger.warning(
                         "[PAP] [CRÉDITO] Etapa4: modal 'Resultado da análise de crédito' não apareceu; "
-                        "não concluir como aprovado (etapa 5 ou texto isolado não bastam)."
+                        "não concluir como aprovado (etapa 5 ou texto isolado não bastam). apis=%s",
+                        sorted(self._credito_apis_pos_avancar),
                     )
                     return False, MSG_CREDITO_SEM_TELA_RESULTADO, None, None
             # Normalizar para comparação: acentos e variações (cartão/cartao, etc.)
             pagina_norm = unicodedata.normalize("NFD", pagina_texto)
             pagina_norm = "".join(c for c in pagina_norm if unicodedata.category(c) != "Mn")
             # Crédito negado - capturar screenshot do modal e fechar antes de retornar
-            if "crédito negado" in pagina_texto or "credito negado" in pagina_texto or ("negado" in pagina_texto and "aprovado" not in pagina_texto):
+            if self._pagina_indica_credito_negado(pagina_texto):
                 screenshot_b64 = None
                 try:
                     screenshot_bytes = self.page.screenshot(type="png")
@@ -4248,12 +4359,11 @@ class PAPNioAutomation:
                 if celular_secundario:
                     self.dados_pedido['celular_sec'] = celular_secundario
                 return True, f"Análise de crédito: APROVADO! ({resultado_credito})", resultado_credito, screenshot_b64
-            # Etapa 5 visível sem modal de resultado (fallback só para fluxo venda completa)
-            etapa5_visivel = (
-                'pagamento' in pagina_texto and 'ofertas' in pagina_texto
-            ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
-            if etapa5_visivel:
-                if parar_no_modal_credito and not modal_apareceu:
+            # Etapa 5 visível sem modal (fluxo venda ou crédito já tratado acima)
+            if self._etapa5_pagamento_visivel():
+                if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
+                    etapa5_apos_credito = True
+                if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
                     logger.warning(
                         "[PAP] [CRÉDITO] Etapa4: etapa pagamento visível sem modal de resultado; não concluir como aprovado."
                     )
