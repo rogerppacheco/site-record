@@ -3992,9 +3992,10 @@ class PAPNioAutomation:
             # para obter texto correto (apenas cartão vs todas as formas) e screenshot. Não usar atalho.
             # Fluxo venda: pode encerrar antes se Etapa 5 aparecer sem modal (aprovação todas as formas).
             modal_apareceu = False
+            etapa5_apos_credito = False
             poll_iteracao = 0
-            loops_modal = 16 if modo_rapido_credito else 24
-            pausa_modal_ms = 300 if modo_rapido_credito else 500
+            loops_modal = 30 if modo_rapido_credito else 24
+            pausa_modal_ms = 450 if modo_rapido_credito else 500
             for _ in range(loops_modal):
                 self.page.wait_for_timeout(pausa_modal_ms)
                 poll_iteracao += 1
@@ -4006,6 +4007,19 @@ class PAPNioAutomation:
                     'pagamento' in pagina_texto and 'ofertas' in pagina_texto
                 ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
                 modal_credito = self.page.query_selector('h2:has-text("Resultado da análise de crédito")')
+                negado_pagina = (
+                    "crédito negado" in pagina_texto
+                    or "credito negado" in pagina_texto
+                    or ("negado" in pagina_texto and "aprovado" not in pagina_texto)
+                )
+                if parar_no_modal_credito and etapa5_visivel and not negado_pagina:
+                    etapa5_apos_credito = True
+                    logger.info(
+                        "[PAP] [CRÉDITO] Etapa4: etapa pagamento visível sem modal "
+                        "(PAP pulou popup — tratando como aprovação todas as formas, poll=%d)",
+                        poll_iteracao,
+                    )
+                    break
                 # Só atalho quando NÃO é fluxo crédito: etapa 5 visível e modal não apareceu = todas as formas
                 if not parar_no_modal_credito and etapa5_visivel and not (modal_credito and modal_credito.is_visible()):
                     self.etapa_atual = 4
@@ -4028,7 +4042,7 @@ class PAPNioAutomation:
                     self.page.wait_for_selector(
                         'h2:has-text("Resultado da análise de crédito")',
                         state="visible",
-                        timeout=6000 if modo_rapido_credito else 10000,
+                        timeout=12000 if modo_rapido_credito else 10000,
                     )
                     modal_apareceu = True
                     t_modal_visivel = time.time()
@@ -4049,6 +4063,27 @@ class PAPNioAutomation:
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None, None
             pagina_texto = (self.page.content() or "").lower()
+            if parar_no_modal_credito and not modal_apareceu and etapa5_apos_credito:
+                screenshot_b64 = None
+                try:
+                    screenshot_bytes = self.page.screenshot(type="png")
+                    if screenshot_bytes:
+                        screenshot_b64 = base64.b64encode(screenshot_bytes).decode("ascii")
+                except Exception as ex:
+                    logger.warning(
+                        "[PAP] Falha ao capturar screenshot etapa5 pós-crédito: %s", ex
+                    )
+                self.etapa_atual = 4
+                self.dados_pedido['celular'] = celular
+                self.dados_pedido['email'] = email
+                if celular_secundario:
+                    self.dados_pedido['celular_sec'] = celular_secundario
+                return (
+                    True,
+                    "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)",
+                    "Elegível para todas as formas de pagamento",
+                    screenshot_b64,
+                )
             if parar_no_modal_credito and not modal_apareceu:
                 neg_sem_modal = (
                     "crédito negado" in pagina_texto
