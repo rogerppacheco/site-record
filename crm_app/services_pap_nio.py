@@ -3536,77 +3536,156 @@ class PAPNioAutomation:
             logger.error(f"[PAP] etapa2_preencher_referencia_e_continuar: {e}")
             return False, str(e), None
 
+    def _etapa2_formulario_documento_visivel(self) -> bool:
+        """PAP às vezes pula o modal de viabilidade e exibe direto o cadastro (CPF/CNPJ)."""
+        if not self.page:
+            return False
+        try:
+            inp = self.page.query_selector('input[name="documento"]')
+            if inp and inp.is_visible():
+                return True
+            loc = self.page.locator(
+                'input[placeholder*="CPF"], input[placeholder*="CNPJ"], '
+                'input[placeholder*="cpf"], input[placeholder*="cnpj"]'
+            )
+            return loc.count() > 0 and loc.first.is_visible()
+        except Exception:
+            return False
+
+    def _etapa2_concluir_endereco_viavel(
+        self, cep: str, numero: str, referencia: str, motivo_log: str = ""
+    ) -> Tuple[bool, str, None]:
+        if motivo_log:
+            logger.info("[PAP] Etapa2: endereço viável — %s", motivo_log)
+        btn_cont = self.page.query_selector('button:has-text("Continuar")')
+        if btn_cont and btn_cont.is_visible():
+            btn_cont.click()
+            try:
+                self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=20000)
+            except Exception:
+                self.page.wait_for_timeout(3000)
+        elif not self._etapa2_formulario_documento_visivel():
+            try:
+                self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=15000)
+            except Exception:
+                self.page.wait_for_timeout(2000)
+        self._capture_screenshot(
+            "02_viabilidade_disponivel",
+            wait_selector='input[name="documento"]',
+            wait_timeout_ms=5000,
+        )
+        self.etapa_atual = 2
+        self.dados_pedido['cep'] = cep
+        self.dados_pedido['numero'] = numero
+        self.dados_pedido['referencia'] = referencia
+        self._extrair_protocolo_pedido()
+        return True, "Etapa 2 concluída! Endereço viável.", None
+
+    def _etapa2_interpretar_resultado_viabilidade(
+        self, cep: str, numero: str, referencia: str
+    ) -> Optional[Tuple[bool, str, Optional[Any]]]:
+        """Interpreta modal/texto/tela CPF após consulta de viabilidade. None = ainda aguardando."""
+        if self.verificar_modal_erro_ops_visivel():
+            self._fechar_modal_erro_ops()
+            return False, PAP_ERRO_PORTAL_NIO, None
+        if self._etapa2_formulario_documento_visivel():
+            return self._etapa2_concluir_endereco_viavel(
+                cep, numero, referencia,
+                motivo_log="formulário CPF visível (PAP pulou modal de viabilidade)",
+            )
+        pagina_lower = (self.page.content() or "").lower()
+        if "posse encontrada" in pagina_lower or (
+            "pedido" in pagina_lower and "em andamento" in pagina_lower
+        ):
+            return False, (
+                "❌ *Posse encontrada*\n\n"
+                "Não é possível abrir um pedido para o endereço consultado pois já existe um pedido em andamento.\n\n"
+                "Digite outro *CEP* para consultar outro endereço ou *CONCLUIR* para sair."
+            ), "POSSE_ENCONTRADA"
+        if (
+            "indisponível" in pagina_lower
+            or "indisponivel" in pagina_lower
+            or "sem viabilidade técnica" in pagina_lower
+        ):
+            return False, (
+                "❌ *Endereço indisponível*\n\n"
+                "Sem viabilidade técnica para o endereço consultado.\n\n"
+                "Digite outro *CEP* ou *CONCLUIR* para sair."
+            ), "INDISPONIVEL_TECNICO"
+        if "disponível" in pagina_lower or "disponivel" in pagina_lower:
+            return self._etapa2_concluir_endereco_viavel(cep, numero, referencia)
+        return None
+
     def _etapa2_clicar_avancar_e_tratar_modal(self, cep: str, numero: str, referencia: str) -> Tuple[bool, str, Optional[list]]:
         """Clica Avançar e trata modal de viabilidade (Disponível, Posse, Indisponível)."""
         try:
-            modal_sel = 'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada")'
+            modal_sel = (
+                'h2:has-text("Disponível"), h2:has-text("Indisponível"), '
+                'h3:has-text("Posse encontrada"), h2:has-text("OPS, OCORREU UM ERRO")'
+            )
             modal_el = self.page.query_selector(modal_sel)
             spinner = self.page.query_selector('div[class*="spinner"]')
-            # Se modal já visível: pular clique. Se spinner visível: Avançar já foi clicado, aguardar modal.
+            rapido = self.optimize_for_credit
+            # Se modal já visível: pular clique. Se spinner visível: Avançar já foi clicado, aguardar resultado.
             if modal_el and modal_el.is_visible():
-                self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
+                self.page.wait_for_timeout(250 if rapido else 500)
             elif spinner and spinner.is_visible():
-                # Carregando (Avançar já clicado por etapa2_selecionar_sem_complemento) - aguardar modal
-                try:
-                    self.page.wait_for_selector(modal_sel, state="visible", timeout=18000 if self.optimize_for_credit else 25000)
-                    self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
-                except Exception:
-                    return False, "Timeout aguardando resultado da viabilidade.", None
+                pass
             else:
-                # Avançar ainda não clicado (fluxo sem complementos)
                 try:
-                    self.page.wait_for_selector('button:has-text("Avançar"):not([disabled])', state="visible", timeout=4000)
+                    self.page.wait_for_selector(
+                        'button:has-text("Avançar"):not([disabled])',
+                        state="visible",
+                        timeout=4000,
+                    )
                 except Exception:
                     pass
                 btn = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
                 if not btn:
+                    resultado_imediato = self._etapa2_interpretar_resultado_viabilidade(cep, numero, referencia)
+                    if resultado_imediato is not None:
+                        return resultado_imediato
                     return False, "Botão Avançar não habilitou.", None
                 btn.click(force=True)
-                self.page.wait_for_timeout(700 if self.optimize_for_credit else 2000)
+                self.page.wait_for_timeout(700 if rapido else 2000)
+
+            loops = 36 if rapido else 30
+            pausa_ms = 500 if rapido else 600
+            resultado: Optional[Tuple[bool, str, Optional[Any]]] = None
+            for poll in range(1, loops + 1):
+                self.page.wait_for_timeout(pausa_ms)
+                resultado = self._etapa2_interpretar_resultado_viabilidade(cep, numero, referencia)
+                if resultado is not None:
+                    if resultado[0]:
+                        logger.info(
+                            "[PAP] Etapa2: viabilidade OK no poll %d/%d (%.1fs)",
+                            poll, loops, poll * (pausa_ms / 1000),
+                        )
+                    return resultado
+
             try:
-                self.page.wait_for_selector(
-                    'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada"), h2:has-text("OPS, OCORREU UM ERRO")',
-                    state="visible", timeout=12000 if self.optimize_for_credit else 20000
-                )
+                self.page.wait_for_selector(modal_sel, state="visible", timeout=8000 if rapido else 12000)
+                resultado = self._etapa2_interpretar_resultado_viabilidade(cep, numero, referencia)
+                if resultado is not None:
+                    return resultado
             except Exception:
-                if self.verificar_modal_erro_ops_visivel():
-                    self._fechar_modal_erro_ops()
-                    return False, PAP_ERRO_PORTAL_NIO, None
                 pass
-            self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
-            if self.verificar_modal_erro_ops_visivel():
-                self._fechar_modal_erro_ops()
-                return False, PAP_ERRO_PORTAL_NIO, None
-            pagina = self.page.content()
-            pagina_lower = pagina.lower()
-            if "posse encontrada" in pagina_lower or ("pedido" in pagina_lower and "em andamento" in pagina_lower):
-                return False, (
-                    "❌ *Posse encontrada*\n\n"
-                    "Não é possível abrir um pedido para o endereço consultado pois já existe um pedido em andamento.\n\n"
-                    "Digite outro *CEP* para consultar outro endereço ou *CONCLUIR* para sair."
-                ), "POSSE_ENCONTRADA"
-            if "indisponível" in pagina_lower or "indisponivel" in pagina_lower or "sem viabilidade técnica" in pagina_lower:
-                return False, (
-                    "❌ *Endereço indisponível*\n\n"
-                    "Sem viabilidade técnica para o endereço consultado.\n\n"
-                    "Digite outro *CEP* ou *CONCLUIR* para sair."
-                ), "INDISPONIVEL_TECNICO"
-            if "disponível" in pagina_lower or "disponivel" in pagina_lower:
-                btn_cont = self.page.query_selector('button:has-text("Continuar")')
-                if btn_cont:
-                    btn_cont.click()
-                    # Aguardar tela de cadastro do cliente (CPF) carregar; timeout maior para rede lenta
-                    try:
-                        self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=20000)
-                    except Exception:
-                        self.page.wait_for_timeout(3000)
-                self._capture_screenshot("02_viabilidade_disponivel", wait_selector='input[name="documento"]', wait_timeout_ms=5000)
-                self.etapa_atual = 2
-                self.dados_pedido['cep'] = cep
-                self.dados_pedido['numero'] = numero
-                self.dados_pedido['referencia'] = referencia
-                self._extrair_protocolo_pedido()
-                return True, "Etapa 2 concluída! Endereço viável.", None
+
+            url_atual = ""
+            try:
+                url_atual = self.page.url or ""
+            except Exception:
+                pass
+            snippet = ""
+            try:
+                snippet = (self.page.inner_text("body") or "")[:400]
+            except Exception:
+                pass
+            logger.warning(
+                "[PAP] Etapa2: resultado de viabilidade não reconhecido. URL=%s snippet=%r",
+                url_atual,
+                snippet,
+            )
             return False, "Não foi possível obter o resultado da viabilidade.", None
         except Exception as e:
             logger.error(f"[PAP] _etapa2_clicar_avancar_e_tratar_modal: {e}")
