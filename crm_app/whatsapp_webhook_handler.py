@@ -796,6 +796,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 paciente=True,
             )
         if not matriculas_pap:
+            automacao._capture_screenshot_falha_etapa1(
+                "01_err_lista_vendedores_vazia",
+                wait_selector=None,
+                wait_timeout_ms=0,
+            )
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             _marcar_hist(False, "Lista de vendedores do PAP vazia")

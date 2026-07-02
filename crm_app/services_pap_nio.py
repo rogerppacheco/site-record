@@ -167,11 +167,31 @@ SELETORES_MATRICULA_VENDEDOR = [
     'input[id*="vendedor"]',
     'input[id*="matricula"]',
     'input[id*="Vendedor"]',
-    'main input[type="search"]',
-    '[role="main"] input[type="search"]',
+    'form input[type="search"]',
+    '[class*="etapa"] input[type="search"]',
 ]
 
 SELETORES_MATRICULA_VENDEDOR_CSS = ", ".join(SELETORES_MATRICULA_VENDEDOR)
+
+# Dropdown de vendedor (MUI Autocomplete / portal React — estrutura varia no PAP)
+SELETORES_LISTA_VENDEDOR_ITENS = [
+    '[role="listbox"] [role="option"]',
+    '[role="listbox"] li',
+    'ul[role="listbox"] li',
+    '.MuiAutocomplete-listbox [role="option"]',
+    '.MuiAutocomplete-listbox li',
+    '.MuiAutocomplete-popper [role="option"]',
+    '.MuiAutocomplete-popper li',
+    'div[id^="menu-"] [role="option"]',
+    'div[id^="menu-"] li',
+    'ul[class*="menu"] li',
+    'ul[class*="dropdown"] li',
+    'ul[class*="autocomplete"] li',
+    'ul[class*="fQkuQJ"] li',
+    'ul[class*="cUdcXF"] li',
+    'li[class*="option"]',
+    'div[role="option"]',
+]
 
 # Código retornado quando o modal "OPS, OCORREU UM ERRO!" aparece no PAP (erro do portal; orientar abrir chamado Nio)
 PAP_ERRO_PORTAL_NIO = "PAP_ERRO_PORTAL_NIO"
@@ -294,6 +314,8 @@ class PAPNioAutomation:
         self._pap_slot_held = False  # slot do semáforo global (liberar mesmo se login falhar antes de sessao_iniciada)
         self._trace_started = False  # Trace Playwright para inspecionar cliques em produção
         self._cache_matriculas_pap_dropdown: List[str] = []
+        self._vendedores_api_matriculas: List[str] = []
+        self._listener_vendedor_ativo: bool = False
 
         # Storage state para manter cookies
         self.storage_state_path = os.path.join(
@@ -1072,6 +1094,24 @@ class PAPNioAutomation:
         """Retorna o elemento input do vendedor ou None."""
         if not self.page:
             return None
+        estrategias_locator = [
+            'label:has-text("Vendedor") ~ div input, label:has-text("Vendedor") + div input',
+            'div:has(> label:has-text("Vendedor")) input',
+            'div:has(span:has-text("Vendedor")) input[type="text"], div:has(span:has-text("Vendedor")) input[type="search"]',
+        ]
+        for sel in estrategias_locator:
+            try:
+                loc = self.page.locator(sel).first
+                if loc.count() > 0 and loc.is_visible():
+                    return loc.element_handle()
+            except Exception:
+                continue
+        try:
+            loc = self.page.get_by_placeholder(re.compile(r"vendedor|matr[ií]cula", re.I)).first
+            if loc.count() > 0 and loc.is_visible():
+                return loc.element_handle()
+        except Exception:
+            pass
         for sel in SELETORES_MATRICULA_VENDEDOR:
             try:
                 el = self.page.query_selector(sel)
@@ -1086,6 +1126,198 @@ class PAPNioAutomation:
         except Exception:
             pass
         return None
+
+    def _instalar_listener_vendedores_api(self) -> None:
+        """Captura matrículas das respostas JSON do autocomplete (mais robusto que só DOM)."""
+        if self._listener_vendedor_ativo or not self.page:
+            return
+
+        def _handler(response) -> None:
+            try:
+                if response.status < 200 or response.status >= 300:
+                    return
+                ctype = (response.headers.get("content-type") or "").lower()
+                if "json" not in ctype:
+                    return
+                url = (response.url or "").lower()
+                hints = (
+                    "vendedor", "seller", "consultor", "matricula", "matrícula",
+                    "colaborador", "autocomplete", "search", "pdv", "tt",
+                )
+                body = response.json()
+                mats = self._extrair_matriculas_de_json_recursivo(body)
+                if not mats:
+                    return
+                if len(mats) == 1 and not any(h in url for h in hints):
+                    return
+                novas = 0
+                for mat in mats:
+                    if mat not in self._vendedores_api_matriculas:
+                        self._vendedores_api_matriculas.append(mat)
+                        novas += 1
+                if novas:
+                    logger.info(
+                        "[PAP] API vendedores: +%s matrícula(s) (%s)",
+                        novas,
+                        url[:100],
+                    )
+            except Exception:
+                pass
+
+        self.page.on("response", _handler)
+        self._listener_vendedor_ativo = True
+
+    def _normalizar_matricula_vendedor(self, valor: str) -> Optional[str]:
+        """Normaliza matrícula para TT123456 quando possível."""
+        if not valor:
+            return None
+        texto = str(valor).strip().upper()
+        match = re.search(r"\b(TT\d{4,})\b", texto, re.I)
+        if match:
+            return match.group(1).upper()
+        digitos = re.sub(r"\D", "", texto)
+        if len(digitos) >= 5:
+            return f"TT{digitos}"
+        return None
+
+    def _extrair_matricula_de_texto_vendedor(self, texto: str) -> Optional[str]:
+        """Extrai matrícula TT do texto exibido no dropdown ou JSON."""
+        if not texto:
+            return None
+        match = re.search(r"\b(TT\d{4,})\b", str(texto).strip(), re.I)
+        if match:
+            return match.group(1).upper()
+        return self._normalizar_matricula_vendedor(texto)
+
+    def _extrair_matriculas_de_json_recursivo(self, data: Any) -> List[str]:
+        """Varre JSON de API do PAP em busca de matrículas TT."""
+        encontradas: List[str] = []
+        vistos: set[str] = set()
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                for chave, valor in node.items():
+                    chave_lower = str(chave).lower()
+                    if isinstance(valor, str):
+                        mat = self._extrair_matricula_de_texto_vendedor(valor)
+                        if mat and mat not in vistos:
+                            vistos.add(mat)
+                            encontradas.append(mat)
+                    elif isinstance(valor, (dict, list)):
+                        _walk(valor)
+                    elif isinstance(valor, (int, float)) and "matric" in chave_lower:
+                        mat = self._normalizar_matricula_vendedor(str(int(valor)))
+                        if mat and mat not in vistos:
+                            vistos.add(mat)
+                            encontradas.append(mat)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item)
+            elif isinstance(node, str):
+                mat = self._extrair_matricula_de_texto_vendedor(node)
+                if mat and mat not in vistos:
+                    vistos.add(mat)
+                    encontradas.append(mat)
+
+        _walk(data)
+        return encontradas
+
+    def _coletar_matriculas_dom_via_js(self) -> List[str]:
+        """Varre poppers/portals visíveis em busca de matrículas TT (fallback DOM)."""
+        if not self.page:
+            return []
+        try:
+            raw = self.page.evaluate(
+                """() => {
+                    const re = /\\bTT\\d{4,}\\b/gi;
+                    const seen = new Set();
+                    const out = [];
+                    const roots = [
+                        ...document.querySelectorAll('[role="listbox"], [class*="Popper"], [class*="popper"], [class*="Autocomplete"], [id^="menu-"]'),
+                    ];
+                    for (const root of roots) {
+                        if (!root || root.offsetParent === null) continue;
+                        const text = (root.innerText || root.textContent || '').trim();
+                        if (!text) continue;
+                        let m;
+                        while ((m = re.exec(text)) !== null) {
+                            const mat = m[0].toUpperCase();
+                            if (!seen.has(mat)) {
+                                seen.add(mat);
+                                out.push(mat);
+                            }
+                        }
+                    }
+                    return out;
+                }"""
+            )
+            if isinstance(raw, list):
+                return [str(m).upper() for m in raw if m]
+        except Exception as exc:
+            logger.debug("[PAP] Scan JS lista vendedor: %s", exc)
+        return []
+
+    def _digitar_no_campo_vendedor(self, termo: str) -> bool:
+        """Digita no autocomplete disparando eventos React (headless)."""
+        if not self.page or not termo:
+            return False
+        if not self._focar_campo_vendedor():
+            return False
+        matricula_input = self._query_matricula_vendedor_input()
+        if not matricula_input:
+            return False
+        delay_tecla = 130 if (self.headless or self.optimize_for_credit) else 90
+        try:
+            matricula_input.fill("")
+            self.page.wait_for_timeout(250)
+            matricula_input.press_sequentially(termo, delay=delay_tecla)
+            return True
+        except Exception as exc:
+            logger.debug("[PAP] press_sequentially vendedor: %s", exc)
+        try:
+            matricula_input.evaluate(
+                """(el, valor) => {
+                    el.focus();
+                    el.value = '';
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    const proto = Object.getPrototypeOf(el);
+                    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                    if (setter) setter.call(el, valor);
+                    else el.value = valor;
+                    el.dispatchEvent(new InputEvent('input', { bubbles: true, data: valor, inputType: 'insertText' }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                termo,
+            )
+            return True
+        except Exception as exc:
+            logger.debug("[PAP] evaluate digitar vendedor: %s", exc)
+            return False
+
+    def _abrir_popup_vendedor_mui(self) -> bool:
+        """Abre o popup do MUI Autocomplete (seta / combobox)."""
+        if not self.page:
+            return False
+        seletores_botao = [
+            'div:has(input[placeholder*="Vendedor"]) button[aria-label*="Open"]',
+            'div:has(input[placeholder*="vendedor"]) button[aria-label*="Open"]',
+            '[class*="Autocomplete"] button[class*="popupIndicator"]',
+            '[class*="Autocomplete"] button[aria-label*="Open"]',
+        ]
+        for sel in seletores_botao:
+            try:
+                btn = self.page.locator(sel).first
+                if btn.count() > 0 and btn.is_visible():
+                    btn.click()
+                    self.page.wait_for_timeout(400)
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _matriculas_da_rede_vendedor(self) -> List[str]:
+        """Matrículas capturadas via interceptação de API durante digitação."""
+        return list(dict.fromkeys(self._vendedores_api_matriculas or []))
 
     def _redirecionar_se_rota_bloqueia_novo_pedido(self) -> bool:
         """
@@ -1967,10 +2199,7 @@ class PAPNioAutomation:
 
     def _extrair_matricula_de_item_vendedor(self, texto: str) -> Optional[str]:
         """Extrai TT123456 do texto exibido no dropdown de vendedor."""
-        if not texto:
-            return None
-        match = re.search(r"\b(TT\d+)\b", texto.strip(), re.I)
-        return match.group(1).upper() if match else None
+        return self._extrair_matricula_de_texto_vendedor(texto)
 
     def _debounce_lista_vendedor_ms(self, paciente: bool = False) -> int:
         """Headless no servidor precisa de mais tempo para o autocomplete do PAP."""
@@ -1987,17 +2216,7 @@ class PAPNioAutomation:
         """Itens do dropdown de vendedor. Em headless, relaxa is_visible() se necessário."""
         if not self.page:
             return []
-        seletores = [
-            '[role="listbox"] [role="option"]',
-            '[role="listbox"] li',
-            'ul[role="listbox"] li',
-            'ul[class*="menu"] li',
-            'ul[class*="dropdown"] li',
-            'ul[class*="autocomplete"] li',
-            'ul[class*="fQkuQJ"] li',
-            'ul[class*="cUdcXF"] li',
-            SELETORES["etapa1"]["lista_vendedores"],
-        ]
+        seletores = list(SELETORES_LISTA_VENDEDOR_ITENS) + [SELETORES["etapa1"]["lista_vendedores"]]
 
         def _filtrar(itens: List[Any], exigir_visivel: bool) -> List[Any]:
             candidatos = itens
@@ -2098,6 +2317,27 @@ class PAPNioAutomation:
             logger.warning("[PAP] Falha ao focar campo vendedor: %s", e)
             return False
 
+    def _mesclar_fontes_matriculas_vendedor(
+        self, itens_dom: List[Any], paciente: bool = False
+    ) -> List[str]:
+        """Combina matrículas do DOM, scan JS e interceptação de API."""
+        mats = self._matriculas_de_itens_vendedor(itens_dom)
+        for fonte in (self._coletar_matriculas_dom_via_js(), self._matriculas_da_rede_vendedor()):
+            for mat in fonte:
+                if mat not in mats:
+                    mats.append(mat)
+        if mats:
+            self._cache_matriculas_pap_dropdown = mats
+        elif paciente or self.headless:
+            logger.warning(
+                "[PAP] Nenhuma matrícula vendedor (dom=%s api=%s js=%s headless=%s)",
+                len(itens_dom),
+                len(self._matriculas_da_rede_vendedor()),
+                len(self._coletar_matriculas_dom_via_js()),
+                self.headless,
+            )
+        return mats
+
     def _disparar_itens_lista_vendedor(
         self, matricula_alvo: Optional[str] = None, paciente: bool = False
     ) -> List[Any]:
@@ -2106,28 +2346,25 @@ class PAPNioAutomation:
             return []
         debounce_ms = self._debounce_lista_vendedor_ms(paciente=paciente)
         timeout_list = self._timeout_lista_vendedor_ms(paciente=paciente)
-        seletor_lista = '[role="listbox"] li, [role="option"], ul[class*="menu"] li'
+        seletor_lista = ", ".join(SELETORES_LISTA_VENDEDOR_ITENS[:8])
         relaxar = paciente or self.headless
 
         if not self._focar_campo_vendedor():
             logger.warning("[PAP] Campo vendedor não encontrado ao abrir lista")
             return []
 
-        matricula_input = self._query_matricula_vendedor_input()
-        if not matricula_input:
-            return []
+        self._abrir_popup_vendedor_mui()
+        self.page.wait_for_timeout(500 if paciente else 350)
+        itens_popup = self._coletar_itens_lista_vendedor(relaxar_visibilidade=relaxar)
+        if itens_popup:
+            logger.info("[PAP] Lista vendedor aberta via popup MUI (%s itens)", len(itens_popup))
+            return itens_popup
 
-        gatilhos_prioritarios = ("999999", "478091", "478", "TT478091")
+        gatilhos_prioritarios = ("999999", "478091", "478", "TT478091", "652271", "TT652")
         for gatilho in gatilhos_prioritarios:
             try:
-                if not self._focar_campo_vendedor():
+                if not self._digitar_no_campo_vendedor(gatilho):
                     continue
-                matricula_input = self._query_matricula_vendedor_input()
-                if not matricula_input:
-                    continue
-                matricula_input.fill("")
-                self.page.wait_for_timeout(400 if paciente else 300)
-                matricula_input.fill(gatilho)
                 try:
                     self.page.wait_for_selector(seletor_lista, state="attached", timeout=timeout_list)
                 except Exception:
@@ -2136,14 +2373,21 @@ class PAPNioAutomation:
                 itens = self._coletar_itens_lista_vendedor(relaxar_visibilidade=relaxar)
                 if itens:
                     logger.info(
-                        "[PAP] Lista vendedor aberta com fill '%s' (%s itens, headless=%s)",
+                        "[PAP] Lista vendedor aberta com gatilho '%s' (%s itens, headless=%s)",
                         gatilho,
                         len(itens),
                         self.headless,
                     )
                     return itens
+                rede = self._matriculas_da_rede_vendedor()
+                if rede:
+                    logger.info(
+                        "[PAP] Matrículas via API após gatilho '%s': %s",
+                        gatilho,
+                        rede[:8],
+                    )
             except Exception as e:
-                logger.debug("[PAP] fill lista vendedor gatilho=%s: %s", gatilho, e)
+                logger.debug("[PAP] gatilho lista vendedor termo=%s: %s", gatilho, e)
 
         try:
             if self._focar_campo_vendedor():
@@ -2162,14 +2406,8 @@ class PAPNioAutomation:
 
         for termo in self._termos_gatilho_lista_vendedor(matricula_alvo):
             try:
-                if not self._focar_campo_vendedor():
+                if not self._digitar_no_campo_vendedor(termo):
                     continue
-                matricula_input = self._query_matricula_vendedor_input()
-                if not matricula_input:
-                    continue
-                matricula_input.fill("")
-                self.page.wait_for_timeout(300)
-                matricula_input.press_sequentially(termo, delay=100 if paciente else 90)
                 try:
                     self.page.wait_for_selector(seletor_lista, state="attached", timeout=timeout_list)
                 except Exception:
@@ -2193,10 +2431,7 @@ class PAPNioAutomation:
         if not self.page:
             return []
         itens = self._disparar_itens_lista_vendedor(paciente=paciente)
-        encontradas = self._matriculas_de_itens_vendedor(itens)
-        if encontradas:
-            self._cache_matriculas_pap_dropdown = encontradas
-        return encontradas
+        return self._mesclar_fontes_matriculas_vendedor(itens, paciente=paciente)
 
     def listar_matriculas_vendedor_no_pap(
         self, forcar_recarga: bool = False, paciente: bool = False
@@ -2208,7 +2443,8 @@ class PAPNioAutomation:
         if not forcar_recarga and self._cache_matriculas_pap_dropdown:
             return list(self._cache_matriculas_pap_dropdown)
         if self.page:
-            espera = 4000 if (paciente or self.headless) else 1500
+            self._instalar_listener_vendedores_api()
+            espera = 5000 if (paciente or self.headless) else 1500
             if self.optimize_for_credit and not paciente and not self.headless:
                 espera = 1500
             self.page.wait_for_timeout(espera)
@@ -2216,6 +2452,12 @@ class PAPNioAutomation:
         logger.info("[PAP] Matrículas no dropdown vendedor deste PDV: %s", len(encontradas))
         if encontradas:
             logger.info("[PAP] Amostra vendedores PDV: %s", encontradas[:10])
+        elif not paciente:
+            logger.warning(
+                "[PAP] Lista vendedor vazia (headless=%s fast=%s)",
+                self.headless,
+                self.optimize_for_credit,
+            )
         return encontradas
 
     def _selecionar_vendedor_clicando_na_lista_aberta(self, matricula_norm: str) -> bool:
@@ -2248,19 +2490,17 @@ class PAPNioAutomation:
 
         rapido = self.optimize_for_credit
         debounce_ms = 600 if rapido else 900
-        delay_tecla = 70 if rapido else 110
 
         for termo in self._variantes_busca_matricula_vendedor(matricula_vendedor):
             try:
-                matricula_input.click()
-                matricula_input.fill("")
-                self.page.wait_for_timeout(150)
-                matricula_input.press_sequentially(termo, delay=delay_tecla)
+                if not self._digitar_no_campo_vendedor(termo):
+                    continue
+                seletor_visivel = ", ".join(SELETORES_LISTA_VENDEDOR_ITENS[:6])
                 try:
                     self.page.wait_for_selector(
-                        '[role="listbox"] li, [role="option"], ul[class*="menu"] li',
+                        seletor_visivel,
                         state="visible",
-                        timeout=5000 if rapido else 8000,
+                        timeout=7000 if rapido else 10000,
                     )
                 except Exception:
                     pass
@@ -2286,6 +2526,18 @@ class PAPNioAutomation:
                         item.click()
                         self.page.wait_for_timeout(400)
                         return True
+                try:
+                    opt = self.page.locator(
+                        f'[role="option"]:has-text("{matricula_norm}"), '
+                        f'li:has-text("{matricula_norm}")'
+                    ).first
+                    if opt.count() > 0 and opt.is_visible():
+                        opt.click()
+                        self.page.wait_for_timeout(400)
+                        logger.info("[PAP] Vendedor selecionado via locator: %s", matricula_norm)
+                        return True
+                except Exception:
+                    pass
             except Exception as e:
                 logger.debug("[PAP] Busca vendedor termo=%s: %s", termo, e)
                 continue
@@ -2425,6 +2677,7 @@ class PAPNioAutomation:
                 "Não foi possível localizar o campo de vendedor/matrícula no formulário. "
                 "O portal pode ter alterado a página."
             )
+        self._instalar_listener_vendedores_api()
         return True, ""
 
     def _concluir_novo_pedido_etapa1(self, matricula_vendedor: str) -> Tuple[bool, str]:
