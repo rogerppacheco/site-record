@@ -735,28 +735,83 @@ class PAPNioAutomation:
             )
         return False
 
-    def _etapa5_pagamento_visivel(self) -> bool:
-        """Detecta etapa 5 (ofertas/pagamento) mesmo quando o PAP pula o modal de crédito."""
+    def _pagina_carregando_apos_credito(self) -> bool:
+        """Overlay/spinner enquanto o PAP consulta crédito ou catálogo de ofertas."""
         if not self.page:
             return False
         try:
-            radios = self.page.evaluate(
+            carregando = self.page.evaluate(
                 """() => {
-                    const vals = ['BOLETO','CREDITO','DACC'];
-                    for (const inp of document.querySelectorAll('input[type="radio"]')) {
-                        if (vals.includes(inp.value)) return true;
+                    const lower = (document.body?.innerText || '').toLowerCase();
+                    const frases = [
+                        'consultando o catálogo de ofertas',
+                        'consultando o catalogo de ofertas',
+                        'consultando catálogo',
+                        'consultando catalogo',
+                        'consultando o crédito',
+                        'consultando o credito',
+                        'analisando crédito',
+                        'analisando credito',
+                    ];
+                    if (frases.some((f) => lower.includes(f))) return true;
+                    const progress = document.querySelector(
+                        '.MuiCircularProgress-root, [role="progressbar"]'
+                    );
+                    if (progress) {
+                        const r = progress.getBoundingClientRect();
+                        if (r.width > 0 && r.height > 0) return true;
                     }
                     return false;
                 }"""
             )
-            if radios:
+            if carregando:
                 return True
         except Exception:
             pass
+        pagina_lower = self._page_content_seguro(tentativas=1, pausa_ms=200).lower()
+        return any(
+            termo in pagina_lower
+            for termo in (
+                "consultando o catálogo de ofertas",
+                "consultando o catalogo de ofertas",
+                "consultando catálogo",
+                "consultando catalogo",
+            )
+        )
+
+    def _radios_pagamento_visiveis(self) -> bool:
+        """Radios BOLETO/CREDITO/DACC realmente visíveis na tela (não só no DOM)."""
+        if not self.page:
+            return False
+        try:
+            return bool(
+                self.page.evaluate(
+                    """() => {
+                        const vals = ['BOLETO','CREDITO','DACC'];
+                        for (const inp of document.querySelectorAll('input[type="radio"]')) {
+                            if (!vals.includes(inp.value)) continue;
+                            const style = window.getComputedStyle(inp);
+                            const rect = inp.getBoundingClientRect();
+                            if (
+                                rect.width > 0 && rect.height > 0
+                                && style.visibility !== 'hidden'
+                                && style.display !== 'none'
+                            ) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }"""
+                )
+            )
+        except Exception:
+            return False
+
+    def _secao_pagamento_ofertas_visivel(self) -> bool:
+        """Seção real da etapa 5, distinta do overlay de loading na etapa 4."""
+        if not self.page:
+            return False
         for sel in (
-            'input[value="BOLETO"]',
-            'input[value="CREDITO"]',
-            'input[value="DACC"]',
             'span:has-text("Forma de pagamento")',
             'div:has-text("Escolher ofertas")',
         ):
@@ -766,8 +821,76 @@ class PAPNioAutomation:
                     return True
             except Exception:
                 continue
+        return False
+
+    def _ainda_na_etapa4_contato(self) -> bool:
+        """Formulário de contato ainda dominante (ex.: overlay 'Consultando ofertas' na etapa 4)."""
+        if not self.page:
+            return False
+        try:
+            return bool(
+                self.page.evaluate(
+                    """() => {
+                        const lower = (document.body?.innerText || '').toLowerCase();
+                        const temContato =
+                            lower.includes('celular principal')
+                            || lower.includes('confirme o celular')
+                            || (lower.includes('e-mail') && lower.includes('contato'));
+                        const temPagamento =
+                            lower.includes('forma de pagamento')
+                            || lower.includes('escolher ofertas');
+                        const radios = [...document.querySelectorAll('input[type="radio"]')]
+                            .filter((i) => ['BOLETO', 'CREDITO', 'DACC'].includes(i.value));
+                        const radiosVis = radios.some((i) => {
+                            const r = i.getBoundingClientRect();
+                            const st = window.getComputedStyle(i);
+                            return (
+                                r.width > 0 && r.height > 0
+                                && st.visibility !== 'hidden'
+                                && st.display !== 'none'
+                            );
+                        });
+                        return temContato && !temPagamento && !radiosVis;
+                    }"""
+                )
+            )
+        except Exception:
+            return False
+
+    def _aguardar_fim_carregamento_credito(self, timeout_ms: int = 45000) -> bool:
+        """Aguarda sumir o overlay 'Consultando o catálogo de ofertas' etc."""
+        if not self.page:
+            return False
+        deadline = time.time() + (timeout_ms / 1000.0)
+        while time.time() < deadline:
+            if not self._pagina_carregando_apos_credito():
+                return True
+            self.page.wait_for_timeout(500)
+        return not self._pagina_carregando_apos_credito()
+
+    def _etapa5_pagamento_visivel(self, *, exigir_ui_pronta: bool = False) -> bool:
+        """Detecta etapa 5 (ofertas/pagamento) mesmo quando o PAP pula o modal de crédito."""
+        if not self.page:
+            return False
+        if self._pagina_carregando_apos_credito():
+            return False
+        if exigir_ui_pronta and self._ainda_na_etapa4_contato():
+            return False
+        if self._radios_pagamento_visiveis():
+            return True
+        if self._secao_pagamento_ofertas_visivel():
+            return True
+        for sel in ('input[value="BOLETO"]', 'input[value="CREDITO"]', 'input[value="DACC"]'):
+            try:
+                el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    return True
+            except Exception:
+                continue
+        if exigir_ui_pronta:
+            return False
         pagina_lower = self._page_content_seguro(tentativas=2, pausa_ms=400).lower()
-        if pagina_lower:
+        if pagina_lower and "consultando" not in pagina_lower:
             if "ofertas" in pagina_lower and (
                 "pagamento" in pagina_lower or "forma de pagamento" in pagina_lower
             ):
@@ -4171,13 +4294,12 @@ class PAPNioAutomation:
             if parar_no_modal_credito:
                 logger.info("[PAP] [CRÉDITO] Etapa4: loop Atenção=%.1fs (desde clique Avançar)", t_apos_atencao - t_avancar)
             
-            # Fluxo crédito (parar_no_modal_credito): sempre esperar o modal "Resultado da análise de crédito"
-            # para obter texto correto (apenas cartão vs todas as formas) e screenshot. Não usar atalho.
+            # Fluxo crédito: priorizar modal; fallback etapa 5 só com UI pronta (sem overlay de loading).
             # Fluxo venda: pode encerrar antes se Etapa 5 aparecer sem modal (aprovação todas as formas).
             modal_apareceu = False
             etapa5_apos_credito = False
             poll_iteracao = 0
-            loops_modal = 40 if modo_rapido_credito else 28
+            loops_modal = 50 if modo_rapido_credito else 36
             pausa_modal_ms = 500 if modo_rapido_credito else 600
             for _ in range(loops_modal):
                 self.page.wait_for_timeout(pausa_modal_ms)
@@ -4186,9 +4308,22 @@ class PAPNioAutomation:
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
                 pagina_texto = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
-                etapa5_visivel = self._etapa5_pagamento_visivel()
+                carregando = self._pagina_carregando_apos_credito()
+                etapa5_visivel = (
+                    False
+                    if (parar_no_modal_credito and carregando)
+                    else self._etapa5_pagamento_visivel(
+                        exigir_ui_pronta=parar_no_modal_credito
+                    )
+                )
                 modal_credito = self.page.query_selector('h2:has-text("Resultado da análise de crédito")')
                 negado_pagina = self._pagina_indica_credito_negado(pagina_texto)
+                if carregando and parar_no_modal_credito and poll_iteracao % 6 == 0:
+                    logger.info(
+                        "[PAP] [CRÉDITO] Etapa4: aguardando fim do loading (poll=%d, apis=%s)",
+                        poll_iteracao,
+                        sorted(self._credito_apis_pos_avancar),
+                    )
                 if parar_no_modal_credito and etapa5_visivel and not negado_pagina:
                     etapa5_apos_credito = True
                     logger.info(
@@ -4235,12 +4370,24 @@ class PAPNioAutomation:
                         return False, PAP_ERRO_PORTAL_NIO, None, None
                     pass
             if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
-                for extra in range(16):
+                for extra in range(60):
                     self.page.wait_for_timeout(500)
+                    if self._pagina_carregando_apos_credito():
+                        continue
                     pagina_extra = self._page_content_seguro(tentativas=2, pausa_ms=300).lower()
                     if self._pagina_indica_credito_negado(pagina_extra):
                         break
-                    if self._etapa5_pagamento_visivel():
+                    modal_extra = self.page.query_selector(
+                        'h2:has-text("Resultado da análise de crédito")'
+                    )
+                    if modal_extra and modal_extra.is_visible():
+                        modal_apareceu = True
+                        logger.info(
+                            "[PAP] [CRÉDITO] Etapa4: modal visível na fase extra (extra=%d)",
+                            extra + 1,
+                        )
+                        break
+                    if self._etapa5_pagamento_visivel(exigir_ui_pronta=True):
                         etapa5_apos_credito = True
                         logger.info(
                             "[PAP] [CRÉDITO] Etapa4: etapa pagamento detectada após poll "
@@ -4256,6 +4403,21 @@ class PAPNioAutomation:
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None, None
             pagina_texto = self._page_content_seguro().lower()
+            if parar_no_modal_credito and not modal_apareceu and etapa5_apos_credito:
+                self._aguardar_fim_carregamento_credito(timeout_ms=60000)
+                modal_tardio = self.page.query_selector(
+                    'h2:has-text("Resultado da análise de crédito")'
+                )
+                if modal_tardio and modal_tardio.is_visible():
+                    modal_apareceu = True
+                    logger.info("[PAP] [CRÉDITO] Etapa4: modal apareceu após aguardar fim do loading")
+                elif not self._etapa5_pagamento_visivel(exigir_ui_pronta=True):
+                    logger.warning(
+                        "[PAP] [CRÉDITO] Etapa4: etapa 5 não confirmada após loading; "
+                        "não concluir como aprovado. apis=%s",
+                        sorted(self._credito_apis_pos_avancar),
+                    )
+                    return False, MSG_CREDITO_SEM_TELA_RESULTADO, None, None
             if parar_no_modal_credito and not modal_apareceu and etapa5_apos_credito:
                 screenshot_b64 = None
                 try:
@@ -4360,7 +4522,7 @@ class PAPNioAutomation:
                     self.dados_pedido['celular_sec'] = celular_secundario
                 return True, f"Análise de crédito: APROVADO! ({resultado_credito})", resultado_credito, screenshot_b64
             # Etapa 5 visível sem modal (fluxo venda ou crédito já tratado acima)
-            if self._etapa5_pagamento_visivel():
+            if self._etapa5_pagamento_visivel(exigir_ui_pronta=parar_no_modal_credito):
                 if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
                     etapa5_apos_credito = True
                 if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
