@@ -584,7 +584,13 @@ class PAPNioAutomation:
             
             self.playwright = sync_playwright().start()
             playwright = self.playwright
-            launch_opts = {"headless": self.headless}
+            launch_opts: Dict[str, Any] = {"headless": self.headless}
+            if self.headless:
+                launch_opts["args"] = [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ]
             _sm = self.slow_mo
             if _sm is None and not self.headless:
                 _sm = 300  # pausa entre ações para visualizar cliques
@@ -596,11 +602,15 @@ class PAPNioAutomation:
             storage_state = self.storage_state_path if os.path.exists(self.storage_state_path) else None
             
             self.context = self.browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 # Altura maior: drawer de streaming tem Salvar no rodapé (abaixo da dobra em 800px).
                 viewport={"width": 1280, "height": 960},
                 storage_state=storage_state,
             )
+            if self.headless:
+                self.context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+                )
             
             self.page = self.context.new_page()
             # Timeout padrão alto para evitar "Timeout 5000ms" em produção (rede/React lentos)
@@ -1139,16 +1149,9 @@ class PAPNioAutomation:
                 ctype = (response.headers.get("content-type") or "").lower()
                 if "json" not in ctype:
                     return
-                url = (response.url or "").lower()
-                hints = (
-                    "vendedor", "seller", "consultor", "matricula", "matrícula",
-                    "colaborador", "autocomplete", "search", "pdv", "tt",
-                )
                 body = response.json()
                 mats = self._extrair_matriculas_de_json_recursivo(body)
                 if not mats:
-                    return
-                if len(mats) == 1 and not any(h in url for h in hints):
                     return
                 novas = 0
                 for mat in mats:
@@ -1159,7 +1162,7 @@ class PAPNioAutomation:
                     logger.info(
                         "[PAP] API vendedores: +%s matrícula(s) (%s)",
                         novas,
-                        url[:100],
+                        (response.url or "")[:100],
                     )
             except Exception:
                 pass

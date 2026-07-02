@@ -795,37 +795,36 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 forcar_recarga=True,
                 paciente=True,
             )
+
+        usar_pool_osab = False
         if not matriculas_pap:
             automacao._capture_screenshot_falha_etapa1(
                 "01_err_lista_vendedores_vazia",
                 wait_selector=None,
                 wait_timeout_ms=0,
             )
-            automacao._fechar_sessao()
-            liberar_bo(bo_usuario.id, telefone)
-            _marcar_hist(False, "Lista de vendedores do PAP vazia")
-            WhatsAppService().enviar_mensagem_texto(
-                telefone,
-                "❌ Não foi possível carregar os vendedores deste PDV no PAP.\n\n"
-                "Digite *CRÉDITO* para tentar novamente.",
+            logger.warning(
+                "[CRÉDITO] Dropdown vazio após 3 tentativas — fallback seleção direta (pool OSAB)"
             )
-            _resetar_sessao_credito(telefone)
-            return
-
-        candidatos_pap = list(matriculas_pap)
-        max_tentativas_tt = min(max(5, len(candidatos_pap)), 10)
-        logger.info(
-            "[CRÉDITO] Vendedores no PAP deste PDV: %s matrícula(s) — amostra: %s",
-            len(candidatos_pap),
-            candidatos_pap[:8],
-        )
+            usar_pool_osab = True
+            candidatos_pap: list = []
+            max_tentativas_tt = 8
+        else:
+            candidatos_pap = list(matriculas_pap)
+            max_tentativas_tt = min(max(5, len(candidatos_pap)), 10)
+            logger.info(
+                "[CRÉDITO] Vendedores no PAP deste PDV: %s matrícula(s) — amostra: %s",
+                len(candidatos_pap),
+                candidatos_pap[:8],
+            )
 
         for tentativa_tt in range(1, max_tentativas_tt + 1):
-            cache_pap = automacao.obter_cache_matriculas_pap_dropdown()
-            if cache_pap:
-                candidatos_pap = cache_pap
+            if not usar_pool_osab:
+                cache_pap = automacao.obter_cache_matriculas_pap_dropdown()
+                if cache_pap:
+                    candidatos_pap = cache_pap
             matricula_pedido = _run_orm_returning(
-                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=list(candidatos_pap): obter_matricula_tt_para_credito_pap(
+                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=None if usar_pool_osab else list(candidatos_pap): obter_matricula_tt_para_credito_pap(
                     fb,
                     excluir=ex,
                     candidatos=cand,
