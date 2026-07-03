@@ -500,7 +500,7 @@ STATIC_CACHE_MAX_AGE = config('STATIC_CACHE_MAX_AGE', default=86400, cast=int)
 # Rate limit folha de comissionamento (por usuário)
 FOLHA_COMISSAO_RATE_LIMIT = config('FOLHA_COMISSAO_RATE_LIMIT', default=6, cast=int)
 FOLHA_COMISSAO_RATE_PERIOD = config('FOLHA_COMISSAO_RATE_PERIOD', default=60, cast=int)
-FOLHA_COMISSAO_TIMEOUT_SECONDS = config('FOLHA_COMISSAO_TIMEOUT_SECONDS', default=90, cast=int)
+FOLHA_COMISSAO_TIMEOUT_SECONDS = config('FOLHA_COMISSAO_TIMEOUT_SECONDS', default=180, cast=int)
 
 # PAP dedicado: web enfileira jobs; serviço pap consome (fila PostgreSQL, sem Redis)
 PAP_USE_DEDICATED_WORKER = config(

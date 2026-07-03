@@ -4159,6 +4159,8 @@ class FolhaComissionamentoView(APIView):
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
         use_effective_date = not is_member(request.user, grupos_gestao)
 
+        from crm_app.services.folha_comissionamento_cache import obter_folha_cacheada
+
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 calcular_folha_mes_com_cache,
@@ -4170,6 +4172,10 @@ class FolhaComissionamentoView(APIView):
             try:
                 dados = future.result(timeout=timeout_s)
             except FuturesTimeoutError:
+                # Cálculo pode ter terminado no worker e gravado o cache no limite do timeout.
+                cached = obter_folha_cacheada(ano, mes, vendedor_id, use_effective_date)
+                if cached is not None:
+                    return Response(cached)
                 return Response(
                     {
                         'erro': (

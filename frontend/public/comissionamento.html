@@ -613,19 +613,25 @@
             initExtratoFiltros(container);
         }
 
-        async function carregarFolhaExcel() {
+        async function carregarFolhaExcel(tentativa = 0) {
             const container = document.getElementById('folha-excel-container');
             const selVendedor = document.getElementById('folha-excel-vendedor');
             const selMulti = document.getElementById('folha-excel-vendedores-multi');
             if (!container) return;
             const mes = document.getElementById('filtro-mes').value;
             const ano = document.getElementById('filtro-ano').value;
-            container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Carregando folha...</p></div>';
+            const msgLoad = tentativa > 0
+                ? 'Folha pronta no cache — recarregando...'
+                : 'Carregando folha (primeira carga do mês pode levar até 1–2 min)...';
+            container.innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">${msgLoad}</p></div>`;
             if (selVendedor) selVendedor.innerHTML = '<option value="">— Selecione —</option>';
             if (selMulti) selMulti.innerHTML = '';
             try {
-                const res = await axios.get(`/api/crm/comissionamento/folha/?ano=${ano}&mes=${mes}`);
+                const res = await axios.get(`/api/crm/comissionamento/folha/?ano=${ano}&mes=${mes}`, { timeout: 180000 });
                 const dados = res.data;
+                if (dados && dados.erro) {
+                    throw Object.assign(new Error(dados.erro), { response: { data: dados, status: 503 } });
+                }
                 folhaExcelCache = { dados, periodo: dados.periodo || `${mes}/${ano}` };
 
                 if (!dados.vendedores || !dados.vendedores.length) {
@@ -664,7 +670,16 @@
                 }
                 renderizarCardFolhaVendedor();
             } catch (err) {
-                container.innerHTML = `<div class="alert alert-danger">Erro ao carregar folha: ${err.message || err.response?.data?.error || 'Erro de rede'}</div>`;
+                const data = err.response?.data || {};
+                const status = err.response?.status;
+                const retryEm = data.retry_after_seconds || 15;
+                if ((status === 503 || data.retry_after_seconds) && tentativa < 2) {
+                    container.innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Gerando folha em segundo plano... nova tentativa em ${retryEm}s</p></div>`;
+                    await new Promise(r => setTimeout(r, retryEm * 1000));
+                    return carregarFolhaExcel(tentativa + 1);
+                }
+                const msg = data.erro || data.error || err.message || 'Erro de rede';
+                container.innerHTML = `<div class="alert alert-danger">Erro ao carregar folha: ${msg}</div>`;
             }
         }
 

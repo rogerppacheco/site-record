@@ -139,14 +139,16 @@ def carregar_valores_adiantamento_esteira_lancamentos(vendedor_id: int | None = 
     return mapa
 
 
-def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
+def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave, matriz_cache=None):
     """Valor por venda: matriz faixa×plano → colunas legadas → comissao_base."""
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
     tipo = tipo_cliente_comissao(venda)
     if venda.plano and faixa_adiantamento:
-        v_matriz = get_valor_faixa_plano(faixa_adiantamento, venda.plano, tipo)
+        v_matriz = get_valor_faixa_plano(
+            faixa_adiantamento, venda.plano, tipo, matriz_cache=matriz_cache,
+        )
         if v_matriz is not None:
             return v_matriz
     if faixa_adiantamento and chave:
@@ -165,6 +167,7 @@ def valor_adiantamento_exibicao_folha(
     origem=None,
     complemento_sabado: float | None = None,
     valores_esteira_lancamento: dict[int, float] | None = None,
+    matriz_cache=None,
 ):
     """
     Valor de comissão antecipada na folha/extrato.
@@ -192,7 +195,9 @@ def valor_adiantamento_exibicao_folha(
             val_lanc = valores_esteira_lancamento.get(int(vid))
             if val_lanc is not None and float(val_lanc) > 0:
                 return float(val_lanc)
-    return valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
+    return valor_comissao_tabela_adiantamento(
+        venda, faixa_adiantamento, chave, matriz_cache=matriz_cache,
+    )
 
 
 def data_instalacao_efetiva_folha(venda):
@@ -433,7 +438,9 @@ def valor_comissao_linha_extrato(
         base = 'antecipada' if comissao_ja_adiantada_venda(venda) else 'referencia'
         return val, label_tipo_comissao_extrato(base, origem), base
 
-    tabela = valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave)
+    tabela = valor_comissao_tabela_adiantamento(
+        venda, faixa_adiantamento, chave, matriz_cache=matriz_cache,
+    )
     val_adiant = valor_adiantamento_exibicao_folha(
         venda,
         faixa_adiantamento,
@@ -441,6 +448,7 @@ def valor_comissao_linha_extrato(
         origem,
         complemento_sabado=complemento_sabado,
         valores_esteira_lancamento=valores_esteira_lancamento,
+        matriz_cache=matriz_cache,
     )
 
     if churn_m1:
@@ -640,9 +648,99 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
     vendas_bulk_m0 = _agrupar_vendas_folha_bulk(consultor_ids, data_inicio, data_fim)
     vendas_bulk_m1 = _agrupar_vendas_folha_bulk(consultor_ids, data_inicio_ant, data_fim_ant)
     lancamentos_bulk = _agrupar_lancamentos_bulk(consultor_ids, data_inicio, data_fim)
-    from crm_app.services.adiantamento_sabado_service import carregar_valores_pago_sabado_lancamentos
+    from crm_app.services.adiantamento_sabado_service import (
+        carregar_valores_pago_sabado_lancamentos,
+        comissao_ja_adiantada_venda,
+        calcular_complemento_adiantamento_sabado_folha,
+        valor_pago_adiantamento_sabado_venda,
+        venda_entra_estorno_adiantamento_sabado_mes,
+        venda_elegivel_estorno_adiantamento_sabado,
+        motivo_estorno_adiantamento_sabado,
+    )
 
     valores_pago_sabado_global = carregar_valores_pago_sabado_lancamentos()
+    # Uma query para todos os vendedores (mapa venda_id → valor).
+    valores_esteira_global = carregar_valores_adiantamento_esteira_lancamentos()
+
+    # Faixas de adiantamento por perfil (2–3 queries no total, não por consultor).
+    faixas_adiant_por_perfil: dict[str, object] = {}
+    for perfil_nome in ('Vendedor', 'Supervisor'):
+        faixas_adiant_por_perfil[perfil_nome] = carregar_faixa_adiantamento_regras_faixa(
+            perfil=perfil_nome,
+        )
+    faixa_adiant_fallback = RegraComissaoFaixa.objects.filter(
+        finalidade='COMISSAO',
+    ).order_by('id').first()
+
+    # Estornos/alertas de adiantamento sábado em bulk.
+    descontos_sab_bulk: dict[int, list] = defaultdict(list)
+    alertas_sab_bulk: dict[int, list] = defaultdict(list)
+    di_sab = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+    df_sab = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    if di_sab and df_sab and consultor_ids:
+        vendas_sab_qs = (
+            Venda.objects.filter(
+                vendedor_id__in=consultor_ids,
+                ativo=True,
+                adiantamento_sabado_marcado=True,
+                flag_desc_adiantamento_sabado=False,
+                adiantamento_sabado_quitado_em__isnull=True,
+            )
+            .exclude(adiantamento_sabado_valor__isnull=True)
+            .exclude(adiantamento_sabado_valor=0)
+            .select_related('status_esteira', 'cliente')
+        )
+        for v_sab in vendas_sab_qs:
+            if venda_entra_estorno_adiantamento_sabado_mes(v_sab, di_sab, df_sab):
+                val_sab = valor_pago_adiantamento_sabado_venda(v_sab, valores_pago_sabado_global)
+                if val_sab > 0:
+                    descontos_sab_bulk[v_sab.vendedor_id].append({
+                        'venda_id': v_sab.id,
+                        'valor': val_sab,
+                        'motivo': motivo_estorno_adiantamento_sabado(v_sab),
+                    })
+            elif (
+                getattr(v_sab, 'data_abertura', None) is None
+                and venda_elegivel_estorno_adiantamento_sabado(v_sab)
+            ):
+                alertas_sab_bulk[v_sab.vendedor_id].append({
+                    'tipo': 'adiantamento_sabado_sem_data_abertura',
+                    'venda_id': v_sab.id,
+                    'os': v_sab.ordem_servico or '',
+                    'nome': (
+                        (v_sab.cliente.nome_razao_social or '')[:80]
+                        if getattr(v_sab, 'cliente', None)
+                        else ''
+                    ),
+                    'situacao': (
+                        (v_sab.status_esteira.nome or '')
+                        if v_sab.status_esteira
+                        else ''
+                    ),
+                    'mensagem': (
+                        'Venda com adiantamento sábado sem data de abertura da O.S. '
+                        '— corrija no cadastro para o estorno entrar na folha.'
+                    ),
+                })
+
+    # Extrato: vendas do mês com status diferente de INSTALADA (1 query para todos).
+    vendas_outros_bulk: dict[int, list] = defaultdict(list)
+    if consultor_ids:
+        for v_out in (
+            Venda.objects.filter(
+                vendedor_id__in=consultor_ids,
+                ativo=True,
+                data_criacao__gte=data_inicio,
+                data_criacao__lt=data_fim,
+            )
+            .exclude(status_esteira__nome__iexact='INSTALADA')
+            .select_related(
+                'plano', 'cliente', 'forma_pagamento',
+                'status_esteira', 'status_tratamento',
+            )
+            .order_by('vendedor_id', 'data_criacao', 'id')
+        ):
+            vendas_outros_bulk[v_out.vendedor_id].append(v_out)
 
     resultado = []
     for consultor in consultores:
@@ -651,7 +749,6 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         config = configs.get(consultor.id)
         # Adiant. Comissão = Sim na esteira: não entra em QTD A PAGAR nem na comissão do mês (já adiantada).
-        from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
 
         set_adiant_comissao_esteira = {v.id for v in vendas if comissao_ja_adiantada_venda(v)}
         vendas_para_pagar = [v for v in vendas if v.id not in set_adiant_comissao_esteira]
@@ -660,13 +757,11 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         # Faixa pela produção total instalada no mês (antecipadas + a pagar), conforme regra de negócio.
         faixa_regra = encontrar_faixa(consultor, qtd_total_instalada)
         usar_manual = config and config.usar_valor_manual
-        faixa_adiantamento = carregar_faixa_adiantamento_regras_faixa(consultor, config)
-        valores_esteira_lanc = carregar_valores_adiantamento_esteira_lancamentos(consultor.id)
-
-        from crm_app.services.adiantamento_sabado_service import (
-            calcular_complemento_adiantamento_sabado_folha,
-            valor_pago_adiantamento_sabado_venda,
+        perfil_consultor = _perfil_comissao_do_consultor(consultor, config)
+        faixa_adiantamento = (
+            faixas_adiant_por_perfil.get(perfil_consultor) or faixa_adiant_fallback
         )
+        valores_esteira_lanc = valores_esteira_global
 
         valores_pago_sabado_lanc = valores_pago_sabado_global
         resumo_complemento_sab = calcular_complemento_adiantamento_sabado_folha(
@@ -675,6 +770,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             config=config,
             usar_manual=bool(usar_manual),
             valores_lancamento=valores_pago_sabado_lanc,
+            matriz_cache=matriz_cache,
         )
         complemento_por_venda = resumo_complemento_sab.get('por_venda') or {}
         complemento_sabado_total = Decimal(str(resumo_complemento_sab.get('total_complemento') or 0))
@@ -734,6 +830,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     o_ant,
                     complemento_sabado=comp_v,
                     valores_esteira_lancamento=valores_esteira_lanc,
+                    matriz_cache=matriz_cache,
                 )
                 if chave:
                     por_plano[chave]['qtd_antecipada'] += 1
@@ -997,15 +1094,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             )
 
         # Adiantamento sábado: estorno na folha do mês da abertura da O.S. (safra).
-        from crm_app.services.adiantamento_sabado_service import (
-            calcular_descontos_adiantamento_sabado_folha,
-            coletar_vendas_adiantamento_sabado_sem_data_abertura,
-        )
-
-        descontos_sab = calcular_descontos_adiantamento_sabado_folha(consultor, data_inicio, data_fim)
-        alertas_folha = coletar_vendas_adiantamento_sabado_sem_data_abertura(
-            consultor, data_inicio, data_fim
-        )
+        descontos_sab = descontos_sab_bulk.get(consultor.id, [])
+        alertas_folha = alertas_sab_bulk.get(consultor.id, [])
         valor_sab_cancel = Decimal('0')
         qtd_sab_cancel = 0
         motivos_sab = {}
@@ -1173,18 +1263,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             })
         # Após a listagem de instaladas (como já existe hoje), incluir também as vendas
         # criadas no mês com status diferente de INSTALADA.
-        vendas_criadas_mes_outros_status = (
-            Venda.objects.filter(
-                vendedor=consultor,
-                ativo=True,
-                data_criacao__gte=data_inicio,
-                data_criacao__lt=data_fim,
-            )
-            .exclude(status_esteira__nome__iexact='INSTALADA')
-            .select_related('plano', 'cliente', 'forma_pagamento', 'status_esteira', 'status_tratamento')
-            .order_by('data_criacao', 'id')
-        )
-        for v in vendas_criadas_mes_outros_status:
+        for v in vendas_outros_bulk.get(consultor.id, []):
             campos = _campos_extrato_mei(v)
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             status_nome = (
