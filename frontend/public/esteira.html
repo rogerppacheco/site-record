@@ -2723,6 +2723,15 @@
             return !['INSTALADAS', 'VENDAS_TOTAIS', 'GESTAO_APROVEITAMENTO', 'CHURN_TRATAMENTO'].includes(filtroAtual);
         }
 
+        function ehAbaDataEsteira(status) {
+            return /^\d{4}-\d{2}-\d{2}$/.test(status || filtroAtual);
+        }
+
+        function deveExibirAbasDeDataEsteira(status) {
+            const s = status || filtroAtual;
+            return s === 'TODOS' || s === 'PENDEN' || s === 'AGENDADO' || ehAbaDataEsteira(s);
+        }
+
         async function obterAuxiliaresEsteira() {
             if (_cacheAuxEsteira) return _cacheAuxEsteira;
             const [statusRes, motivosRes, usuariosRes] = await Promise.all([
@@ -2748,7 +2757,7 @@
                     pendentes: data.pendentes || 0,
                     datas: data.datas || {},
                 });
-                if (usaPaginacaoServerEsteira() && filtroAtual !== 'AGENDADO') {
+                if (deveExibirAbasDeDataEsteira()) {
                     gerarAbasDeData([], data.datas || {});
                 }
             } catch (e) {
@@ -2977,19 +2986,23 @@
 
                 if (paginacaoServer) {
                     if (esteiraContadores) {
-                        gerarAbasDeData([], esteiraContadores.datas || {});
                         atualizarContadoresAbas({
                             todos: esteiraContadores.todos || 0,
                             pendentes: esteiraContadores.pendentes || 0,
                             datas: esteiraContadores.datas || {},
                         });
+                        if (deveExibirAbasDeDataEsteira()) {
+                            gerarAbasDeData([], esteiraContadores.datas || {});
+                        }
                     }
-                } else if (!carregarInstaladas) {
+                } else if (!carregarInstaladas && !carregarVendasTotais) {
                     const contadores = calcularContadores(vendas);
-                    gerarAbasDeData(vendas, contadores.datas);
                     atualizarContadoresAbas(contadores);
+                    if (deveExibirAbasDeDataEsteira()) {
+                        gerarAbasDeData(vendas, contadores.datas);
+                    }
                 } else {
-                    document.getElementById('filtro-turno-container').style.display = 'none';
+                    atualizarFiltroTurnoEsteira(false);
                 }
 
                 // Filtragem por aba — servidor já filtra nas abas paginadas
@@ -3359,34 +3372,55 @@
 
         function gerarAbasDeData(todasVendas, contagemDatas = {}) {
             const ul = document.getElementById('abas-esteira');
+            if (!ul) return;
             // Manter abas fixas e remover só as abas de data
             while (ul.children.length > totalAbasFixas) { ul.removeChild(ul.lastChild); }
-            const datasUnicas = new Set();
-            todasVendas.forEach(v => {
-                if (v.data_agendamento && v.status_esteira_obj && v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO')) {
+
+            // Preferir datas do endpoint de contadores (paginação server-side);
+            // fallback: extrair das vendas carregadas (abas legadas).
+            const datasUnicas = new Set(Object.keys(contagemDatas || {}));
+            (todasVendas || []).forEach(v => {
+                const statusNome = (v.status_esteira_obj && v.status_esteira_obj.nome)
+                    ? String(v.status_esteira_obj.nome).toUpperCase()
+                    : String(v.status_esteira_nome || '').toUpperCase();
+                if (v.data_agendamento && statusNome.includes('AGENDADO')) {
                     datasUnicas.add(v.data_agendamento);
                 }
             });
+
             Array.from(datasUnicas).sort().forEach(dataIso => {
-                const partes = dataIso.split('-');
+                const partes = String(dataIso).split('-');
+                if (partes.length < 3) return;
                 const dataExibicao = `${partes[2]}/${partes[1]}`;
                 const contadorDia = contagemDatas[dataIso] || 0;
                 const li = document.createElement('li'); li.className = 'nav-item';
-                const a = document.createElement('a'); a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
-                a.href = '#'; a.setAttribute('data-tab', dataIso); a.textContent = `${dataExibicao} (${contadorDia})`; 
+                const a = document.createElement('a');
+                a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
+                a.href = '#';
+                a.setAttribute('data-tab', dataIso);
+                a.textContent = `${dataExibicao} (${contadorDia})`;
                 a.onclick = (e) => { e.preventDefault(); filtrarStatus(dataIso, a); };
                 li.appendChild(a); ul.appendChild(li);
             });
-            var ehAbaData = /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual);
-            var containerTurno = document.getElementById('filtro-turno-container');
-            if (containerTurno) containerTurno.style.display = ehAbaData ? 'block' : 'none';
-            if (!ehAbaData) filtroTurnoAtual = '';
+
+            atualizarFiltroTurnoEsteira(ehAbaDataEsteira(filtroAtual));
+        }
+
+        function atualizarFiltroTurnoEsteira(exibir) {
+            const containerTurno = document.getElementById('filtro-turno-container');
+            if (containerTurno) containerTurno.style.display = exibir ? 'block' : 'none';
+            if (!exibir) filtroTurnoAtual = '';
             document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
-                btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
+                btn.classList.remove('active', 'btn-primary');
+                btn.classList.add('btn-outline-secondary');
             });
-            if (filtroTurnoAtual === 'MANHA') { var b = document.getElementById('btn-turno-manha'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
-            else if (filtroTurnoAtual === 'TARDE') { var b = document.getElementById('btn-turno-tarde'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
-            else { var b = document.getElementById('btn-turno-todos'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+            let btnAtivo = document.getElementById('btn-turno-todos');
+            if (exibir && filtroTurnoAtual === 'MANHA') btnAtivo = document.getElementById('btn-turno-manha');
+            else if (exibir && filtroTurnoAtual === 'TARDE') btnAtivo = document.getElementById('btn-turno-tarde');
+            if (btnAtivo) {
+                btnAtivo.classList.add('active', 'btn-primary');
+                btnAtivo.classList.remove('btn-outline-secondary');
+            }
         }
 
         function filtrarTurno(turno, element) {
@@ -3906,20 +3940,32 @@
             if (usaPaginacaoServerEsteira()) esteiraPaginaAtual = 1;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
+            function limparAbasDeDataEsteira() {
+                const ul = document.getElementById('abas-esteira');
+                if (!ul) return;
+                while (ul.children.length > totalAbasFixas) ul.removeChild(ul.lastChild);
+            }
+
+            function restaurarAbasDeDataEsteira() {
+                if (esteiraContadores && esteiraContadores.datas) {
+                    gerarAbasDeData([], esteiraContadores.datas);
+                }
+            }
+
             if (status === 'INSTALADAS') {
                 sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
-                document.getElementById('filtro-turno-container').style.display = 'none';
+                atualizarFiltroTurnoEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'block';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
                 sincronizarPainelFiltrosPrincipalAba('instaladas');
                 var pa = document.getElementById('painel-instaladas-antecipacao');
                 if (pa) pa.style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                limparAbasDeDataEsteira();
                 var tb = document.getElementById('tabela-esteira-body');
                 tb.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
@@ -3930,14 +3976,14 @@
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
-                document.getElementById('filtro-turno-container').style.display = 'none';
+                atualizarFiltroTurnoEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'block';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
                 sincronizarPainelFiltrosPrincipalAba('agendados');
                 var paAg = document.getElementById('painel-instaladas-antecipacao');
                 if (paAg) paAg.style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                restaurarAbasDeDataEsteira();
                 carregarVendas();
                 return;
             }
@@ -3946,14 +3992,14 @@
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 sincronizarToolbarEFiltrosColunas();
-                document.getElementById('filtro-turno-container').style.display = 'none';
+                atualizarFiltroTurnoEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'block';
                 sincronizarPainelFiltrosPrincipalAba('vendas_totais');
                 var paTot = document.getElementById('painel-instaladas-antecipacao');
                 if (paTot) paTot.style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                limparAbasDeDataEsteira();
                 const tbTot = document.getElementById('tabela-esteira-body');
                 tbTot.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 sincronizarVisaoGestaoAproveitamento(false);
@@ -3964,13 +4010,11 @@
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarVisaoChurnTratamento(false);
                 sincronizarToolbarEFiltrosColunas();
-                document.getElementById('filtro-turno-container').style.display = 'none';
+                atualizarFiltroTurnoEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) {
-                    document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
-                }
+                limparAbasDeDataEsteira();
                 sincronizarVisaoGestaoAproveitamento(true);
                 popularFiltroGestaoAproveitamento();
                 carregarGestaoAproveitamento();
@@ -3981,19 +4025,18 @@
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarVisaoGestaoAproveitamento(false);
                 sincronizarToolbarEFiltrosColunas();
-                document.getElementById('filtro-turno-container').style.display = 'none';
+                atualizarFiltroTurnoEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) {
-                    document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
-                }
+                limparAbasDeDataEsteira();
                 sincronizarVisaoChurnTratamento(true);
                 churnTratamentoPagina = 1;
                 popularFiltroChurnTratamento();
                 carregarChurnTratamento();
                 return;
             }
+            // TODOS, PENDEN ou aba de data (YYYY-MM-DD)
             sincronizarVisaoChurnTratamento(false);
             sincronizarVisaoGestaoAproveitamento(false);
             sincronizarToolbarEFiltrosColunas();
@@ -4002,7 +4045,8 @@
             document.getElementById('painel-busca-vendas-totais').style.display = 'none';
             if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
             if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
-            if (statusAnterior === 'GESTAO_APROVEITAMENTO') { /* noop */ }
+            atualizarFiltroTurnoEsteira(ehAbaDataEsteira(status));
+            restaurarAbasDeDataEsteira();
             carregarVendas();
         }
 
