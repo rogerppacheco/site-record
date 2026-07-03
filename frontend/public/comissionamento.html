@@ -757,7 +757,7 @@
             if (!btn) return;
             const origText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Gerando...';
             try {
                 const res = await axios.post(
                     `${apiUrl}exportar-folha-extrato-pdf/`,
@@ -767,7 +767,7 @@
                         ano: parseInt(ano, 10),
                         mes: parseInt(mes, 10)
                     },
-                    { responseType: 'blob' }
+                    { responseType: 'blob', timeout: 120000 }
                 );
                 const cd = res.headers['content-disposition'] || '';
                 let filename = nomeArquivoPdfExportFallback(mes, idsEnvio);

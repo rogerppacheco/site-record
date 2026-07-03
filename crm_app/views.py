@@ -6745,6 +6745,39 @@ def enviar_comissao_whatsapp(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def _obter_folha_exportacao(request, ano: int, mes: int, ids_envio: list[int] | None = None) -> dict:
+    """
+    Folha para PDF/Excel/WhatsApp: reaproveita o cache da aba Folha.
+    Se a folha completa não estiver em cache e houver um único vendedor, calcula só ele.
+    """
+    from crm_app.services.folha_comissionamento_cache import (
+        calcular_folha_mes_com_cache,
+        obter_folha_cacheada,
+    )
+
+    grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+    use_effective = not is_member(request.user, grupos_gestao)
+
+    cached_all = obter_folha_cacheada(ano, mes, None, use_effective)
+    if cached_all is not None:
+        return cached_all
+
+    ids = ids_envio or []
+    if len(ids) == 1:
+        return calcular_folha_mes_com_cache(
+            ano,
+            mes,
+            ids[0],
+            use_effective_date_for_display=use_effective,
+        )
+    return calcular_folha_mes_com_cache(
+        ano,
+        mes,
+        None,
+        use_effective_date_for_display=use_effective,
+    )
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def enviar_folha_extrato_whatsapp(request):
@@ -6786,8 +6819,7 @@ def enviar_folha_extrato_whatsapp(request):
         User = get_user_model()
         consultores = {u.id: u for u in User.objects.filter(id__in=ids_envio)}
 
-        from .comissao_folha_service import calcular_folha_mes
-        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        folha = _obter_folha_exportacao(request, ano, mes, ids_envio)
         map_folha = {int(x.get('vendedor_id')): x for x in folha.get('vendedores', []) if x.get('vendedor_id') is not None}
         periodo = folha.get('periodo', f"{mes:02d}/{ano}")
         svc = WhatsAppService()
@@ -6912,10 +6944,9 @@ def exportar_folha_extrato_pdf(request):
         User = get_user_model()
         consultores = {u.id: u for u in User.objects.filter(id__in=ids_envio)}
 
-        from .comissao_folha_service import calcular_folha_mes
         from crm_app.comissao_folha_whatsapp_pdf import montar_html_folha_e_extrato_pdf
 
-        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        folha = _obter_folha_exportacao(request, ano, mes, ids_envio)
         map_folha = {
             int(x.get('vendedor_id')): x
             for x in folha.get('vendedores', [])
@@ -7025,9 +7056,7 @@ def exportar_comissionamento_resumo_excel(request):
             )
         ano, mes = int(ano), int(mes)
 
-        from .comissao_folha_service import calcular_folha_mes
-
-        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        folha = _obter_folha_exportacao(request, ano, mes)
         vendedores = sorted(
             folha.get('vendedores', []),
             key=lambda x: (x.get('vendedor_nome') or '').upper()
@@ -7183,10 +7212,9 @@ def exportar_comissionamento_extrato_excel(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from .comissao_folha_service import calcular_folha_mes
         from crm_app.comissao_folha_excel import gerar_xlsx_extrato_comissao
 
-        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        folha = _obter_folha_exportacao(request, ano, mes, ids_envio)
         map_folha = {
             int(x.get('vendedor_id')): x
             for x in folha.get('vendedores', [])
