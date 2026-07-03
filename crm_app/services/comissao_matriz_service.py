@@ -3,10 +3,12 @@ Matriz de comissão: faixas (instaladas) × planos (colunas dinâmicas).
 """
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
+from django.db.utils import DatabaseError
 
 from crm_app.comissao_folha_service import _plano_nome_to_banda
 from crm_app.models import (
@@ -16,6 +18,8 @@ from crm_app.models import (
     RegraComissaoFaixa,
     RegraComissaoFaixaPlano,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MatrizComissaoCache:
@@ -28,13 +32,25 @@ class MatrizComissaoCache:
     @classmethod
     def carregar(cls, config_ids: list[int] | None = None) -> 'MatrizComissaoCache':
         inst = cls()
-        for row in RegraComissaoFaixaPlano.objects.all():
-            inst._faixa_plano[(row.faixa_id, row.plano_id)] = row
-        qs_manual = PlanoValoresComissaoVendedor.objects.all()
-        if config_ids:
-            qs_manual = qs_manual.filter(config_id__in=config_ids)
-        for row in qs_manual:
-            inst._manual_config[(row.config_id, row.plano_id)] = row
+        try:
+            for row in RegraComissaoFaixaPlano.objects.all():
+                inst._faixa_plano[(row.faixa_id, row.plano_id)] = row
+        except DatabaseError as exc:
+            logger.warning(
+                "[MATRIZ_CACHE] Matriz faixa×plano indisponível (%s) — fallback legado",
+                exc,
+            )
+        try:
+            qs_manual = PlanoValoresComissaoVendedor.objects.all()
+            if config_ids:
+                qs_manual = qs_manual.filter(config_id__in=config_ids)
+            for row in qs_manual:
+                inst._manual_config[(row.config_id, row.plano_id)] = row
+        except DatabaseError as exc:
+            logger.warning(
+                "[MATRIZ_CACHE] Valores manuais por plano indisponíveis (%s) — fallback legado",
+                exc,
+            )
         return inst
 
 

@@ -4180,6 +4180,21 @@ class FolhaComissionamentoView(APIView):
                     },
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
+            except Exception as exc:
+                logger.exception(
+                    'Erro ao calcular folha %02d/%d (vendedor_id=%s): %s',
+                    mes,
+                    ano,
+                    vendedor_id,
+                    exc,
+                )
+                return Response(
+                    {
+                        'erro': 'Falha ao calcular a folha de comissionamento. Tente novamente em instantes.',
+                        'detalhe': str(exc)[:300],
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         return Response(dados)
 
