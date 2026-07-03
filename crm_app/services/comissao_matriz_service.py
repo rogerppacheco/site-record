@@ -18,6 +18,26 @@ from crm_app.models import (
 )
 
 
+class MatrizComissaoCache:
+    """Cache em memória faixa×plano e manual×plano — evita .get() por venda na folha."""
+
+    def __init__(self) -> None:
+        self._faixa_plano: dict[tuple[int, int], RegraComissaoFaixaPlano] = {}
+        self._manual_config: dict[tuple[int, int], PlanoValoresComissaoVendedor] = {}
+
+    @classmethod
+    def carregar(cls, config_ids: list[int] | None = None) -> 'MatrizComissaoCache':
+        inst = cls()
+        for row in RegraComissaoFaixaPlano.objects.all():
+            inst._faixa_plano[(row.faixa_id, row.plano_id)] = row
+        qs_manual = PlanoValoresComissaoVendedor.objects.all()
+        if config_ids:
+            qs_manual = qs_manual.filter(config_id__in=config_ids)
+        for row in qs_manual:
+            inst._manual_config[(row.config_id, row.plano_id)] = row
+        return inst
+
+
 def _decimal_or_none(val: Any) -> Decimal | None:
     if val is None or val == '':
         return None
@@ -38,18 +58,24 @@ def get_valor_faixa_plano(
     faixa: RegraComissaoFaixa | None,
     plano: Plano | None,
     tipo_cliente: str,
+    matriz_cache: MatrizComissaoCache | None = None,
 ) -> float | None:
     """Valor na interseção faixa × plano; fallback nas colunas legadas 500/700/1GB."""
     if not faixa or not plano:
         return None
-    try:
-        row = RegraComissaoFaixaPlano.objects.get(faixa=faixa, plano=plano)
+    row: RegraComissaoFaixaPlano | None = None
+    if matriz_cache is not None:
+        row = matriz_cache._faixa_plano.get((faixa.id, plano.id))
+    else:
+        try:
+            row = RegraComissaoFaixaPlano.objects.get(faixa=faixa, plano=plano)
+        except RegraComissaoFaixaPlano.DoesNotExist:
+            row = None
+    if row is not None:
         if tipo_cliente == 'CPF' and row.valor_pap is not None:
             return float(row.valor_pap)
         if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None:
             return float(row.valor_cnpj)
-    except RegraComissaoFaixaPlano.DoesNotExist:
-        pass
     banda = _plano_nome_to_banda(plano.nome)
     if not banda:
         return None
@@ -65,12 +91,19 @@ def get_valor_manual_vendedor_plano(
     config: ConfigComissaoVendedor | None,
     plano: Plano | None,
     tipo_cliente: str,
+    matriz_cache: MatrizComissaoCache | None = None,
 ) -> float | None:
     if not config or not plano:
         return None
-    try:
-        row = PlanoValoresComissaoVendedor.objects.get(config=config, plano=plano)
-    except PlanoValoresComissaoVendedor.DoesNotExist:
+    row: PlanoValoresComissaoVendedor | None = None
+    if matriz_cache is not None:
+        row = matriz_cache._manual_config.get((config.id, plano.id))
+    else:
+        try:
+            row = PlanoValoresComissaoVendedor.objects.get(config=config, plano=plano)
+        except PlanoValoresComissaoVendedor.DoesNotExist:
+            row = None
+    if row is None:
         return None
     if tipo_cliente == 'CPF' and row.valor_pap is not None:
         return float(row.valor_pap)

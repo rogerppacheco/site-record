@@ -1016,6 +1016,13 @@
                         <tbody id="tabela-esteira-body"></tbody>
                     </table>
                 </div>
+                <div id="esteira-paginacao" class="d-flex justify-content-between align-items-center px-2 py-2 border-top bg-light small" style="display:none !important;">
+                    <span id="esteira-paginacao-info" class="text-muted"></span>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary" id="btn-esteira-pag-anterior" onclick="mudarPaginaEsteira(-1)">Anterior</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btn-esteira-pag-proxima" onclick="mudarPaginaEsteira(1)">Próxima</button>
+                    </div>
+                </div>
             </div>
             </div>
         </div>
@@ -1582,6 +1589,11 @@
 
         let filtroAtual = 'TODOS';
         let filtroTurnoAtual = '';
+        const ESTEIRA_PAGE_SIZE = 200;
+        let esteiraPaginaAtual = 1;
+        let esteiraPaginacaoMeta = { count: 0, totalPages: 1 };
+        let esteiraContadores = null;
+        let _cacheAuxEsteira = null;
         let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
@@ -1649,7 +1661,7 @@
             sincronizarVisaoGestaoAproveitamento(false);
             const btnLoteSab = document.getElementById('btn-adiant-sabado-lote');
             if (btnLoteSab && podeMarcarAdiantSabado) btnLoteSab.style.display = 'inline-flex';
-            carregarVendas();
+            carregarContadoresEsteira().finally(() => carregarVendas());
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
             popularFiltroVendedorAgendados();
@@ -2707,6 +2719,87 @@
             }
         }
 
+        function usaPaginacaoServerEsteira() {
+            return !['INSTALADAS', 'VENDAS_TOTAIS', 'GESTAO_APROVEITAMENTO', 'CHURN_TRATAMENTO'].includes(filtroAtual);
+        }
+
+        async function obterAuxiliaresEsteira() {
+            if (_cacheAuxEsteira) return _cacheAuxEsteira;
+            const [statusRes, motivosRes, usuariosRes] = await Promise.all([
+                apiFetch('/crm/status/?tipo=Esteira'),
+                apiFetch('/crm/motivos-pendencia/?page_size=1000'),
+                apiFetch('/usuarios/?page_size=1000&is_active=true'),
+            ]);
+            _cacheAuxEsteira = {
+                status: Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []),
+                motivos: Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []),
+                usuarios: Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []),
+            };
+            return _cacheAuxEsteira;
+        }
+
+        async function carregarContadoresEsteira() {
+            try {
+                const data = await apiFetch('/crm/vendas/esteira-contadores/');
+                if (!data) return;
+                esteiraContadores = data;
+                atualizarContadoresAbas({
+                    todos: data.todos || 0,
+                    pendentes: data.pendentes || 0,
+                    datas: data.datas || {},
+                });
+                if (usaPaginacaoServerEsteira() && filtroAtual !== 'AGENDADO') {
+                    gerarAbasDeData([], data.datas || {});
+                }
+            } catch (e) {
+                console.warn('Contadores da esteira indisponíveis', e);
+            }
+        }
+
+        function montarUrlEsteiraPrincipal(busca, timestamp) {
+            const params = new URLSearchParams();
+            params.set('flow', 'esteira');
+            params.set('page_size', String(ESTEIRA_PAGE_SIZE));
+            params.set('page', String(esteiraPaginaAtual));
+            params.set('_t', String(timestamp));
+            if (busca) params.set('search', busca);
+            if (filtroAtual === 'PENDEN') params.set('status', 'PENDEN');
+            else if (filtroAtual === 'AGENDADO') params.set('status', 'AGENDADO');
+            else if (/^\d{4}-\d{2}-\d{2}$/.test(filtroAtual)) {
+                params.set('status', 'AGENDADO');
+                params.set('data_agendamento_dia', filtroAtual);
+                if (filtroTurnoAtual) params.set('periodo_agendamento', filtroTurnoAtual);
+            }
+            return `/crm/vendas/?${params.toString()}`;
+        }
+
+        function renderPaginacaoEsteira() {
+            const bar = document.getElementById('esteira-paginacao');
+            const info = document.getElementById('esteira-paginacao-info');
+            const btnAnt = document.getElementById('btn-esteira-pag-anterior');
+            const btnProx = document.getElementById('btn-esteira-pag-proxima');
+            if (!bar) return;
+            if (!usaPaginacaoServerEsteira()) {
+                bar.style.display = 'none';
+                return;
+            }
+            bar.style.display = 'flex';
+            const total = esteiraPaginacaoMeta.count || 0;
+            const totalPages = esteiraPaginacaoMeta.totalPages || 1;
+            const ini = total ? ((esteiraPaginaAtual - 1) * ESTEIRA_PAGE_SIZE) + 1 : 0;
+            const fim = Math.min(esteiraPaginaAtual * ESTEIRA_PAGE_SIZE, total);
+            if (info) info.textContent = total ? `Exibindo ${ini}–${fim} de ${total} (página ${esteiraPaginaAtual}/${totalPages})` : 'Nenhum registro';
+            if (btnAnt) btnAnt.disabled = esteiraPaginaAtual <= 1;
+            if (btnProx) btnProx.disabled = esteiraPaginaAtual >= totalPages;
+        }
+
+        function mudarPaginaEsteira(delta) {
+            const nova = esteiraPaginaAtual + delta;
+            if (nova < 1 || nova > (esteiraPaginacaoMeta.totalPages || 1)) return;
+            esteiraPaginaAtual = nova;
+            carregarVendas();
+        }
+
         function calcularContadores(vendasLista) {
             const contagem = { todos: vendasLista.length, pendentes: 0, datas: {} };
             vendasLista.forEach(v => {
@@ -2785,22 +2878,14 @@
 
             try {
                 const timestamp = new Date().getTime();
-                // flow=esteira_instaladas: só retorna resultados com search (CPF ou O.S.) – qualquer data
-                let url = carregarInstaladas
-                    ? `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}`
-                    : `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
-                if (!carregarInstaladas && busca) url += `&search=${encodeURIComponent(busca)}`;
+                const paginacaoServer = usaPaginacaoServerEsteira();
+                let url;
                 if (carregarInstaladas) {
+                    url = `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}`;
                     if (busca) url += `&search=${encodeURIComponent(busca)}`;
                     if (filtroInstaladasAplicado.vendedor_id) url += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
                     if (filtroInstaladasAplicado.data_inicio) url += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
                     if (filtroInstaladasAplicado.data_fim) url += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
-                } else if (carregarAgendados) {
-                    if (busca) url += `&search=${encodeURIComponent(busca)}`;
-                    url += `&status=AGENDADO`;
-                    if (filtroAgendadosAplicado.vendedor_id) url += `&consultor_id=${encodeURIComponent(filtroAgendadosAplicado.vendedor_id)}`;
-                    if (filtroAgendadosAplicado.data_inicio) url += `&data_inicio=${encodeURIComponent(filtroAgendadosAplicado.data_inicio)}`;
-                    if (filtroAgendadosAplicado.data_fim) url += `&data_fim=${encodeURIComponent(filtroAgendadosAplicado.data_fim)}`;
                 } else if (carregarVendasTotais) {
                     url = `/crm/vendas/?flow=esteira_todas&view=geral&page_size=1000&_t=${timestamp}`;
                     if (busca) url += `&search=${encodeURIComponent(busca)}`;
@@ -2808,20 +2893,42 @@
                     if (filtroVendasTotaisAplicado.data_inicio) url += `&data_inicio=${encodeURIComponent(filtroVendasTotaisAplicado.data_inicio)}`;
                     if (filtroVendasTotaisAplicado.data_fim) url += `&data_fim=${encodeURIComponent(filtroVendasTotaisAplicado.data_fim)}`;
                     if (filtroVendasTotaisAplicado.tipo_data) url += `&data_tipo=${encodeURIComponent(filtroVendasTotaisAplicado.tipo_data)}`;
+                } else if (paginacaoServer) {
+                    url = montarUrlEsteiraPrincipal(busca, timestamp);
+                    if (carregarAgendados) {
+                        if (filtroAgendadosAplicado.vendedor_id) url += `&consultor_id=${encodeURIComponent(filtroAgendadosAplicado.vendedor_id)}`;
+                        if (filtroAgendadosAplicado.data_inicio) url += `&data_inicio=${encodeURIComponent(filtroAgendadosAplicado.data_inicio)}`;
+                        if (filtroAgendadosAplicado.data_fim) url += `&data_fim=${encodeURIComponent(filtroAgendadosAplicado.data_fim)}`;
+                    }
+                } else {
+                    url = `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
+                    if (busca) url += `&search=${encodeURIComponent(busca)}`;
                 }
 
-                // --- Carregamos Listas Auxiliares e vendas (todas as páginas da esteira) ---
-                const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
-                    buscarTodasPaginasEsteira(url),
-                    apiFetch('/crm/status/?tipo=Esteira'),
-                    apiFetch('/crm/motivos-pendencia/?page_size=1000'), 
-                    apiFetch('/usuarios/?page_size=1000&is_active=true') 
-                ]);
-                
+                const auxPromise = obterAuxiliaresEsteira();
+                let vendasRes;
+                if (paginacaoServer) {
+                    vendasRes = await Promise.all([apiFetch(url), auxPromise]).then(([v]) => v);
+                } else {
+                    const [vendasAll, aux] = await Promise.all([buscarTodasPaginasEsteira(url), auxPromise]);
+                    vendasRes = vendasAll;
+                    _cacheAuxEsteira = aux;
+                }
+
+                const aux = _cacheAuxEsteira || await auxPromise;
                 let vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes && vendasRes.results ? vendasRes.results : []);
-                const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []);
-                const motivosLista = Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []);
-                const usuariosLista = Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []);
+                if (paginacaoServer && vendasRes && !Array.isArray(vendasRes)) {
+                    const total = vendasRes.count || vendas.length;
+                    esteiraPaginacaoMeta = {
+                        count: total,
+                        totalPages: Math.max(1, Math.ceil(total / ESTEIRA_PAGE_SIZE)),
+                    };
+                } else {
+                    esteiraPaginacaoMeta = { count: vendas.length, totalPages: 1 };
+                }
+                const statusLista = aux.status || [];
+                const motivosLista = aux.motivos || [];
+                const usuariosLista = aux.usuarios || [];
                 if (carregarInstaladas) {
                     popularFiltroVendedorInstaladas(vendas);
                 }
@@ -2857,8 +2964,8 @@
                     return v;
                 });
 
-                // Filtros de Segurança (aba Instaladas: não excluir FECHADO, pois são vendas já instaladas)
-                if (!carregarInstaladas && !carregarVendasTotais) {
+                // Filtros de Segurança — no servidor para abas paginadas; client-side só em abas legadas
+                if (!paginacaoServer && !carregarInstaladas && !carregarVendasTotais) {
                     vendas = vendas.filter(v => {
                         const status = v.status_esteira_obj;
                         if (!status || !status.id) return true; 
@@ -2868,35 +2975,50 @@
                     });
                 }
 
-                const contadores = calcularContadores(vendas);
-                if (!carregarInstaladas) {
+                if (paginacaoServer) {
+                    if (esteiraContadores) {
+                        gerarAbasDeData([], esteiraContadores.datas || {});
+                        atualizarContadoresAbas({
+                            todos: esteiraContadores.todos || 0,
+                            pendentes: esteiraContadores.pendentes || 0,
+                            datas: esteiraContadores.datas || {},
+                        });
+                    }
+                } else if (!carregarInstaladas) {
+                    const contadores = calcularContadores(vendas);
                     gerarAbasDeData(vendas, contadores.datas);
                     atualizarContadoresAbas(contadores);
                 } else {
                     document.getElementById('filtro-turno-container').style.display = 'none';
                 }
 
-                // Filtragem por Aba (aba Instaladas: lista já vem só instaladas, sem subfiltro)
-                if (carregarInstaladas) {
-                    // Mantém todas; opcionalmente filtrar por busca (CPF/OS) já aplicado na URL
-                } else if (carregarVendasTotais) {
-                    // Mantém todas; filtros já aplicados na URL para Vendas Totais
-                } else if(filtroAtual === 'TODOS') {} 
-                else if (filtroAtual === 'AGENDADO') {
-                    vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO'));
-                }
-                else if (filtroAtual === 'PENDEN') {
-                    vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('PENDEN'));
-                }
-                else {
-                    vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
-                    if (filtroTurnoAtual === 'MANHA' || filtroTurnoAtual === 'TARDE') {
-                        vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
+                // Filtragem por aba — servidor já filtra nas abas paginadas
+                if (!paginacaoServer) {
+                    if (carregarInstaladas) {
+                        // Mantém todas
+                    } else if (carregarVendasTotais) {
+                        // Mantém todas
+                    } else if(filtroAtual === 'TODOS') {} 
+                    else if (filtroAtual === 'AGENDADO') {
+                        vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO'));
+                    }
+                    else if (filtroAtual === 'PENDEN') {
+                        vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('PENDEN'));
+                    }
+                    else {
+                        vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
+                        if (filtroTurnoAtual === 'MANHA' || filtroTurnoAtual === 'TARDE') {
+                            vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
+                        }
                     }
                 }
                 if (carregarInstaladas && contadorPrincipaisEl) contadorPrincipaisEl.textContent = `${vendas.length}`;
-                if (carregarAgendados && contadorAgendadosPrincipaisEl) contadorAgendadosPrincipaisEl.textContent = `${vendas.length}`;
+                if (carregarAgendados && contadorAgendadosPrincipaisEl) {
+                    const nAg = paginacaoServer ? (esteiraPaginacaoMeta.count || vendas.length) : vendas.length;
+                    contadorAgendadosPrincipaisEl.textContent = `${nAg}`;
+                }
                 if (carregarVendasTotais && contadorVendasTotaisPrincipaisEl) contadorVendasTotaisPrincipaisEl.textContent = `${vendas.length}`;
+                renderPaginacaoEsteira();
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
@@ -3269,6 +3391,7 @@
 
         function filtrarTurno(turno, element) {
             filtroTurnoAtual = turno || '';
+            esteiraPaginaAtual = 1;
             document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
                 btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
             });
@@ -3780,6 +3903,7 @@
                 return;
             }
             filtroAtual = status;
+            if (usaPaginacaoServerEsteira()) esteiraPaginaAtual = 1;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
             if (status === 'INSTALADAS') {
@@ -4073,8 +4197,8 @@
         async function salvarStatusNoBanco(id, payload) {
             registrarFocoProximoPedidoEsteira(id);
             const body = { ...payload, enviar_whatsapp: envioWhatsappAtivo };
-            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); carregarVendas(true); } 
-            catch(e) { alert('Erro ao atualizar status: ' + e.message); carregarVendas(true); }
+            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); carregarContadoresEsteira().finally(() => carregarVendas(true)); } 
+            catch(e) { alert('Erro ao atualizar status: ' + e.message); carregarContadoresEsteira().finally(() => carregarVendas(true)); }
         }
         
         function cancelarAcaoStatus() { modalAgendamento.hide(); modalInstalacao.hide(); modalPendencia.hide(); carregarVendas(true); }

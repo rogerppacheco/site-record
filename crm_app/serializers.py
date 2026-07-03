@@ -369,6 +369,49 @@ class VendaSerializer(serializers.ModelSerializer):
         doc = obj.cliente.cpf_cnpj if obj.cliente_id else ''
         return rotulo_classificacao_mei(classificacao_mei_venda(obj), documento=doc)
 
+
+class VendaListSerializer(VendaSerializer):
+    """Listagem enxuta — omite textos longos irrelevantes para tabelas (esteira, auditoria, comissão)."""
+
+    class Meta(VendaSerializer.Meta):
+        fields = [
+            f for f in VendaSerializer.Meta.fields
+            if f not in (
+                'observacoes',
+                'cliente_email',
+                'vendedor_obs_posso_antecipar',
+                'adiantamento_sabado_obs_manual',
+                'cliente_resposta_lembrete_instalacao',
+                'cliente_resposta_boas_vindas',
+                'boas_vindas_enviado_em',
+                'data_resposta_boas_vindas',
+            )
+        ]
+
+
+class VendaResumoAuditoriaSerializer(serializers.ModelSerializer):
+    """Campos mínimos para tabelas do resumo mensal de auditoria."""
+
+    cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social', read_only=True)
+    cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', read_only=True)
+    vendedor_nome = serializers.ReadOnlyField(source='vendedor.username')
+    plano_nome = serializers.CharField(source='plano.nome', read_only=True)
+    status_tratamento_nome = serializers.CharField(source='status_tratamento.nome', read_only=True)
+
+    class Meta:
+        model = Venda
+        fields = [
+            'id',
+            'data_criacao',
+            'data_confirmacao_auditoria',
+            'cliente_nome_razao_social',
+            'cliente_cpf_cnpj',
+            'vendedor_nome',
+            'plano_nome',
+            'status_tratamento_nome',
+        ]
+
+
 class VendaDetailSerializer(serializers.ModelSerializer):
     """
     Serializer COMPLETO para visualizar detalhes (retrieve/PUT)

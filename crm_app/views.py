@@ -624,7 +624,7 @@ from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
     StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
     RegraComissaoFaixaSerializer, ConfigComissaoVendedorSerializer,
-    VendaSerializer, VendaCreateSerializer, ClienteSerializer,
+    VendaSerializer, VendaListSerializer, VendaResumoAuditoriaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
     CicloPagamentoSerializer, VendaDetailSerializer,
     CampanhaSerializer, ComissaoOperadoraSerializer, ComunicadoSerializer,
@@ -1739,17 +1739,25 @@ class VendaViewSet(viewsets.ModelViewSet):
         return context
 
     def get_serializer_class(self):
-        if self.action == 'retrieve': return VendaDetailSerializer
-        if self.action == 'create': return VendaCreateSerializer
-        if self.action in ['update', 'partial_update']: return VendaUpdateSerializer
+        if self.action == 'retrieve':
+            return VendaDetailSerializer
+        if self.action == 'create':
+            return VendaCreateSerializer
+        if self.action in ['update', 'partial_update']:
+            return VendaUpdateSerializer
+        if self.action in ('list', 'pendentes_auditoria'):
+            return VendaListSerializer
         return VendaSerializer
 
     def get_queryset(self):
         queryset = Venda.objects.filter(ativo=True).select_related(
-            'vendedor', 'cliente', 'plano', 'forma_pagamento',
+            'vendedor', 'vendedor__perfil', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'motivo_pendencia', 'auditor_atual', 'editado_por'
         )
+
+        if self.action in ('list', 'pendentes_auditoria'):
+            queryset = queryset.defer('observacoes')
         
         # ✅ OTIMIZAÇÃO: Carrega histórico APENAS quando recuperando detalhes (retrieve)
         if self.action == 'retrieve':
@@ -1893,6 +1901,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(status_tratamento_id=int(status_tratamento_id))
         elif flow == 'esteira':
             queryset = queryset.filter(status_esteira__isnull=False, status_esteira__estado__iexact='ABERTO')
+            queryset = queryset.exclude(status_esteira__nome__icontains='CANCELAD')
         elif flow == 'esteira_todas':
             if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 return queryset.none()
@@ -1975,6 +1984,18 @@ class VendaViewSet(viewsets.ModelViewSet):
                         )
             except Exception:
                 pass
+
+        data_agendamento_dia = (self.request.query_params.get('data_agendamento_dia') or '').strip()
+        if data_agendamento_dia:
+            try:
+                dt_ag_dia = datetime.strptime(data_agendamento_dia, '%Y-%m-%d').date()
+                queryset = queryset.filter(data_agendamento=dt_ag_dia)
+            except ValueError:
+                pass
+
+        periodo_ag = (self.request.query_params.get('periodo_agendamento') or '').strip().upper()
+        if periodo_ag in ('MANHA', 'TARDE'):
+            queryset = queryset.filter(periodo_agendamento=periodo_ag)
 
         return queryset
     def update(self, request, *args, **kwargs):
@@ -2182,6 +2203,36 @@ class VendaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'], url_path='esteira-contadores')
+    def esteira_contadores(self, request):
+        """Contagens para abas da esteira sem carregar todas as vendas no cliente."""
+        request.GET._mutable = True
+        request.GET['flow'] = 'esteira'
+        if not request.GET.get('view'):
+            request.GET['view'] = 'geral'
+        request.GET._mutable = False
+        qs = self.filter_queryset(self.get_queryset())
+
+        total_todos = qs.count()
+        total_pendentes = qs.filter(status_esteira__nome__icontains='PENDEN').count()
+        datas_rows = (
+            qs.filter(status_esteira__nome__icontains='AGENDADO', data_agendamento__isnull=False)
+            .values('data_agendamento')
+            .annotate(count=Count('id'))
+            .order_by('data_agendamento')
+        )
+        datas = {
+            row['data_agendamento'].isoformat(): row['count']
+            for row in datas_rows
+            if row['data_agendamento']
+        }
+        return Response({
+            'todos': total_todos,
+            'pendentes': total_pendentes,
+            'agendados_total': sum(datas.values()),
+            'datas': datas,
+        })
+
     @action(detail=False, methods=['get'])
     def pendentes_auditoria(self, request):
         request.GET._mutable = True
@@ -2229,17 +2280,17 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         vendas_mes = qs.filter(
             data_criacao__date__gte=primeiro_dia,
-            data_criacao__date__lte=ultimo_dia
+            data_criacao__date__lte=ultimo_dia,
         ).order_by('-data_criacao')
 
         total_vendas_mes = vendas_mes.count()
+        vendas_mes_ids = list(vendas_mes.values_list('id', flat=True))
 
-        venda_ids_permitidos = list(qs.values_list('id', flat=True))
         envio_venda_ids = list(
             PapConfirmacaoCliente.objects.filter(
-                venda_id__in=venda_ids_permitidos,
+                venda_id__in=vendas_mes_ids,
                 criado_em__date__gte=primeiro_dia,
-                criado_em__date__lte=ultimo_dia
+                criado_em__date__lte=ultimo_dia,
             ).values_list('venda_id', flat=True).distinct()
         )
         total_envios_resumo = len(envio_venda_ids)
@@ -2248,66 +2299,62 @@ class VendaViewSet(viewsets.ModelViewSet):
         lista_confirmacoes = vendas_mes.filter(
             cliente_confirmou_auditoria=True,
             data_confirmacao_auditoria__date__gte=primeiro_dia,
-            data_confirmacao_auditoria__date__lte=ultimo_dia
+            data_confirmacao_auditoria__date__lte=ultimo_dia,
         ).order_by('-data_confirmacao_auditoria')
         total_confirmacoes = lista_confirmacoes.count()
 
-        # Lista por BO: username, tratou, enviou, confirmaram (mês atual)
-        vendas_mes_ids = list(vendas_mes.values_list('id', flat=True))
-        User = get_user_model()
-        user_ids_hist = HistoricoAlteracaoVenda.objects.filter(
-            venda_id__in=vendas_mes_ids,
-            data_alteracao__date__gte=primeiro_dia,
-            data_alteracao__date__lte=ultimo_dia,
-            usuario__isnull=False
-        ).values_list('usuario_id', flat=True).distinct()
-        user_ids_envio = PapConfirmacaoCliente.objects.filter(
-            venda_id__in=venda_ids_permitidos,
-            criado_em__date__gte=primeiro_dia,
-            criado_em__date__lte=ultimo_dia,
-            enviado_por_id__isnull=False
-        ).values_list('enviado_por_id', flat=True).distinct()
-        all_user_ids = list(set(user_ids_hist) | set(user_ids_envio))
-        lista_por_bo = []
-        for uid in all_user_ids:
-            user = User.objects.filter(pk=uid).first()
-            if not user:
-                continue
-            tratou = HistoricoAlteracaoVenda.objects.filter(
-                usuario_id=uid,
+        confirmed_ids = set(
+            lista_confirmacoes.values_list('id', flat=True)
+        )
+
+        tratou_rows = (
+            HistoricoAlteracaoVenda.objects.filter(
                 venda_id__in=vendas_mes_ids,
                 data_alteracao__date__gte=primeiro_dia,
-                data_alteracao__date__lte=ultimo_dia
-            ).values_list('venda_id', flat=True).distinct().count()
-            enviou = PapConfirmacaoCliente.objects.filter(
-                enviado_por_id=uid,
-                venda_id__in=venda_ids_permitidos,
+                data_alteracao__date__lte=ultimo_dia,
+                usuario_id__isnull=False,
+            )
+            .values('usuario_id')
+            .annotate(tratou=Count('venda_id', distinct=True))
+        )
+        tratou_map = {row['usuario_id']: row['tratou'] for row in tratou_rows}
+
+        envio_rows = (
+            PapConfirmacaoCliente.objects.filter(
+                venda_id__in=vendas_mes_ids,
                 criado_em__date__gte=primeiro_dia,
-                criado_em__date__lte=ultimo_dia
-            ).values_list('venda_id', flat=True).distinct().count()
-            venda_ids_enviados_user = list(PapConfirmacaoCliente.objects.filter(
-                enviado_por_id=uid,
-                venda_id__in=venda_ids_permitidos,
-                criado_em__date__gte=primeiro_dia,
-                criado_em__date__lte=ultimo_dia
-            ).values_list('venda_id', flat=True).distinct())
-            confirmaram = Venda.objects.filter(
-                id__in=venda_ids_enviados_user,
-                cliente_confirmou_auditoria=True,
-                data_confirmacao_auditoria__date__gte=primeiro_dia,
-                data_confirmacao_auditoria__date__lte=ultimo_dia
-            ).count() if venda_ids_enviados_user else 0
+                criado_em__date__lte=ultimo_dia,
+                enviado_por_id__isnull=False,
+            )
+            .values('enviado_por_id', 'venda_id')
+            .distinct()
+        )
+        envio_map: dict[int, int] = {}
+        confirmacoes_por_enviador: dict[int, int] = {}
+        for row in envio_rows:
+            uid = row['enviado_por_id']
+            vid = row['venda_id']
+            envio_map[uid] = envio_map.get(uid, 0) + 1
+            if vid in confirmed_ids:
+                confirmacoes_por_enviador[uid] = confirmacoes_por_enviador.get(uid, 0) + 1
+
+        all_user_ids = set(tratou_map) | set(envio_map)
+        User = get_user_model()
+        users_by_id = User.objects.in_bulk(all_user_ids)
+        lista_por_bo = []
+        for uid in all_user_ids:
+            user = users_by_id.get(uid)
+            if not user:
+                continue
             lista_por_bo.append({
                 'username': user.username,
-                'tratou': tratou,
-                'enviou': enviou,
-                'confirmaram': confirmaram,
+                'tratou': tratou_map.get(uid, 0),
+                'enviou': envio_map.get(uid, 0),
+                'confirmaram': confirmacoes_por_enviador.get(uid, 0),
             })
         lista_por_bo.sort(key=lambda x: (-x['tratou'], -x['enviou'], x['username']))
 
-        serializer = self.get_serializer(vendas_mes, many=True)
-        serializer_envios = self.get_serializer(lista_envios, many=True)
-        serializer_confirmacoes = self.get_serializer(lista_confirmacoes, many=True)
+        resumo_serializer = VendaResumoAuditoriaSerializer
 
         return Response({
             'periodo': {
@@ -2318,9 +2365,9 @@ class VendaViewSet(viewsets.ModelViewSet):
             'total_vendas_mes': total_vendas_mes,
             'total_envios_resumo': total_envios_resumo,
             'total_confirmacoes': total_confirmacoes,
-            'lista_vendas': serializer.data,
-            'lista_envios_resumo': serializer_envios.data,
-            'lista_confirmacoes': serializer_confirmacoes.data,
+            'lista_vendas': resumo_serializer(vendas_mes, many=True).data,
+            'lista_envios_resumo': resumo_serializer(lista_envios, many=True).data,
+            'lista_confirmacoes': resumo_serializer(lista_confirmacoes, many=True).data,
             'lista_por_bo': lista_por_bo,
         })
 

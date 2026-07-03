@@ -314,14 +314,15 @@ def resolver_valor_comissao_venda(
     config,
     usar_manual: bool,
     chave: str | None,
+    matriz_cache=None,
 ) -> float | None:
     """Valor de comissão: manual por plano → matriz faixa×plano → colunas legadas."""
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
     if usar_manual:
-        return get_valor_manual(config, chave, plano)
+        return get_valor_manual(config, chave, plano, matriz_cache=matriz_cache)
     if faixa_regra and plano:
-        v = get_valor_faixa_plano(faixa_regra, plano, tipo_cliente)
+        v = get_valor_faixa_plano(faixa_regra, plano, tipo_cliente, matriz_cache=matriz_cache)
         if v is not None:
             return v
     if faixa_regra and chave:
@@ -329,12 +330,12 @@ def resolver_valor_comissao_venda(
     return None
 
 
-def get_valor_manual(config, chave, plano=None):
+def get_valor_manual(config, chave, plano=None, matriz_cache=None):
     """Retorna valor manual do vendedor (por plano ou colunas legadas 500/700/1GB)."""
     if plano and config and chave:
         from crm_app.services.comissao_matriz_service import get_valor_manual_vendedor_plano
         tipo = 'CPF' if chave.endswith('_PAP') else 'CNPJ'
-        v_plano = get_valor_manual_vendedor_plano(config, plano, tipo)
+        v_plano = get_valor_manual_vendedor_plano(config, plano, tipo, matriz_cache=matriz_cache)
         if v_plano is not None:
             return v_plano
     if not config or not chave:
@@ -407,6 +408,7 @@ def valor_comissao_linha_extrato(
     churn_m1=False,
     complemento_sabado: float | None = None,
     valores_esteira_lancamento: dict[int, float] | None = None,
+    matriz_cache=None,
 ):
     """
     Valor e tipo de comissão exibidos no extrato por venda.
@@ -449,6 +451,7 @@ def valor_comissao_linha_extrato(
             config=config,
             usar_manual=usar_manual,
             chave=chave,
+            matriz_cache=matriz_cache,
         )
         base = 'churn'
         return (float(vu) if vu is not None else tabela), label_tipo_comissao_extrato(base, origem), base
@@ -470,6 +473,7 @@ def valor_comissao_linha_extrato(
             config=config,
             usar_manual=usar_manual,
             chave=chave,
+            matriz_cache=matriz_cache,
         )
         if vu is not None:
             base = 'a_pagar'
@@ -558,7 +562,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         data_inicio_ant = datetime(ano, mes - 1, 1)
         data_fim_ant = datetime(ano, mes, 1)
 
-    consultores = User.objects.filter(is_active=True).order_by('username')
+    consultores = User.objects.filter(is_active=True).select_related('perfil').order_by('username')
     if vendedor_id:
         consultores = consultores.filter(id=vendedor_id)
         if not consultores.exists():
@@ -581,6 +585,11 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
     for c in ConfigComissaoVendedor.objects.filter(ano__isnull=True, mes__isnull=True).select_related('usuario'):
         if c.usuario_id not in configs:
             configs[c.usuario_id] = c
+
+    from crm_app.services.comissao_matriz_service import MatrizComissaoCache
+
+    config_ids_matriz = [c.id for c in configs.values() if c]
+    matriz_cache = MatrizComissaoCache.carregar(config_ids_matriz)
 
     def _safe_min_max(r):
         """Evita comparação None > None no sorted e no intervalo."""
@@ -763,6 +772,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 config=config,
                 usar_manual=usar_manual,
                 chave=chave,
+                matriz_cache=matriz_cache,
             )
             valor_unit = valor_unit if valor_unit is not None else 0
             por_plano[chave]['qtd'] += 1
@@ -915,6 +925,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 config=config,
                 usar_manual=usar_manual,
                 chave=chave,
+                matriz_cache=matriz_cache,
             )
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
             if variantes & set_os_churn_m0:
@@ -940,6 +951,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 config=config,
                 usar_manual=usar_manual,
                 chave=chave,
+                matriz_cache=matriz_cache,
             )
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
             valor_churn_m1 += valor_unit
@@ -1098,6 +1110,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 instalada_na_folha=True,
                 complemento_sabado=float((complemento_por_venda.get(v.id) or {}).get('complemento') or 0),
                 valores_esteira_lancamento=valores_esteira_lanc,
+                matriz_cache=matriz_cache,
             )
             extrato.append({
                 'venda_id': v.id,
@@ -1138,6 +1151,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 config=config,
                 usar_manual=usar_manual,
                 churn_m1=True,
+                matriz_cache=matriz_cache,
             )
             extrato.append({
                 'venda_id': v.id,
@@ -1185,6 +1199,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 config=config,
                 usar_manual=usar_manual,
                 instalada_na_folha=False,
+                matriz_cache=matriz_cache,
             )
             extrato.append({
                 'venda_id': v.id,
