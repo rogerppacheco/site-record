@@ -667,12 +667,31 @@ class PAPNioAutomation:
                         continue
                     raise
 
-            if "login.vtal.com" in current_url or ("login" in current_url.lower() and "pap.niointernet.com.br" not in current_url) or login_form_visivel:
+            precisa_login = (
+                "login.vtal.com" in current_url
+                or ("login" in current_url.lower() and "pap.niointernet.com.br" not in current_url)
+                or bool(login_form_visivel)
+                or not self._sessao_pap_autenticada()
+            )
+            if precisa_login:
                 sucesso, msg = self._fazer_login()
                 if not sucesso:
                     self._fechar_sessao()
                     return False, msg
-            
+
+            # Cookies/storage antigos podem “parecer” logados e depois cair no SSO V.tal.
+            self.page.wait_for_timeout(500 if self.optimize_for_credit else 1200)
+            if not self._sessao_pap_autenticada():
+                logger.warning(
+                    "[PAP] Sessão não autenticada após login (url=%s). Limpando storage e tentando de novo.",
+                    (self.page.url or "")[:120],
+                )
+                self._invalidar_storage_state()
+                sucesso, msg = self._fazer_login()
+                if not sucesso or not self._sessao_pap_autenticada():
+                    self._fechar_sessao()
+                    return False, msg if not sucesso else self._mensagem_falha_login_vtal()
+
             self.logado = True
             # Screenshot só depois da primeira tela do PAP carregar (evita print do spinner)
             self._capture_screenshot(
@@ -1072,8 +1091,12 @@ class PAPNioAutomation:
                     # Se a tela mostra erro de login, falhar de forma clara
                     if self._pagina_tem_erro_login():
                         return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
+                    # FAST PASS / OTP no app: headless não consegue aprovar — falha explícita.
+                    if self._pagina_login_vtal_travada(pagina=pagina, url=current_url):
+                        logger.warning("[PAP] Login travado no FAST PASS/OTP V.tal (url=%s)", current_url[:120])
+                        return False, self._mensagem_falha_login_vtal()
                     # Sucesso mesmo com exceção (ex: timeout no wait mas URL já correta)
-                    if "pap.niointernet.com.br" in current_url and "login" not in current_url.lower():
+                    if self._sessao_pap_autenticada():
                         return True, "Login realizado com sucesso!"
                     # Erro upstream timeout do SSO - recarregar e tentar de novo
                     if "upstream request timeout" in pagina:
@@ -1107,6 +1130,80 @@ class PAPNioAutomation:
                 return False, f"Erro no login: {str(e)}"
         
         return False, "Falha no login após múltiplas tentativas."
+
+    def _sessao_pap_autenticada(self) -> bool:
+        """True somente se a URL atual for o PAP autenticado (não o IdP V.tal)."""
+        if not self.page:
+            return False
+        try:
+            url = (self.page.url or "").lower()
+        except Exception:
+            return False
+        if "login.vtal.com" in url:
+            return False
+        if "pap.niointernet.com.br" not in url:
+            return False
+        # Evita considerar a própria tela de login do PAP como autenticada.
+        if "/login" in url and "administrativo" not in url:
+            return False
+        return True
+
+    def _esta_no_idp_vtal(self, url: str = "") -> bool:
+        """True se a URL atual for o IdP V.tal (não o PAP)."""
+        url = (url or "").lower()
+        if not url and self.page:
+            try:
+                url = (self.page.url or "").lower()
+            except Exception:
+                return False
+        return "login.vtal.com" in url
+
+    def _pagina_login_vtal_travada(self, pagina: str = "", url: str = "") -> bool:
+        """Detecta SSO V.tal preso em FAST PASS / 'Processando o login'."""
+        if not self._esta_no_idp_vtal(url=url):
+            return False
+        pagina = (pagina or "").lower()
+        sinais = (
+            "processando o login",
+            "fast pass",
+            "memorize o código",
+            "memorize o codigo",
+            "v.tal fast pass",
+            "senha + otp",
+        )
+        if any(s in pagina for s in sinais):
+            return True
+        if not pagina and self.page:
+            try:
+                pagina = (self.page.content() or "").lower()
+            except Exception:
+                # No IdP sem conseguir ler o DOM: trata como travado.
+                return True
+            return any(s in pagina for s in sinais)
+        # No IdP sem sinais explícitos: ainda assim não autenticou no PAP.
+        return True
+
+    @staticmethod
+    def _mensagem_falha_login_vtal() -> str:
+        return (
+            "Login V.tal travado em FAST PASS/OTP (aprovação no app). "
+            "Use um BO com login senha sem FAST PASS ou aprove no app e tente de novo."
+        )
+
+    def _invalidar_storage_state(self) -> None:
+        """Remove cookies salvos do BO para forçar login limpo na próxima tentativa."""
+        try:
+            if self.storage_state_path and os.path.exists(self.storage_state_path):
+                os.remove(self.storage_state_path)
+                logger.info("[PAP] Storage state removido: %s", self.storage_state_path)
+        except Exception as e:
+            logger.debug("[PAP] Não foi possível remover storage state: %s", e)
+        try:
+            if self.page:
+                self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+                self._aguardar_pagina_estavel()
+        except Exception:
+            pass
 
     def _pagina_tem_erro_login(self) -> bool:
         """
@@ -1907,8 +2004,12 @@ class PAPNioAutomation:
         Retorna True se a tela ficou pronta, False caso contrário.
         """
         rapido = self.optimize_for_credit
-        ok_sessao, _ = self.garantir_sessao_ativa()
+        ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_CONSULTA_OS_URL)
         if not ok_sessao:
+            logger.warning("[PAP] Sessão inválida antes da Consulta OS: %s", msg_sessao)
+            return False
+        if self._esta_no_idp_vtal(url=(self.page.url or "")):
+            logger.warning("[PAP] Ainda no IdP V.tal antes da Consulta OS")
             return False
 
         if self._tela_consulta_os_carregada(2000):
@@ -2169,6 +2270,10 @@ class PAPNioAutomation:
         rapido = self.optimize_for_credit
         ok_menu = self._clicar_menu_consulta_os()
         if not ok_menu:
+            if self._esta_no_idp_vtal(url=(self.page.url or "") if self.page else ""):
+                if self._pagina_login_vtal_travada(url=(self.page.url or "") if self.page else ""):
+                    return False, self._mensagem_falha_login_vtal(), [], None
+                return False, "Sessão PAP redirecionou para login V.tal. Tente novamente.", [], None
             return False, "Não foi possível acessar a tela Consulta OS.", [], None
         self.page.wait_for_timeout(350 if rapido else 1000)
 
