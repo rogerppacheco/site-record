@@ -1697,8 +1697,18 @@ class PAPNioAutomation:
                 continue
         return False
 
+    # No PAP, "Filtros" é um span.titulo-filtro (não <a>/<button>).
+    _SELETOR_FILTROS_CONSULTA_OS = (
+        'span.titulo-filtro:has-text("Filtros"), .titulo-filtro:has-text("Filtros"), '
+        'span:has-text("Filtros"), button:has-text("Filtros"), '
+        'a:has-text("Filtros"), [role="button"]:has-text("Filtros")'
+    )
+    _SELETOR_INPUT_CPF_FILTRO = (
+        'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
+    )
     _SELETOR_CONSULTA_OS_PRONTA = (
         'input.input-text-filter[placeholder*="CPF"], '
+        'span.titulo-filtro:has-text("Filtros"), .titulo-filtro, '
         'button:has-text("Filtros"), button.btn-filters-new'
     )
 
@@ -1895,6 +1905,99 @@ class PAPNioAutomation:
 
         return False
 
+    def _localizar_controle_filtros_consulta_os(self, timeout_ms: int = 6000) -> Optional[Any]:
+        """Retorna o locator do controle Filtros, priorizando span.titulo-filtro."""
+        seletores = [
+            'span.titulo-filtro:has-text("Filtros")',
+            '.titulo-filtro:has-text("Filtros")',
+            'span.titulo-filtro',
+            'button:has-text("Filtros")',
+            '[role="button"]:has-text("Filtros")',
+            'a:has-text("Filtros")',
+            # Texto exato evita span ancestral capturado por has-text amplo
+            'span:text-is("Filtros")',
+        ]
+        for sel in seletores:
+            try:
+                loc = self.page.locator(sel).first
+                loc.wait_for(state="visible", timeout=timeout_ms if sel == seletores[0] else 800)
+                return loc
+            except Exception:
+                continue
+        return None
+
+    def _abrir_painel_filtros_consulta_os(self, rapido: bool = False) -> Tuple[bool, str]:
+        """
+        Abre o painel de Filtros na Consulta OS e garante o campo CPF/CNPJ visível.
+
+        No PAP o controle é um span.titulo-filtro e o painel costuma abrir no hover;
+        em algumas versões/respostas lentas o click no span também funciona.
+        """
+        if not self.page:
+            return False, "Sessão PAP indisponível."
+
+        input_selector = self._SELETOR_INPUT_CPF_FILTRO
+        hover_wait = 250 if rapido else 400
+        click_wait = 400 if rapido else 600
+        timeout_ms = 8000 if not rapido else 6000
+
+        # Já aberto (ex.: sessão anterior deixou o painel visível).
+        try:
+            if self.page.locator(input_selector).first.is_visible(timeout=500):
+                return True, "Painel de Filtros já aberto."
+        except Exception:
+            pass
+
+        filtros_loc = self._localizar_controle_filtros_consulta_os(timeout_ms=timeout_ms)
+        if filtros_loc is None:
+            logger.warning("[PAP] Controles de Filtros não apareceram na Consulta OS")
+            return False, "Tela Consulta OS não exibiu o controle de Filtros."
+
+        # Preferência: hover (comportamento nativo do PAP).
+        try:
+            filtros_loc.hover(timeout=timeout_ms)
+            self.page.wait_for_timeout(hover_wait)
+            self.page.wait_for_selector(input_selector, state="visible", timeout=timeout_ms)
+            return True, "Painel de Filtros aberto (hover)."
+        except Exception as e:
+            logger.debug("[PAP] Hover em Filtros não abriu o painel: %s", e)
+
+        # Fallback: click no span/botão (mesmo seletor do fluxo legado).
+        try:
+            filtros_loc.click(force=True, timeout=timeout_ms)
+            self.page.wait_for_timeout(click_wait)
+            self.page.wait_for_selector(input_selector, state="visible", timeout=timeout_ms)
+            return True, "Painel de Filtros aberto (click)."
+        except Exception as e:
+            logger.warning("[PAP] Click em Filtros falhou: %s", e)
+
+        # Último recurso: dispatch de mouseenter/click via JS no elemento com texto Filtros.
+        try:
+            aberto = self.page.evaluate(
+                """() => {
+                    const candidatos = Array.from(document.querySelectorAll(
+                        'span.titulo-filtro, .titulo-filtro, span, button, a, [role="button"]'
+                    ));
+                    const el = candidatos.find(n => {
+                        const t = (n.textContent || '').trim();
+                        return t === 'Filtros' || (t.startsWith('Filtros') && t.length < 20);
+                    });
+                    if (!el) return false;
+                    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                    el.click();
+                    return true;
+                }"""
+            )
+            if aberto:
+                self.page.wait_for_timeout(click_wait)
+                self.page.wait_for_selector(input_selector, state="visible", timeout=timeout_ms)
+                return True, "Painel de Filtros aberto (JS)."
+        except Exception as e:
+            logger.warning("[PAP] Fallback JS em Filtros falhou: %s", e)
+
+        return False, "Painel de Filtros não abriu ou campo CPF/CNPJ não encontrado."
+
     def abrir_consulta_os_e_filtrar_cpf(self, cpf: str) -> Tuple[bool, str]:
         """
         Após login no PAP: acessa Consulta OS, clica em Filtros e preenche o CPF/CNPJ.
@@ -1926,29 +2029,13 @@ class PAPNioAutomation:
                 return False, "Não foi possível acessar a tela Consulta OS (menu ou URL)."
             self.page.wait_for_timeout(1500)
 
-            # Clicar em Filtros
-            sel_filtros = SELETORES['consulta_os']['filtros']
-            filtro_el = None
-            for sel in sel_filtros.split(", "):
-                try:
-                    el = self.page.query_selector(sel.strip())
-                    if el and el.is_visible():
-                        filtro_el = el
-                        break
-                except Exception:
-                    continue
-            if not filtro_el:
-                filtro_el = self.page.query_selector('span:has-text("Filtros")')
-            if not filtro_el or not filtro_el.is_visible():
-                return False, "Não foi possível encontrar o botão/link 'Filtros' na tela Consulta OS."
-            logger.info("[PAP] Clicando em Filtros")
-            if self.capture_screenshots:
-                self._highlight_element(filtro_el, duration_ms=500)
-            filtro_el.click()
-            self.page.wait_for_timeout(1200)
+            ok_filtros, msg_filtros = self._abrir_painel_filtros_consulta_os(rapido=False)
+            if not ok_filtros:
+                return False, msg_filtros
+            logger.info("[PAP] %s", msg_filtros)
 
             # Preencher CPF/CNPJ no input do filtro (force=True evita interceptação pelo MuiDrawer)
-            input_selector = 'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
+            input_selector = self._SELETOR_INPUT_CPF_FILTRO
             locator_cpf = self.page.locator(input_selector).first
             if locator_cpf.count() == 0:
                 return False, "Não foi possível encontrar o campo CPF/CNPJ nos filtros."
@@ -2027,32 +2114,12 @@ class PAPNioAutomation:
             return False, "Não foi possível acessar a tela Consulta OS.", [], None
         self.page.wait_for_timeout(350 if rapido else 1000)
 
-        # No PAP, o painel de Filtros abre ao PASSAR O MOUSE em cima de "Filtros" (hover), não ao clicar.
-        input_selector = 'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
-        hover_wait = 250 if rapido else 400
-        try:
-            self.page.locator('button:has-text("Filtros"), a:has-text("Filtros"), [role="button"]:has-text("Filtros")').first.hover(timeout=5000)
-            self.page.wait_for_timeout(hover_wait)
-        except Exception:
-            try:
-                self.page.locator('text=Filtros').first.hover(timeout=5000)
-                self.page.wait_for_timeout(hover_wait)
-            except Exception as e:
-                logger.debug(f"[PAP] Hover em Filtros: {e}")
-        try:
-            self.page.wait_for_selector(input_selector, state="visible", timeout=5000)
-        except Exception:
-            try:
-                self.page.locator('button:has-text("Filtros")').first.click(force=True, timeout=5000)
-                self.page.wait_for_timeout(600)
-            except Exception:
-                self.page.locator('a:has-text("Filtros")').first.click(force=True, timeout=5000)
-                self.page.wait_for_timeout(600)
-            try:
-                self.page.wait_for_selector(input_selector, state="visible", timeout=4000)
-            except Exception:
-                return False, "Painel de Filtros não abriu ou campo CPF/CNPJ não encontrado.", [], None
+        ok_filtros, msg_filtros = self._abrir_painel_filtros_consulta_os(rapido=rapido)
+        if not ok_filtros:
+            return False, msg_filtros, [], None
+        logger.info("[PAP] %s", msg_filtros)
 
+        input_selector = self._SELETOR_INPUT_CPF_FILTRO
         # Preencher CPF/CNPJ e clicar Filtrar (reduzidos waits para agilizar)
         locator_cpf = self.page.locator(input_selector).first
         try:
