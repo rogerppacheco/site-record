@@ -1713,20 +1713,9 @@ class PAPNioAutomation:
     )
 
     def _tela_consulta_os_carregada(self, timeout_ms: int = 5000) -> bool:
-        """Verifica se a tela Consulta OS está pronta (URL ou controles visíveis)."""
+        """Verifica se a tela Consulta OS está pronta (controles visíveis, não só a URL)."""
         if not self.page:
             return False
-        url = (self.page.url or "").lower()
-        if "consulta-os" in url:
-            try:
-                self.page.wait_for_selector(
-                    self._SELETOR_CONSULTA_OS_PRONTA,
-                    state="visible",
-                    timeout=timeout_ms,
-                )
-            except Exception:
-                pass
-            return True
         try:
             self.page.wait_for_selector(
                 self._SELETOR_CONSULTA_OS_PRONTA,
@@ -1736,6 +1725,40 @@ class PAPNioAutomation:
             return True
         except Exception:
             return False
+
+    def _diagnosticar_tela_consulta_os(self) -> None:
+        """Registra URL e trecho do DOM para depurar ausência do controle Filtros."""
+        if not self.page:
+            return
+        try:
+            url = (self.page.url or "")[:160]
+            info = self.page.evaluate(
+                """() => {
+                    const textos = Array.from(document.querySelectorAll('span, button, a, [role="button"], h1, h2, label'))
+                        .map(n => (n.textContent || '').trim())
+                        .filter(t => t && t.length < 40)
+                        .slice(0, 40);
+                    const classes = Array.from(document.querySelectorAll('[class*="filtro"], [class*="Filtro"], [class*="filter"]'))
+                        .map(n => n.className)
+                        .slice(0, 10);
+                    return {
+                        title: document.title || '',
+                        bodyLen: (document.body && document.body.innerText || '').length,
+                        textos,
+                        classes,
+                    };
+                }"""
+            )
+            logger.warning(
+                "[PAP] Diagnóstico Consulta OS url=%s title=%s bodyLen=%s textos=%s classes_filtro=%s",
+                url,
+                (info or {}).get("title"),
+                (info or {}).get("bodyLen"),
+                (info or {}).get("textos"),
+                (info or {}).get("classes"),
+            )
+        except Exception as e:
+            logger.warning("[PAP] Diagnóstico Consulta OS falhou: %s (url=%s)", e, (self.page.url or "")[:120])
 
     def _abrir_menu_lateral_se_fechado(self) -> None:
         """Abre drawer/menu lateral quando colapsado (viewports menores)."""
@@ -1837,7 +1860,7 @@ class PAPNioAutomation:
     def _navegar_consulta_os_url_direta(self, rapido: bool) -> bool:
         """
         Navega via URL direta. ERR_ABORTED é comum em SPA (redirect interrompe goto);
-        valida pela tela, não só pela exceção do Playwright.
+        valida pelos controles da tela (Filtros/input), não só pela URL.
         """
         if not self.page:
             return False
@@ -1846,23 +1869,36 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning("[PAP] goto Consulta OS: %s", e)
 
-        self.page.wait_for_timeout(400 if rapido else 1500)
-        timeout_pronta = 10000 if rapido else 15000
+        # SPA do PAP demora a hidratar os controles após o goto.
+        self.page.wait_for_timeout(800 if rapido else 1500)
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=8000 if rapido else 12000)
+        except Exception:
+            try:
+                self.page.wait_for_load_state("load", timeout=10000)
+            except Exception:
+                pass
+
+        timeout_pronta = 15000 if rapido else 20000
         if self._tela_consulta_os_carregada(timeout_pronta):
             logger.info("[PAP] Navegação para Consulta OS OK (URL direta)")
             return True
 
-        if not rapido:
-            try:
-                self.page.wait_for_load_state("networkidle", timeout=6000)
-            except Exception:
-                try:
-                    self.page.wait_for_load_state("load", timeout=15000)
-                except Exception:
-                    pass
-            if self._tela_consulta_os_carregada(5000):
-                logger.info("[PAP] Navegação para Consulta OS OK (URL direta, após load)")
+        # Segunda chance: reload leve da rota (às vezes o 1º paint fica sem o toolbar).
+        try:
+            self.page.reload(wait_until="domcontentloaded", timeout=20000)
+            self.page.wait_for_timeout(1000)
+            if self._tela_consulta_os_carregada(12000):
+                logger.info("[PAP] Navegação para Consulta OS OK (URL direta, após reload)")
                 return True
+        except Exception as e:
+            logger.debug("[PAP] Reload Consulta OS: %s", e)
+
+        logger.warning(
+            "[PAP] Consulta OS sem controles após URL direta (url=%s)",
+            (self.page.url or "")[:120],
+        )
+        self._diagnosticar_tela_consulta_os()
         return False
 
     def _clicar_menu_consulta_os(self) -> bool:
@@ -1916,11 +1952,13 @@ class PAPNioAutomation:
             'a:has-text("Filtros")',
             # Texto exato evita span ancestral capturado por has-text amplo
             'span:text-is("Filtros")',
+            'text=Filtros',
         ]
-        for sel in seletores:
+        # Primeiro seletor leva o timeout cheio; os demais são tentativas rápidas.
+        for idx, sel in enumerate(seletores):
             try:
                 loc = self.page.locator(sel).first
-                loc.wait_for(state="visible", timeout=timeout_ms if sel == seletores[0] else 800)
+                loc.wait_for(state="visible", timeout=timeout_ms if idx == 0 else 1200)
                 return loc
             except Exception:
                 continue
@@ -1939,7 +1977,8 @@ class PAPNioAutomation:
         input_selector = self._SELETOR_INPUT_CPF_FILTRO
         hover_wait = 250 if rapido else 400
         click_wait = 400 if rapido else 600
-        timeout_ms = 8000 if not rapido else 6000
+        # STATUS em modo rápido ainda precisa de margem: a SPA hidrata o toolbar depois do URL.
+        timeout_ms = 12000 if not rapido else 10000
 
         # Já aberto (ex.: sessão anterior deixou o painel visível).
         try:
@@ -1950,7 +1989,26 @@ class PAPNioAutomation:
 
         filtros_loc = self._localizar_controle_filtros_consulta_os(timeout_ms=timeout_ms)
         if filtros_loc is None:
+            # Retry: espera networkidle e recarrega a rota uma vez.
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(1500)
+            filtros_loc = self._localizar_controle_filtros_consulta_os(timeout_ms=8000)
+        if filtros_loc is None:
+            try:
+                if "consulta-os" in (self.page.url or "").lower():
+                    self.page.reload(wait_until="domcontentloaded", timeout=20000)
+                else:
+                    self.page.goto(PAP_CONSULTA_OS_URL, wait_until="domcontentloaded", timeout=30000)
+                self.page.wait_for_timeout(1500)
+                filtros_loc = self._localizar_controle_filtros_consulta_os(timeout_ms=12000)
+            except Exception as e:
+                logger.warning("[PAP] Retry navegação Consulta OS para Filtros: %s", e)
+        if filtros_loc is None:
             logger.warning("[PAP] Controles de Filtros não apareceram na Consulta OS")
+            self._diagnosticar_tela_consulta_os()
             return False, "Tela Consulta OS não exibiu o controle de Filtros."
 
         # Preferência: hover (comportamento nativo do PAP).
