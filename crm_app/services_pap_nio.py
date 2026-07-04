@@ -329,9 +329,9 @@ class PAPNioAutomation:
         os.makedirs(STORAGE_STATE_DIR, exist_ok=True)
 
     def _invalidar_storage_state(self) -> None:
-        """Remove cookies salvos quando a sessão expirou (evita loop SAML + timeout no login)."""
+        """Remove cookies salvos do BO (evita sessão fantasma que cai no IdP V.tal)."""
         try:
-            if os.path.exists(self.storage_state_path):
+            if self.storage_state_path and os.path.exists(self.storage_state_path):
                 os.remove(self.storage_state_path)
                 logger.info("[PAP] Storage state invalidado: %s", self.storage_state_path)
         except OSError as exc:
@@ -679,18 +679,12 @@ class PAPNioAutomation:
                     self._fechar_sessao()
                     return False, msg
 
-            # Cookies/storage antigos podem “parecer” logados e depois cair no SSO V.tal.
-            self.page.wait_for_timeout(500 if self.optimize_for_credit else 1200)
-            if not self._sessao_pap_autenticada():
-                logger.warning(
-                    "[PAP] Sessão não autenticada após login (url=%s). Limpando storage e tentando de novo.",
-                    (self.page.url or "")[:120],
-                )
-                self._invalidar_storage_state()
-                sucesso, msg = self._fazer_login()
-                if not sucesso or not self._sessao_pap_autenticada():
-                    self._fechar_sessao()
-                    return False, msg if not sucesso else self._mensagem_falha_login_vtal()
+            # Cookies antigos podem “parecer” logados na home e cair no IdP ao abrir rota protegida.
+            # Prova real: navegar para Consulta OS e exigir que permaneça no PAP.
+            ok_probe, msg_probe = self.garantir_sessao_ativa(PAP_CONSULTA_OS_URL)
+            if not ok_probe:
+                self._fechar_sessao()
+                return False, msg_probe
 
             self.logado = True
             # Screenshot só depois da primeira tela do PAP carregar (evita print do spinner)
@@ -1190,20 +1184,46 @@ class PAPNioAutomation:
             "Use um BO com login senha sem FAST PASS ou aprove no app e tente de novo."
         )
 
-    def _invalidar_storage_state(self) -> None:
-        """Remove cookies salvos do BO para forçar login limpo na próxima tentativa."""
+    def _relogin_pap(self, target_url: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Força login limpo (sem cookies) e, se informado, navega para target_url
+        validando que não caiu de novo no IdP V.tal.
+        """
+        logger.warning("[PAP] Relogin automático (url atual=%s)", (self.page.url or "")[:120] if self.page else "-")
+        self._fechar_modal_sessao_expirada()
+        self._invalidar_storage_state()
         try:
-            if self.storage_state_path and os.path.exists(self.storage_state_path):
-                os.remove(self.storage_state_path)
-                logger.info("[PAP] Storage state removido: %s", self.storage_state_path)
+            self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+            self._aguardar_pagina_estavel()
         except Exception as e:
-            logger.debug("[PAP] Não foi possível remover storage state: %s", e)
+            logger.debug("[PAP] goto login no relogin: %s", e)
+
+        ok, msg = self._fazer_login()
+        if not ok or not self._sessao_pap_autenticada():
+            self.logado = False
+            if self._pagina_login_vtal_travada(url=(self.page.url or "") if self.page else ""):
+                return False, self._mensagem_falha_login_vtal()
+            return False, f"Sessão expirada e relogin falhou: {msg}"
+
+        self.logado = True
         try:
-            if self.page:
-                self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
-                self._aguardar_pagina_estavel()
-        except Exception:
-            pass
+            self.context.storage_state(path=self.storage_state_path)
+        except Exception as e:
+            logger.debug("[PAP] Salvar storage após relogin: %s", e)
+
+        if target_url:
+            try:
+                self.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+                self.page.wait_for_timeout(800 if self.optimize_for_credit else 1500)
+            except Exception as e:
+                logger.warning("[PAP] goto após relogin: %s", e)
+            if self._esta_no_idp_vtal() or not self._sessao_pap_autenticada():
+                self.logado = False
+                if self._pagina_login_vtal_travada(url=(self.page.url or "") if self.page else ""):
+                    return False, self._mensagem_falha_login_vtal()
+                return False, "Relogin OK, mas a rota protegida voltou ao login V.tal."
+
+        return True, "Sessão restaurada com sucesso."
 
     def _pagina_tem_erro_login(self) -> bool:
         """
@@ -1292,25 +1312,38 @@ class PAPNioAutomation:
     def garantir_sessao_ativa(self, target_url: Optional[str] = None) -> Tuple[bool, str]:
         """
         Garante que a sessão no PAP ainda está válida.
-        Se detectar sessão expirada, faz relogin e opcionalmente volta para target_url.
+
+        Cookies/storage podem deixar a home do PAP aberta e só falhar ao abrir rota
+        protegida (Consulta OS). Por isso, quando target_url é informado, navega até
+        ela e só considera OK se permanecer autenticado no PAP.
         """
         if not self.page:
             return False, "Página não iniciada."
         try:
-            if not self._sessao_expirada_detectada():
+            if self._esta_no_idp_vtal() or self._sessao_expirada_detectada():
+                return self._relogin_pap(target_url)
+
+            if target_url:
+                try:
+                    self.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+                except Exception as e:
+                    logger.warning("[PAP] goto target em garantir_sessao: %s", e)
+                self.page.wait_for_timeout(800 if self.optimize_for_credit else 1500)
+                if (
+                    self._esta_no_idp_vtal()
+                    or self._sessao_expirada_detectada()
+                    or not self._sessao_pap_autenticada()
+                ):
+                    logger.warning(
+                        "[PAP] Rota protegida caiu no IdP V.tal (url=%s). Relogin...",
+                        (self.page.url or "")[:120],
+                    )
+                    return self._relogin_pap(target_url)
                 return True, "Sessão ativa."
 
-            logger.warning("[PAP] Sessão expirada detectada. Tentando relogin automático...")
-            self._fechar_modal_sessao_expirada()
-            self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
-            ok, msg = self._fazer_login()
-            if not ok:
-                self.logado = False
-                return False, f"Sessão expirada e relogin falhou: {msg}"
-            self.logado = True
-            if target_url:
-                self.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
-            return True, "Sessão restaurada com sucesso."
+            if not self._sessao_pap_autenticada():
+                return self._relogin_pap(None)
+            return True, "Sessão ativa."
         except Exception as e:
             self.logado = False
             return False, f"Erro ao validar/restaurar sessão: {e}"
@@ -1798,7 +1831,7 @@ class PAPNioAutomation:
     _SELETOR_FILTROS_CONSULTA_OS = (
         'span.titulo-filtro:has-text("Filtros"), .titulo-filtro:has-text("Filtros"), '
         'span:has-text("Filtros"), button:has-text("Filtros"), '
-        'a:has-text("Filtros"), [role="button"]:has-text("Filtros")'
+        '[role="button"]:has-text("Filtros")'
     )
     _SELETOR_INPUT_CPF_FILTRO = (
         'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
@@ -1998,23 +2031,20 @@ class PAPNioAutomation:
         self._diagnosticar_tela_consulta_os()
         return False
 
-    def _clicar_menu_consulta_os(self) -> bool:
+    def _clicar_menu_consulta_os(self) -> Tuple[bool, str]:
         """
         Acessa a tela Consulta OS (menu lateral ou URL).
-        Retorna True se a tela ficou pronta, False caso contrário.
+        Retorna (True, msg) se a tela ficou pronta; (False, motivo) caso contrário.
         """
         rapido = self.optimize_for_credit
         ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_CONSULTA_OS_URL)
         if not ok_sessao:
             logger.warning("[PAP] Sessão inválida antes da Consulta OS: %s", msg_sessao)
-            return False
-        if self._esta_no_idp_vtal(url=(self.page.url or "")):
-            logger.warning("[PAP] Ainda no IdP V.tal antes da Consulta OS")
-            return False
+            return False, msg_sessao
 
         if self._tela_consulta_os_carregada(2000):
             logger.info("[PAP] Já na tela Consulta OS")
-            return True
+            return True, "Já na tela Consulta OS"
 
         # SPA do PAP pode ainda estar finalizando redirect pós-login
         self._aguardar_pagina_estavel(retries=2, delay_ms=1500 if rapido else 2500)
@@ -2023,36 +2053,47 @@ class PAPNioAutomation:
         for tentativa in range(1, 3):
             # STATUS (modo rápido): URL direta primeiro — evita ~6s abrindo menu lateral
             if rapido and self._navegar_consulta_os_url_direta(rapido):
-                return True
+                return True, "Consulta OS via URL direta"
 
             if self._clicar_menu_consulta_os_via_sidebar():
                 if self._tela_consulta_os_carregada(12000 if rapido else 20000):
                     logger.info("[PAP] Navegação para Consulta OS OK (menu lateral)")
-                    return True
+                    return True, "Consulta OS via menu lateral"
 
             if not rapido and self._navegar_consulta_os_url_direta(rapido):
-                return True
+                return True, "Consulta OS via URL direta"
 
             logger.warning(
                 "[PAP] Tentativa %s/2 Consulta OS sem sucesso (url=%s)",
                 tentativa,
                 (self.page.url or "")[:120],
             )
+            # Se caiu no IdP no meio do caminho, tenta relogin antes da 2ª tentativa.
+            if self._esta_no_idp_vtal():
+                ok_re, msg_re = self._relogin_pap(PAP_CONSULTA_OS_URL)
+                if ok_re and self._tela_consulta_os_carregada(8000):
+                    return True, "Consulta OS após relogin"
+                if not ok_re:
+                    return False, msg_re
             self.page.wait_for_timeout(1000)
 
-        return False
+        if self._esta_no_idp_vtal():
+            if self._pagina_login_vtal_travada(url=(self.page.url or "")):
+                return False, self._mensagem_falha_login_vtal()
+            return False, "Sessão PAP redirecionou para login V.tal. Tente novamente."
+        return False, "Não foi possível acessar a tela Consulta OS."
 
     def _localizar_controle_filtros_consulta_os(self, timeout_ms: int = 6000) -> Optional[Any]:
-        """Retorna o locator do controle Filtros, priorizando span.titulo-filtro."""
+        """Retorna o locator do controle Filtros, priorizando span.titulo-filtro (não <a>/<button>)."""
+        # PAP real: span.titulo-filtro. Evitar a:has-text("Filtros") — gera timeout falso e
+        # no código legado a exceção do click vazava sem tratamento.
         seletores = [
             'span.titulo-filtro:has-text("Filtros")',
             '.titulo-filtro:has-text("Filtros")',
             'span.titulo-filtro',
+            'span:text-is("Filtros")',
             'button:has-text("Filtros")',
             '[role="button"]:has-text("Filtros")',
-            'a:has-text("Filtros")',
-            # Texto exato evita span ancestral capturado por has-text amplo
-            'span:text-is("Filtros")',
             'text=Filtros',
         ]
         # Primeiro seletor leva o timeout cheio; os demais são tentativas rápidas.
@@ -2074,6 +2115,12 @@ class PAPNioAutomation:
         """
         if not self.page:
             return False, "Sessão PAP indisponível."
+
+        # Se o IdP roubou a sessão, tenta relogin antes de desistir dos filtros.
+        if self._esta_no_idp_vtal(url=(self.page.url or "")):
+            ok_re, msg_re = self._relogin_pap(PAP_CONSULTA_OS_URL)
+            if not ok_re:
+                return False, msg_re
 
         input_selector = self._SELETOR_INPUT_CPF_FILTRO
         hover_wait = 250 if rapido else 400
@@ -2183,9 +2230,9 @@ class PAPNioAutomation:
             # Ir para Consulta OS (URL direta ou menu)
             if self.capture_screenshots:
                 self._capture_screenshot("consulta_os_01_antes", wait_selector=None, wait_timeout_ms=0)
-            ok_menu = self._clicar_menu_consulta_os()
+            ok_menu, msg_menu = self._clicar_menu_consulta_os()
             if not ok_menu:
-                return False, "Não foi possível acessar a tela Consulta OS (menu ou URL)."
+                return False, msg_menu
             self.page.wait_for_timeout(1500)
 
             ok_filtros, msg_filtros = self._abrir_painel_filtros_consulta_os(rapido=False)
@@ -2236,6 +2283,25 @@ class PAPNioAutomation:
             logger.warning(f"[PAP] Erro ao salvar screenshot Consulta OS: {e}")
             return None
 
+    @staticmethod
+    def _mensagem_erro_playwright(exc: BaseException) -> str:
+        """Resume erros do Playwright sem o Call log (evita poluir relatório WhatsApp)."""
+        msg = str(exc).strip() or exc.__class__.__name__
+        # Primeira linha costuma ser "Locator.click: Timeout 5000ms exceeded."
+        primeira = msg.splitlines()[0].strip()
+        if "Timeout" in primeira and "locator(" in msg.lower():
+            # Extrai seletor quando existir: waiting for locator("...")
+            m = re.search(r'locator\("([^"]+)"\)', msg)
+            if m:
+                sel = m.group(1)
+                if "Filtros" in sel:
+                    return "Controle Filtros não encontrado na Consulta OS (timeout)."
+                if "detalhe-os" in sel or "detalhar" in sel.lower():
+                    return "Link Detalhar da OS não encontrado (timeout)."
+                return f"Elemento não encontrado no PAP (timeout): {sel[:60]}"
+            return primeira[:120]
+        return primeira[:200]
+
     def consulta_os_por_cpf_com_resultado(
         self,
         cpf: str,
@@ -2253,6 +2319,23 @@ class PAPNioAutomation:
             list_screenshot_path (screenshot da lista; usado quando só 1 pedido e não pertence ao PDV).
             Se não houver pedidos: (True, "no_results", [], list_screenshot_path).
         """
+        try:
+            return self._consulta_os_por_cpf_com_resultado_impl(
+                cpf,
+                numero_os_filtro=numero_os_filtro,
+                os_prioridade_crm=os_prioridade_crm,
+            )
+        except Exception as e:
+            # Nunca deixar Locator.click/Timeout vazar sem tratamento (sync esteira / STATUS).
+            logger.warning("[PAP] consulta_os_por_cpf_com_resultado: %s", e)
+            return False, self._mensagem_erro_playwright(e), [], None
+
+    def _consulta_os_por_cpf_com_resultado_impl(
+        self,
+        cpf: str,
+        numero_os_filtro: Optional[str] = None,
+        os_prioridade_crm: Optional[set] = None,
+    ) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str]]:
         from datetime import timedelta
         cpf_limpo = re.sub(r'\D', '', cpf) if cpf else ""
         if not cpf_limpo:
@@ -2268,13 +2351,9 @@ class PAPNioAutomation:
                 return False, msg_sessao, [], None
 
         rapido = self.optimize_for_credit
-        ok_menu = self._clicar_menu_consulta_os()
+        ok_menu, msg_menu = self._clicar_menu_consulta_os()
         if not ok_menu:
-            if self._esta_no_idp_vtal(url=(self.page.url or "") if self.page else ""):
-                if self._pagina_login_vtal_travada(url=(self.page.url or "") if self.page else ""):
-                    return False, self._mensagem_falha_login_vtal(), [], None
-                return False, "Sessão PAP redirecionou para login V.tal. Tente novamente.", [], None
-            return False, "Não foi possível acessar a tela Consulta OS.", [], None
+            return False, msg_menu, [], None
         self.page.wait_for_timeout(350 if rapido else 1000)
 
         ok_filtros, msg_filtros = self._abrir_painel_filtros_consulta_os(rapido=rapido)
