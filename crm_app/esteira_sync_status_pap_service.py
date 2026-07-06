@@ -250,12 +250,14 @@ def _montar_relatorio_final(execucao, detalhes: List[dict]) -> str:
             )
         if len(atualizados) > 25:
             linhas.append(f'… e mais {len(atualizados) - 25}.')
-    erros = [d for d in detalhes if d.get('erro')]
+    # Só erros finais (ignora a 1ª tentativa marcada como aguardando_retry).
+    erros = [d for d in detalhes if d.get('erro') and not d.get('aguardando_retry')]
     if erros:
         linhas.append('')
         linhas.append('*Erros:*')
         for item in erros[:15]:
-            linhas.append(f"• Venda #{item.get('venda_id')} OS {item.get('os', '?')}: {item.get('erro', '?')[:80]}")
+            err = re.sub(r'\s+', ' ', str(item.get('erro') or '?')).strip()
+            linhas.append(f"• Venda #{item.get('venda_id')} OS {item.get('os', '?')}: {err[:120]}")
     ignorados = [d for d in detalhes if d.get('ignorado_sem_cpf')]
     if ignorados:
         linhas.append('')
@@ -263,44 +265,88 @@ def _montar_relatorio_final(execucao, detalhes: List[dict]) -> str:
     return '\n'.join(linhas)
 
 
-def _consultar_pap_pedido(
-    venda,
-    *,
-    contador_uso_bo: Dict[int, int],
-) -> Tuple[bool, str, list, Optional[str]]:
-    from crm_app.pool_bo_pap import (
-        TIPO_AUTOMACAO_STATUS,
-        aguardar_login_bo,
-        atualizar_historico_consulta_pap_resultado,
-        liberar_bo,
+def _msg_indica_sessao_invalida(msg: str) -> bool:
+    """Erros que exigem fechar o browser e abrir sessão nova no próximo pedido."""
+    m = (msg or '').lower()
+    sinais = (
+        'v.tal',
+        'vtal',
+        'sessão',
+        'sessao',
+        'login',
+        'fast pass',
+        'consulta os',
+        'filtros',
+        'locator.click',
+        'timeout',
+        'page closed',
+        'target closed',
+        'browser has been closed',
+        'context was destroyed',
+        'execution context',
     )
-    from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.utils import limpar_texto, obter_os_prioridade_crm_por_cpf
+    return any(s in m for s in sinais)
 
-    cpf = _cpf_cnpj_venda(venda)
-    if len(cpf) not in (11, 14):
-        return False, 'sem_cpf', [], None
 
-    os_num = (venda.ordem_servico or '').strip()
-    os_prioridade = obter_os_prioridade_crm_por_cpf(cpf)
+class _SessaoPapSyncHolder:
+    """
+    Reutiliza o mesmo browser/BO entre pedidos do sync.
 
-    bo_usuario, msg_erro = aguardar_login_bo(
-        TELEFONE_JOB,
-        tipo_automacao=TIPO_AUTOMACAO_STATUS,
-        timeout_seg=900,
-        intervalo_seg=45,
-        contador_uso_por_bo=contador_uso_bo,
-    )
-    if not bo_usuario:
-        return False, msg_erro or 'login_indisponivel', [], None
+    Antes cada venda fazia login completo no PAP (N logins = timeouts em Filtros / V.tal).
+    """
 
-    contador_uso_bo[bo_usuario.id] = contador_uso_bo.get(bo_usuario.id, 0) + 1
-    automacao = None
-    tempo_inicio = time.time()
-    sucesso = False
-    msg = ''
-    detalhes: list = []
-    try:
+    def __init__(self) -> None:
+        self.automacao = None
+        self.bo_usuario = None
+        self.consultas = 0
+
+    @property
+    def max_consultas_por_sessao(self) -> int:
+        return int(_cfg('SYNC_ESTEIRA_MAX_CONSULTAS_POR_SESSAO', 20))
+
+    def fechar(self) -> None:
+        from crm_app.pool_bo_pap import liberar_bo
+
+        if self.automacao is not None:
+            try:
+                self.automacao._fechar_sessao()
+            except Exception:
+                pass
+            self.automacao = None
+        if self.bo_usuario is not None:
+            bo_id = self.bo_usuario.id
+            try:
+                _run_django_sync(lambda: liberar_bo(bo_id, TELEFONE_JOB))
+            except Exception as e:
+                logger.warning('[SYNC ESTEIRA] Falha ao liberar BO %s: %s', bo_id, e)
+            self.bo_usuario = None
+        self.consultas = 0
+
+    def _garantir_sessao(self, contador_uso_bo: Dict[int, int]) -> Tuple[bool, str]:
+        from crm_app.pool_bo_pap import TIPO_AUTOMACAO_STATUS, aguardar_login_bo
+        from crm_app.services_pap_nio import PAPNioAutomation
+
+        if (
+            self.automacao is not None
+            and self.bo_usuario is not None
+            and getattr(self.automacao, 'logado', False)
+            and self.consultas < self.max_consultas_por_sessao
+        ):
+            return True, ''
+
+        self.fechar()
+
+        bo_usuario, msg_erro = aguardar_login_bo(
+            TELEFONE_JOB,
+            tipo_automacao=TIPO_AUTOMACAO_STATUS,
+            timeout_seg=900,
+            intervalo_seg=45,
+            contador_uso_por_bo=contador_uso_bo,
+        )
+        if not bo_usuario:
+            return False, msg_erro or 'login_indisponivel'
+
+        contador_uso_bo[bo_usuario.id] = contador_uso_bo.get(bo_usuario.id, 0) + 1
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
         optimize_fast = getattr(settings, 'PAP_STATUS_FAST_MODE', True)
@@ -314,56 +360,115 @@ def _consultar_pap_pedido(
         )
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
+            from crm_app.pool_bo_pap import liberar_bo
+
+            _run_django_sync(lambda: liberar_bo(bo_usuario.id, TELEFONE_JOB))
+            return False, msg
+
+        self.automacao = automacao
+        self.bo_usuario = bo_usuario
+        self.consultas = 0
+        logger.info(
+            '[SYNC ESTEIRA] Sessão PAP aberta (BO=%s, máx=%s consultas).',
+            getattr(bo_usuario, 'username', bo_usuario.id),
+            self.max_consultas_por_sessao,
+        )
+        return True, ''
+
+    def consultar(
+        self,
+        venda,
+        *,
+        contador_uso_bo: Dict[int, int],
+    ) -> Tuple[bool, str, list, Optional[str]]:
+        from crm_app.pool_bo_pap import (
+            TIPO_AUTOMACAO_STATUS,
+            atualizar_historico_consulta_pap_resultado,
+        )
+        from crm_app.services_pap_nio import PAPNioAutomation
+        from crm_app.utils import obter_os_prioridade_crm_por_cpf
+
+        cpf = _cpf_cnpj_venda(venda)
+        if len(cpf) not in (11, 14):
+            return False, 'sem_cpf', [], None
+
+        os_num = (venda.ordem_servico or '').strip()
+        os_prioridade = obter_os_prioridade_crm_por_cpf(cpf)
+
+        ok_sessao, msg_sessao = self._garantir_sessao(contador_uso_bo)
+        if not ok_sessao:
+            return False, msg_sessao, [], None
+
+        bo_usuario = self.bo_usuario
+        automacao = self.automacao
+        tempo_inicio = time.time()
+        try:
+            sucesso, msg, detalhes, _ = automacao.consulta_os_por_cpf_com_resultado(
+                cpf,
+                numero_os_filtro=os_num,
+                os_prioridade_crm=os_prioridade,
+            )
+            tempo = round(time.time() - tempo_inicio, 1)
+            self.consultas += 1
+            _run_django_sync(
+                lambda: atualizar_historico_consulta_pap_resultado(
+                    vendedor_telefone=TELEFONE_JOB,
+                    bo_usuario=bo_usuario,
+                    tipo_automacao=TIPO_AUTOMACAO_STATUS,
+                    sucesso=sucesso,
+                    mensagem_resultado=f'{msg} ({tempo}s)',
+                )
+            )
+            if not sucesso and _msg_indica_sessao_invalida(msg):
+                logger.warning(
+                    '[SYNC ESTEIRA] Sessão invalidada após venda #%s: %s',
+                    venda.id,
+                    (msg or '')[:160],
+                )
+                self.fechar()
+            elif self.consultas >= self.max_consultas_por_sessao:
+                logger.info(
+                    '[SYNC ESTEIRA] Reciclando sessão após %s consultas.',
+                    self.consultas,
+                )
+                self.fechar()
+            return sucesso, msg, detalhes or [], None
+        except Exception as e:
+            logger.exception('[SYNC ESTEIRA] Erro PAP venda #%s: %s', venda.id, e)
+            err_msg = PAPNioAutomation._mensagem_erro_playwright(e)
             _run_django_sync(
                 lambda: atualizar_historico_consulta_pap_resultado(
                     vendedor_telefone=TELEFONE_JOB,
                     bo_usuario=bo_usuario,
                     tipo_automacao=TIPO_AUTOMACAO_STATUS,
                     sucesso=False,
-                    mensagem_resultado=msg,
+                    mensagem_resultado=err_msg,
                 )
             )
-            return False, msg, [], None
+            self.fechar()
+            return False, err_msg, [], None
 
-        sucesso, msg, detalhes, _ = automacao.consulta_os_por_cpf_com_resultado(
-            cpf,
-            numero_os_filtro=os_num,
-            os_prioridade_crm=os_prioridade,
-        )
-        tempo = round(time.time() - tempo_inicio, 1)
-        if automacao:
-            automacao._fechar_sessao()
-            automacao = None
-        _run_django_sync(
-            lambda: atualizar_historico_consulta_pap_resultado(
-                vendedor_telefone=TELEFONE_JOB,
-                bo_usuario=bo_usuario,
-                tipo_automacao=TIPO_AUTOMACAO_STATUS,
-                sucesso=sucesso,
-                mensagem_resultado=f'{msg} ({tempo}s)',
-            )
-        )
-        return sucesso, msg, detalhes or [], None
-    except Exception as e:
-        logger.exception('[SYNC ESTEIRA] Erro PAP venda #%s: %s', venda.id, e)
-        if automacao:
-            try:
-                automacao._fechar_sessao()
-            except Exception:
-                pass
-        err_msg = str(e)[:500]
-        _run_django_sync(
-            lambda: atualizar_historico_consulta_pap_resultado(
-                vendedor_telefone=TELEFONE_JOB,
-                bo_usuario=bo_usuario,
-                tipo_automacao=TIPO_AUTOMACAO_STATUS,
-                sucesso=False,
-                mensagem_resultado=err_msg,
-            )
-        )
-        return False, str(e), [], None
+
+def _consultar_pap_pedido(
+    venda,
+    *,
+    contador_uso_bo: Dict[int, int],
+    sessao: Optional[_SessaoPapSyncHolder] = None,
+) -> Tuple[bool, str, list, Optional[str]]:
+    """Consulta um pedido no PAP. Preferir `sessao` compartilhada no job."""
+    if sessao is not None:
+        return sessao.consultar(venda, contador_uso_bo=contador_uso_bo)
+
+    # Fallback isolado (testes / chamada avulsa): abre e fecha na hora.
+    holder = _SessaoPapSyncHolder()
+    try:
+        return holder.consultar(venda, contador_uso_bo=contador_uso_bo)
     finally:
-        _run_django_sync(lambda: liberar_bo(bo_usuario.id, TELEFONE_JOB))
+        holder.fechar()
 
 
 def _processar_um_pedido(
@@ -371,6 +476,7 @@ def _processar_um_pedido(
     *,
     contador_uso_bo: Dict[int, int],
     retry: bool = False,
+    sessao: Optional[_SessaoPapSyncHolder] = None,
 ) -> dict:
     from crm_app.models import Venda
     from crm_app.utils import sincronizar_venda_crm_apos_status_pap
@@ -386,7 +492,9 @@ def _processar_um_pedido(
     if len(cpf) not in (11, 14):
         return {**base, 'ignorado_sem_cpf': True}
 
-    sucesso, msg, detalhes, _ = _consultar_pap_pedido(venda, contador_uso_bo=contador_uso_bo)
+    sucesso, msg, detalhes, _ = _consultar_pap_pedido(
+        venda, contador_uso_bo=contador_uso_bo, sessao=sessao,
+    )
     if not sucesso:
         return {**base, 'erro': msg or 'falha_pap', 'retentar': True}
 
@@ -519,6 +627,7 @@ def executar_job(execucao_id: int) -> None:
     detalhes: List[dict] = []
     contador_uso_bo: Dict[int, int] = {}
     consultas_hora: Deque[float] = deque()
+    sessao_pap = _SessaoPapSyncHolder()
 
     _atualizar_execucao(
         execucao,
@@ -531,68 +640,77 @@ def executar_job(execucao_id: int) -> None:
     processados = atualizados = sem_alteracao = erros = ignorados = 0
     primeira = True
 
-    while fila or retentativas:
-        execucao.refresh_from_db()
-        if execucao.status != SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
-            logger.info('[SYNC ESTEIRA] Execução #%s interrompida externamente.', execucao_id)
-            break
+    try:
+        while fila or retentativas:
+            execucao.refresh_from_db()
+            if execucao.status != SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
+                logger.info('[SYNC ESTEIRA] Execução #%s interrompida externamente.', execucao_id)
+                break
 
-        if execucao.modo == SyncStatusEsteiraExecucao.MODO_AUTOMATICO and not _dentro_janela_horario():
-            logger.info('[SYNC ESTEIRA] Fora da janela 22h–07h — encerrando execução automática.')
-            break
+            if execucao.modo == SyncStatusEsteiraExecucao.MODO_AUTOMATICO and not _dentro_janela_horario():
+                logger.info('[SYNC ESTEIRA] Fora da janela 22h–07h — encerrando execução automática.')
+                break
 
-        if retentativas:
-            venda = retentativas.pop(0)
-            retry = True
-        else:
-            venda = fila.pop(0)
-            retry = False
-
-        if not primeira:
-            _pausa_aleatoria_entre_pedidos()
-        primeira = False
-
-        _aguardar_limite_hora(consultas_hora)
-
-        try:
-            resultado = _processar_um_pedido(venda, contador_uso_bo=contador_uso_bo, retry=retry)
-        except Exception as e:
-            logger.exception('[SYNC ESTEIRA] Falha inesperada venda #%s', venda.id)
-            resultado = {
-                'venda_id': venda.id,
-                'os': venda.ordem_servico,
-                'erro': str(e)[:300],
-                'retentar': True,
-            }
-
-        processados += 1
-        _registrar_consulta_hora(consultas_hora)
-
-        if resultado.get('ignorado_sem_cpf'):
-            ignorados += 1
-        elif resultado.get('erro'):
-            if resultado.get('retentar') and not retry:
-                retentativas.append(venda)
-                detalhes.append({**resultado, 'aguardando_retry': True})
+            if retentativas:
+                venda = retentativas.pop(0)
+                retry = True
             else:
-                erros += 1
-                detalhes.append(resultado)
-        elif resultado.get('alterou'):
-            atualizados += 1
-            detalhes.append(resultado)
-        else:
-            sem_alteracao += 1
-            detalhes.append(resultado)
+                venda = fila.pop(0)
+                retry = False
 
-        _atualizar_execucao(
-            execucao,
-            processados=processados,
-            atualizados=atualizados,
-            sem_alteracao=sem_alteracao,
-            erros=erros,
-            ignorados_sem_cpf=ignorados,
-            relatorio_json={'detalhes': detalhes[-200:]},
-        )
+            if not primeira:
+                _pausa_aleatoria_entre_pedidos()
+            primeira = False
+
+            _aguardar_limite_hora(consultas_hora)
+
+            try:
+                resultado = _processar_um_pedido(
+                    venda,
+                    contador_uso_bo=contador_uso_bo,
+                    retry=retry,
+                    sessao=sessao_pap,
+                )
+            except Exception as e:
+                logger.exception('[SYNC ESTEIRA] Falha inesperada venda #%s', venda.id)
+                sessao_pap.fechar()
+                resultado = {
+                    'venda_id': venda.id,
+                    'os': venda.ordem_servico,
+                    'erro': str(e)[:300],
+                    'retentar': True,
+                }
+
+            processados += 1
+            _registrar_consulta_hora(consultas_hora)
+
+            if resultado.get('ignorado_sem_cpf'):
+                ignorados += 1
+            elif resultado.get('erro'):
+                if resultado.get('retentar') and not retry:
+                    retentativas.append(venda)
+                    detalhes.append({**resultado, 'aguardando_retry': True})
+                else:
+                    erros += 1
+                    detalhes.append(resultado)
+            elif resultado.get('alterou'):
+                atualizados += 1
+                detalhes.append(resultado)
+            else:
+                sem_alteracao += 1
+                detalhes.append(resultado)
+
+            _atualizar_execucao(
+                execucao,
+                processados=processados,
+                atualizados=atualizados,
+                sem_alteracao=sem_alteracao,
+                erros=erros,
+                ignorados_sem_cpf=ignorados,
+                relatorio_json={'detalhes': detalhes[-200:]},
+            )
+    finally:
+        sessao_pap.fechar()
 
     status_final = SyncStatusEsteiraExecucao.STATUS_CONCLUIDO
     if execucao.status == SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:

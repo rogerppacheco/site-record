@@ -424,6 +424,8 @@ SYNC_ESTEIRA_INTERVALO_CURTO_MIN_SEG = config('SYNC_ESTEIRA_INTERVALO_CURTO_MIN_
 SYNC_ESTEIRA_INTERVALO_CURTO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_CURTO_MAX_SEG', default=300, cast=int)
 SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MIN_SEG', default=300, cast=int)
 SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG', default=600, cast=int)
+# Quantas consultas STATUS reutilizam o mesmo browser antes de reciclar (evita N logins V.tal).
+SYNC_ESTEIRA_MAX_CONSULTAS_POR_SESSAO = config('SYNC_ESTEIRA_MAX_CONSULTAS_POR_SESSAO', default=20, cast=int)
 
 # Lembretes WhatsApp para supervisores concluírem presença (10h, 11h) e falta automática às 12h
 PRESENCA_LEMBRETES_ATIVOS = config(
