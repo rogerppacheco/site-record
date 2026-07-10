@@ -13,10 +13,34 @@ from django.conf import settings
 from django.core.management import call_command
 import logging
 import signal
+from collections.abc import Callable
+from functools import wraps
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
 _scheduler_instance = None
+
+_F = TypeVar("_F", bound=Callable[..., None])
+
+
+def _wrap_scheduler_job(func: _F) -> _F:
+    """
+    Garante conexão PostgreSQL válida antes/depois de cada job.
+
+    Processos longos (APScheduler) reutilizam conexões stale após timeout do proxy.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs) -> None:
+        import django.db
+
+        django.db.close_old_connections()
+        try:
+            func(*args, **kwargs)
+        finally:
+            django.db.close_old_connections()
+
+    return wrapper  # type: ignore[return-value]
 
 
 def buscar_faturas_automatico():
@@ -118,7 +142,7 @@ def processar_relatorio_esteira_gc_agendado():
 
 def _registrar_jobs(scheduler):
     scheduler.add_job(
-        buscar_faturas_automatico,
+        _wrap_scheduler_job(buscar_faturas_automatico),
         trigger=CronTrigger.from_crontab('5 0 * * *'),
         id='buscar_faturas_diario',
         name='Busca automática de faturas Nio (00:05)',
@@ -126,7 +150,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        processar_envio_performance_agendado,
+        _wrap_scheduler_job(processar_envio_performance_agendado),
         trigger=IntervalTrigger(minutes=1),
         id='processar_envio_performance',
         name='Processar envios programados de Performance (a cada minuto)',
@@ -134,7 +158,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        processar_relatorio_esteira_gc_agendado,
+        _wrap_scheduler_job(processar_relatorio_esteira_gc_agendado),
         trigger=IntervalTrigger(minutes=1),
         id='processar_relatorio_esteira_gc',
         name='Relatório esteira GC ao WhatsApp (a cada minuto)',
@@ -142,7 +166,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        processar_fila_boas_vindas,
+        _wrap_scheduler_job(processar_fila_boas_vindas),
         trigger=IntervalTrigger(minutes=5),
         id='processar_fila_boas_vindas',
         name='Processar fila de boas-vindas (a cada 5 min)',
@@ -150,7 +174,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        _processar_fallback_sonax_auditoria,
+        _wrap_scheduler_job(_processar_fallback_sonax_auditoria),
         trigger=IntervalTrigger(
             minutes=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_INTERVAL_MINUTES", 2))
         ),
@@ -160,7 +184,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        sync_status_esteira_pap_automatico,
+        _wrap_scheduler_job(sync_status_esteira_pap_automatico),
         trigger=CronTrigger.from_crontab('0 22 * * *'),
         id='sync_status_esteira_pap_noturno',
         name='Sync esteira PAP — início 22:00 (America/Sao_Paulo)',
@@ -168,7 +192,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        preaquecer_cache_folha_comissionamento,
+        _wrap_scheduler_job(preaquecer_cache_folha_comissionamento),
         trigger=CronTrigger.from_crontab('0 6 * * *'),
         id='preaquecer_cache_folha',
         name='Pré-aquecer cache folha comissionamento (06:00)',
@@ -176,7 +200,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        preaquecer_cache_folha_comissionamento,
+        _wrap_scheduler_job(preaquecer_cache_folha_comissionamento),
         trigger=CronTrigger.from_crontab('0 12 * * *'),
         id='preaquecer_cache_folha_meiodia',
         name='Pré-aquecer cache folha comissionamento (12:00)',
@@ -185,7 +209,7 @@ def _registrar_jobs(scheduler):
     )
     tz_sp = getattr(settings, "TIME_ZONE", "America/Sao_Paulo")
     scheduler.add_job(
-        lembrete_presenca_supervisor_10h,
+        _wrap_scheduler_job(lembrete_presenca_supervisor_10h),
         trigger=CronTrigger.from_crontab('0 10 * * 1-5', timezone=tz_sp),
         id='lembrete_presenca_supervisor_10h',
         name='Lembrete presença supervisor (10:00 seg-sex)',
@@ -193,7 +217,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        lembrete_presenca_supervisor_11h,
+        _wrap_scheduler_job(lembrete_presenca_supervisor_11h),
         trigger=CronTrigger.from_crontab('0 11 * * 1-5', timezone=tz_sp),
         id='lembrete_presenca_supervisor_11h',
         name='Lembrete presença supervisor (11:00 seg-sex)',
@@ -201,7 +225,7 @@ def _registrar_jobs(scheduler):
         max_instances=1,
     )
     scheduler.add_job(
-        aplicar_faltas_presenca_12h,
+        _wrap_scheduler_job(aplicar_faltas_presenca_12h),
         trigger=CronTrigger.from_crontab('0 12 * * 1-5', timezone=tz_sp),
         id='aplicar_faltas_presenca_12h',
         name='Falta automática presença (12:00 seg-sex)',
