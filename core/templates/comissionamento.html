@@ -48,6 +48,87 @@
         .comissionamento-page .bg-white { background-color: var(--bg-card) !important; }
         .comissionamento-page .bg-light { background-color: var(--bg-secondary) !important; }
         .comissionamento-page .text-dark { color: var(--text-primary) !important; }
+
+        /* Extrato: cores por status (sem table-striped — conflita com linhas semânticas) */
+        .extrato-comissao-table tr.extrato-data-row.table-success.extrato-row-adiantada {
+            --bs-table-bg: #cfe8d6;
+            background-color: #cfe8d6 !important;
+        }
+        .extrato-comissao-table tr.extrato-bloco-row td {
+            font-size: 0.8rem;
+            letter-spacing: 0.03em;
+        }
+
+        /* Dark mode — extrato legível com fundos escuros tintados */
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table {
+            --bs-table-bg: var(--table-bg);
+            --bs-table-color: var(--text-primary);
+            --bs-table-border-color: var(--table-row-border);
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table thead.table-light,
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table thead.table-light th {
+            --bs-table-bg: var(--table-header-bg);
+            --bs-table-color: var(--text-primary);
+            background-color: var(--table-header-bg) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--table-row-border) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table .filter-row th {
+            background-color: var(--bg-secondary) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-bloco-row.table-secondary,
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-bloco-row.table-secondary td {
+            --bs-table-bg: var(--table-header-bg);
+            --bs-table-color: var(--text-primary);
+            background-color: var(--table-header-bg) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--table-row-border) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-success,
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-success > td {
+            --bs-table-bg: var(--badge-success-bg);
+            --bs-table-color: var(--text-primary);
+            --bs-table-striped-bg: var(--badge-success-bg);
+            background-color: var(--badge-success-bg) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--table-row-border) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-success.extrato-row-adiantada,
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-success.extrato-row-adiantada > td {
+            --bs-table-bg: rgba(52, 211, 153, 0.22);
+            background-color: rgba(52, 211, 153, 0.22) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-danger,
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-danger > td {
+            --bs-table-bg: var(--badge-danger-bg);
+            --bs-table-color: var(--text-primary);
+            background-color: var(--badge-danger-bg) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--table-row-border) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-warning,
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table tr.extrato-data-row.table-warning > td {
+            --bs-table-bg: var(--badge-warning-bg);
+            --bs-table-color: var(--text-primary);
+            background-color: var(--badge-warning-bg) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--table-row-border) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table .text-muted {
+            color: var(--text-secondary) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table .text-danger {
+            color: var(--color-danger) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table .text-info {
+            color: var(--color-info) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-comissao-table .text-primary {
+            color: var(--accent-secondary) !important;
+        }
+        [data-theme="dark"] .comissionamento-page .extrato-valor-referencia {
+            color: var(--text-secondary) !important;
+        }
 </style>
 {% endblock %}
 
@@ -334,7 +415,7 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm extrato-limpar-filtros">Limpar filtros</button>
                 </div>
             </div>
-            <div class="table-responsive"><table class="table table-sm table-striped mb-0 small extrato-comissao-table"><thead class="table-light">
+            <div class="table-responsive"><table class="table table-sm mb-0 small extrato-comissao-table"><thead class="table-light">
                 <tr>${cols.map(c => `<th class="${c.align === 'end' ? 'text-end' : ''}">${c.label}</th>`).join('')}</tr>
                 <tr class="filter-row">${cols.map(c => {
                     if (c.filter === 'select') {
@@ -369,14 +450,14 @@
                     const rowClass = (isChurn || isCancelada)
                         ? 'table-danger'
                         : (isVerde ? 'table-success' : 'table-warning');
-                    const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
+                    const rowExtraClass = (isVerde && isAdiant) ? ' extrato-row-adiantada' : '';
                     const meiTxt = (e.classificacao_mei || '-').toString().toUpperCase();
                     const dataAttrs = cols.map(c => {
                         let val = c.key === 'classificacao_mei' ? meiTxt : (e[c.key] != null ? String(e[c.key]) : '');
                         if (c.key === 'valor_comissao' && e.valor_comissao != null) val = String(e.valor_comissao);
                         return `data-${c.key}="${(val || '').replace(/"/g, '&quot;')}"`;
                     }).join(' ');
-                    html += `<tr class="extrato-data-row ${rowClass}" data-bloco="${b.ordem}" ${dataAttrs}${rowStyle}>
+                    html += `<tr class="extrato-data-row ${rowClass}${rowExtraClass}" data-bloco="${b.ordem}" ${dataAttrs}>
                         <td>${e.nome || ''}</td>
                         <td>${e.dacc || ''}</td>
                         <td>${e.cnpj || ''}</td>
