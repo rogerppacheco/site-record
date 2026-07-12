@@ -33,3 +33,6 @@ backups/
 data/
 downloads/
 site-record.git/
+
+# Sessões PAP (cookies/JWT do Playwright — nunca versionar)
+pap_sessions/*.json

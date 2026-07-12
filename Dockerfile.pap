@@ -11,4 +11,7 @@ COPY . /app/
 RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
+# Volume Railway (pap-sessions) — diretório criado no boot se não existir
+RUN mkdir -p /data/pap_sessions
+
 CMD ["python", "manage.py", "run_pap_worker"]

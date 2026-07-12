@@ -34,7 +34,7 @@ PAP_VTAL_LOGIN_URL = "https://login.vtal.com/nidp/saml2/sso"
 PAP_NOVO_PEDIDO_URL = "https://pap.niointernet.com.br/administrativo/novo-pedido"
 PAP_CONSULTA_OS_URL = "https://pap.niointernet.com.br/administrativo/consulta-os"
 DEFAULT_TIMEOUT = 30000  # 30 segundos
-STORAGE_STATE_DIR = os.path.join(settings.BASE_DIR, 'pap_sessions')
+STORAGE_STATE_DIR = getattr(settings, 'PAP_SESSIONS_DIR', os.path.join(settings.BASE_DIR, 'pap_sessions'))
 
 # Semáforo para limitar sessões PAP simultâneas (evita sobrecarga)
 _pap_semaphore = threading.Semaphore(2)  # Máximo 2 sessões simultâneas

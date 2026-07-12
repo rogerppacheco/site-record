@@ -377,6 +377,13 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 # Variável de ambiente: PAP_HEADLESS=false para ver o navegador.
 PAP_HEADLESS = config('PAP_HEADLESS', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 
+# Diretório das sessões PAP (storage state Playwright). Em produção use volume Railway:
+# PAP_SESSIONS_DIR=/data/pap_sessions (ver railway.pap.toml e pap_sessions/README.md).
+PAP_SESSIONS_DIR = config(
+    'PAP_SESSIONS_DIR',
+    default=os.path.join(BASE_DIR, 'pap_sessions'),
+)
+
 # FORCE_FATURA_PDF_PLAYWRIGHT: Se True, o PDF da fatura é SEMPRE buscado abrindo o navegador (Playwright),
 # em vez de tentar primeiro a API. Use só para debug: ver os cliques (Consultar → Pagar conta → Gerar boleto → Baixar PDF).
 # Variável de ambiente: FORCE_FATURA_PDF_PLAYWRIGHT=true
