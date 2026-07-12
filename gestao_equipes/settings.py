@@ -195,6 +195,10 @@ if not DEBUG:
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 else:
     STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    # Em desenvolvimento, o WhiteNoise reindexa os arquivos a cada requisição,
+    # evitando precisar rodar collectstatic e reiniciar o servidor a cada edição.
+    WHITENOISE_AUTOREFRESH = True
+    WHITENOISE_USE_FINDERS = True
 
 # Instrução: Após cada deploy, execute no Railway:
 # python manage.py collectstatic --noinput
@@ -292,6 +296,9 @@ EVOLUTION_INSTANCE_NAME = config('EVOLUTION_INSTANCE_NAME', default='site_record
 N8N_OUTBOUND_WEBHOOK_URL = config('N8N_OUTBOUND_WEBHOOK_URL', default='')
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
 OUTBOUND_WEBHOOK_URL = config('OUTBOUND_WEBHOOK_URL', default='')
+# Teams: Django → n8n → Incoming Webhook do canal Teams
+N8N_TEAMS_WEBHOOK_URL = config('N8N_TEAMS_WEBHOOK_URL', default='')
+SITE_URL = config('SITE_URL', default='https://www.recordpap.com.br')
 # Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
 WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
 # Telefones adicionais ignorados pelo webhook (vírgula). 12981750292 já está bloqueado no código.
@@ -498,6 +505,9 @@ GUNICORN_WORKERS = config('GUNICORN_WORKERS', default=2, cast=int)
 GUNICORN_THREADS = config('GUNICORN_THREADS', default=2, cast=int)
 
 STATIC_CACHE_MAX_AGE = config('STATIC_CACHE_MAX_AGE', default=86400, cast=int)
+if DEBUG:
+    # Evita cache agressivo de JS/CSS quebrado durante desenvolvimento local
+    STATIC_CACHE_MAX_AGE = 0
 
 # Rate limit folha de comissionamento (por usuário)
 FOLHA_COMISSAO_RATE_LIMIT = config('FOLHA_COMISSAO_RATE_LIMIT', default=6, cast=int)

@@ -1,16 +1,12 @@
+{% extends "base.html" %}
+
 {% load static %}
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle de TT's - Record PAP</title>
-    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
-    <style>
-        body { background-color: #f8f9fc; }
+
+{% block title %}Controle de TT's - Record PAP{% endblock %}
+
+{% block extra_css %}
+<style>
+body { background-color: #f8f9fc; }
         .area-interna-section { padding: 24px 16px; max-width: 1600px; margin: 0 auto; display: block; }
         /* Anula o flex do custom_styles que deixava conteúdo ao lado da tabela */
         main.controle-tts-page.area-interna-section { display: block !important; align-items: stretch !important; justify-content: flex-start !important; }
@@ -38,24 +34,16 @@
         /* Banner "Próximo TT da vez" - mostra após marcar e no carregamento */
         #proximo-tt-banner { display: none; border-left: 4px solid #0d6efd; }
         #proximo-tt-banner .tt-matricula { font-size: 1.25rem; font-weight: 800; font-family: monospace; }
-    </style>
-</head>
-<body>
+</style>
+{% endblock %}
 
-    <header class="main-header">
-        <div class="header-container">
-            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
-            <nav class="main-nav" id="main-nav">
-                <ul>
-                    <li><a href="/area-interna/">Voltar</a></li>
-                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
-        </div>
-    </header>
+{% block header_nav %}
+    <li><a href="/area-interna/">Voltar</a></li>
+                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
 
-    <main class="area-interna-section controle-tts-page">
+{% block content %}
+<main class="area-interna-section controle-tts-page">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
                 <h1 style="font-size: 1.8rem; margin: 0;">Controle de TT's</h1>
@@ -131,7 +119,10 @@
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
-    <script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
         const token = localStorage.getItem('accessToken');
         if (!token) { window.location.href = '/'; }
 
@@ -367,5 +358,4 @@
             });
         });
     </script>
-</body>
-</html>
+{% endblock %}

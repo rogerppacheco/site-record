@@ -2,6 +2,20 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+
+    <script>
+        (function () {
+            var STORAGE_KEY = 'record-pap-theme';
+            var stored = localStorage.getItem(STORAGE_KEY);
+            var theme = stored;
+            if (theme !== 'dark' && theme !== 'light') {
+                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.style.colorScheme = theme;
+            document.documentElement.style.backgroundColor = theme === 'dark' ? '#0F172A' : '#F7F9FC';
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teste de Botões v=13.1 - Record PAP</title>
@@ -221,5 +235,7 @@
             document.getElementById('css-version').textContent = `v=${cssVersion}`;
         });
     </script>
+    <script>(function(){var t=document.documentElement.getAttribute('data-theme')||'light';document.body.setAttribute('data-theme',t);})();</script>
+    <script src="{% static 'js/theme-toggle.js' %}?v=1.0"></script>
 </body>
 </html>

@@ -94,33 +94,34 @@ urlpatterns = [
     path('api/core/', include('core.urls')), 
 
     # PÁGINAS FRONTEND (HTML para o usuário)
-    path('', TemplateView.as_view(template_name='public/index.html'), name='home'),
-    path('area-interna/', TemplateView.as_view(template_name='public/area-interna.html'), name='area-interna'),
-    path('controle-tts/', TemplateView.as_view(template_name='public/controle_tts.html'), name='controle-tts'),
-    path('record-informa/', TemplateView.as_view(template_name='public/record_informa.html'), name='record-informa'),
-    path('auditoria/', TemplateView.as_view(template_name='public/auditoria.html'), name='auditoria'),
-    path('crm-vendas/', TemplateView.as_view(template_name='public/crm_vendas.html'), name='crm_vendas'),
-    path('gestao-acessos/', TemplateView.as_view(template_name='public/gestao-acessos.html'), name='gestao-acessos'),
-    path('governanca/', TemplateView.as_view(template_name='public/governanca.html'), name='governanca'),
-    path('whatsapp-config/', TemplateView.as_view(template_name='public/whatsapp-config.html'), name='whatsapp-config'),
-    path('funil-vendas/', TemplateView.as_view(template_name='public/funil-vendas.html'), name='funil-vendas'),
-    path('presenca/', TemplateView.as_view(template_name='public/presenca.html'), name='presenca'),
-    path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),
-    path('comissionamento/', TemplateView.as_view(template_name='public/comissionamento.html'), name='comissionamento'),
+    path('', TemplateView.as_view(template_name='index.html'), name='home'),
+    path('design-preview/', TemplateView.as_view(template_name='preview_design.html'), name='design-preview'),
+    path('area-interna/', TemplateView.as_view(template_name='area-interna.html'), name='area-interna'),
+    path('controle-tts/', TemplateView.as_view(template_name='controle_tts.html'), name='controle-tts'),
+    path('record-informa/', TemplateView.as_view(template_name='record_informa.html'), name='record-informa'),
+    path('auditoria/', TemplateView.as_view(template_name='auditoria.html'), name='auditoria'),
+    path('crm-vendas/', TemplateView.as_view(template_name='crm_vendas.html'), name='crm_vendas'),
+    path('gestao-acessos/', TemplateView.as_view(template_name='gestao-acessos.html'), name='gestao-acessos'),
+    path('governanca/', TemplateView.as_view(template_name='governanca.html'), name='governanca'),
+    path('whatsapp-config/', TemplateView.as_view(template_name='whatsapp-config.html'), name='whatsapp-config'),
+    path('funil-vendas/', TemplateView.as_view(template_name='funil-vendas.html'), name='funil-vendas'),
+    path('presenca/', TemplateView.as_view(template_name='presenca.html'), name='presenca'),
+    path('esteira/', TemplateView.as_view(template_name='esteira.html'), name='esteira'),
+    path('comissionamento/', TemplateView.as_view(template_name='comissionamento.html'), name='comissionamento'),
 
     # Central de Importações
-    path('importacoes/', TemplateView.as_view(template_name='public/importacoes.html'), name='central-importacoes'),
+    path('importacoes/', TemplateView.as_view(template_name='importacoes.html'), name='central-importacoes'),
 
     # Telas de Importação Específicas
-    path('importar-osab/', TemplateView.as_view(template_name='public/importar_osab.html'), name='importar-osab'),
-    path('importar-churn/', TemplateView.as_view(template_name='public/importar_churn.html'), name='importar-churn'),
-    path('importar-ciclo-pagamento/', TemplateView.as_view(template_name='public/importar_ciclo_pagamento.html'), name='importar-ciclo-pagamento'),
-    path('importar-mapa/', TemplateView.as_view(template_name='public/importar_mapa.html'), name='importar-mapa'),
-    path('importar-dfv/', TemplateView.as_view(template_name='public/importar_dfv.html'), name='page-importar-dfv'),
-    path('importar-legado/', TemplateView.as_view(template_name='public/importar_legado.html'), name='importar-legado'),
-    path('importar-agendamento/', TemplateView.as_view(template_name='public/importar_agendamento.html'), name='importar-agendamento'),
-    path('importar-recompra/', TemplateView.as_view(template_name='public/importar_recompra.html'), name='importar-recompra'),
-    path('importar-cnpj/', TemplateView.as_view(template_name='public/importar_cnpj.html'), name='importar-cnpj'),
+    path('importar-osab/', TemplateView.as_view(template_name='importar_osab.html'), name='importar-osab'),
+    path('importar-churn/', TemplateView.as_view(template_name='importar_churn.html'), name='importar-churn'),
+    path('importar-ciclo-pagamento/', TemplateView.as_view(template_name='importar_ciclo_pagamento.html'), name='importar-ciclo-pagamento'),
+    path('importar-mapa/', TemplateView.as_view(template_name='importar_mapa.html'), name='importar-mapa'),
+    path('importar-dfv/', TemplateView.as_view(template_name='importar_dfv.html'), name='page-importar-dfv'),
+    path('importar-legado/', TemplateView.as_view(template_name='importar_legado.html'), name='importar-legado'),
+    path('importar-agendamento/', TemplateView.as_view(template_name='importar_agendamento.html'), name='importar-agendamento'),
+    path('importar-recompra/', TemplateView.as_view(template_name='importar_recompra.html'), name='importar-recompra'),
+    path('importar-cnpj/', TemplateView.as_view(template_name='importar_cnpj.html'), name='importar-cnpj'),
 
     # CALENDÁRIO & PAINEL DE PERFORMANCE
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
@@ -147,7 +148,7 @@ urlpatterns = [
     path('conhecimento-ia/', page_conhecimento_ia, name='page_conhecimento_ia'),
 
     # Antecipar Instalação (solicitação ao GC Nio)
-    path('antecipar-instalacao/', TemplateView.as_view(template_name='public/antecipar-instalacao.html'), name='page_antecipar_instalacao'),
+    path('antecipar-instalacao/', TemplateView.as_view(template_name='antecipar-instalacao.html'), name='page_antecipar_instalacao'),
     
     # API Bônus M-10
     path('api/bonus-m10/safras/', SafraM10ListView.as_view(), name='api-bonus-m10-safras'),

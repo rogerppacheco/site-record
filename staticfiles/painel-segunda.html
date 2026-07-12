@@ -1,16 +1,12 @@
+{% extends "base.html" %}
+
 {% load static %}
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Segunda - Record PAP</title>
-    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
-    <style>
-        body { background-color: #f8f9fc; }
+
+{% block title %}Painel Segunda - Record PAP{% endblock %}
+
+{% block extra_css %}
+<style>
+body { background-color: #f8f9fc; }
         .main-header { background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .painel-hero { background: #fff; padding: 1.5rem 2rem; margin-bottom: 1.5rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #4e73df; }
         .table-painel { font-size: 0.8rem; }
@@ -27,23 +23,16 @@
             body { background: #fff; }
             .table-responsive { overflow: visible; }
         }
-    </style>
-</head>
-<body>
+</style>
+{% endblock %}
 
-    <header class="main-header">
-        <div class="header-container">
-            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP" class="logo"></a>
-            <nav class="main-nav" id="main-nav">
-                <ul>
-                    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
-                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
-        </div>
-    </header>
+{% block header_nav %}
+    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
+                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
 
-    <main class="container-fluid py-4" style="max-width: 1600px;">
+{% block content %}
+<main class="container-fluid py-4" style="max-width: 1600px;">
         <div class="painel-hero">
             <h2 class="mb-1 fw-bold text-dark"><i class="bi bi-calendar2-week text-primary me-2"></i>Painel Segunda</h2>
             <p class="text-muted mb-0 small">Pagamento semanal (segunda a sábado). Acesso restrito a Diretoria e Admin.</p>
@@ -87,7 +76,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
-    <script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
         (function() {
             var token = localStorage.getItem('accessToken');
             if (!token) { window.location.href = '/'; return; }
@@ -280,5 +272,4 @@
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
-</body>
-</html>
+{% endblock %}

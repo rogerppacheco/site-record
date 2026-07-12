@@ -1,19 +1,16 @@
+{% extends "base.html" %}
+
 {% load static %}
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auditoria de Vendas - Record PAP</title>
-    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
-    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    
-    <style>
-        /* Layout compacto sem rolagem visível */
+
+{% block title %}Auditoria de Vendas - Record PAP{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Layout compacto sem rolagem visível */
         .script-section { background-color: #fff; border-left: 3px solid var(--cor-primaria, #0d6efd); padding: 12px; margin-bottom: 12px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
         .script-title { color: var(--cor-primaria, #0d6efd); font-weight: 800; margin-bottom: 8px; text-transform: uppercase; font-size: 0.85rem; border-bottom: 1px solid #eee; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
         .script-text { font-size: 0.95rem; line-height: 1.35; color: #212529; margin-bottom: 10px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -64,8 +61,13 @@
         .text-end.mt-4 { margin-top: 12px !important; }
         .btn.btn-lg { padding: 10px 18px; }
         
-        /* Etapas 3, 4 e 5 — preenchem a área útil do modal sem rolagem */
-        .auditoria-flex-fill:has(#pills-endereco.active),
+        /* Etapas 3, 4 e 5 — preenchem a área útil do modal */
+        .auditoria-flex-fill:has(#pills-endereco.active) {
+            overflow: auto;
+            padding: 14px 20px;
+            display: flex;
+            flex-direction: column;
+        }
         .auditoria-flex-fill:has(#pills-oferta.active),
         .auditoria-flex-fill:has(#pills-finalizacao.active) {
             overflow: hidden;
@@ -90,7 +92,13 @@
             flex-direction: column;
             min-height: 0;
         }
-        #pills-endereco.tab-pane.active,
+        #pills-endereco.tab-pane.active {
+            display: flex !important;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: min-content;
+            overflow: visible;
+        }
         #pills-oferta.tab-pane.active,
         #pills-finalizacao.tab-pane.active {
             display: flex !important;
@@ -103,58 +111,78 @@
             flex: 1 1 auto;
             display: flex;
             flex-direction: column;
-            min-height: 0;
+            min-height: min-content;
             padding: 16px 20px;
             margin-bottom: 0;
+            gap: 0;
         }
-        #pills-endereco .script-title { font-size: 0.92rem; margin-bottom: 8px; padding-bottom: 6px; }
-        #pills-endereco .checklist-box { padding: 10px 14px; margin-bottom: 10px !important; }
+        #pills-endereco .endereco-header {
+            flex: 0 0 auto;
+            margin-bottom: 14px;
+        }
+        #pills-endereco .script-title { font-size: 0.92rem; margin-bottom: 10px; padding-bottom: 6px; flex-shrink: 0; }
+        #pills-endereco .checklist-box {
+            padding: 10px 14px;
+            margin-bottom: 12px !important;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
         #pills-endereco .checklist-box .row { --bs-gutter-x: 1rem; }
-        #pills-endereco .script-text { font-size: 0.95rem; line-height: 1.4; margin-bottom: 8px !important; }
+        #pills-endereco .checklist-box .form-check { margin-bottom: 0; }
+        #pills-endereco .endereco-header .script-text {
+            font-size: 0.95rem;
+            line-height: 1.45;
+            margin-bottom: 0 !important;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 3px solid #dee2e6;
+        }
         #pills-endereco .endereco-campos-grow {
-            flex: 1 1 auto;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 14px;
+            flex: 0 1 auto;
+            display: block;
+            margin-top: 4px;
         }
         #pills-endereco .endereco-campos-grid {
             display: grid;
             grid-template-columns: repeat(12, minmax(0, 1fr));
-            gap: 12px 16px;
-            align-items: end;
+            gap: 14px 16px;
+            align-items: start;
         }
         #pills-endereco .endereco-campo { min-width: 0; }
-        #pills-endereco .endereco-campo--cep { grid-column: span 2; }
-        #pills-endereco .endereco-campo--numero { grid-column: span 2; }
+        #pills-endereco .endereco-campo .form-label {
+            margin-bottom: 5px;
+            display: block;
+            line-height: 1.2;
+        }
+        #pills-endereco .endereco-campo--cep { grid-column: span 3; }
+        #pills-endereco .endereco-campo--numero { grid-column: span 3; }
         #pills-endereco .endereco-campo--uf { grid-column: span 2; }
         #pills-endereco .endereco-campo--logradouro { grid-column: span 12; }
         #pills-endereco .endereco-campo--complemento { grid-column: span 12; }
         #pills-endereco .endereco-campo--bairro { grid-column: span 4; }
         #pills-endereco .endereco-campo--cidade { grid-column: span 5; }
-        #pills-endereco .endereco-campo--ref { grid-column: span 3; }
+        #pills-endereco .endereco-campo--ref { grid-column: span 12; }
         #pills-endereco .endereco-campo--full { grid-column: 1 / -1; }
         #pills-endereco .input-group { width: 100%; flex-wrap: nowrap; }
         #pills-endereco .input-group .audit-campo-endereco,
         #pills-endereco .input-group .form-select.audit-campo-endereco {
             flex: 1 1 auto;
-            width: 100%;
+            width: 1%;
             min-width: 0;
+            height: 38px;
+            line-height: 1.35;
+            padding: 6px 12px;
+            font-size: 0.95rem;
+        }
+        #pills-endereco .endereco-campo--logradouro .audit-campo-endereco,
+        #pills-endereco .endereco-campo--complemento .audit-campo-endereco,
+        #pills-endereco .endereco-campo--ref .audit-campo-endereco {
             height: auto;
             min-height: 38px;
-            line-height: 1.35;
-            padding: 8px 12px;
-            font-size: 0.95rem;
-            field-sizing: content;
-            overflow: visible;
-            text-overflow: clip;
-        }
-        @supports not (field-sizing: content) {
-            #pills-endereco .input-group .audit-campo-endereco,
-            #pills-endereco .input-group .form-select.audit-campo-endereco {
-                width: 100%;
-            }
+            white-space: normal;
+            word-break: break-word;
         }
         #pills-endereco .endereco-rodape {
             flex: 0 0 auto;
@@ -162,13 +190,22 @@
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
-            margin-top: 12px;
-            padding-top: 10px;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 12px;
             border-top: 1px solid #eee;
         }
+        #pills-endereco .endereco-rodape .script-text {
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
         @media (max-width: 992px) {
-            #pills-endereco .endereco-campo { grid-column: 1 / -1; }
+            #pills-endereco .endereco-campo--cep,
+            #pills-endereco .endereco-campo--numero,
+            #pills-endereco .endereco-campo--uf,
+            #pills-endereco .endereco-campo--bairro,
+            #pills-endereco .endereco-campo--cidade,
+            #pills-endereco .endereco-campo--ref { grid-column: 1 / -1; }
         }
         /* Etapa 4 — Oferta & Pagto */
         #pills-oferta .oferta-card {
@@ -320,37 +357,16 @@
             resize: none;
         }
         #pills-finalizacao .finalizacao-footer { flex: 0 0 auto; margin-top: 10px; }
-    </style>
-</head>
-<body>
+</style>
+{% endblock %}
 
-    <div id="overlay-captura-pap" role="dialog" aria-live="polite">
-        <div class="captura-numero" id="captura-pap-contagem">5</div>
-        <p class="captura-dica mb-2" id="captura-pap-mensagem">Vá para a aba do PAP Nio agora (Alt+Tab ou clique na aba).</p>
-        <p class="small mb-3" style="opacity:0.75;">A captura será feita ao terminar a contagem.</p>
-        <button type="button" class="btn btn-outline-light btn-sm" onclick="cancelarCapturaPAP()">Cancelar captura</button>
-    </div>
+{% block header_nav %}
+    <li><a href="/area-interna/">Voltar</a></li>
+                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
 
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Carregando...</span>
-        </div>
-    </div>
-
-    <header class="main-header">
-        <div class="header-container">
-            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
-            <nav class="main-nav" id="main-nav">
-                <ul>
-                    <li><a href="/area-interna/">Voltar</a></li>
-                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
-        </div>
-    </header>
-
-    <main class="area-interna-section">
+{% block content %}
+<main class="area-interna-section">
         <div class="system-container" style="max-width: 1600px;">
             <div class="d-flex justify-content-between align-items-center mb-3 header-controls">
                 <div>
@@ -724,14 +740,16 @@
 
                                 <div class="tab-pane fade" id="pills-endereco" role="tabpanel">
                                     <div class="script-section endereco-card">
-                                        <div class="script-title">Endereço de Instalação</div>
-                                        <div class="checklist-box mb-2">
-                                            <div class="row g-2">
-                                                <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div></div>
-                                                <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
+                                        <div class="endereco-header">
+                                            <div class="script-title">Endereço de Instalação</div>
+                                            <div class="checklist-box mb-0">
+                                                <div class="row g-2">
+                                                    <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div></div>
+                                                    <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
+                                                </div>
                                             </div>
+                                            <p class="script-text mb-0">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
                                         </div>
-                                        <p class="script-text mb-2">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
                                         <div class="endereco-campos-grow">
                                             <div class="endereco-campos-grid" id="endereco-campos-grid">
                                                 <div class="endereco-campo endereco-campo--cep">
@@ -1110,8 +1128,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=8.0"></script>
     <script src="{% static 'js/menu.js' %}?v=8.0"></script>
-    
-    <script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
         const API_BASE = '/api/crm/vendas';
         const API_AUX = '/api/crm';
         
@@ -3137,5 +3157,4 @@
         navigator.clipboard.writeText(enderecoCompleto);
     }
     </script>
-</body>
-</html>
+{% endblock %}

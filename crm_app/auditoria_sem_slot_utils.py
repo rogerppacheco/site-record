@@ -239,7 +239,30 @@ def processar_envio_sem_slot(
         create_kw['imagem_anexo'] = ContentFile(img_bytes, name=img_nome or 'print_pap.jpg')
     registro = AuditoriaSemSlotGC.objects.create(**create_kw)
 
-    sucesso = enviado_gc or bool(enviados_diretoria)
+    enviado_teams = False
+    try:
+        from crm_app.services.teams_notification_service import (
+            enviar_teams_operacional,
+            media_url_absoluta,
+        )
+
+        img_url = None
+        if registro.imagem_anexo:
+            img_url = media_url_absoluta(registro.imagem_anexo.name)
+        ok_teams, _ = enviar_teams_operacional(
+            titulo=f"Sem SLOT — {(uf or '').upper()}",
+            texto=mensagem,
+            source="auditoria-sem-slot",
+            image_url=img_url,
+        )
+        if ok_teams:
+            enviado_teams = True
+            AuditoriaSemSlotGC.objects.filter(pk=registro.pk).update(enviado_teams=True)
+    except Exception as e:
+        logger.warning("[Sem SLOT] Falha ao notificar Teams: %s", e)
+        erros.append(f'Teams: {e}')
+
+    sucesso = enviado_gc or bool(enviados_diretoria) or enviado_teams
     if sucesso and erros:
         msg = 'Enviado com avisos: ' + '; '.join(erros[:3])
     elif sucesso:

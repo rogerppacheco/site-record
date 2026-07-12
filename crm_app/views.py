@@ -15022,6 +15022,12 @@ def _antecipar_instalacao_get_config():
     return config
 
 
+def _teams_webhook_configurado() -> bool:
+    from crm_app.services.teams_notification_service import TeamsNotificationService
+
+    return TeamsNotificationService().configurado
+
+
 def _antecipar_instalacao_sync_grupos_zapi():
     """
     Sincroniza grupos da Z-API com GrupoDisparo para garantir que o select da configuração
@@ -15112,6 +15118,8 @@ class ConfigAnteciparInstalacaoView(APIView):
             'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
             'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
             'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
+            'teams_notificacao_ativo': bool(config.teams_notificacao_ativo),
+            'teams_webhook_configurado': _teams_webhook_configurado(),
         })
 
     def patch(self, request):
@@ -15146,6 +15154,8 @@ class ConfigAnteciparInstalacaoView(APIView):
             horario = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_2'))
             if horario:
                 config.relatorio_esteira_horario_2 = horario
+        if 'teams_notificacao_ativo' in request.data:
+            config.teams_notificacao_ativo = bool(request.data.get('teams_notificacao_ativo'))
         config.atualizado_por = request.user
         config.save()
         return Response({
@@ -15156,6 +15166,8 @@ class ConfigAnteciparInstalacaoView(APIView):
             'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
             'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
             'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
+            'teams_notificacao_ativo': bool(config.teams_notificacao_ativo),
+            'teams_webhook_configurado': _teams_webhook_configurado(),
         })
 
 
@@ -15178,6 +15190,8 @@ def _status_envio_antecipar_label(s):
         partes.append('GC')
     if s.enviado_grupo:
         partes.append('Grupo')
+    if getattr(s, 'enviado_teams', False):
+        partes.append('Teams')
     if partes:
         rotulo = 'Enviado (' + ', '.join(partes) + ')'
     else:
@@ -15645,7 +15659,37 @@ class SolicitarAnteciparInstalacaoView(APIView):
         )
         if img_bytes is not None:
             create_kw['imagem_anexo'] = ContentFile(img_bytes, name=img_nome or 'anexo.jpg')
-        AnteciparInstalacaoSolicitacao.objects.create(**create_kw)
+        solicitacao = AnteciparInstalacaoSolicitacao.objects.create(**create_kw)
+
+        try:
+            from crm_app.services.teams_notification_service import (
+                enviar_teams_operacional,
+                media_url_absoluta,
+            )
+
+            titulo_teams = f"{_tipo_solicitacao_label_antecipar(tipo)} — O.S {os_num}"
+            img_url = None
+            if solicitacao.imagem_anexo:
+                img_url = media_url_absoluta(solicitacao.imagem_anexo.name)
+            ok_teams, det_teams = enviar_teams_operacional(
+                titulo=titulo_teams,
+                texto=mensagem,
+                source=f"antecipar-{tipo}",
+                image_url=img_url,
+            )
+            if ok_teams:
+                enviados.append('Teams')
+                solicitacao.enviado_teams = True
+                solicitacao.save(update_fields=['enviado_teams'])
+            elif config.teams_notificacao_ativo:
+                erros.append(f'Teams: {det_teams}')
+        except Exception as e:
+            logger.warning("[Antecipar] Falha ao notificar Teams: %s", e)
+            if config.teams_notificacao_ativo:
+                erros.append(f'Teams: {e}')
+            solicitacao.erros = erros
+            solicitacao.save(update_fields=['erros'])
+
         if not enviados:
             return Response({'detail': 'Nenhuma mensagem foi enviada.', 'erros': erros}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response({

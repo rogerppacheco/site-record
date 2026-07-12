@@ -1702,6 +1702,11 @@ class AnteciparInstalacaoConfig(models.Model):
         blank=True,
         help_text="Controle interno para evitar reenvio no mesmo slot diário.",
     )
+    teams_notificacao_ativo = models.BooleanField(
+        default=False,
+        verbose_name="Notificação Teams ativa",
+        help_text="Envia cópia das mensagens operacionais (Sem SLOT, Antecipar, etc.) ao canal Teams via n8n.",
+    )
     atualizado_em = models.DateTimeField(auto_now=True)
     atualizado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
@@ -1740,6 +1745,7 @@ class AnteciparInstalacaoSolicitacao(models.Model):
     data_solicitacao = models.DateTimeField(auto_now_add=True)
     enviado_gc = models.BooleanField(default=False)
     enviado_grupo = models.BooleanField(default=False)
+    enviado_teams = models.BooleanField(default=False, verbose_name="Enviado ao Teams")
     erros = models.JSONField(default=list, blank=True)
     mensagem_enviada = models.TextField(blank=True)
     # Resposta do GC ao solicitante (registro + disparo de msg padronizada ao vendedor)
@@ -1903,6 +1909,7 @@ class AuditoriaSemSlotGC(models.Model):
     mensagem_enviada = models.TextField(blank=True)
     enviado_gc = models.BooleanField(default=False)
     enviados_diretoria = models.JSONField(default=list, blank=True)
+    enviado_teams = models.BooleanField(default=False, verbose_name="Enviado ao Teams")
     erros = models.JSONField(default=list, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 

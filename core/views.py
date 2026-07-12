@@ -53,7 +53,7 @@ class GovernancaView(TemplateView):
 
 class PainelSegundaView(TemplateView):
     """Painel do Agente Financeiro (checklist toda segunda). HTML sempre servido; acesso Diretoria/Admin conferido no front via JWT (como área interna)."""
-    template_name = "public/painel-segunda.html"
+    template_name = "painel-segunda.html"
 
 class PresencaView(TemplateView):
     template_name = "frontend/public/presenca.html"

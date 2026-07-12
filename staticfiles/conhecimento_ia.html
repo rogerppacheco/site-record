@@ -1,16 +1,12 @@
+{% extends "base.html" %}
+
 {% load static %}
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conhecimento IA - Alimentar o bot com PDFs e planilhas</title>
-    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
-    <style>
-        body { background-color: #f8f9fc; padding-top: 80px; }
+
+{% block title %}Conhecimento IA - Alimentar o bot com PDFs e planilhas{% endblock %}
+
+{% block extra_css %}
+<style>
+body { background-color: #f8f9fc; padding-top: 80px; }
         .container-ia { max-width: 900px; margin: 0 auto; padding: 20px; }
         .upload-zone {
             border: 3px dashed #4e73df;
@@ -24,22 +20,16 @@
         .upload-zone:hover { border-color: #224abe; background: #e8f0ff; }
         .doc-card { border: 1px solid #e3e6f0; border-radius: 10px; padding: 16px; margin-bottom: 12px; background: white; }
         .doc-card.inativo { opacity: 0.6; }
-    </style>
-</head>
-<body>
-    <header class="main-header">
-        <div class="header-container">
-            <a href="/area-interna/"><img src="{% static 'logo.png' %}" alt="Record PAP" class="logo"></a>
-            <nav class="main-nav">
-                <ul>
-                    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
-                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
-        </div>
-    </header>
+</style>
+{% endblock %}
 
-    <div class="container-ia">
+{% block header_nav %}
+    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
+                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
+
+{% block content %}
+<div class="container-ia">
         <h2 class="mb-2"><i class="bi bi-robot text-primary me-2"></i>Conhecimento IA</h2>
         <p class="text-muted mb-4">Envie PDFs, planilhas e apresentações ou adicione sites. O texto extraído é usado pela IA do bot WhatsApp para responder dúvidas dos vendedores.</p>
 
@@ -78,7 +68,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
-    <script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
         const API_BASE_URL = window.location.origin;
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -324,5 +317,4 @@
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
-</body>
-</html>
+{% endblock %}

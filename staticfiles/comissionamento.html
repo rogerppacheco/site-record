@@ -1,17 +1,16 @@
+{% extends "base.html" %}
+
 {% load static %}
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Comissionamento</title>
-    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        /* Estilo Limpo e Profissional */
+
+{% block title %}Gestão de Comissionamento{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Estilo Limpo e Profissional */
         .table thead th { 
             font-size: 0.8rem; 
             text-transform: uppercase; 
@@ -48,23 +47,16 @@
         .extrato-valor-referencia { color: #6c757d; font-style: italic; }
         .extrato-valor-antecipada { color: #0dcaf0; }
         .extrato-valor-churn { color: #dc3545; }
-    </style>
-</head>
-<body>
-    <header class="main-header">
-        <div class="header-container">
-            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
-            <nav class="main-nav" id="main-nav">
-                <ul>
-                    <li><a href="/area-interna/">Voltar</a></li>
-                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
-        </div>
-    </header>
+</style>
+{% endblock %}
 
-    <main class="area-interna-section">
+{% block header_nav %}
+    <li><a href="/area-interna/">Voltar</a></li>
+                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
+
+{% block content %}
+<main class="area-interna-section">
         <div class="system-container" style="max-width: 1600px;"> 
             
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -613,19 +605,25 @@
             initExtratoFiltros(container);
         }
 
-        async function carregarFolhaExcel() {
+        async function carregarFolhaExcel(tentativa = 0) {
             const container = document.getElementById('folha-excel-container');
             const selVendedor = document.getElementById('folha-excel-vendedor');
             const selMulti = document.getElementById('folha-excel-vendedores-multi');
             if (!container) return;
             const mes = document.getElementById('filtro-mes').value;
             const ano = document.getElementById('filtro-ano').value;
-            container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Carregando folha...</p></div>';
+            const msgLoad = tentativa > 0
+                ? 'Folha pronta no cache — recarregando...'
+                : 'Carregando folha (primeira carga do mês pode levar até 1–2 min)...';
+            container.innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">${msgLoad}</p></div>`;
             if (selVendedor) selVendedor.innerHTML = '<option value="">— Selecione —</option>';
             if (selMulti) selMulti.innerHTML = '';
             try {
-                const res = await axios.get(`/api/crm/comissionamento/folha/?ano=${ano}&mes=${mes}`);
+                const res = await axios.get(`/api/crm/comissionamento/folha/?ano=${ano}&mes=${mes}`, { timeout: 180000 });
                 const dados = res.data;
+                if (dados && dados.erro) {
+                    throw Object.assign(new Error(dados.erro), { response: { data: dados, status: 503 } });
+                }
                 folhaExcelCache = { dados, periodo: dados.periodo || `${mes}/${ano}` };
 
                 if (!dados.vendedores || !dados.vendedores.length) {
@@ -664,7 +662,16 @@
                 }
                 renderizarCardFolhaVendedor();
             } catch (err) {
-                container.innerHTML = `<div class="alert alert-danger">Erro ao carregar folha: ${err.message || err.response?.data?.error || 'Erro de rede'}</div>`;
+                const data = err.response?.data || {};
+                const status = err.response?.status;
+                const retryEm = data.retry_after_seconds || 15;
+                if ((status === 503 || data.retry_after_seconds) && tentativa < 2) {
+                    container.innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Gerando folha em segundo plano... nova tentativa em ${retryEm}s</p></div>`;
+                    await new Promise(r => setTimeout(r, retryEm * 1000));
+                    return carregarFolhaExcel(tentativa + 1);
+                }
+                const msg = data.erro || data.error || err.message || 'Erro de rede';
+                container.innerHTML = `<div class="alert alert-danger">Erro ao carregar folha: ${msg}</div>`;
             }
         }
 
@@ -757,7 +764,7 @@
             if (!btn) return;
             const origText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Gerando...';
             try {
                 const res = await axios.post(
                     `${apiUrl}exportar-folha-extrato-pdf/`,
@@ -767,7 +774,7 @@
                         ano: parseInt(ano, 10),
                         mes: parseInt(mes, 10)
                     },
-                    { responseType: 'blob' }
+                    { responseType: 'blob', timeout: 120000 }
                 );
                 const cd = res.headers['content-disposition'] || '';
                 let filename = nomeArquivoPdfExportFallback(mes, idsEnvio);
@@ -1177,7 +1184,4 @@
         function toggleTodos(source) { document.querySelectorAll('.check-consultor').forEach(c => c.checked = source.checked); }
         function fmtMoney(val) { return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
     </script>
-    <script src="{% static 'js/menu.js' %}?v=5.0"></script>
-</body>
-</html>
-
+{% endblock %}

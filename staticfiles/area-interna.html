@@ -1,28 +1,22 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Área Interna - Record PAP</title>
-    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=14.1">
+{% extends "base.html" %}
 
-    <style>
-        /* Estilos Exclusivos da Área Interna */
-        body { background-color: #f8f9fc; }
-        
+{% load static %}
+
+{% block title %}Área Interna - Record PAP{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Estilos Exclusivos da Área Interna */
         .hero-section {
-            background: white;
+            background: var(--bg-surface);
             padding: 40px 20px;
-            border-bottom: 1px solid #e3e6f0;
+            border-bottom: 1px solid var(--border-color);
             margin-bottom: 40px;
             text-align: center;
         }
+
+        .hero-section h2 { color: var(--text-main); }
+        .hero-section p { color: var(--text-muted); }
         
         .app-grid {
             display: grid;
@@ -34,13 +28,13 @@
         }
 
         .app-card {
-            background: white;
+            background: var(--bg-surface);
             border-radius: 10px;
             padding: 20px 16px;
             text-align: center;
             text-decoration: none;
-            color: #5a5c69;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            color: var(--text-muted);
+            box-shadow: var(--sombra-suave);
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
@@ -49,7 +43,7 @@
             align-items: center;
             justify-content: center;
             height: 120px;
-            border: 1px solid #f0f0f0;
+            border: 1px solid var(--border-color);
         }
 
         /* Oculta o card por padrão até o JS validar o perfil (evita piscar) */
@@ -57,8 +51,8 @@
 
         .app-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 8px 16px rgba(0,0,0,0.12);
-            border-color: #e3e6f0;
+            box-shadow: var(--sombra-media);
+            border-color: var(--accent-color);
         }
 
         .app-icon {
@@ -74,7 +68,7 @@
             font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.3px;
-            color: #2c3e50;
+            color: var(--text-main);
         }
 
         /* Gradientes Personalizados para Ícones */
@@ -92,24 +86,15 @@
         .icon-bonus { background: -webkit-linear-gradient(45deg, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         /* Ícone para Record Apoia (Pasta/Repositório) */
         .icon-apoia { background: -webkit-linear-gradient(45deg, #17a2b8, #138496); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+</style>
+{% endblock %}
 
-    </style>
-</head>
-<body>
+{% block header_nav %}
+    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
 
-    <header class="main-header">
-        <div class="header-container">
-            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
-            <nav class="main-nav" id="main-nav">
-                <ul>
-                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
-        </div>
-    </header>
-
-    <div class="hero-section">
+{% block content %}
+<div class="hero-section">
         <h2 class="fw-bold text-dark">Bem-vindo, <span id="user-name" class="text-primary">Colaborador</span>!</h2>
         <p class="text-muted">Selecione uma ferramenta abaixo para começar.</p>
     </div>
@@ -229,7 +214,10 @@
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
-    <script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
         document.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('accessToken');
             if (!token) { window.location.href = '/'; return; }
@@ -286,5 +274,4 @@
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
-</body>
-</html>
+{% endblock %}
