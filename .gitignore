@@ -28,6 +28,8 @@ downloads/pap_trace*.zip
 # Ambiente virtual Python (não enviar no railway up)
 .venv/
 venv/
+# Pastas locais com dados sensíveis (nunca versionar)
 backups/
+data/
 downloads/
 site-record.git/
