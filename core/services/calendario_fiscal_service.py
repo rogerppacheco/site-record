@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import calendar
 import logging
-from datetime import date, timedelta
-from typing import Any
+from datetime import date, datetime, timedelta
+from typing import Any, Literal
+
+TipoPesoFiscal = Literal['VB', 'GR']
 
 from django.db import IntegrityError, connection
 from django.db.models import Sum
@@ -40,6 +42,64 @@ def _corrigir_sequence_diafiscal() -> None:
             )
     except Exception as e:
         logger.warning("Não foi possível corrigir sequence core_diafiscal: %s", e)
+
+
+def fracao_dia_corrente(agora_local: datetime) -> float:
+    """Fração do dia civil já decorrida (mín. 1h), alinhada à projeção do dashboard."""
+    meia_noite = agora_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    decorrido_s = (agora_local - meia_noite).total_seconds()
+    return min(max(decorrido_s / 86400.0, 1.0 / 24.0), 1.0)
+
+
+def carregar_mapa_fiscal(inicio: date, fim: date) -> dict[date, DiaFiscal]:
+    """Mapa data → DiaFiscal para consultas em lote no painel de performance."""
+    return {
+        d.data: d
+        for d in DiaFiscal.objects.filter(data__range=(inicio, fim))
+    }
+
+
+def peso_unitario_dia(
+    data_atual: date,
+    tipo: TipoPesoFiscal,
+    mapa: dict[date, DiaFiscal] | None = None,
+) -> float:
+    """Retorna peso_venda (VB) ou peso_instalacao (GR) do dia, com fallback padrão."""
+    if mapa and data_atual in mapa:
+        p_venda = float(mapa[data_atual].peso_venda)
+        p_inst = float(mapa[data_atual].peso_instalacao)
+    else:
+        p_venda, p_inst = _pesos_padrao_por_weekday(data_atual)
+    return p_venda if tipo == 'VB' else p_inst
+
+
+def somar_pesos_periodo(
+    inicio: date,
+    fim: date,
+    *,
+    limite: date,
+    tipo: TipoPesoFiscal = 'VB',
+    mapa: dict[date, DiaFiscal] | None = None,
+    hoje_ref: date | None = None,
+    agora_local: datetime | None = None,
+    fracionar_hoje: bool = False,
+) -> float:
+    """
+    Soma pesos fiscais de inicio até min(fim, limite).
+    Quando fracionar_hoje=True, aplica fração horária apenas no hoje_ref.
+    """
+    total = 0.0
+    limite_efetivo = min(fim, limite)
+    if inicio > limite_efetivo:
+        return 0.0
+    data_iter = inicio
+    while data_iter <= limite_efetivo:
+        peso = peso_unitario_dia(data_iter, tipo, mapa)
+        if fracionar_hoje and hoje_ref and agora_local and data_iter == hoje_ref:
+            peso *= fracao_dia_corrente(agora_local)
+        total += peso
+        data_iter += timedelta(days=1)
+    return total
 
 
 def _pesos_padrao_por_weekday(data_atual: date) -> tuple[float, float]:

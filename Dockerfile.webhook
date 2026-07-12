@@ -11,4 +11,6 @@ COPY . /app/
 RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
-CMD ["python", "manage.py", "run_webhook_worker"]
+RUN chmod +x /app/scripts/start_webhook.sh /app/scripts/migrate_unpooled.sh
+
+CMD ["/app/scripts/start_webhook.sh"]

@@ -3,13 +3,22 @@ from datetime import date, timedelta
 from django.test import SimpleTestCase
 
 from crm_app.performance_helpers import (
+    calcular_dvu,
+    calcular_pct_representatividade,
     cores_linha_performance,
     cores_linha_semanal,
     dias_decorridos_semana,
     indice_faixa_comissao,
+    limite_peso_mes,
     media_diaria_semana_referencia,
     ordenar_lista_performance,
     ordem_cluster_performance,
+    tipo_peso_gestao,
+)
+from core.services.calendario_fiscal_service import (
+    fracao_dia_corrente,
+    peso_unitario_dia,
+    somar_pesos_periodo,
 )
 
 
@@ -69,3 +78,48 @@ class PerformanceHelpersTests(SimpleTestCase):
         self.assertEqual(indice_faixa_comissao(ctx, 99, 'Vendedor', 10), 0)
         self.assertEqual(indice_faixa_comissao(ctx, 99, 'Vendedor', 25), 1)
         self.assertEqual(indice_faixa_comissao(ctx, 99, 'Vendedor', 60), 2)
+
+    def test_calcular_dvu(self):
+        self.assertEqual(calcular_dvu(10, 2.5), 4.0)
+        self.assertEqual(calcular_dvu(0, 5), 0.0)
+        self.assertEqual(calcular_dvu(7, 0), 0.0)
+        self.assertEqual(calcular_dvu(5, 3), 1.67)
+
+    def test_limite_peso_mes(self):
+        inicio = date(2026, 7, 1)
+        fim = date(2026, 7, 31)
+        self.assertEqual(limite_peso_mes(inicio, fim, date(2026, 7, 12)), date(2026, 7, 12))
+        self.assertEqual(limite_peso_mes(inicio, fim, date(2026, 8, 1)), fim)
+
+    def test_tipo_peso_gestao(self):
+        self.assertEqual(tipo_peso_gestao('BRUTA'), 'VB')
+        self.assertEqual(tipo_peso_gestao('INSTALADA'), 'GR')
+
+    def test_somar_pesos_periodo_semana(self):
+        inicio = date(2026, 7, 6)
+        fim = date(2026, 7, 11)
+        limite = date(2026, 7, 8)
+        peso = somar_pesos_periodo(inicio, fim, limite=limite, tipo='VB')
+        self.assertEqual(peso, 3.0)
+
+    def test_calcular_pct_representatividade(self):
+        self.assertEqual(calcular_pct_representatividade(25, 100), 25.0)
+        self.assertEqual(calcular_pct_representatividade(0, 100), 0.0)
+        self.assertEqual(calcular_pct_representatividade(10, 0), 0.0)
+
+    def test_somar_pesos_fraciona_hoje(self):
+        from datetime import datetime
+        from django.utils import timezone
+
+        dia = date(2026, 7, 8)
+        agora = timezone.make_aware(datetime(2026, 7, 8, 12, 0, 0))
+        peso = somar_pesos_periodo(
+            dia,
+            dia,
+            limite=dia,
+            tipo='VB',
+            hoje_ref=dia,
+            agora_local=agora,
+            fracionar_hoje=True,
+        )
+        self.assertAlmostEqual(peso, 0.5, places=2)

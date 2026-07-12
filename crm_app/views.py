@@ -7787,7 +7787,14 @@ def _perf_semana_bucket_dia_mes(dia_mes):
     return 'S4'
 
 
-def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
+def _perf_montar_payload_gestao(users, inicio_mes_ref, request, hoje_ref=None, agora_local=None):
+    from core.services.calendario_fiscal_service import carregar_mapa_fiscal, somar_pesos_periodo
+    from crm_app.performance_helpers import calcular_dvu, limite_peso_mes, tipo_peso_gestao
+
+    if hoje_ref is None:
+        hoje_ref = timezone.localtime(timezone.now()).date()
+    if agora_local is None:
+        agora_local = timezone.localtime(timezone.now())
     meses_hist = request.query_params.get('gestao_meses')
     try:
         meses_hist = int(meses_hist)
@@ -7816,6 +7823,7 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     tipo_metrica = (request.query_params.get('gestao_tipo') or 'BRUTA').strip().upper()
     if tipo_metrica not in ('BRUTA', 'INSTALADA'):
         tipo_metrica = 'BRUTA'
+    tipo_peso = tipo_peso_gestao(tipo_metrica)
 
     # M-0 = mês base (mes_ref_real); M-1, M-2… = meses anteriores à âncora.
     meses_ref = [_perf_add_months(mes_ref_real, -idx) for idx in range(meses_hist)]
@@ -7842,6 +7850,19 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     )
     user_index = {u['id']: u for u in users_base}
 
+    mapa_fiscal = carregar_mapa_fiscal(mes_min, fim_mes_max)
+    pesos_mes_cache = {}
+    for mref in set(meses_ref):
+        fim_m = _perf_ultimo_dia_mes(mref.year, mref.month)
+        limite_m = limite_peso_mes(mref, fim_m, hoje_ref)
+        pesos_mes_cache[mref.strftime('%Y-%m')] = somar_pesos_periodo(
+            mref,
+            fim_m,
+            limite=limite_m,
+            tipo=tipo_peso,
+            mapa=mapa_fiscal,
+        )
+
     mes_user_stats = {}
     for mref in meses_ref:
         fim_m = _perf_ultimo_dia_mes(mref.year, mref.month)
@@ -7864,6 +7885,10 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     def _valor_cc(stat):
         return int(stat['instaladas_cc'] or 0) if tipo_metrica == 'INSTALADA' else int(stat['total_cc'] or 0)
 
+    def _dvu_mes(ym: str, volume: int) -> float:
+        peso = pesos_mes_cache.get(ym) or 0.0
+        return calcular_dvu(volume, peso)
+
     labels = []
     for idx, mref in enumerate(meses_ref):
         ym = mref.strftime('%Y-%m')
@@ -7875,9 +7900,12 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     rows_vendedor = []
     for u in users_base:
         serie = []
+        serie_dvu = []
         for lb in labels:
             st = _get_user_stat(lb['key'], u['id'])
-            serie.append(_valor_principal(st))
+            vol = _valor_principal(st)
+            serie.append(vol)
+            serie_dvu.append(_dvu_mes(lb['key'], vol))
         st_ref = _get_user_stat(ym_ref, u['id'])
         st_comp = _get_user_stat(ym_comp, u['id'])
         total_ref = _valor_principal(st_ref)
@@ -7896,6 +7924,7 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
             'cluster': u.get('cluster') or '-',
             'meta': meta,
             'serie': serie,
+            'serie_dvu': serie_dvu,
             'ref_total': total_ref,
             'comp_total': total_comp,
             'var_abs': var_abs,
@@ -7921,10 +7950,12 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
     rows_canal_cluster = []
     for _, grp in sorted(agrup_canal_cluster.items(), key=lambda item: (item[1]['canal'], item[1]['cluster'])):
         serie = []
+        serie_dvu = []
         for lb in labels:
             ym = lb['key']
             total = sum(_valor_principal(_get_user_stat(ym, uid)) for uid in grp['uid'])
             serie.append(total)
+            serie_dvu.append(_dvu_mes(ym, total))
         ref_total = sum(_valor_principal(_get_user_stat(ym_ref, uid)) for uid in grp['uid'])
         comp_total = sum(_valor_principal(_get_user_stat(ym_comp, uid)) for uid in grp['uid'])
         cc_ref = sum(_valor_cc(_get_user_stat(ym_ref, uid)) for uid in grp['uid'])
@@ -7941,6 +7972,7 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
             'cluster': grp['cluster'],
             'meta': meta,
             'serie': serie,
+            'serie_dvu': serie_dvu,
             'ref_total': ref_total,
             'comp_total': comp_total,
             'var_abs': var_abs,
@@ -8003,6 +8035,14 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
             'var_pct': round(v_pct, 2),
         })
 
+    totais_serie = []
+    totais_serie_dvu = []
+    for lb in labels:
+        ym = lb['key']
+        total_mes = sum(_valor_principal(_get_user_stat(ym, uid)) for uid in user_index.keys())
+        totais_serie.append(total_mes)
+        totais_serie_dvu.append(_dvu_mes(ym, total_mes))
+
     return {
         'tipo_metrica': tipo_metrica,
         'modo_comparacao': modo_comp,
@@ -8011,6 +8051,8 @@ def _perf_montar_payload_gestao(users, inicio_mes_ref, request):
         'mes_ref': ym_ref,
         'mes_comp': ym_comp,
         'labels': labels,
+        'totais_serie': totais_serie,
+        'totais_serie_dvu': totais_serie_dvu,
         'rows_vendedor': rows_vendedor,
         'rows_canal_cluster': rows_canal_cluster,
         'semanal_comparativo': semanal_cmp,
@@ -8053,10 +8095,13 @@ class PainelPerformanceView(APIView):
         users_perf = users.select_related('perfil')
         users_by_id = {u.id: u for u in users_perf}
         from crm_app.performance_helpers import (
+            calcular_dvu,
             carregar_contexto_faixas_comissao,
             dias_decorridos_semana,
+            limite_peso_mes,
             perfil_comissao_do_consultor,
         )
+        from core.services.calendario_fiscal_service import carregar_mapa_fiscal, somar_pesos_periodo
         ctx_faixas_comissao = carregar_contexto_faixas_comissao(inicio_mes.year, inicio_mes.month)
         dias_semana_decorridos = dias_decorridos_semana(inicio_semana, fim_semana, hoje_ref)
 
@@ -8091,23 +8136,91 @@ class PainelPerformanceView(APIView):
             & Q(vendas__data_abertura__date__lte=fim_semana)
         )
 
+        inicio_m0 = date(hoje_ref.year, hoje_ref.month, 1)
+        fim_m0 = _perf_ultimo_dia_mes(hoje_ref.year, hoje_ref.month)
+        inicio_m1 = _perf_add_months(inicio_m0, -1)
+        fim_m1 = _perf_ultimo_dia_mes(inicio_m1.year, inicio_m1.month)
+        mapa_fiscal = carregar_mapa_fiscal(
+            min(inicio_m1, inicio_semana, inicio_mes),
+            max(fim_m0, fim_mes, fim_semana),
+        )
+        peso_dvu_hoje = somar_pesos_periodo(
+            hoje_ref,
+            hoje_ref,
+            limite=hoje_ref,
+            tipo='VB',
+            mapa=mapa_fiscal,
+            hoje_ref=hoje_ref,
+            agora_local=agora_local,
+            fracionar_hoje=True,
+        )
+        limite_semana = min(fim_semana, hoje_ref)
+        peso_dvu_semana = somar_pesos_periodo(
+            inicio_semana,
+            fim_semana,
+            limite=limite_semana,
+            tipo='VB',
+            mapa=mapa_fiscal,
+        )
+        limite_mes = limite_peso_mes(inicio_mes, fim_mes, hoje_ref)
+        peso_dvu_mes = somar_pesos_periodo(
+            inicio_mes,
+            fim_mes,
+            limite=limite_mes,
+            tipo='VB',
+            mapa=mapa_fiscal,
+        )
+        limite_m0 = limite_peso_mes(inicio_m0, fim_m0, hoje_ref)
+        peso_dvu_m0 = somar_pesos_periodo(
+            inicio_m0,
+            fim_m0,
+            limite=limite_m0,
+            tipo='VB',
+            mapa=mapa_fiscal,
+        )
+        peso_dvu_m1 = somar_pesos_periodo(
+            inicio_m1,
+            fim_m1,
+            limite=fim_m1,
+            tipo='VB',
+            mapa=mapa_fiscal,
+        )
+
+        filtro_abertura_m0 = (
+            Q(vendas__data_abertura__date__gte=inicio_m0)
+            & Q(vendas__data_abertura__date__lte=fim_m0)
+        )
+        filtro_abertura_m1 = (
+            Q(vendas__data_abertura__date__gte=inicio_m1)
+            & Q(vendas__data_abertura__date__lte=fim_m1)
+        )
+
         qs_hoje = users_perf.annotate(
             vendas_total=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref)),
-            vendas_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref) & filtro_cc)
-        ).values('username', 'canal', 'cluster', 'vendas_total', 'vendas_cc').order_by('username')
+            vendas_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref) & filtro_cc),
+            vendas_m0=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_m0),
+            vendas_m1=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_m1),
+        ).values('username', 'canal', 'cluster', 'vendas_total', 'vendas_cc', 'vendas_m0', 'vendas_m1').order_by('username')
 
         lista_hoje = []
+        total_vendas_m0 = 0
+        total_vendas_m1 = 0
         for u in qs_hoje:
             total = u['vendas_total']
             cc = u['vendas_cc']
             pct = (cc / total * 100) if total > 0 else 0
+            total_vendas_m0 += int(u['vendas_m0'] or 0)
+            total_vendas_m1 += int(u['vendas_m1'] or 0)
             lista_hoje.append({
                 'vendedor': u['username'].upper(),
                 'canal': u['canal'],
                 'cluster': u.get('cluster', '-'),
                 'total': total,
                 'cc': cc,
-                'pct_cc': round(pct, 2)
+                'pct_cc': round(pct, 2),
+                'dvu_hoje': calcular_dvu(total, peso_dvu_hoje),
+                'dvu_m0': calcular_dvu(u['vendas_m0'], peso_dvu_m0),
+                'dvu_m1': calcular_dvu(u['vendas_m1'], peso_dvu_m1),
             })
 
         qs_semana = users_perf.annotate(
@@ -8118,8 +8231,12 @@ class PainelPerformanceView(APIView):
             sex=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[4])),
             sab=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[5])),
             total_semana=Count('vendas', filter=filtro_os_sem_reemissao & filtro_semana_abertura),
-            total_cc=Count('vendas', filter=filtro_os_sem_reemissao & filtro_semana_abertura & filtro_cc)
-        ).values('username', 'cluster', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')
+            total_cc=Count('vendas', filter=filtro_os_sem_reemissao & filtro_semana_abertura & filtro_cc),
+            vendas_m1=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_m1),
+        ).values(
+            'username', 'cluster', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab',
+            'total_semana', 'total_cc', 'vendas_m1',
+        ).order_by('username')
 
         lista_semana = []
         for u in qs_semana:
@@ -8131,7 +8248,9 @@ class PainelPerformanceView(APIView):
                 'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
                 'total': total,
                 'cc': u['total_cc'],
-                'pct_cc': round(pct, 2)
+                'pct_cc': round(pct, 2),
+                'dvu': calcular_dvu(total, peso_dvu_semana),
+                'dvu_m1': calcular_dvu(u['vendas_m1'], peso_dvu_m1),
             })
 
         qs_mes = users_perf.annotate(
@@ -8139,12 +8258,13 @@ class PainelPerformanceView(APIView):
             instaladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_data_inst_mes & filtro_inst),
             total_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & filtro_cc),
             instaladas_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_data_inst_mes & filtro_inst & filtro_cc),
+            vendas_m1=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_m1),
             pendenciadas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__icontains='PENDEN')),
             agendadas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__iexact='AGENDADO')),
             canceladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
             'id', 'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc',
-            'pendenciadas', 'agendadas', 'canceladas',
+            'vendas_m1', 'pendenciadas', 'agendadas', 'canceladas',
         ).order_by('username')
 
         # Aval. Cluster: soma instaladas no MÊS DO FILTRO + no MÊS CIVIL IMEDIATAMENTE ANTERIOR
@@ -8197,6 +8317,8 @@ class PainelPerformanceView(APIView):
                 'cluster': u.get('cluster', '-'),
                 'total': tot,
                 'instaladas': inst,
+                'dvu': calcular_dvu(tot, peso_dvu_mes),
+                'dvu_m1': calcular_dvu(u['vendas_m1'], peso_dvu_m1),
                 'cc_total': u['total_cc'],
                 'cc_inst': u['instaladas_cc'],
                 'pct_cc_total': round(pct_cc_total, 2),
@@ -8221,19 +8343,30 @@ class PainelPerformanceView(APIView):
         total_hoje = sum(i['total'] for i in lista_hoje)
         total_semana = sum(i['total'] for i in lista_semana)
         total_mes = sum(i['total'] for i in lista_mes)
-        payload_gestao = _perf_montar_payload_gestao(users_perf, inicio_mes, request)
+        payload_gestao = _perf_montar_payload_gestao(users_perf, inicio_mes, request, hoje_ref, agora_local)
 
         payload = {
             'hoje': lista_hoje,
             'semana': lista_semana,
             'mes': lista_mes,
             'gestao': payload_gestao,
-            'totais': {'hoje': total_hoje, 'semana': total_semana, 'mes': total_mes},
+            'totais': {
+                'hoje': total_hoje,
+                'semana': total_semana,
+                'mes': total_mes,
+                'dvu_hoje': calcular_dvu(total_hoje, peso_dvu_hoje),
+                'dvu_m0': calcular_dvu(total_vendas_m0, peso_dvu_m0),
+                'dvu_m1': calcular_dvu(total_vendas_m1, peso_dvu_m1),
+                'dvu_semana': calcular_dvu(total_semana, peso_dvu_semana),
+                'dvu_mes': calcular_dvu(total_mes, peso_dvu_mes),
+            },
             'periodo': {
                 'mes_referencia': periodo['mes_referencia'],
                 'semana_segunda': periodo['semana_segunda'],
                 'semana_fim': fim_semana.isoformat(),
                 'dias_semana_decorridos': dias_semana_decorridos,
+                'mes_m0': inicio_m0.strftime('%Y-%m'),
+                'mes_m1': inicio_m1.strftime('%Y-%m'),
             },
             'pode_exportar_excel': is_member(user, _perf_grupos_export_excel()),
         }
@@ -8299,7 +8432,7 @@ class ExportarPerformanceExcelView(APIView):
             periodo = 'HOJE'
 
         if periodo == 'GESTAO':
-            payload_gestao = _perf_montar_payload_gestao(users_export, inicio_mes, request)
+            payload_gestao = _perf_montar_payload_gestao(users_export, inicio_mes, request, hoje_ref, agora_local)
             visao = (request.query_params.get('gestao_visao') or 'VENDEDOR').strip().upper()
             linhas_base = payload_gestao['rows_canal_cluster'] if visao == 'CANAL_CLUSTER' else payload_gestao['rows_vendedor']
             labels = payload_gestao['labels']
@@ -8322,6 +8455,7 @@ class ExportarPerformanceExcelView(APIView):
                 }
                 for idx, lb in enumerate(labels):
                     linha['%s (%s)' % (lb['label'], lb['mes'])] = (r.get('serie') or [])[idx] if idx < len(r.get('serie') or []) else 0
+                    linha['DVU %s' % lb['label']] = (r.get('serie_dvu') or [])[idx] if idx < len(r.get('serie_dvu') or []) else 0
                 serie = r.get('serie') or []
                 for i in range(len(serie) - 1):
                     a = int(serie[i] or 0)

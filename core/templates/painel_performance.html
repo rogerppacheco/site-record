@@ -181,6 +181,17 @@
                     </select>
                 </div>
 
+                <label class="fw-bold text-muted small mb-0 ms-2" title="Exibe apenas vendedores com participação mínima no total do período">Repr. mín.:</label>
+                <select id="filtro-representatividade" class="form-select form-select-sm" style="width: 120px;" onchange="reRenderPainelPerformance()" title="Filtra vendedores pela representatividade mínima no resultado">
+                    <option value="0" selected>Todos</option>
+                    <option value="1">≥ 1%</option>
+                    <option value="2">≥ 2%</option>
+                    <option value="5">≥ 5%</option>
+                    <option value="10">≥ 10%</option>
+                    <option value="15">≥ 15%</option>
+                    <option value="20">≥ 20%</option>
+                </select>
+
                 <button class="btn btn-icon btn-icon-primary" onclick="carregarDados()" title="Atualizar" aria-label="Atualizar dados">
                     <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
                 </button>
@@ -196,13 +207,13 @@
 
         <div class="tab-content" id="pills-tabContent">
             <div class="tab-pane fade show active" id="content-hoje">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Canal</th><th>Vendas Hoje (O.S.)</th><th>Vendas Cartão (CC)</th><th>% CC / Total</th></tr></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Canal</th><th>Vendas Hoje (O.S.)</th><th>% Rep.</th><th>Vendas Cartão (CC)</th><th>% CC / Total</th><th>DVU Hoje</th><th id="th-dvu-m0">DVU M-0</th><th id="th-dvu-m1">DVU M-1</th></tr></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-semana">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>Total CC</th><th>% CC</th></tr></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>% Rep.</th><th>Total CC</th><th>% CC</th><th>DVU Sem.</th><th id="th-dvu-m1-semana">DVU M-1</th></tr></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-mes">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th>% Rep.</th><th>DVU</th><th id="th-dvu-m1-mes">DVU M-1</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-gestao">
                 <div class="card border-0 shadow">
@@ -548,6 +559,42 @@
             document.getElementById('bloco-dias-semana').classList.toggle('d-none', !(modo === 'ESPECIFICO' && tipo === 'SEMANAL'));
         }
 
+        function fmtDvu(valor) {
+            const n = Number(valor);
+            if (!Number.isFinite(n)) return '0.00';
+            return n.toFixed(2);
+        }
+
+        function clsDvuComparacao(dvuAtual, dvuAnterior) {
+            const atual = Number(dvuAtual) || 0;
+            const anterior = Number(dvuAnterior) || 0;
+            if (atual > anterior) return 'metric-up';
+            if (atual < anterior) return 'metric-down';
+            return 'metric-flat';
+        }
+
+        function minRepresentatividade() {
+            return Number(document.getElementById('filtro-representatividade')?.value || 0);
+        }
+
+        function fmtRep(pct) {
+            return `${Number(pct || 0).toFixed(2)}%`;
+        }
+
+        function prepararRowsRepresentatividade(lista, campoVolume) {
+            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
+            const rowsAll = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
+            const totalGeral = rowsAll.reduce((s, r) => s + Number(r[campoVolume] || 0), 0);
+            const minRep = minRepresentatividade();
+            const rows = rowsAll
+                .map(r => ({
+                    ...r,
+                    pct_rep: totalGeral > 0 ? ((Number(r[campoVolume] || 0) / totalGeral) * 100) : 0,
+                }))
+                .filter(r => minRep <= 0 || r.pct_rep >= minRep);
+            return { rows, totalGeral, totalFiltrado: rows.reduce((s, r) => s + Number(r[campoVolume] || 0), 0) };
+        }
+
         async function carregarDados() {
             const canal = document.getElementById('filtro-canal').value;
             const cluster = document.getElementById('filtro-cluster').value;
@@ -574,13 +621,20 @@
                 if (response.data.aviso) {
                     console.warn(response.data.aviso);
                 }
-                periodoPerformance = response.data.periodo || {};
-                renderHoje(response.data.hoje);
-                renderSemana(response.data.semana);
-                renderMes(response.data.mes);
                 window.__gestaoPayload = response.data.gestao || null;
-                renderGestao(window.__gestaoPayload);
+                periodoPerformance = response.data.periodo || {};
+                window.__painelPayload = response.data;
+                reRenderPainelPerformance();
             } catch (e) { console.error(e); }
+        }
+
+        function reRenderPainelPerformance() {
+            const d = window.__painelPayload;
+            if (!d) return;
+            renderHoje(d.hoje, d.periodo, d.totais);
+            renderSemana(d.semana, d.periodo, d.totais);
+            renderMes(d.mes, d.periodo, d.totais);
+            renderGestao(window.__gestaoPayload || d.gestao || null);
         }
 
         async function exportarPerformance(periodo) {
@@ -700,69 +754,83 @@
             });
         }
         
-        function renderHoje(lista) {
-            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
-            const rows = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
-            let h='', tV=0, tC=0;
-            rows.forEach(i => { tV+=i.total; tC+=i.cc; h+=`<tr class="${rowClass(i.total)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td>${i.canal||'-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`; });
-            // Linha de TOTAL logo após o cabeçalho
-            const pct = tV > 0 ? ((tC/tV)*100).toFixed(1) : 0;
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${tC}</td><td>${pct}%</td></tr>`;
-            // TOTAL aparece primeiro, depois os dados
-            document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || '<tr><td colspan="6">Sem dados</td></tr>');
-            // Remover tfoot
+        function renderHoje(lista, periodo, totais) {
+            const { rows, totalGeral } = prepararRowsRepresentatividade(lista, 'total');
+            const mesM0 = periodo?.mes_m0 || 'M-0';
+            const mesM1 = periodo?.mes_m1 || 'M-1';
+            const thM0 = document.getElementById('th-dvu-m0');
+            const thM1 = document.getElementById('th-dvu-m1');
+            if (thM0) thM0.textContent = `DVU ${mesM0}`;
+            if (thM1) thM1.textContent = `DVU ${mesM1}`;
+            let h = '';
+            rows.forEach(i => {
+                const clsM0 = clsDvuComparacao(i.dvu_m0, i.dvu_m1);
+                h += `<tr class="${rowClass(i.total)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster || '-'}</td><td>${i.canal || '-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td>${i.cc}</td><td>${i.pct_cc}%</td><td>${fmtDvu(i.dvu_hoje)}</td><td class="${clsM0}">${fmtDvu(i.dvu_m0)}</td><td>${fmtDvu(i.dvu_m1)}</td></tr>`;
+            });
+            const tV = totalGeral;
+            const tC = (lista || []).reduce((s, r) => s + Number(r.cc || 0), 0);
+            const pct = tV > 0 ? ((tC / tV) * 100).toFixed(1) : 0;
+            const clsTotM0 = clsDvuComparacao(totais?.dvu_m0, totais?.dvu_m1);
+            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td>${fmtDvu(totais?.dvu_hoje)}</td><td class="${clsTotM0}">${fmtDvu(totais?.dvu_m0)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
+            const colspan = 10;
+            document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || `<tr><td colspan="${colspan}">Sem dados</td></tr>`);
             document.getElementById('tfoot-hoje').innerHTML = '';
         }
         
-        function renderSemana(lista) {
-            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
-            const rows = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
-            let h='', tS=0, tC=0;
-            let dias_total = [0, 0, 0, 0, 0, 0]; // seg, ter, qua, qui, sex, sab
-            rows.forEach(i => {
-                tS+=i.total;
-                tC+=i.cc;
-                // Somar dias da semana
+        function renderSemana(lista, periodo, totais) {
+            const { rows, totalGeral } = prepararRowsRepresentatividade(lista, 'total');
+            const mesM1 = periodo?.mes_m1 || 'M-1';
+            const thM1 = document.getElementById('th-dvu-m1-semana');
+            if (thM1) thM1.textContent = `DVU ${mesM1}`;
+            let h = '';
+            const dias_total = [0, 0, 0, 0, 0, 0];
+            (lista || []).forEach(i => {
                 if (i.dias) {
                     for (let d = 0; d < 6; d++) {
                         dias_total[d] += (i.dias[d] || 0);
                     }
                 }
-                h+=`<tr class="${rowClassSemanal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td>${i.dias[0]}</td><td>${i.dias[1]}</td><td>${i.dias[2]}</td><td>${i.dias[3]}</td><td>${i.dias[4]}</td><td>${i.dias[5]}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`;
             });
-            // Linha de TOTAL logo após o cabeçalho
-            const pct = tS > 0 ? ((tC/tS)*100).toFixed(1) : 0;
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${tC}</td><td>${pct}%</td></tr>`;
-            // TOTAL aparece primeiro, depois os dados
+            rows.forEach(i => {
+                const clsSem = clsDvuComparacao(i.dvu, i.dvu_m1);
+                h += `<tr class="${rowClassSemanal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster || '-'}</td><td>${i.dias[0]}</td><td>${i.dias[1]}</td><td>${i.dias[2]}</td><td>${i.dias[3]}</td><td>${i.dias[4]}</td><td>${i.dias[5]}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td>${i.cc}</td><td>${i.pct_cc}%</td><td class="${clsSem}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td></tr>`;
+            });
+            const tS = totalGeral;
+            const tC = (lista || []).reduce((s, r) => s + Number(r.cc || 0), 0);
+            const pct = tS > 0 ? ((tC / tS) * 100).toFixed(1) : 0;
+            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
+            const clsTotSem = clsDvuComparacao(totais?.dvu_semana, totais?.dvu_m1);
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td class="${clsTotSem}">${fmtDvu(totais?.dvu_semana)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
             document.getElementById('tbody-semana').innerHTML = linhaTotal + h;
-            // Remover tfoot
             document.getElementById('tfoot-semana').innerHTML = '';
         }
         
-        function renderMes(lista) {
-            const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
-            const rows = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
-            let h='', tT=0, tI=0, tCC=0, tCI=0, tPend=0, tAgend=0, tCanc=0;
+        function renderMes(lista, periodo, totais) {
+            const { rows, totalGeral } = prepararRowsRepresentatividade(lista, 'total');
+            const mesM1 = periodo?.mes_m1 || 'M-1';
+            const thM1 = document.getElementById('th-dvu-m1-mes');
+            if (thM1) thM1.textContent = `DVU ${mesM1}`;
+            let h = '';
             rows.forEach(i => {
-                tT += i.total;
-                tI += i.instaladas;
-                tCC += i.cc_total;
-                tCI += i.cc_inst;
-                tPend += i.pend;
-                tAgend += i.agend;
-                tCanc += i.canc;
                 const aval = (i.avaliacao_cluster || '—').replace(/</g, '&lt;');
-                h+=`<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column fw-bold">${i.total}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+                const clsMes = clsDvuComparacao(i.dvu, i.dvu_m1);
+                h += `<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster || '-'}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td class="${clsMes}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
             });
-            // Calcular totais
+            const tT = totalGeral;
+            const tI = (lista || []).reduce((s, r) => s + Number(r.instaladas || 0), 0);
+            const tCC = (lista || []).reduce((s, r) => s + Number(r.cc_total || 0), 0);
+            const tCI = (lista || []).reduce((s, r) => s + Number(r.cc_inst || 0), 0);
+            const tPend = (lista || []).reduce((s, r) => s + Number(r.pend || 0), 0);
+            const tAgend = (lista || []).reduce((s, r) => s + Number(r.agend || 0), 0);
+            const tCanc = (lista || []).reduce((s, r) => s + Number(r.canc || 0), 0);
             const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
             const pct_cc_inst = tI > 0 ? ((tCI / tI) * 100).toFixed(1) : 0;
             const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
-            // Linha de TOTAL logo após o cabeçalho
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
-            // TOTAL aparece primeiro, depois os dados
+            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
+            const clsTotMes = clsDvuComparacao(totais?.dvu_mes, totais?.dvu_m1);
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td class="${clsTotMes}">${fmtDvu(totais?.dvu_mes)}</td><td>${fmtDvu(totais?.dvu_m1)}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
             document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
-            // Remover tfoot
             document.getElementById('tfoot-mes').innerHTML = '';
         }
 
@@ -841,7 +909,10 @@
             let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th>';
             if (showVol) {
                 h += '<th>Meta</th>';
-                labels.forEach(lb => { h += `<th>${lb.label} (${lb.mes})</th>`; });
+                labels.forEach(lb => {
+                    h += `<th>${lb.label} (${lb.mes})</th>`;
+                    h += `<th>DVU ${lb.label}</th>`;
+                });
             }
             if (showMm && labels.length > 1) {
                 for (let i = 0; i < labels.length - 1; i++) {
@@ -860,7 +931,14 @@
                 tbody.innerHTML = '<tr><td colspan="40">Sem dados para os filtros selecionados</td></tr>';
             } else {
                 let b = '';
-                const totSerie = new Array(labels.length).fill(0);
+                const totSerie = (payload.totais_serie || []).map(v => Number(v || 0));
+                const totSerieDvu = (payload.totais_serie_dvu || []).map(v => Number(v || 0));
+                if (!totSerie.length) {
+                    labels.forEach(() => totSerie.push(0));
+                }
+                if (!totSerieDvu.length) {
+                    labels.forEach(() => totSerieDvu.push(0));
+                }
                 let totMeta = 0;
                 let totRef = 0;
                 let totComp = 0;
@@ -868,9 +946,6 @@
                 let somaPctCcPondNum = 0;
                 let somaAprovPondNum = 0;
                 rows.forEach(r => {
-                    (r.serie || []).forEach((v, idx) => {
-                        totSerie[idx] += Number(v || 0);
-                    });
                     const varAbs = Number(r.var_abs || 0);
                     const varPct = Number(r.var_pct || 0);
                     const ating = Number(r.atingimento_meta || 0);
@@ -880,8 +955,12 @@
                     b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td>`;
                     if (showVol) {
                         b += `<td>${r.meta||0}</td>`;
-                        (r.serie || []).forEach((v) => {
+                        (r.serie || []).forEach((v, idx) => {
                             b += `<td>${Number(v || 0)}</td>`;
+                            const dvuVal = (r.serie_dvu || [])[idx];
+                            const dvuAnt = idx < labels.length - 1 ? (r.serie_dvu || [])[idx + 1] : null;
+                            const clsDvu = idx === 0 && dvuAnt != null ? clsDvuComparacao(dvuVal, dvuAnt) : '';
+                            b += `<td class="${clsDvu}">${fmtDvu(dvuVal)}</td>`;
                         });
                     }
                     if (showMm && labels.length > 1) {
@@ -914,7 +993,13 @@
                 let linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td>`;
                 if (showVol) {
                     linhaTotal += `<td>${totMeta}</td>`;
-                    totSerie.forEach(v => { linhaTotal += `<td>${v}</td>`; });
+                    totSerie.forEach((v, idx) => {
+                        linhaTotal += `<td>${v}</td>`;
+                        const clsDvu = idx === 0 && totSerieDvu[idx + 1] != null
+                            ? clsDvuComparacao(totSerieDvu[idx], totSerieDvu[idx + 1])
+                            : '';
+                        linhaTotal += `<td class="${clsDvu}">${fmtDvu(totSerieDvu[idx])}</td>`;
+                    });
                 }
                 if (showMm && labels.length > 1) {
                     linhaTotal += _gestaoPairCells(totSerie, labels);

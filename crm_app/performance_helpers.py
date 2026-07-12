@@ -1,5 +1,8 @@
 """Helpers compartilhados: cores e ordenação do relatório de performance (painel / WhatsApp)."""
 from collections import defaultdict
+from datetime import date
+
+from core.services.calendario_fiscal_service import TipoPesoFiscal
 
 # Paleta por índice de faixa (0 = 1ª faixa atingida). Abaixo da 1ª faixa usa cores_linha_performance(0).
 PALETA_FAIXAS_CORES = [
@@ -217,6 +220,32 @@ def cor_linha_item_whatsapp(item, tipo, ctx=None):
             item.get('instaladas') or 0,
         )
     return cores_linha_performance(item.get('total') or 0)
+
+
+def calcular_dvu(volume: int | float, peso_realizado: float) -> float:
+    """Média ponderada por dia útil fiscal (2 casas decimais)."""
+    if not peso_realizado or float(peso_realizado) == 0:
+        return 0.0
+    return round(float(volume) / float(peso_realizado), 2)
+
+
+def tipo_peso_gestao(tipo_metrica: str) -> TipoPesoFiscal:
+    """Mapeia gestao_tipo para peso fiscal (VB ou GR)."""
+    return 'GR' if (tipo_metrica or '').strip().upper() == 'INSTALADA' else 'VB'
+
+
+def calcular_pct_representatividade(volume: int | float, total_geral: int | float) -> float:
+    """Participação percentual do vendedor no volume total do período."""
+    if not total_geral or float(total_geral) == 0:
+        return 0.0
+    return round((float(volume) / float(total_geral)) * 100.0, 2)
+
+
+def limite_peso_mes(mes_inicio: date, mes_fim: date, hoje_ref: date) -> date:
+    """Mês em andamento usa dias decorridos; mês fechado usa o mês inteiro."""
+    if mes_inicio <= hoje_ref <= mes_fim:
+        return hoje_ref
+    return mes_fim
 
 
 def ordenar_lista_performance(lista, key_cluster='cluster', key_nome='nome'):
