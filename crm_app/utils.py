@@ -520,19 +520,31 @@ def montar_resumo_plano_para_whatsapp(venda):
     bloco_endereco = "\n".join(linhas_endereco)
 
     forma_nome = (venda.forma_pagamento.nome or "") if venda.forma_pagamento else ""
-    eh_cartao = forma_nome and ("CRÉDITO" in forma_nome.upper() or "CREDITO" in forma_nome.upper())
 
     if venda.plano:
-        valor_plano = float(venda.plano.valor)
-        if eh_cartao:
-            valor_plano = max(0, valor_plano - 10)
-        plano_linha = f"{venda.plano.nome} - R$ {valor_plano:.2f}/mês".replace(".", ",")
+        from crm_app.services.gdp_preco_service import (
+            VALOR_FIXO_NIO_MENSAL,
+            formatar_moeda_br,
+            resolver_valor_plano_venda,
+        )
+
+        valor_plano, _meta = resolver_valor_plano_venda(venda)
+        plano_linha = f"{venda.plano.nome} - {formatar_moeda_br(valor_plano)}/mês"
+        if venda.tem_fixo:
+            total = float(valor_plano) + float(VALOR_FIXO_NIO_MENSAL)
+            plano_linha = (
+                f"{venda.plano.nome} - {formatar_moeda_br(valor_plano)}/mês "
+                f"+ Fixo {formatar_moeda_br(VALOR_FIXO_NIO_MENSAL)}/mês "
+                f"= {formatar_moeda_br(total)}/mês"
+            )
     else:
         plano_linha = "Não informado"
 
     linhas_servicos_adicionais = []
     if venda.tem_fixo:
-        linhas_servicos_adicionais.append("📞 *Fixo:* Sim – R$ 30,00/mês")
+        linhas_servicos_adicionais.append(
+            f"📞 *Fixo:* Sim – {formatar_moeda_br(VALOR_FIXO_NIO_MENSAL)}/mês"
+        )
     # Modelo Venda não tem streaming; não exibir linha genérica "Não".
 
     nome_cliente = (venda.cliente.nome_razao_social or "").strip() if venda.cliente else ""

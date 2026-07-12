@@ -19,8 +19,12 @@ def _plano_nome_to_banda(nome):
     n = (nome or '').upper().replace(' ', '')
     if '500' in n:
         return '500MB'
+    if '600' in n:
+        return '600MB'
     if '700' in n:
         return '700MB'
+    if '800' in n:
+        return '800MB'
     if '1GB' in n or '1G' in n:
         return '1GB'
     return None

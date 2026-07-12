@@ -456,8 +456,10 @@
                                 <div class="col-md-2"><label class="form-label fw-bold">Valor mensal</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div>
                                 <div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div>
                                 <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa"></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Vel. GDP (Mbps)</label><input type="number" class="form-control" id="plano_gdp_velocidade" min="0" placeholder="Auto" title="Velocidade na planilha GDP (500, 600, 800, 1000). Vazio = infere pelo nome."></div>
+                                <div class="col-md-1"><label class="form-label fw-bold">Índ.</label><input type="number" class="form-control" id="plano_gdp_indice" min="0" max="1" value="0" title="0 = 1º plano da velocidade; 1 = 2º (ex.: 1GB premium)"></div>
                                 <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Salvar plano</button></div>
-                                <div class="col-12"><small class="text-muted">Ao salvar, o plano ganha <strong>colunas próprias</strong> em Comissionamento → Regras por Faixa e Regras por Vendedor.</small></div>
+                                <div class="col-12"><small class="text-muted">Portfólio atual Nio: <strong>500 / 600 / 800 / 1GB</strong>. Planos inativos (ex.: 700MB) somem da lista, mas permanecem no histórico. Ao salvar, o plano ganha <strong>colunas próprias</strong> em Comissionamento → Regras por Faixa.</small></div>
                             </form>
                             <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
                         </div>
@@ -2527,6 +2529,10 @@
         };
         const recvOp = document.getElementById('plano_receb_operadora').value;
         if (recvOp !== '') body.recebimento_operadora_base = recvOp;
+        const gdpVel = document.getElementById('plano_gdp_velocidade').value;
+        const gdpIdx = document.getElementById('plano_gdp_indice').value;
+        if (gdpVel !== '') body.gdp_velocidade_mbps = parseInt(gdpVel, 10);
+        if (gdpIdx !== '') body.gdp_indice_oferta = parseInt(gdpIdx, 10);
         if (!body.nome) {
             alert('Informe o nome do plano.');
             return;
@@ -2548,8 +2554,14 @@
         document.getElementById('plano_valor').value = p.valor;
         document.getElementById('plano_receb_operadora').value = p.comissao_operadora_valor != null ? p.comissao_operadora_valor : '';
         document.getElementById('plano_operadora_id').value = p.operadora;
+        document.getElementById('plano_gdp_velocidade').value = p.gdp_velocidade_mbps != null ? p.gdp_velocidade_mbps : '';
+        document.getElementById('plano_gdp_indice').value = p.gdp_indice_oferta != null ? p.gdp_indice_oferta : 0;
     };
-    window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
+    window.excluirPlano = async (id) => {
+        if (!confirm('Inativar este plano? Ele deixa de aparecer em novas vendas, mas vendas antigas são preservadas.')) return;
+        await apiFetch(`/crm/planos/${id}/`, { method: 'DELETE' });
+        carregarPlanos();
+    };
 
     async function carregarFormasPagamento() {
         const res = await apiFetch('/crm/formas-pagamento/');

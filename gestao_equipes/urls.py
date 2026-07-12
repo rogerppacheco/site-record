@@ -122,6 +122,7 @@ urlpatterns = [
     path('importar-agendamento/', TemplateView.as_view(template_name='importar_agendamento.html'), name='importar-agendamento'),
     path('importar-recompra/', TemplateView.as_view(template_name='importar_recompra.html'), name='importar-recompra'),
     path('importar-cnpj/', TemplateView.as_view(template_name='importar_cnpj.html'), name='importar-cnpj'),
+    path('importar-gdp/', TemplateView.as_view(template_name='importar_gdp.html'), name='importar-gdp'),
 
     # CALENDÁRIO & PAINEL DE PERFORMANCE
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),

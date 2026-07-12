@@ -222,7 +222,7 @@
         }
         .auditoria-flex-fill:has(#pills-oferta.active),
         .auditoria-flex-fill:has(#pills-finalizacao.active) {
-            overflow: hidden;
+            overflow: auto;
             padding: 14px 20px;
             display: flex;
             flex-direction: column;
@@ -256,7 +256,8 @@
             display: flex !important;
             flex-direction: column;
             flex: 1 1 auto;
-            min-height: 0;
+            min-height: min-content;
+            overflow: visible;
         }
         /* Etapa 3 — Endereço */
         #pills-endereco .endereco-card {
@@ -364,10 +365,11 @@
             flex: 1 1 auto;
             display: flex;
             flex-direction: column;
-            min-height: 0;
+            min-height: min-content;
             padding: 18px 22px;
             margin-bottom: 0;
-            overflow: hidden;
+            overflow: visible;
+            gap: 12px;
         }
         #pills-oferta .script-title { font-size: 0.92rem; margin-bottom: 10px; padding-bottom: 6px; }
         #pills-oferta .script-text { font-size: 0.95rem; line-height: 1.45; margin-bottom: 0; }
@@ -399,50 +401,46 @@
             align-items: center;
         }
         #pills-oferta .oferta-scripts-grow {
-            flex: 1 1 auto;
-            min-height: 0;
+            flex: 0 0 auto;
             display: flex;
             flex-direction: column;
-            justify-content: stretch;
             gap: 12px;
         }
         #pills-oferta .oferta-script-row {
-            flex: 1 1 auto;
-            min-height: 0;
+            flex: 0 0 auto;
             align-items: stretch;
             margin-bottom: 0 !important;
         }
         #pills-oferta .oferta-script-row > [class*="col"] {
             display: flex;
             flex-direction: column;
-            min-height: 0;
+            gap: 8px;
         }
         #pills-oferta .oferta-script-box {
-            flex: 1 1 auto;
+            flex: 0 0 auto;
             padding: 14px 16px !important;
             width: 100%;
-            display: flex;
-            align-items: center;
+            display: block;
         }
         #pills-oferta .oferta-script-box h6 { flex: 0 0 auto; }
-        #pills-oferta h6 { font-size: 0.88rem; margin-bottom: 8px; }
+        #pills-oferta h6 { font-size: 0.88rem; margin-bottom: 0; }
         #pills-oferta .oferta-aviso {
             flex: 0 0 auto;
             padding: 12px 16px !important;
             margin-bottom: 0 !important;
+            margin-top: 0 !important;
         }
-        #pills-oferta .oferta-footer { flex: 0 0 auto; margin-top: 12px; }
+        #pills-oferta .oferta-footer { flex: 0 0 auto; margin-top: 4px; }
         #pills-oferta #script-pagamento-cartao,
         #pills-oferta #script-pagamento-dacc,
         #pills-oferta #script-pagamento-boleto {
-            flex: 1 1 auto;
-            min-height: 0;
-            flex-direction: column;
+            flex: 0 0 auto;
+            width: 100%;
         }
         #pills-oferta #script-pagamento-cartao[style*="display: block"],
         #pills-oferta #script-pagamento-dacc[style*="display: block"],
         #pills-oferta #script-pagamento-boleto[style*="display: block"] {
-            display: flex !important;
+            display: block !important;
         }
         #pills-oferta #script-pagamento-boleto.oferta-script-boleto-wrap {
             justify-content: center;
@@ -516,11 +514,25 @@
         .auditoria-page .text-dark { color: var(--text-primary) !important; }
         .auditoria-page .oferta-info-box,
         .auditoria-page .oferta-script-box,
-        .auditoria-page .oferta-script-boleto-inner {
+        .auditoria-page .oferta-script-boleto-inner,
+        .auditoria-page .oferta-dados-sistema {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 12px;
+        }
+        .auditoria-page .oferta-aviso {
+            background: rgba(255, 193, 7, 0.14);
+            border: 1px solid rgba(255, 193, 7, 0.45);
+            color: var(--text-primary);
+        }
+        .auditoria-page #pills-oferta .bg-danger-subtle {
+            background: rgba(220, 53, 69, 0.14) !important;
+            border-color: rgba(220, 53, 69, 0.45) !important;
+        }
+        .auditoria-page #pills-oferta .oferta-destaque {
+            background: rgba(13, 110, 253, 0.12);
+            border-color: rgba(13, 110, 253, 0.35);
         }
         .auditoria-page .endereco-card,
         .auditoria-page .finalizacao-card,
@@ -990,7 +1002,7 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="p-3 bg-primary-subtle border border-primary rounded oferta-destaque"><p class="script-text mb-0">"O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."</p></div>
+                                            <div class="p-3 bg-primary-subtle border border-primary rounded oferta-destaque"><p class="script-text mb-0">"<span id="txt-plano-script-inicio">O plano que você contratou foi o </span><strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong><span id="txt-plano-script-meio"> com o valor de </span><strong class="text-success" id="txt-plano-valor">R$ ...</strong><span id="txt-plano-fixo-extra" style="display:none">, mais o telefone fixo de <strong class="text-success" id="txt-plano-valor-fixo">R$ 30,00</strong>, totalizando <strong class="text-success fw-bold" id="txt-plano-valor-total">R$ ...</strong></span><span id="txt-plano-script-fim"> e a forma de pagamento foi </span><strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."</p></div>
                                         </div>
 
                                         <div class="row g-3 oferta-info-row">
@@ -1485,6 +1497,7 @@
                         $('#audit-uf').val((data.uf || '').toUpperCase());
                         $('#audit-numero').focus();
                         ajustarLayoutCamposEnderecoAuditoria();
+                        atualizarTextoPlano();
                     })
                     .catch(function() {
                         alert("Erro ao buscar CEP. Verifique sua conexão ou tente novamente.");
@@ -1493,6 +1506,7 @@
             });
 
             $(document).on('input change', '#pills-endereco .audit-campo-endereco', ajustarLayoutCamposEnderecoAuditoria);
+            $('#audit-cidade, #audit-uf').on('change blur', function() { atualizarTextoPlano(); });
             var tabEndereco = document.getElementById('pills-endereco-tab');
             if (tabEndereco) {
                 tabEndereco.addEventListener('shown.bs.tab', function() {
@@ -1751,31 +1765,86 @@
             return params;
         }
 
-        function atualizarTextoPlano() {
-            const planoId = $('#audit-plano').val(); const pagId = $('#audit-pagamento').val();
-            const plano = planosOptions.find(p => p.id == planoId); 
-            const pag = formasPagamentoOptions.find(f => f.id == pagId);
-            
-            let valorFinal = 0;
-            if (plano) {
-                valorFinal = parseFloat(plano.valor);
-                if (pag && (pag.nome.toUpperCase().includes('CRÉDITO') || pag.nome.toUpperCase().includes('CREDITO'))) {
-                    valorFinal -= 10;
+        const VALOR_FIXO_NIO_MENSAL = 30;
+
+        function formatarMoedaBr(valor) {
+            const n = parseFloat(valor);
+            if (isNaN(n)) return 'R$ ...';
+            return 'R$ ' + n.toFixed(2).replace('.', ',');
+        }
+
+        function aplicarValorPlanoScript(valorPlano, origem) {
+            const temFixo = $('#audit-tem-fixo').val() === 'true';
+            const valorNum = parseFloat(valorPlano);
+            if (!isNaN(valorNum)) {
+                $('#txt-plano-valor').text(formatarMoedaBr(valorNum));
+                if (temFixo) {
+                    $('#txt-plano-valor-fixo').text(formatarMoedaBr(VALOR_FIXO_NIO_MENSAL));
+                    $('#txt-plano-valor-total').text(formatarMoedaBr(valorNum + VALOR_FIXO_NIO_MENSAL));
+                    $('#txt-plano-fixo-extra').show();
+                } else {
+                    $('#txt-plano-fixo-extra').hide();
                 }
+                if (origem === 'gdp') {
+                    $('#txt-plano-valor').attr('title', 'Preço GDP por município (somente internet)');
+                } else {
+                    $('#txt-plano-valor').removeAttr('title');
+                }
+            }
+        }
+
+        function atualizarTextoPlano() {
+            const planoId = $('#audit-plano').val();
+            const pagId = $('#audit-pagamento').val();
+            const plano = planosOptions.find(p => p.id == planoId);
+            const pag = formasPagamentoOptions.find(f => f.id == pagId);
+            const cidade = ($('#audit-cidade').val() || '').trim();
+            const uf = ($('#audit-uf').val() || '').trim();
+
+            if (plano) {
                 $('#txt-plano-nome').text(plano.nome.toUpperCase());
-                $('#txt-plano-valor').text('R$ ' + valorFinal.toFixed(2).replace('.', ','));
+                $('#txt-plano-valor').text('R$ ...');
             } else {
                 $('#txt-plano-nome').text('...');
                 $('#txt-plano-valor').text('R$ ...');
             }
-            
-            if (pag) { 
-                $('#txt-pagamento-nome').text(pag.nome.toUpperCase()); 
+
+            if (pag) {
+                $('#txt-pagamento-nome').text(pag.nome.toUpperCase());
                 atualizarScriptPagamento(pag.nome.toUpperCase());
-            } else { 
+            } else {
                 $('#txt-pagamento-nome').text('...');
                 $('#script-pagamento-cartao, #script-pagamento-dacc, #script-pagamento-boleto').hide();
             }
+
+            if (!plano) {
+                $('#txt-plano-fixo-extra').hide();
+                return;
+            }
+
+            const params = new URLSearchParams({
+                plano_id: planoId,
+                cidade: cidade,
+                uf: uf,
+            });
+            if (pagId) params.set('forma_pagamento_id', pagId);
+
+            apiFetch(`${API_AUX}/preco-plano-gdp/?${params.toString()}`)
+                .then(data => aplicarValorPlanoScript(data.valor, data.origem))
+                .catch(() => {
+                    let valorFinal = parseFloat(plano.valor);
+                    if (pag && (pag.nome.toUpperCase().includes('CRÉDITO') || pag.nome.toUpperCase().includes('CREDITO'))) {
+                        valorFinal -= descontoLegadoCartaoPlano(plano);
+                    }
+                    aplicarValorPlanoScript(valorFinal, 'legado');
+                });
+        }
+
+        function descontoLegadoCartaoPlano(plano) {
+            const nome = (plano.nome || '').toUpperCase();
+            if (nome.includes('800') || nome.includes('1GB') || nome.includes('ULTRA') || nome.includes('1000')) return 15;
+            if (nome.includes('600')) return 10;
+            return 10;
         }
 
         function atualizarScriptPagamento(nomePagamento) {

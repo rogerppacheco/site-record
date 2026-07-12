@@ -160,11 +160,35 @@ def _garantir_comissao_operadora(plano: Plano, valor_base: Any) -> ComissaoOpera
     base = _decimal_or_none(valor_base)
     if base is None:
         base = Decimal('0')
-    co, _ = ComissaoOperadora.objects.update_or_create(
-        plano=plano,
-        defaults={'valor_base': base},
-    )
-    return co
+
+    co = ComissaoOperadora.objects.filter(plano=plano).first()
+    if co:
+        if co.valor_base != base:
+            co.valor_base = base
+            co.save(update_fields=['valor_base'])
+        return co
+
+    try:
+        return ComissaoOperadora.objects.create(plano=plano, valor_base=base)
+    except Exception:
+        _reparar_sequencia_comissao_operadora()
+        return ComissaoOperadora.objects.create(plano=plano, valor_base=base)
+
+
+def _reparar_sequencia_comissao_operadora() -> None:
+    """Corrige sequence desincronizada após importações/restores no PostgreSQL."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT setval(
+                pg_get_serial_sequence('crm_app_comissaooperadora', 'id'),
+                COALESCE((SELECT MAX(id) FROM crm_app_comissaooperadora), 1),
+                true
+            )
+            """
+        )
 
 
 @transaction.atomic

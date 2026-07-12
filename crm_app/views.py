@@ -681,6 +681,11 @@ class PlanoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PlanoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def perform_destroy(self, instance: Plano) -> None:
+        """Inativa o plano em vez de excluir (preserva histórico de vendas)."""
+        instance.ativo = False
+        instance.save(update_fields=['ativo'])
+
 class FormaPagamentoListCreateView(generics.ListCreateAPIView):
     queryset = FormaPagamento.objects.filter(ativo=True)
     serializer_class = FormaPagamentoSerializer
@@ -6708,6 +6713,148 @@ class LogsImportacaoCNPJView(APIView):
                 'usuario_nome': log.usuario.username if log.usuario else None,
             })
         return Response({'success': True, 'logs': data})
+
+
+class ImportarGdpPrecoView(APIView):
+    """Importa planilha GDP (preços Nio por município e meio de pagamento)."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        import os
+        import tempfile
+
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Arquivo Excel não enviado.'}, status=400)
+
+        nome = file_obj.name.lower()
+        if not (nome.endswith('.xlsx') or nome.endswith('.xls')):
+            return Response({'error': 'Envie um arquivo Excel (.xlsx).'}, status=400)
+
+        from .models import LogImportacaoGdpPreco
+        from .services.gdp_preco_service import GdpPrecoImportService
+
+        log_em_andamento = LogImportacaoGdpPreco.objects.filter(status='PROCESSANDO').first()
+        if log_em_andamento:
+            return Response({
+                'error': 'Já existe uma importação GDP em andamento. Aguarde finalizar.',
+                'log_id': log_em_andamento.id,
+            }, status=409)
+
+        log = LogImportacaoGdpPreco.objects.create(
+            nome_arquivo=file_obj.name,
+            usuario=request.user,
+            status='PROCESSANDO',
+            tamanho_arquivo=file_obj.size or 0,
+        )
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        temp_path = temp_file.name
+        total_bytes = 0
+        for chunk in file_obj.chunks(chunk_size=1024 * 1024):
+            temp_file.write(chunk)
+            total_bytes += len(chunk)
+        temp_file.close()
+
+        LogImportacaoGdpPreco.objects.filter(id=log.id).update(tamanho_arquivo=total_bytes)
+
+        try:
+            service = GdpPrecoImportService(log_id=log.id)
+            service.processar_arquivo(temp_path)
+            log.refresh_from_db()
+        finally:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+
+        if log.status == 'SUCESSO':
+            return Response({
+                'success': True,
+                'log_id': log.id,
+                'status': log.status,
+                'message': log.mensagem,
+                'total_municipios': log.total_municipios,
+                'total_precos': log.total_precos,
+            })
+
+        return Response({
+            'success': False,
+            'log_id': log.id,
+            'status': log.status,
+            'error': log.mensagem_erro or 'Falha na importação GDP.',
+        }, status=400)
+
+
+class LogsImportacaoGdpPrecoView(APIView):
+    """Lista logs de importação GDP."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import LogImportacaoGdpPreco
+
+        limit = int(request.query_params.get('limit', 20))
+        if is_member(request.user, ['Admin', 'Diretoria']):
+            logs = LogImportacaoGdpPreco.objects.all().order_by('-iniciado_em')[:limit]
+        else:
+            logs = LogImportacaoGdpPreco.objects.filter(usuario=request.user).order_by('-iniciado_em')[:limit]
+
+        data = []
+        for log in logs:
+            data.append({
+                'id': log.id,
+                'nome_arquivo': log.nome_arquivo,
+                'status': log.status,
+                'vigente': log.vigente,
+                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'duracao_segundos': log.duracao_segundos,
+                'total_municipios': log.total_municipios,
+                'total_precos': log.total_precos,
+                'mensagem': log.mensagem,
+                'mensagem_erro': log.mensagem_erro,
+                'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
+            })
+
+        return Response({'success': True, 'logs': data})
+
+
+class PrecoPlanoGdpLookupView(APIView):
+    """Consulta valor do plano Nio por cidade, plano e forma de pagamento."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .services.gdp_preco_service import resolver_valor_plano_params
+
+        plano_id = request.query_params.get('plano_id')
+        if not plano_id:
+            return Response({'error': 'plano_id é obrigatório.'}, status=400)
+
+        try:
+            plano_id_int = int(plano_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'plano_id inválido.'}, status=400)
+
+        forma_pagamento_id = request.query_params.get('forma_pagamento_id')
+        forma_id_int = None
+        if forma_pagamento_id:
+            try:
+                forma_id_int = int(forma_pagamento_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'forma_pagamento_id inválido.'}, status=400)
+
+        payload = resolver_valor_plano_params(
+            plano_id=plano_id_int,
+            forma_pagamento_id=forma_id_int,
+            cidade=request.query_params.get('cidade') or '',
+            uf=request.query_params.get('uf') or '',
+            cod_ibge=request.query_params.get('cod_ibge') or '',
+        )
+        if not payload.get('encontrado'):
+            return Response(payload, status=404)
+        return Response(payload)
 
 
 @api_view(['POST'])

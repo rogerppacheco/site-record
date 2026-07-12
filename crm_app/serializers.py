@@ -41,7 +41,8 @@ class PlanoSerializer(serializers.ModelSerializer):
         model = Plano
         fields = [
             'id', 'nome', 'valor', 'operadora', 'operadora_nome', 'beneficios', 'ativo',
-            'comissao_base', 'recebimento_operadora_base', 'comissao_operadora_valor',
+            'comissao_base', 'gdp_velocidade_mbps', 'gdp_indice_oferta',
+            'recebimento_operadora_base', 'comissao_operadora_valor',
         ]
 
     def get_comissao_operadora_valor(self, obj: Plano):
@@ -57,9 +58,21 @@ class PlanoSerializer(serializers.ModelSerializer):
         if recebimento is not None:
             garantir_comissao_operadora(plano, recebimento)
 
+    def _aplicar_mapeamento_gdp_plano(self, plano: Plano, validated_data: dict) -> None:
+        """Preenche velocidade GDP pelo nome quando não informado no cadastro."""
+        if validated_data.get('gdp_velocidade_mbps'):
+            return
+        from crm_app.services.gdp_preco_service import resolver_chave_gdp_plano
+
+        velocidade, indice = resolver_chave_gdp_plano(plano)
+        plano.gdp_velocidade_mbps = velocidade
+        plano.gdp_indice_oferta = indice
+        plano.save(update_fields=['gdp_velocidade_mbps', 'gdp_indice_oferta'])
+
     def create(self, validated_data):
         recebimento = validated_data.pop('recebimento_operadora_base', None)
         plano = Plano.objects.create(**validated_data)
+        self._aplicar_mapeamento_gdp_plano(plano, validated_data)
         self._sync_plano_comissao(plano, recebimento)
         return plano
 
@@ -68,6 +81,8 @@ class PlanoSerializer(serializers.ModelSerializer):
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
+        if 'gdp_velocidade_mbps' not in validated_data and 'nome' in validated_data:
+            self._aplicar_mapeamento_gdp_plano(instance, validated_data)
         self._sync_plano_comissao(instance, recebimento)
         return instance
 

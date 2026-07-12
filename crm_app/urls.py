@@ -94,7 +94,10 @@ from .views import (
     ImportarKMLView,        
     ImportarDFVView,
     ImportarCNPJView,
+    ImportarGdpPrecoView,
     LogsImportacaoCNPJView,
+    LogsImportacaoGdpPrecoView,
+    PrecoPlanoGdpLookupView,
     WebhookWhatsAppView,
     serve_pdf_view,
     listar_grupos_whatsapp_api,
@@ -315,6 +318,9 @@ urlpatterns = [
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
     path('importar-cnpj/', ImportarCNPJView.as_view(), name='importar-cnpj'),
+    path('importar-gdp/', ImportarGdpPrecoView.as_view(), name='importar-gdp'),
+    path('logs-importacao-gdp/', LogsImportacaoGdpPrecoView.as_view(), name='logs-importacao-gdp'),
+    path('preco-plano-gdp/', PrecoPlanoGdpLookupView.as_view(), name='preco-plano-gdp'),
     path('logs-importacao-cnpj/', LogsImportacaoCNPJView.as_view(), name='logs-importacao-cnpj'),
     # Webhook WhatsApp - URL para configurar no Z-API:
     # Produção: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
