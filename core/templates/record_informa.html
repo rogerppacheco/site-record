@@ -62,10 +62,58 @@
                                 <option value="DIRETORIA">Diretoria</option>
                             </select>
                         </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Canal</label>
+                            <select class="form-select" id="canal_alvo">
+                                <option value="TODOS" selected>Todos</option>
+                                <option value="PAP">PAP</option>
+                                <option value="DIGITAL">Digital</option>
+                                <option value="RECEPTIVO">Receptivo</option>
+                                <option value="PARCEIRO">Parceiro</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Cluster</label>
+                            <select class="form-select" id="cluster_alvo">
+                                <option value="" selected>Todos</option>
+                                <option value="CLUSTER_1">CLUSTER 1</option>
+                                <option value="CLUSTER_2">CLUSTER 2</option>
+                                <option value="CLUSTER_3">CLUSTER 3</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Status Vendedor</label>
+                            <select class="form-select" id="status_destinatarios">
+                                <option value="somente_ativos" selected>Só ativos</option>
+                                <option value="somente_inativos">Só inativos</option>
+                                <option value="todos">Ativos e inativos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold" title="Participação mínima no volume do mês (O.S. cadastradas)">Repr. mínima</label>
+                            <select class="form-select" id="representatividade_minima">
+                                <option value="0" selected>Todos</option>
+                                <option value="1">≥ 1%</option>
+                                <option value="2">≥ 2%</option>
+                                <option value="5">≥ 5%</option>
+                                <option value="10">≥ 10%</option>
+                                <option value="15">≥ 15%</option>
+                                <option value="20">≥ 20%</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Vendedor específico <span class="text-muted fw-normal">(opcional)</span></label>
+                            <select class="form-select" id="vendedor">
+                                <option value="">Todos do filtro acima</option>
+                            </select>
+                            <div class="form-text">Se escolher um vendedor, o envio vai só para ele (ignora os demais filtros, exceto a mensagem).</div>
+                        </div>
+
                         <div class="col-12">
                             <label class="form-label fw-bold">Mensagem (WhatsApp)</label>
-                            <textarea class="form-control" id="mensagem" rows="5" required placeholder="Digite a mensagem que será enviada..."></textarea>
-                            <div class="form-text">Use *texto* para negrito e _texto_ para itálico.</div>
+                            <textarea class="form-control font-monospace" id="mensagem" rows="8" required placeholder="Digite a mensagem que será enviada..."></textarea>
+                            <div class="form-text">A mensagem é enviada exatamente como escrita, preservando quebras de linha. Use *texto* para negrito e _texto_ para itálico no WhatsApp.</div>
                         </div>
                         
                         <div class="col-12 d-flex justify-content-end mt-4">
@@ -84,7 +132,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>Título</th>
-                        <th>Destino</th>
+                        <th>Destino / Filtros</th>
                         <th>Data Envio</th>
                         <th>Status</th>
                         <th>Criado Por</th>
@@ -225,6 +273,37 @@
         // API_URL já definido em auth.js
         const COMUNICADOS_URL = '/api/crm/comunicados/';
         const ESTATISTICAS_URL = '/api/crm/estatisticas-bot/';
+        const USUARIOS_URL = '/api/usuarios/';
+
+        async function carregarVendedoresSelect() {
+            const select = document.getElementById('vendedor');
+            const status = document.getElementById('status_destinatarios').value;
+            const valorAtual = select.value;
+            select.innerHTML = '<option value="">Todos do filtro acima</option>';
+
+            try {
+                let url = `${USUARIOS_URL}?page_size=5000&ordering=username`;
+                if (status === 'somente_ativos') url += '&is_active=true';
+                else if (status === 'somente_inativos') url += '&is_active=false';
+
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const usuarios = Array.isArray(data) ? data : (data.results || []);
+
+                usuarios.forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.id;
+                    opt.textContent = (u.username || u.id).toUpperCase() + (u.is_active === false ? ' (inativo)' : '');
+                    select.appendChild(opt);
+                });
+
+                if (valorAtual) select.value = valorAtual;
+            } catch (e) {
+                console.error('Erro ao carregar vendedores:', e);
+            }
+        }
+
+        document.getElementById('status_destinatarios').addEventListener('change', carregarVendedoresSelect);
         
         async function carregarComunicados() {
             try {
@@ -252,7 +331,7 @@
                     tbody.innerHTML += `
                         <tr>
                             <td class="fw-bold">${c.titulo}</td>
-                            <td><span class="badge bg-light text-dark border">${c.perfil_destino}</span></td>
+                            <td><span class="badge bg-light text-dark border">${c.filtros_resumo || c.perfil_destino}</span></td>
                             <td>${dataFmt}</td>
                             <td><span class="badge ${badge}">${c.status}</span></td>
                             <td class="small text-muted">${c.criado_por_nome || '-'}</td>
@@ -307,8 +386,13 @@
                 titulo: document.getElementById('titulo').value,
                 mensagem: document.getElementById('mensagem').value,
                 perfil_destino: document.getElementById('perfil').value,
-                data_programada: dataHoje, // Define automaticamente HOJE
-                hora_programada: horaAgora // Define automaticamente AGORA
+                canal_alvo: document.getElementById('canal_alvo').value,
+                cluster_alvo: document.getElementById('cluster_alvo').value || '',
+                status_destinatarios: document.getElementById('status_destinatarios').value,
+                representatividade_minima: parseInt(document.getElementById('representatividade_minima').value, 10) || 0,
+                vendedor: document.getElementById('vendedor').value ? parseInt(document.getElementById('vendedor').value, 10) : null,
+                data_programada: dataHoje,
+                hora_programada: horaAgora
             };
 
             try {
@@ -408,6 +492,7 @@
         });
 
         // Init
+        carregarVendedoresSelect();
         carregarComunicados();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>

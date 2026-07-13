@@ -821,6 +821,36 @@ class ComissaoOperadoraSerializer(serializers.ModelSerializer):
 
 class ComunicadoSerializer(serializers.ModelSerializer):
     criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
+    vendedor_nome = serializers.SerializerMethodField()
+    filtros_resumo = serializers.SerializerMethodField()
+
+    def get_vendedor_nome(self, obj: Comunicado) -> str | None:
+        if not obj.vendedor_id:
+            return None
+        vendedor = obj.vendedor
+        if not vendedor:
+            return None
+        nome = getattr(vendedor, 'get_full_name', None) and vendedor.get_full_name()
+        if nome and str(nome).strip():
+            return str(nome).strip()
+        return vendedor.username
+
+    def get_filtros_resumo(self, obj: Comunicado) -> str:
+        partes: list[str] = [obj.get_perfil_destino_display()]
+        if obj.canal_alvo and obj.canal_alvo != 'TODOS':
+            partes.append(f"Canal: {obj.get_canal_alvo_display()}")
+        cluster = (obj.cluster_alvo or '').strip()
+        if cluster and cluster.upper() != 'TODOS':
+            partes.append(f"Cluster: {cluster}")
+        if obj.vendedor_id:
+            partes.append(f"Vendedor: {self.get_vendedor_nome(obj) or obj.vendedor_id}")
+        status = (obj.status_destinatarios or 'somente_ativos')
+        if status != 'somente_ativos':
+            partes.append(obj.get_status_destinatarios_display())
+        if (obj.representatividade_minima or 0) > 0:
+            partes.append(f"Repr. ≥ {obj.representatividade_minima}%")
+        return ' · '.join(partes)
+
     class Meta:
         model = Comunicado
         fields = '__all__'

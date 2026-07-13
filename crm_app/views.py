@@ -1304,128 +1304,20 @@ class ConfigComissaoVendedorImportarView(APIView):
 
 
 class ComunicadoViewSet(viewsets.ModelViewSet):
-    queryset = Comunicado.objects.all().order_by('-id')
+    queryset = Comunicado.objects.select_related('criado_por', 'vendedor').all().order_by('-id')
     serializer_class = ComunicadoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def _processar_envio_comunicado(self, comunicado):
-        """
-        Processa e envia um comunicado via WhatsApp.
-        Mapeia perfis para grupos do WhatsApp.
-        """
-        from django.utils import timezone
-        from datetime import datetime, date, time
-        
-        try:
-            whatsapp_service = WhatsAppService()
-            
-            # Verificar se é envio imediato (data/hora atual ou passada)
-            agora = timezone.now()
-            data_envio = comunicado.data_programada
-            hora_envio = comunicado.hora_programada
-            
-            # Combinar data e hora para comparação
-            if isinstance(hora_envio, time):
-                datetime_envio = datetime.combine(data_envio, hora_envio)
-                if timezone.is_naive(datetime_envio):
-                    from django.utils import timezone as tz
-                    datetime_envio = tz.make_aware(datetime_envio)
-            else:
-                datetime_envio = agora  # Se não tiver hora, considera agora
-            
-            # Se a data/hora programada já passou ou é agora, processa imediatamente
-            enviar_agora = datetime_envio <= agora
-            
-            if not enviar_agora:
-                # Agendado para o futuro, não processa ainda
-                return False
-            
-            # Mapear perfil para grupos do WhatsApp
-            from django.db.models import Q
-            
-            # Buscar grupos ativos no banco
-            if comunicado.perfil_destino == 'TODOS':
-                # Para TODOS, buscar todos os grupos ativos
-                grupos_ativos = GrupoDisparo.objects.filter(ativo=True)
-            else:
-                # Para perfis específicos, buscar grupos que contenham o nome do perfil no nome
-                # Mapeamento: perfil_destino -> termos de busca
-                perfil_termos = {
-                    'DIRETORIA': ['Diretoria', 'diretor'],
-                    'BACKOFFICE': ['BackOffice', 'Back Office', 'backoffice'],
-                    'SUPERVISOR': ['Supervisor', 'supervisor'],
-                    'VENDEDOR': ['Vendedor', 'vendedor'],
-                }
-                
-                termos = perfil_termos.get(comunicado.perfil_destino, [comunicado.perfil_destino])
-                
-                # Criar filtro: ativo=True AND (nome contém termo1 OU nome contém termo2 OU ...)
-                filtro_nome = Q()
-                for termo in termos:
-                    filtro_nome |= Q(nome__icontains=termo)
-                
-                grupos_ativos = GrupoDisparo.objects.filter(Q(ativo=True) & filtro_nome)
-            
-            grupos_ids = list(grupos_ativos.values_list('chat_id', flat=True))
-            
-            if not grupos_ids:
-                logger.warning(f"Nenhum grupo encontrado para perfil {comunicado.perfil_destino}")
-                comunicado.status = 'ERRO'
-                comunicado.save()
-                return False
-            
-            # Enviar para cada grupo
-            sucesso_total = True
-            for grupo_id in grupos_ids:
-                try:
-                    resultado, resposta = whatsapp_service.enviar_mensagem_texto(grupo_id, comunicado.mensagem)
-                    if not resultado:
-                        sucesso_total = False
-                        logger.error(f"Erro ao enviar comunicado {comunicado.id} para grupo {grupo_id}")
-                except Exception as e:
-                    sucesso_total = False
-                    logger.error(f"Exceção ao enviar comunicado {comunicado.id} para grupo {grupo_id}: {e}")
-            
-            # Atualizar status
-            if sucesso_total:
-                comunicado.status = 'ENVIADO'
-                comunicado.save()
-                return True
-            else:
-                comunicado.status = 'ERRO'
-                comunicado.save()
-                return False
-                
-        except Exception as e:
-            logger.error(f"Erro ao processar comunicado {comunicado.id}: {e}")
-            import traceback
-            traceback.print_exc()
-            comunicado.status = 'ERRO'
-            comunicado.save()
-            return False
+        from crm_app.services.comunicado_service import processar_envio_comunicado
+        return processar_envio_comunicado(comunicado)
 
     def perform_create(self, serializer):
-        from django.utils import timezone
-        from datetime import datetime, date, time
-        
+        from crm_app.services.comunicado_service import comunicado_deve_enviar_agora
+
         comunicado = serializer.save(criado_por=self.request.user)
-        
-        # Se for envio imediato (data/hora atual ou passada), processa agora
-        agora = timezone.now()
-        data_envio = comunicado.data_programada
-        hora_envio = comunicado.hora_programada
-        
-        if isinstance(hora_envio, time):
-            datetime_envio = datetime.combine(data_envio, hora_envio)
-            if timezone.is_naive(datetime_envio):
-                from django.utils import timezone as tz
-                datetime_envio = tz.make_aware(datetime_envio)
-        else:
-            datetime_envio = agora
-        
-        # Se a data/hora programada já passou ou é agora, processa imediatamente
-        if datetime_envio <= agora:
-            # Processar em thread para não bloquear a resposta
+
+        if comunicado_deve_enviar_agora(comunicado):
             import threading
             thread = threading.Thread(target=self._processar_envio_comunicado, args=(comunicado,))
             thread.daemon = True

@@ -1260,6 +1260,18 @@ class Comunicado(models.Model):
         ('CANCELADO', 'Cancelado'),
         ('ERRO', 'Erro'),
     ]
+    CANAL_OPCOES = [
+        ('TODOS', 'Todos'),
+        ('PAP', 'PAP'),
+        ('DIGITAL', 'Digital'),
+        ('RECEPTIVO', 'Receptivo'),
+        ('PARCEIRO', 'Parceiro'),
+    ]
+    STATUS_DESTINATARIOS_CHOICES = [
+        ('somente_ativos', 'Somente ativos'),
+        ('somente_inativos', 'Somente inativos'),
+        ('todos', 'Todos'),
+    ]
 
     titulo = models.CharField(max_length=200, verbose_name="Título Interno")
     mensagem = models.TextField(verbose_name="Mensagem WhatsApp")
@@ -1268,6 +1280,34 @@ class Comunicado(models.Model):
     hora_programada = models.TimeField()
     
     perfil_destino = models.CharField(max_length=20, choices=PERFIL_CHOICES, default='TODOS')
+    canal_alvo = models.CharField(
+        max_length=20, choices=CANAL_OPCOES, default='TODOS', verbose_name="Canal Alvo"
+    )
+    cluster_alvo = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text="Filtro por cluster (vazio ou TODOS = todos). Ex: CLUSTER_1, CLUSTER_2, CLUSTER_3",
+    )
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='comunicados_direcionados',
+        verbose_name="Vendedor específico",
+    )
+    status_destinatarios = models.CharField(
+        max_length=20,
+        choices=STATUS_DESTINATARIOS_CHOICES,
+        default='somente_ativos',
+        help_text="Define se o envio individual considera usuários ativos, inativos ou todos.",
+    )
+    representatividade_minima = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Representatividade mínima (%)",
+        help_text="0 = todos. Filtra vendedores com participação mínima no volume do mês (O.S. cadastradas).",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
     
     criado_em = models.DateTimeField(auto_now_add=True)
