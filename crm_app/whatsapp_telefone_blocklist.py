@@ -11,13 +11,18 @@ _TELEFONES_BLOQUEADOS_PADRAO = frozenset({'12981750292'})
 _CACHED_VARIANTES: FrozenSet[str] | None = None
 
 
-def _normalizar_telefone(telefone: str) -> str:
+def normalizar_telefone_blocklist(telefone: str) -> str:
+    """Normaliza telefone para armazenamento/comparação na blocklist."""
     if not telefone:
         return ''
     limpo = ''.join(filter(str.isdigit, str(telefone)))
     if limpo.startswith('55') and len(limpo) > 12:
         limpo = limpo[2:]
     return limpo
+
+
+def _normalizar_telefone(telefone: str) -> str:
+    return normalizar_telefone_blocklist(telefone)
 
 
 def _variantes_telefone(telefone: str) -> Set[str]:
@@ -52,6 +57,15 @@ def _telefones_extra_settings() -> Iterable[str]:
         return ()
 
 
+def _telefones_banco_dados() -> Iterable[str]:
+    try:
+        from crm_app.models import WhatsAppTelefoneSemIa
+
+        return WhatsAppTelefoneSemIa.objects.filter(ativo=True).values_list('telefone', flat=True)
+    except Exception:
+        return ()
+
+
 def get_variantes_bloqueadas() -> FrozenSet[str]:
     global _CACHED_VARIANTES
     if _CACHED_VARIANTES is not None:
@@ -60,6 +74,9 @@ def get_variantes_bloqueadas() -> FrozenSet[str]:
     for numero in _TELEFONES_BLOQUEADOS_PADRAO:
         variantes.update(_variantes_telefone(numero))
     for numero in _telefones_extra_settings():
+        if numero:
+            variantes.update(_variantes_telefone(str(numero).strip()))
+    for numero in _telefones_banco_dados():
         if numero:
             variantes.update(_variantes_telefone(str(numero).strip()))
     _CACHED_VARIANTES = frozenset(variantes)

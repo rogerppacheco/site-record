@@ -519,40 +519,157 @@
 
             <section id="pap-logins-section" class="content-section">
                 <h3 class="mb-4">Logins PAP (BackOffice)</h3>
-                <div class="card border-warning">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <ul class="nav nav-tabs card-header-tabs">
+                            <li class="nav-item">
+                                <button class="nav-link active" onclick="openTab(event, 'pap_logins_pool')">Pool de Logins</button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link" onclick="openTab(event, 'pap_logins_ia_wpp'); carregarConfigIaWhatsapp();">IA WhatsApp</button>
+                            </li>
+                        </ul>
+                    </div>
                     <div class="card-body">
-                        <p class="text-muted mb-3">Quando os logins do PAP ficam travados (sem uso e o sistema ainda os considera em uso), use o botão abaixo para <strong>liberar todos</strong> e devolvê-los ao pool. Equivale a fazer logoff de todos os logins no site <a href="https://pap.niointernet.com.br/" target="_blank" rel="noopener">pap.niointernet.com.br</a>.</p>
-                        <button type="button" class="btn btn-warning" id="btn-liberar-pap-bo" onclick="liberarTodosPapBo()">
-                            <i class="bi bi-box-arrow-right"></i> Liberar todos os logins PAP (logoff)
-                        </button>
-                        <span id="liberar-pap-result" class="ms-3 small"></span>
-                    </div>
-                </div>
-                <div class="card mt-3">
-                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0"><i class="bi bi-clock-history me-1"></i> Histórico de consultas das automações</h6>
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="carregarHistoricoConsultasPapBo()">
-                            <i class="bi bi-arrow-clockwise"></i> Atualizar
-                        </button>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Data/Hora</th>
-                                        <th>Usuário solicitante</th>
-                                        <th>Automação</th>
-                                        <th>Login PAP usado</th>
-                                        <th>Resultado</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="pap-historico-consultas-body">
-                                    <tr>
-                                        <td colspan="5" class="text-muted text-center py-3">Abra a aba para carregar o histórico.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div id="pap_logins_pool" class="tab-content active">
+                            <div class="card border-warning mb-0">
+                                <div class="card-body">
+                                    <p class="text-muted mb-3">Quando os logins do PAP ficam travados (sem uso e o sistema ainda os considera em uso), use o botão abaixo para <strong>liberar todos</strong> e devolvê-los ao pool. Equivale a fazer logoff de todos os logins no site <a href="https://pap.niointernet.com.br/" target="_blank" rel="noopener">pap.niointernet.com.br</a>.</p>
+                                    <button type="button" class="btn btn-warning" id="btn-liberar-pap-bo" onclick="liberarTodosPapBo()">
+                                        <i class="bi bi-box-arrow-right"></i> Liberar todos os logins PAP (logoff)
+                                    </button>
+                                    <span id="liberar-pap-result" class="ms-3 small"></span>
+                                </div>
+                            </div>
+                            <div class="card mt-3 mb-0">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="bi bi-clock-history me-1"></i> Histórico de consultas das automações</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="carregarHistoricoConsultasPapBo()">
+                                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                    </button>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Data/Hora</th>
+                                                    <th>Usuário solicitante</th>
+                                                    <th>Automação</th>
+                                                    <th>Login PAP usado</th>
+                                                    <th>Resultado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="pap-historico-consultas-body">
+                                                <tr>
+                                                    <td colspan="5" class="text-muted text-center py-3">Abra a aba para carregar o histórico.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="pap_logins_ia_wpp" class="tab-content" style="display:none;">
+                            <p class="text-muted mb-3">
+                                Gerencie números em que o bot <strong>não deve responder</strong> (conversas manuais com externos)
+                                e toggles globais da IA no WhatsApp. Números bloqueados são ignorados pelo webhook — sem resposta automática.
+                            </p>
+                            <div class="card mb-3">
+                                <div class="card-header bg-white">
+                                    <h6 class="mb-0"><i class="bi bi-sliders me-1"></i> Configurações globais da IA</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="ia-contatos-externos-ativa" checked>
+                                                <label class="form-check-label" for="ia-contatos-externos-ativa">IA para contatos externos</label>
+                                                <div class="form-text">Números sem usuário/venda cadastrados.</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="ia-clientes-venda-ativa" checked>
+                                                <label class="form-check-label" for="ia-clientes-venda-ativa">IA para clientes com venda</label>
+                                                <div class="form-text">Boas-vindas, lembrete de instalação, etc.</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="ia-vendedores-duvidas-ativa" checked>
+                                                <label class="form-check-label" for="ia-vendedores-duvidas-ativa">IA para dúvidas de vendedores</label>
+                                                <div class="form-text">Perguntas livres na etapa inicial do bot.</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="ia-boas-vindas-sugestao-ativa" checked>
+                                                <label class="form-check-label" for="ia-boas-vindas-sugestao-ativa">IA sugere status em boas-vindas</label>
+                                                <div class="form-text">Classifica a 1ª resposta do cliente (OK/ERRO).</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="salvarConfigIaWhatsapp()">
+                                            <i class="bi bi-check-lg"></i> Salvar configurações
+                                        </button>
+                                        <span id="ia-wpp-config-result" class="ms-2 small"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card mb-0">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <h6 class="mb-0"><i class="bi bi-telephone-x me-1"></i> Números sem interação da IA</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="carregarConfigIaWhatsapp()">
+                                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-2 align-items-end mb-3">
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold">Telefone</label>
+                                            <input type="text" class="form-control form-control-sm" id="ia-wpp-telefone-novo" placeholder="11999998888 ou 5511999998888">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold">Descrição</label>
+                                            <input type="text" class="form-control form-control-sm" id="ia-wpp-descricao-novo" placeholder="Ex.: Fornecedor XYZ">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold">Motivo</label>
+                                            <select class="form-select form-select-sm" id="ia-wpp-motivo-novo">
+                                                <option value="conversa_manual">Conversa manual (externo)</option>
+                                                <option value="loop_ia">Loop de respostas IA</option>
+                                                <option value="outro">Outro</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="button" class="btn btn-success btn-sm w-100" onclick="adicionarTelefoneSemIa()">
+                                                <i class="bi bi-plus-lg"></i> Adicionar número
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Telefone</th>
+                                                    <th>Descrição</th>
+                                                    <th>Motivo</th>
+                                                    <th>Status</th>
+                                                    <th>Criado em</th>
+                                                    <th class="text-end">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="ia-wpp-telefones-body">
+                                                <tr>
+                                                    <td colspan="6" class="text-muted text-center py-3">Carregando...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1218,6 +1335,136 @@
             }).join('');
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Erro ao carregar histórico: ${e.message || e}</td></tr>`;
+        }
+    }
+
+    function _aplicarConfigIaWhatsappNaTela(cfg) {
+        if (!cfg) return;
+        const map = {
+            'ia-contatos-externos-ativa': cfg.ia_contatos_externos_ativa,
+            'ia-clientes-venda-ativa': cfg.ia_clientes_venda_ativa,
+            'ia-vendedores-duvidas-ativa': cfg.ia_vendedores_duvidas_ativa,
+            'ia-boas-vindas-sugestao-ativa': cfg.ia_boas_vindas_sugestao_ativa,
+        };
+        Object.entries(map).forEach(([id, val]) => {
+            const el = document.getElementById(id);
+            if (el) el.checked = !!val;
+        });
+    }
+
+    function _renderizarTelefonesSemIa(itens) {
+        const tbody = document.getElementById('ia-wpp-telefones-body');
+        if (!tbody) return;
+        if (!itens || !itens.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Nenhum número bloqueado.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = itens.map((item) => {
+            const statusBadge = item.ativo
+                ? '<span class="badge bg-success">Ativo</span>'
+                : '<span class="badge bg-secondary">Inativo</span>';
+            const acaoToggle = item.ativo
+                ? `<button class="btn btn-sm btn-outline-warning me-1" onclick="toggleTelefoneSemIa(${item.id}, false)" title="Desativar"><i class="bi bi-pause"></i></button>`
+                : `<button class="btn btn-sm btn-outline-success me-1" onclick="toggleTelefoneSemIa(${item.id}, true)" title="Reativar"><i class="bi bi-play"></i></button>`;
+            return `
+                <tr>
+                    <td><code>${item.telefone}</code></td>
+                    <td>${item.descricao || '-'}</td>
+                    <td>${item.motivo_label || item.motivo || '-'}</td>
+                    <td>${statusBadge}</td>
+                    <td>${formatarDataHoraBrasileira(item.criado_em)}</td>
+                    <td class="text-end">
+                        ${acaoToggle}
+                        <button class="btn btn-sm btn-outline-danger" onclick="removerTelefoneSemIa(${item.id})" title="Remover"><i class="bi bi-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function carregarConfigIaWhatsapp() {
+        const tbody = document.getElementById('ia-wpp-telefones-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando...</td></tr>';
+        }
+        try {
+            const res = await apiFetch('/crm/whatsapp-ia-config/');
+            _aplicarConfigIaWhatsappNaTela(res.config || {});
+            _renderizarTelefonesSemIa(res.telefones_sem_ia || []);
+        } catch (e) {
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">Erro: ${e.message || e}</td></tr>`;
+            }
+        }
+    }
+
+    async function salvarConfigIaWhatsapp() {
+        const resultEl = document.getElementById('ia-wpp-config-result');
+        if (resultEl) {
+            resultEl.textContent = '';
+            resultEl.className = 'ms-2 small';
+        }
+        const payload = {
+            ia_contatos_externos_ativa: document.getElementById('ia-contatos-externos-ativa')?.checked ?? true,
+            ia_clientes_venda_ativa: document.getElementById('ia-clientes-venda-ativa')?.checked ?? true,
+            ia_vendedores_duvidas_ativa: document.getElementById('ia-vendedores-duvidas-ativa')?.checked ?? true,
+            ia_boas_vindas_sugestao_ativa: document.getElementById('ia-boas-vindas-sugestao-ativa')?.checked ?? true,
+        };
+        try {
+            const res = await apiFetch('/crm/whatsapp-ia-config/', { method: 'PATCH', body: JSON.stringify(payload) });
+            _aplicarConfigIaWhatsappNaTela(res.config || payload);
+            if (resultEl) {
+                resultEl.textContent = 'Configurações salvas.';
+                resultEl.classList.add('text-success');
+            }
+        } catch (e) {
+            if (resultEl) {
+                resultEl.textContent = 'Erro: ' + (e.message || e);
+                resultEl.classList.add('text-danger');
+            }
+        }
+    }
+
+    async function adicionarTelefoneSemIa() {
+        const telefone = (document.getElementById('ia-wpp-telefone-novo')?.value || '').trim();
+        const descricao = (document.getElementById('ia-wpp-descricao-novo')?.value || '').trim();
+        const motivo = document.getElementById('ia-wpp-motivo-novo')?.value || 'conversa_manual';
+        if (!telefone) {
+            alert('Informe o telefone.');
+            return;
+        }
+        try {
+            await apiFetch('/crm/whatsapp-telefones-sem-ia/', {
+                method: 'POST',
+                body: JSON.stringify({ telefone, descricao, motivo }),
+            });
+            document.getElementById('ia-wpp-telefone-novo').value = '';
+            document.getElementById('ia-wpp-descricao-novo').value = '';
+            await carregarConfigIaWhatsapp();
+        } catch (e) {
+            alert('Erro ao adicionar: ' + (e.message || e));
+        }
+    }
+
+    async function toggleTelefoneSemIa(id, ativo) {
+        try {
+            await apiFetch(`/crm/whatsapp-telefones-sem-ia/${id}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ ativo }),
+            });
+            await carregarConfigIaWhatsapp();
+        } catch (e) {
+            alert('Erro: ' + (e.message || e));
+        }
+    }
+
+    async function removerTelefoneSemIa(id) {
+        if (!confirm('Remover este número da lista? O bot voltará a interagir com ele.')) return;
+        try {
+            await apiFetch(`/crm/whatsapp-telefones-sem-ia/${id}/`, { method: 'DELETE' });
+            await carregarConfigIaWhatsapp();
+        } catch (e) {
+            alert('Erro: ' + (e.message || e));
         }
     }
 

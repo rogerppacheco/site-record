@@ -7331,11 +7331,14 @@ def processar_webhook_whatsapp(data, request=None):
             msg = None
             if texto_resposta:
                 try:
-                    from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+                    from crm_app.services.whatsapp_ia_config_service import ia_clientes_venda_habilitada
 
-                    msg = processar_mensagem_cliente_venda(
-                        telefone_formatado_usuario, texto_resposta, origem="LEMBRETE_INSTALACAO"
-                    )
+                    if ia_clientes_venda_habilitada():
+                        from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+
+                        msg = processar_mensagem_cliente_venda(
+                            telefone_formatado_usuario, texto_resposta, origem="LEMBRETE_INSTALACAO"
+                        )
                 except Exception as e_lem_ia:
                     logger.warning("[Webhook] Resposta IA cliente (lembrete): %s", e_lem_ia)
             if not msg:
@@ -7380,9 +7383,12 @@ def processar_webhook_whatsapp(data, request=None):
                 bv.respondido_em = agora_bv
                 bv.save(update_fields=['respondido_em'])
                 try:
-                    from crm_app.ai_chat_service import sugerir_status_boas_vindas
-                    bv.sugestao_status_ia = sugerir_status_boas_vindas(texto_resposta)
-                    bv.save(update_fields=['sugestao_status_ia'])
+                    from crm_app.services.whatsapp_ia_config_service import ia_boas_vindas_sugestao_habilitada
+
+                    if ia_boas_vindas_sugestao_habilitada():
+                        from crm_app.ai_chat_service import sugerir_status_boas_vindas
+                        bv.sugestao_status_ia = sugerir_status_boas_vindas(texto_resposta)
+                        bv.save(update_fields=['sugestao_status_ia'])
                 except Exception as e_ia:
                     logger.warning(f"[Webhook] IA sugestão boas-vindas: {e_ia}")
             # Atualiza sempre a última mensagem na venda (para exibição rápida)
@@ -7392,13 +7398,16 @@ def processar_webhook_whatsapp(data, request=None):
             venda_bv.save(update_fields=['cliente_resposta_boas_vindas', 'data_resposta_boas_vindas'])
             if texto_resposta:
                 try:
-                    from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+                    from crm_app.services.whatsapp_ia_config_service import ia_clientes_venda_habilitada
 
-                    resp_bv = processar_mensagem_cliente_venda(
-                        telefone_formatado_usuario, texto_resposta, origem="BOAS_VINDAS"
-                    )
-                    if resp_bv:
-                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, resp_bv)
+                    if ia_clientes_venda_habilitada():
+                        from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+
+                        resp_bv = processar_mensagem_cliente_venda(
+                            telefone_formatado_usuario, texto_resposta, origem="BOAS_VINDAS"
+                        )
+                        if resp_bv:
+                            WhatsAppService().enviar_mensagem_texto(telefone_formatado, resp_bv)
                 except Exception as e_bv_ia:
                     logger.warning("[Webhook] Resposta IA cliente (boas-vindas): %s", e_bv_ia)
             return {'status': 'ok', 'mensagem': 'Resposta boas-vindas registrada'}
@@ -7501,28 +7510,36 @@ def processar_webhook_whatsapp(data, request=None):
         # Cliente com telefone cadastrado em venda: resposta com dados do pedido + aviso BO/Diretoria
         if mensagem_texto and (mensagem_texto or "").strip():
             try:
-                from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+                from crm_app.services.whatsapp_ia_config_service import ia_clientes_venda_habilitada
 
-                resposta_cliente = processar_mensagem_cliente_venda(
-                    telefone_formatado_usuario,
-                    (mensagem_texto or "").strip(),
-                    origem="WEBHOOK",
-                )
-                if resposta_cliente:
-                    try:
-                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, resposta_cliente)
-                    except Exception as e:
-                        logger.exception(
-                            "[Webhook] Erro ao enviar resposta atendimento cliente (venda): %s", e
-                        )
-                    return {
-                        'status': 'ok',
-                        'mensagem': 'Cliente (venda cadastrada): resposta e aviso BO/Diretoria',
-                    }
+                if ia_clientes_venda_habilitada():
+                    from crm_app.cliente_atendimento_ia_service import processar_mensagem_cliente_venda
+
+                    resposta_cliente = processar_mensagem_cliente_venda(
+                        telefone_formatado_usuario,
+                        (mensagem_texto or "").strip(),
+                        origem="WEBHOOK",
+                    )
+                    if resposta_cliente:
+                        try:
+                            WhatsAppService().enviar_mensagem_texto(telefone_formatado, resposta_cliente)
+                        except Exception as e:
+                            logger.exception(
+                                "[Webhook] Erro ao enviar resposta atendimento cliente (venda): %s", e
+                            )
+                        return {
+                            'status': 'ok',
+                            'mensagem': 'Cliente (venda cadastrada): resposta e aviso BO/Diretoria',
+                        }
             except Exception as e:
                 logger.warning("[Webhook] Atendimento cliente venda falhou: %s", e, exc_info=True)
 
         # Contato externo sem venda: IA acolhedora ou fallback profissional.
+        from crm_app.services.whatsapp_ia_config_service import ia_contatos_externos_habilitada
+
+        if not ia_contatos_externos_habilitada():
+            logger.info("[Webhook] IA contatos externos desabilitada — ignorando %s", telefone_formatado)
+            return {'status': 'ok', 'mensagem': 'IA externa desabilitada'}
         mensagem_enviar = None
         try:
             from crm_app.ai_chat_service import responder_com_ia
@@ -7928,18 +7945,21 @@ def processar_webhook_whatsapp(data, request=None):
         )
         if etapa_atual == 'inicial' and _mensagem_strip and _parece_pergunta:
             try:
-                from crm_app.ai_chat_service import responder_com_ia
-                nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
-                resposta_ia = responder_com_ia(_mensagem_strip, nome_vendedor=nome_vendedor)
-                if resposta_ia:
-                    logger.info("[Webhook] Resposta enviada via IA (mensagem identificada como pergunta).")
-                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_ia))
-                # IA não respondeu (sem chave ou cota excedida) → mensagem de fallback
-                resposta_fallback = (
-                    "No momento não consigo responder dúvidas por aqui. "
-                    "Digite *MENU* para ver os comandos disponíveis ou fale com seu gestor."
-                )
-                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_fallback))
+                from crm_app.services.whatsapp_ia_config_service import ia_vendedores_duvidas_habilitada
+
+                if ia_vendedores_duvidas_habilitada():
+                    from crm_app.ai_chat_service import responder_com_ia
+                    nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
+                    resposta_ia = responder_com_ia(_mensagem_strip, nome_vendedor=nome_vendedor)
+                    if resposta_ia:
+                        logger.info("[Webhook] Resposta enviada via IA (mensagem identificada como pergunta).")
+                        return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_ia))
+                    # IA não respondeu (sem chave ou cota excedida) → mensagem de fallback
+                    resposta_fallback = (
+                        "No momento não consigo responder dúvidas por aqui. "
+                        "Digite *MENU* para ver os comandos disponíveis ou fale com seu gestor."
+                    )
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_fallback))
             except Exception as e:
                 logger.warning("[Webhook] Fallback IA (pergunta) falhou: %s", e)
         # Busca direta por tag do Record Apoia (sem precisar digitar Material/Apoia)
@@ -9662,15 +9682,18 @@ def processar_webhook_whatsapp(data, request=None):
                 # Fallback: mensagem livre na etapa inicial → IA (Groq/Gemini) responde no contexto do sistema
                 if etapa_atual == 'inicial' and mensagem_texto and mensagem_texto.strip():
                     try:
-                        from crm_app.ai_chat_service import responder_com_ia
-                        nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
-                        resposta_ia = responder_com_ia(mensagem_texto.strip(), nome_vendedor=nome_vendedor)
-                        if resposta_ia:
-                            resposta = resposta_ia
-                            logger.info("[Webhook] Resposta enviada via IA (contexto do sistema).")
-                        else:
-                            logger.info("[Webhook] IA não retornou resposta para mensagem livre (etapa inicial). Enviando fallback.")
-                            resposta = "Olá! Digite *MENU* para ver os comandos disponíveis."
+                        from crm_app.services.whatsapp_ia_config_service import ia_vendedores_duvidas_habilitada
+
+                        if ia_vendedores_duvidas_habilitada():
+                            from crm_app.ai_chat_service import responder_com_ia
+                            nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
+                            resposta_ia = responder_com_ia(mensagem_texto.strip(), nome_vendedor=nome_vendedor)
+                            if resposta_ia:
+                                resposta = resposta_ia
+                                logger.info("[Webhook] Resposta enviada via IA (contexto do sistema).")
+                            else:
+                                logger.info("[Webhook] IA não retornou resposta para mensagem livre (etapa inicial). Enviando fallback.")
+                                resposta = "Olá! Digite *MENU* para ver os comandos disponíveis."
                     except Exception as e:
                         logger.warning("[Webhook] Fallback IA falhou: %s", e)
                         resposta = "Olá! Digite *MENU* para ver os comandos disponíveis."

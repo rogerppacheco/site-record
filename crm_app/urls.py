@@ -22,6 +22,11 @@ from .record_apoia_api import (
 )
 
 # IMPORTAÇÕES ESPECÍFICAS DE VIEWS
+from .views_whatsapp_ia_governanca import (
+    whatsapp_ia_config_view,
+    whatsapp_telefones_sem_ia_view,
+    whatsapp_telefone_sem_ia_detail_view,
+)
 from .views import (
     listar_screenshots_debug,
     baixar_screenshot_debug,
@@ -229,6 +234,9 @@ urlpatterns = [
     path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
     path('liberar-pap-bo/', liberar_pap_bo_view, name='liberar-pap-bo'),
     path('historico-consultas-pap-bo/', historico_consultas_pap_bo_view, name='historico-consultas-pap-bo'),
+    path('whatsapp-ia-config/', whatsapp_ia_config_view, name='whatsapp-ia-config'),
+    path('whatsapp-telefones-sem-ia/', whatsapp_telefones_sem_ia_view, name='whatsapp-telefones-sem-ia'),
+    path('whatsapp-telefones-sem-ia/<int:pk>/', whatsapp_telefone_sem_ia_detail_view, name='whatsapp-telefone-sem-ia-detail'),
     path('funil-venda-wpp/tentativas/', FunilVendaWppTentativaListView.as_view(), name='funil-venda-wpp-tentativas'),
     path('funil-venda-wpp/tentativas/<int:pk>/', FunilVendaWppTentativaDetailView.as_view(), name='funil-venda-wpp-tentativa-detail'),
     path('consultar-biometria-brpronto/', consultar_biometria_brpronto_view, name='consultar-biometria-brpronto'),

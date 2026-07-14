@@ -3804,3 +3804,99 @@ class WhatsAppIntegracaoConfig(models.Model):
     def load(cls) -> "WhatsAppIntegracaoConfig":
         obj, _ = cls.objects.get_or_create(pk=1, defaults={"provider": cls.PROVIDER_ZAPI})
         return obj
+
+
+class WhatsAppIaConfig(models.Model):
+    """Configuração singleton da IA no atendimento WhatsApp."""
+
+    ia_contatos_externos_ativa = models.BooleanField(
+        default=True,
+        verbose_name="IA para contatos externos",
+        help_text="Responde automaticamente números sem usuário/venda cadastrados.",
+    )
+    ia_clientes_venda_ativa = models.BooleanField(
+        default=True,
+        verbose_name="IA para clientes com venda",
+        help_text="Atendimento automático com dados do pedido (boas-vindas, lembrete, etc.).",
+    )
+    ia_vendedores_duvidas_ativa = models.BooleanField(
+        default=True,
+        verbose_name="IA para dúvidas de vendedores",
+        help_text="Responde perguntas livres de vendedores na etapa inicial.",
+    )
+    ia_boas_vindas_sugestao_ativa = models.BooleanField(
+        default=True,
+        verbose_name="IA sugere status em boas-vindas",
+        help_text="Classifica a primeira resposta do cliente (OK/ERRO/etc.) para o backoffice.",
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Config. IA WhatsApp"
+        verbose_name_plural = "Config. IA WhatsApp"
+
+    def __str__(self) -> str:
+        return "Configuração IA WhatsApp"
+
+    @classmethod
+    def load(cls) -> "WhatsAppIaConfig":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class WhatsAppTelefoneSemIa(models.Model):
+    """Números em que o bot não responde (conversa manual, sem IA)."""
+
+    MOTIVO_CONVERSA_MANUAL = "conversa_manual"
+    MOTIVO_LOOP_IA = "loop_ia"
+    MOTIVO_OUTRO = "outro"
+    MOTIVO_CHOICES = (
+        (MOTIVO_CONVERSA_MANUAL, "Conversa manual (externo)"),
+        (MOTIVO_LOOP_IA, "Loop de respostas IA"),
+        (MOTIVO_OUTRO, "Outro"),
+    )
+
+    telefone = models.CharField(
+        max_length=20,
+        unique=True,
+        verbose_name="Telefone",
+        help_text="Somente dígitos (ex.: 5511999998888 ou 11999998888).",
+    )
+    descricao = models.CharField(max_length=200, blank=True, default="")
+    motivo = models.CharField(
+        max_length=30,
+        choices=MOTIVO_CHOICES,
+        default=MOTIVO_CONVERSA_MANUAL,
+    )
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="telefones_sem_ia_criados",
+    )
+
+    class Meta:
+        verbose_name = "Telefone sem IA (WhatsApp)"
+        verbose_name_plural = "Telefones sem IA (WhatsApp)"
+        ordering = ["-criado_em"]
+        db_table = "crm_whatsapp_telefone_sem_ia"
+
+    def __str__(self) -> str:
+        return f"{self.telefone} ({self.get_motivo_display()})"
+
+    def save(self, *args, **kwargs) -> None:
+        from crm_app.whatsapp_telefone_blocklist import normalizar_telefone_blocklist
+
+        self.telefone = normalizar_telefone_blocklist(self.telefone)
+        super().save(*args, **kwargs)
