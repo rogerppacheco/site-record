@@ -533,6 +533,11 @@ PAP_WORKER_MODE = config(
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
 PAP_WORKER_POLL_SECONDS = config('PAP_WORKER_POLL_SECONDS', default=2, cast=float)
+# Watchdog da fila: processando sem heartbeat / pendente órfão (minutos).
+PAP_JOB_STALE_PROCESSANDO_MINUTES = config('PAP_JOB_STALE_PROCESSANDO_MINUTES', default=12, cast=int)
+PAP_JOB_STALE_PENDENTE_MINUTES = config('PAP_JOB_STALE_PENDENTE_MINUTES', default=10, cast=int)
+# 0 = usa timeout por tipo (status=240s, credito=360s).
+PAP_JOB_TIMEOUT_SECONDS = config('PAP_JOB_TIMEOUT_SECONDS', default=0, cast=int)
 
 # Sentry (tier gratuito — definir SENTRY_DSN no Railway)
 SENTRY_DSN = config('SENTRY_DSN', default='')

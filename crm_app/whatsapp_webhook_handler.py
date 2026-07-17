@@ -1328,17 +1328,24 @@ def _executar_consulta_status_online_background(
         )
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
-            liberar_bo(bo_usuario.id, telefone)
-            _marcar_hist(False, msg)
             logger.warning("[STATUS ONLINE] Falha ao iniciar sessão PAP: %s", msg)
-            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro PAP: {msg}\n\nDigite *STATUS* para tentar novamente.")
-            try:
-                s = SessaoWhatsapp.objects.get(telefone=telefone)
-                s.etapa = 'inicial'
-                s.dados_temp = {}
-                s.save()
-            except Exception:
-                pass
+
+            def _falha_login():
+                liberar_bo(bo_usuario.id, telefone)
+                _marcar_hist(False, msg)
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone,
+                    f"❌ Erro PAP: {msg}\n\nDigite *STATUS* para tentar novamente.",
+                )
+                try:
+                    s = SessaoWhatsapp.objects.get(telefone=telefone)
+                    s.etapa = 'inicial'
+                    s.dados_temp = {}
+                    s.save()
+                except Exception:
+                    pass
+
+            _run_django_sync(_falha_login)
             return
 
         os_prioridade_crm = set()

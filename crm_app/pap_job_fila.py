@@ -4,8 +4,10 @@ Fila de jobs PAP em PostgreSQL — isola Playwright do serviço web sem Redis.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -86,3 +88,81 @@ def reivindicar_proximo_job() -> PapJobFila | None:
         job.tentativas = (job.tentativas or 0) + 1
         job.save(update_fields=["status", "iniciado_em", "tentativas"])
         return job
+
+
+def _stale_processando_minutos() -> int:
+    return int(getattr(settings, "PAP_JOB_STALE_PROCESSANDO_MINUTES", 12))
+
+
+def _stale_pendente_minutos() -> int:
+    """Pendentes acima disso já passaram do timeout do WhatsApp (STATUS ~3 min)."""
+    return int(getattr(settings, "PAP_JOB_STALE_PENDENTE_MINUTES", 10))
+
+
+def recuperar_jobs_pap_travados() -> dict[str, int]:
+    """
+    Recupera a fila quando o worker morre/trava no Playwright.
+
+    - processando antigo: recola como pendente (se ainda há tentativas) ou erro
+    - pendente antigo: marca erro (usuário já recebeu timeout no WhatsApp; reprocessar spamaria)
+    """
+    agora = timezone.now()
+    limite_proc = agora - timedelta(minutes=_stale_processando_minutos())
+    limite_pend = agora - timedelta(minutes=_stale_pendente_minutos())
+    stats = {"processando_requeued": 0, "processando_erro": 0, "pendente_expirado": 0}
+
+    travados = list(
+        PapJobFila.objects.filter(
+            status=PapJobFila.STATUS_PROCESSANDO,
+            iniciado_em__lt=limite_proc,
+        ).order_by("iniciado_em")[:100]
+    )
+    for job in travados:
+        idade_criado_min = (agora - job.criado_em).total_seconds() / 60.0 if job.criado_em else 0
+        msg = (
+            f"Job abandonado: travado em processando desde {job.iniciado_em} "
+            f"(>{_stale_processando_minutos()} min)."
+        )
+        # Jobs muito antigos: não reprocessar (WhatsApp já deu timeout ao usuário).
+        if idade_criado_min >= _stale_pendente_minutos() or (job.tentativas or 0) >= (job.max_tentativas or 2):
+            job.status = PapJobFila.STATUS_ERRO
+            job.concluido_em = agora
+            job.erro = msg[:4000]
+            job.save(update_fields=["status", "concluido_em", "erro"])
+            stats["processando_erro"] += 1
+            logger.warning(
+                "[PAP_FILA] Job %s marcado erro (processando stale).",
+                job.id,
+            )
+        else:
+            job.status = PapJobFila.STATUS_PENDENTE
+            job.iniciado_em = None
+            job.erro = msg[:4000]
+            job.save(update_fields=["status", "iniciado_em", "erro"])
+            stats["processando_requeued"] += 1
+            logger.warning("[PAP_FILA] Job %s recolocável (processando stale).", job.id)
+
+    expirados = list(
+        PapJobFila.objects.filter(
+            status=PapJobFila.STATUS_PENDENTE,
+            criado_em__lt=limite_pend,
+        ).order_by("criado_em")[:500]
+    )
+    if expirados:
+        ids = [j.id for j in expirados]
+        msg = (
+            f"Job expirado: ficou pendente >{_stale_pendente_minutos()} min "
+            "(usuário já saiu do fluxo WhatsApp)."
+        )
+        n = PapJobFila.objects.filter(
+            id__in=ids, status=PapJobFila.STATUS_PENDENTE
+        ).update(
+            status=PapJobFila.STATUS_ERRO,
+            concluido_em=agora,
+            erro=msg[:4000],
+        )
+        stats["pendente_expirado"] = n
+        if n:
+            logger.warning("[PAP_FILA] %s job(s) pendente(s) expirados.", n)
+
+    return stats

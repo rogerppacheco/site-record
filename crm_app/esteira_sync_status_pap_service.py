@@ -35,8 +35,10 @@ def _run_django_sync(func, timeout_seconds: int = 120):
             q.put(('ok', func()))
         except Exception as e:
             q.put(('err', e))
+        finally:
+            django.db.close_old_connections()
 
-    t = threading.Thread(target=worker, daemon=True)
+    t = threading.Thread(target=worker, daemon=True, name='sync-esteira-orm')
     t.start()
     t.join(timeout=timeout_seconds)
     if not q.empty():
@@ -47,6 +49,44 @@ def _run_django_sync(func, timeout_seconds: int = 120):
     if t.is_alive():
         logger.error('[SYNC ESTEIRA] _run_django_sync expirou após %ss.', timeout_seconds)
         raise TimeoutError('django_sync_timeout')
+    raise TimeoutError('django_sync_timeout')
+
+
+def _aguardar_login_bo_safe(
+    contador_uso_bo: Dict[int, int],
+    *,
+    timeout_seg: int = 900,
+    intervalo_seg: int = 45,
+) -> Tuple[Optional[Any], Optional[str]]:
+    """
+    Aloca BO STATUS com ORM em thread limpa.
+
+    O Playwright deixa event loop no thread do job; chamar aguardar_login_bo
+    direto nesse thread após a 1ª consulta causa SynchronousOnlyOperation.
+    """
+    from crm_app.pool_bo_pap import (
+        MSG_TODOS_ACESSOS_EM_USO,
+        TIPO_AUTOMACAO_STATUS,
+        obter_login_bo,
+    )
+
+    deadline = time.time() + max(30, timeout_seg)
+    while time.time() < deadline:
+        bo, err = _run_django_sync(
+            lambda: obter_login_bo(
+                TELEFONE_JOB,
+                None,
+                tipo_automacao=TIPO_AUTOMACAO_STATUS,
+                contador_uso_por_bo=contador_uso_bo,
+            ),
+            timeout_seconds=60,
+        )
+        if bo:
+            return bo, None
+        if err and 'Nenhum login BackOffice' in (err or ''):
+            return None, err
+        time.sleep(max(15, intervalo_seg))
+    return None, MSG_TODOS_ACESSOS_EM_USO
 
 
 def _cfg(nome: str, default):
@@ -323,7 +363,6 @@ class _SessaoPapSyncHolder:
         self.consultas = 0
 
     def _garantir_sessao(self, contador_uso_bo: Dict[int, int]) -> Tuple[bool, str]:
-        from crm_app.pool_bo_pap import TIPO_AUTOMACAO_STATUS, aguardar_login_bo
         from crm_app.services_pap_nio import PAPNioAutomation
 
         if (
@@ -336,12 +375,11 @@ class _SessaoPapSyncHolder:
 
         self.fechar()
 
-        bo_usuario, msg_erro = aguardar_login_bo(
-            TELEFONE_JOB,
-            tipo_automacao=TIPO_AUTOMACAO_STATUS,
+        # ORM em thread limpa: após a 1ª consulta Playwright este thread fica "async".
+        bo_usuario, msg_erro = _aguardar_login_bo_safe(
+            contador_uso_bo,
             timeout_seg=900,
             intervalo_seg=45,
-            contador_uso_por_bo=contador_uso_bo,
         )
         if not bo_usuario:
             return False, msg_erro or 'login_indisponivel'
@@ -524,16 +562,37 @@ def _processar_um_pedido(
 
 
 def _atualizar_execucao(execucao, **kwargs):
-    rj = kwargs.get('relatorio_json')
-    if rj is None:
-        rj = dict(execucao.relatorio_json or {})
-    else:
-        rj = dict(rj)
-    rj['_heartbeat'] = timezone.now().isoformat()
-    kwargs['relatorio_json'] = rj
-    for k, v in kwargs.items():
+    """Persiste progresso em thread ORM limpa (Playwright polui o thread do job)."""
+    exec_id = execucao.id
+
+    def _do():
+        from crm_app.models import SyncStatusEsteiraExecucao
+
+        e = SyncStatusEsteiraExecucao.objects.get(pk=exec_id)
+        rj = kwargs.get('relatorio_json')
+        if rj is None:
+            rj = dict(e.relatorio_json or {})
+        else:
+            rj = dict(rj)
+        rj['_heartbeat'] = timezone.now().isoformat()
+        local_kwargs = {**kwargs, 'relatorio_json': rj}
+        for k, v in local_kwargs.items():
+            setattr(e, k, v)
+        e.save(update_fields=list(local_kwargs.keys()))
+        return local_kwargs
+
+    saved = _run_django_sync(_do, timeout_seconds=60)
+    for k, v in saved.items():
         setattr(execucao, k, v)
-    execucao.save(update_fields=list(kwargs.keys()))
+
+
+def _status_execucao(execucao_id: int) -> str:
+    from crm_app.models import SyncStatusEsteiraExecucao
+
+    return _run_django_sync(
+        lambda: SyncStatusEsteiraExecucao.objects.values_list('status', flat=True).get(pk=execucao_id),
+        timeout_seconds=30,
+    )
 
 
 def _minutos_sem_progresso(execucao) -> Optional[float]:
@@ -642,9 +701,10 @@ def executar_job(execucao_id: int) -> None:
 
     try:
         while fila or retentativas:
-            execucao.refresh_from_db()
-            if execucao.status != SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
+            status_atual = _status_execucao(execucao_id)
+            if status_atual != SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
                 logger.info('[SYNC ESTEIRA] Execução #%s interrompida externamente.', execucao_id)
+                execucao.status = status_atual
                 break
 
             if execucao.modo == SyncStatusEsteiraExecucao.MODO_AUTOMATICO and not _dentro_janela_horario():
@@ -713,11 +773,13 @@ def executar_job(execucao_id: int) -> None:
         sessao_pap.fechar()
 
     status_final = SyncStatusEsteiraExecucao.STATUS_CONCLUIDO
-    if execucao.status == SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
+    status_atual = _status_execucao(execucao_id)
+    execucao.status = status_atual
+    if status_atual == SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
         if fila or retentativas:
             status_final = SyncStatusEsteiraExecucao.STATUS_INTERROMPIDO
     else:
-        status_final = execucao.status
+        status_final = status_atual
 
     _atualizar_execucao(
         execucao,
@@ -733,7 +795,7 @@ def executar_job(execucao_id: int) -> None:
 
     try:
         texto = _montar_relatorio_final(execucao, detalhes)
-        _enviar_relatorio_destinatarios(texto)
+        _run_django_sync(lambda: _enviar_relatorio_destinatarios(texto), timeout_seconds=180)
     except Exception as e:
         logger.exception('[SYNC ESTEIRA] Falha ao enviar relatório: %s', e)
 
@@ -745,7 +807,7 @@ def executar_job(execucao_id: int) -> None:
                 f'Erros: {erros}\n'
                 f'Pendentes na fila: {len(fila) + len(retentativas)}'
             )
-            _enviar_relatorio_destinatarios(alerta)
+            _run_django_sync(lambda: _enviar_relatorio_destinatarios(alerta), timeout_seconds=180)
         except Exception:
             pass
 
@@ -772,7 +834,28 @@ def tentar_iniciar_automatico() -> bool:
         modo=SyncStatusEsteiraExecucao.MODO_AUTOMATICO,
         status=SyncStatusEsteiraExecucao.STATUS_PENDENTE,
     )
-    executar_job(execucao.id)
+    try:
+        executar_job(execucao.id)
+    except Exception as e:
+        logger.exception('[SYNC ESTEIRA] Erro fatal execução automática #%s: %s', execucao.id, e)
+        try:
+            _run_django_sync(
+                lambda: SyncStatusEsteiraExecucao.objects.filter(
+                    pk=execucao.id,
+                    status__in=[
+                        SyncStatusEsteiraExecucao.STATUS_PENDENTE,
+                        SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO,
+                    ],
+                ).update(
+                    status=SyncStatusEsteiraExecucao.STATUS_ERRO,
+                    mensagem_erro=str(e)[:2000],
+                    finalizado_em=timezone.now(),
+                ),
+                timeout_seconds=60,
+            )
+        except Exception:
+            logger.exception('[SYNC ESTEIRA] Falha ao marcar execução #%s como erro.', execucao.id)
+        return False
     return True
 
 
@@ -797,14 +880,27 @@ def criar_e_iniciar_execucao_manual(*, usuario=None) -> Tuple[Optional[int], Opt
             executar_job(execucao.id)
         except Exception as e:
             logger.exception('[SYNC ESTEIRA] Erro fatal execução #%s: %s', execucao.id, e)
-            SyncStatusEsteiraExecucao.objects.filter(pk=execucao.id).update(
-                status=SyncStatusEsteiraExecucao.STATUS_ERRO,
-                mensagem_erro=str(e)[:2000],
-                finalizado_em=timezone.now(),
-            )
             try:
-                _enviar_relatorio_destinatarios(
-                    f'❌ *Sync esteira PAP* falhou (#{execucao.id})\n\n{str(e)[:500]}'
+                _run_django_sync(
+                    lambda: SyncStatusEsteiraExecucao.objects.filter(pk=execucao.id).update(
+                        status=SyncStatusEsteiraExecucao.STATUS_ERRO,
+                        mensagem_erro=str(e)[:2000],
+                        finalizado_em=timezone.now(),
+                    ),
+                    timeout_seconds=60,
+                )
+            except Exception:
+                SyncStatusEsteiraExecucao.objects.filter(pk=execucao.id).update(
+                    status=SyncStatusEsteiraExecucao.STATUS_ERRO,
+                    mensagem_erro=str(e)[:2000],
+                    finalizado_em=timezone.now(),
+                )
+            try:
+                _run_django_sync(
+                    lambda: _enviar_relatorio_destinatarios(
+                        f'❌ *Sync esteira PAP* falhou (#{execucao.id})\n\n{str(e)[:500]}'
+                    ),
+                    timeout_seconds=120,
                 )
             except Exception:
                 pass
