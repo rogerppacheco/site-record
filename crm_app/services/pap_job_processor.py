@@ -8,6 +8,11 @@ import traceback
 
 from django.utils import timezone
 
+from crm_app.db_resilience import (
+    force_close_db_connections,
+    is_db_connection_lost,
+    retry_on_db_connection_error,
+)
 from crm_app.pap_job_fila import PapJobFila
 
 logger = logging.getLogger(__name__)
@@ -45,31 +50,90 @@ def _executar_handler(job: PapJobFila) -> None:
     handler(job.payload or {})
 
 
+def _persistir_status_job(
+    job: PapJobFila,
+    *,
+    status: str,
+    erro: str = "",
+    concluir: bool = False,
+) -> None:
+    """
+    Persiste status com reconexão.
+
+    Após Playwright longo a conexão costuma estar morta; sem retry o worker crasha.
+    """
+
+    def _save() -> None:
+        force_close_db_connections()
+        job.status = status
+        job.erro = (erro or "")[:4000]
+        fields = ["status", "erro"]
+        if concluir:
+            job.concluido_em = timezone.now()
+            fields.append("concluido_em")
+        job.save(update_fields=fields)
+
+    try:
+        retry_on_db_connection_error(
+            _save,
+            retries=3,
+            label=f"pap_job_{job.id}_status={status}",
+        )
+    except Exception:
+        # Último recurso: UPDATE via QuerySet (evita estado stale do instance).
+        logger.exception(
+            "[PAP_WORKER] Save do job %s falhou; tentando update direto",
+            job.id,
+        )
+        force_close_db_connections()
+        update_kwargs: dict = {"status": status, "erro": (erro or "")[:4000]}
+        if concluir:
+            update_kwargs["concluido_em"] = timezone.now()
+        PapJobFila.objects.filter(pk=job.id).update(**update_kwargs)
+
+
 def processar_job(job: PapJobFila) -> bool:
     """Executa um job e atualiza status. Retorna True se concluído."""
-    import django.db
-
-    django.db.close_old_connections()
+    force_close_db_connections()
     try:
         logger.info("[PAP_WORKER] Processando job %s tipo=%s", job.id, job.tipo)
         _executar_handler(job)
-        job.status = PapJobFila.STATUS_CONCLUIDO
-        job.concluido_em = timezone.now()
-        job.erro = ""
-        job.save(update_fields=["status", "concluido_em", "erro"])
+        _persistir_status_job(
+            job,
+            status=PapJobFila.STATUS_CONCLUIDO,
+            erro="",
+            concluir=True,
+        )
         return True
     except Exception as exc:
         tb = traceback.format_exc()
         logger.error("[PAP_WORKER] Erro job %s: %s", job.id, exc)
-        if job.tentativas < job.max_tentativas:
-            job.status = PapJobFila.STATUS_PENDENTE
-            job.erro = f"{exc}\n{tb}"[:4000]
-            job.save(update_fields=["status", "erro"])
-            return False
-        job.status = PapJobFila.STATUS_ERRO
-        job.concluido_em = timezone.now()
-        job.erro = f"{exc}\n{tb}"[:4000]
-        job.save(update_fields=["status", "concluido_em", "erro"])
+        # Erro de conexão no meio do handler: não reprocessar cegamente se já
+        # esgotou tentativas; mas reconectar para gravar o status.
+        if is_db_connection_lost(exc):
+            force_close_db_connections()
+        erro_txt = f"{exc}\n{tb}"
+        try:
+            if job.tentativas < job.max_tentativas:
+                _persistir_status_job(
+                    job,
+                    status=PapJobFila.STATUS_PENDENTE,
+                    erro=erro_txt,
+                    concluir=False,
+                )
+                return False
+            _persistir_status_job(
+                job,
+                status=PapJobFila.STATUS_ERRO,
+                erro=erro_txt,
+                concluir=True,
+            )
+        except Exception:
+            # Nunca deixar falha de persistência derrubar o processo do worker.
+            logger.exception(
+                "[PAP_WORKER] Não foi possível persistir status do job %s",
+                job.id,
+            )
         return False
     finally:
-        django.db.close_old_connections()
+        force_close_db_connections()

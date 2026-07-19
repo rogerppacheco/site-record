@@ -15,6 +15,11 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from crm_app.db_resilience import (
+    force_close_db_connections,
+    is_db_connection_lost,
+    retry_on_db_connection_error,
+)
 from crm_app.pap_job_fila import PapJobFila, recuperar_jobs_pap_travados, reivindicar_proximo_job
 from crm_app.services.pap_job_processor import processar_job
 
@@ -48,7 +53,10 @@ class Command(BaseCommand):
         signal.signal(signal.SIGINT, _shutdown)
         signal.signal(signal.SIGTERM, _shutdown)
 
-        stats = recuperar_jobs_pap_travados()
+        stats = retry_on_db_connection_error(
+            recuperar_jobs_pap_travados,
+            label="recuperar_jobs_pap_travados_startup",
+        )
         self.stdout.write(self.style.SUCCESS(
             f"[PAP_WORKER] Iniciado (poll={intervalo}s). "
             f"PAP_WORKER_MODE={getattr(settings, 'PAP_WORKER_MODE', False)} "
@@ -56,28 +64,53 @@ class Command(BaseCommand):
         ))
 
         while self._running:
-            # A cada ~30s sem job (ou sempre antes de reivindicar periodicamente)
-            if ciclos_sem_job == 0 or ciclos_sem_job % 15 == 0:
-                recuperar_jobs_pap_travados()
+            try:
+                # Poll longo sem ORM: descarta conexão ociosa antes de tocar no banco.
+                force_close_db_connections()
 
-            job = reivindicar_proximo_job()
-            if not job:
-                ciclos_sem_job += 1
-                time.sleep(intervalo)
-                continue
+                # A cada ~30s sem job (ou sempre antes de reivindicar periodicamente)
+                if ciclos_sem_job == 0 or ciclos_sem_job % 15 == 0:
+                    retry_on_db_connection_error(
+                        recuperar_jobs_pap_travados,
+                        label="recuperar_jobs_pap_travados",
+                    )
 
-            ciclos_sem_job = 0
-            timeout_seg = _timeout_job_segundos(job.tipo)
-            self.stdout.write(
-                f"[PAP_WORKER] Job {job.id} tipo={job.tipo} timeout={timeout_seg}s"
-            )
-            travou = self._processar_com_timeout(job, timeout_seg)
-            if travou:
-                # Playwright pode ter deixado o processo inconsistente — Railway reinicia.
-                self.stdout.write(self.style.ERROR(
-                    f"[PAP_WORKER] Job {job.id} excedeu {timeout_seg}s — encerrando worker para limpar Playwright."
-                ))
-                raise SystemExit(1)
+                job = retry_on_db_connection_error(
+                    reivindicar_proximo_job,
+                    label="reivindicar_proximo_job",
+                )
+                if not job:
+                    ciclos_sem_job += 1
+                    time.sleep(intervalo)
+                    continue
+
+                ciclos_sem_job = 0
+                timeout_seg = _timeout_job_segundos(job.tipo)
+                self.stdout.write(
+                    f"[PAP_WORKER] Job {job.id} tipo={job.tipo} timeout={timeout_seg}s"
+                )
+                travou = self._processar_com_timeout(job, timeout_seg)
+                if travou:
+                    # Playwright pode ter deixado o processo inconsistente — Railway reinicia.
+                    self.stdout.write(self.style.ERROR(
+                        f"[PAP_WORKER] Job {job.id} excedeu {timeout_seg}s — "
+                        "encerrando worker para limpar Playwright."
+                    ))
+                    raise SystemExit(1)
+            except SystemExit:
+                raise
+            except Exception as exc:
+                # Conexão morta no claim/recuperação não deve derrubar o serviço.
+                if is_db_connection_lost(exc):
+                    logger.exception(
+                        "[PAP_WORKER] Conexão DB perdida no loop — reconectando e seguindo"
+                    )
+                    force_close_db_connections()
+                    time.sleep(max(2.0, intervalo))
+                    continue
+                logger.exception("[PAP_WORKER] Erro inesperado no loop")
+                force_close_db_connections()
+                time.sleep(max(2.0, intervalo))
 
         self.stdout.write(self.style.SUCCESS("[PAP_WORKER] Encerrado."))
 
@@ -105,13 +138,23 @@ class Command(BaseCommand):
 
         # Timeout: marca job como erro (não reprocessa — provavelmente Playwright zumbi).
         try:
-            PapJobFila.objects.filter(pk=job.id, status=PapJobFila.STATUS_PROCESSANDO).update(
-                status=PapJobFila.STATUS_ERRO,
-                concluido_em=timezone.now(),
-                erro=(
-                    f"Job abandonado: timeout de {timeout_seg}s no worker PAP "
-                    f"(tipo={job.tipo})."
-                )[:4000],
+            def _marcar_timeout() -> None:
+                force_close_db_connections()
+                PapJobFila.objects.filter(
+                    pk=job.id,
+                    status=PapJobFila.STATUS_PROCESSANDO,
+                ).update(
+                    status=PapJobFila.STATUS_ERRO,
+                    concluido_em=timezone.now(),
+                    erro=(
+                        f"Job abandonado: timeout de {timeout_seg}s no worker PAP "
+                        f"(tipo={job.tipo})."
+                    )[:4000],
+                )
+
+            retry_on_db_connection_error(
+                _marcar_timeout,
+                label=f"pap_job_{job.id}_timeout",
             )
         except Exception:
             logger.exception("[PAP_WORKER] Falha ao marcar timeout do job %s", job.id)

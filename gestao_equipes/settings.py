@@ -131,6 +131,8 @@ if database_url:
     )
     DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql'
     DATABASES['default']['OPTIONS'] = django_database_options(pooled=_pgbouncer_active)
+    # Detecta conexão morta (PgBouncer/idle/SSL) antes de reutilizar — crítico para workers PAP.
+    DATABASES['default']['CONN_HEALTH_CHECKS'] = True
 
     # Modo transaction do PgBouncer não suporta server-side cursors nem locks de sessão.
     if _pgbouncer_active:
@@ -145,6 +147,7 @@ if database_url:
         )
         DATABASES['unpooled']['ENGINE'] = 'django.db.backends.postgresql'
         DATABASES['unpooled']['OPTIONS'] = django_database_options(pooled=False)
+        DATABASES['unpooled']['CONN_HEALTH_CHECKS'] = True
 
     _h = DATABASES['default'].get('HOST') or 'localhost'
     _n = DATABASES['default'].get('NAME')
