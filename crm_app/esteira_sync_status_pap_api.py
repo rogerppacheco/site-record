@@ -1,7 +1,7 @@
 """API para sincronização noturna/manual da esteira via PAP."""
-from typing import Optional
-
 from rest_framework import permissions, status
+from rest_framework.exceptions import ParseError
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,9 +9,20 @@ from crm_app.models import SyncStatusEsteiraExecucao
 from crm_app.utils import is_member
 
 
+class _LenientJSONParser(JSONParser):
+    """Body vazio/inválido vira {} — iniciar/cancelar não dependem de payload."""
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        try:
+            return super().parse(stream, media_type=media_type, parser_context=parser_context)
+        except ParseError:
+            return {}
+
+
 class SyncStatusEsteiraIniciarView(APIView):
     """Inicia sincronização manual (BackOffice/Diretoria/Admin)."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [_LenientJSONParser]
 
     def post(self, request):
         if not is_member(request.user, ['Diretoria', 'BackOffice', 'Admin']):
@@ -28,6 +39,7 @@ class SyncStatusEsteiraIniciarView(APIView):
 class SyncStatusEsteiraCancelarView(APIView):
     """Cancela execução em andamento (BackOffice/Diretoria/Admin)."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [_LenientJSONParser]
 
     def post(self, request):
         if not is_member(request.user, ['Diretoria', 'BackOffice', 'Admin']):

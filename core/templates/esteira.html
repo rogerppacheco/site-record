@@ -1737,10 +1737,12 @@
             badge.style.display = 'inline-block';
             const stale = info.stale_minutos && info.minutos_sem_progresso >= info.stale_minutos * 0.8;
             badge.className = stale ? 'badge bg-warning text-dark ms-1' : 'badge bg-primary ms-1';
-            badge.textContent = `${info.processados || 0}/${info.total_pedidos || '?'}`;
+            const proc = info.processados || 0;
+            const total = info.total_pedidos || 0;
+            badge.textContent = `${proc}/${total || '?'}`;
             badge.title = stale
                 ? `Sem progresso há ${info.minutos_sem_progresso} min — pode estar travado (deploy?). Use Cancelar sync.`
-                : 'Sincronização PAP em andamento';
+                : `Sincronização PAP em andamento (${proc} finalizados de ${total || '?'} pedidos)`;
             btn.disabled = true;
             if (btnCancel) btnCancel.style.display = 'inline-flex';
         }
@@ -1749,7 +1751,8 @@
             if (!podeConfigEsteiraBackoffice) return;
             if (!confirm('Cancelar a sincronização PAP em andamento?')) return;
             try {
-                await apiFetch('/crm/esteira/sync-status-pap/cancelar/', { method: 'POST', body: {} });
+                // Sem body: fetch com body:{} vira "[object Object]" e o DRF retorna JSON parse error.
+                await apiFetch('/crm/esteira/sync-status-pap/cancelar/', { method: 'POST' });
                 alert('Sincronização cancelada.');
                 pollSyncStatusPap();
             } catch (e) {

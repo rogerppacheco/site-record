@@ -647,24 +647,26 @@ def encerrar_execucoes_orfas(*, motivo: str = '') -> int:
 
 
 def cancelar_execucao(execucao_id: int, *, usuario=None) -> Tuple[bool, str]:
+    """Marca a execução como interrompida no banco (o loop do job verifica a cada pedido)."""
     from crm_app.models import SyncStatusEsteiraExecucao
 
     encerrar_execucoes_orfas()
-    try:
-        execucao = SyncStatusEsteiraExecucao.objects.get(pk=execucao_id)
-    except SyncStatusEsteiraExecucao.DoesNotExist:
-        return False, 'Execução não encontrada.'
-    if execucao.status != SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO:
-        return False, 'Execução não está em andamento.'
     quem = getattr(usuario, 'username', None) or 'sistema'
-    _atualizar_execucao(
-        execucao,
+    # Update direto: não usa a thread ORM do job (evita timeout se Playwright estiver ocupado).
+    updated = SyncStatusEsteiraExecucao.objects.filter(
+        pk=execucao_id,
+        status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO,
+    ).update(
         status=SyncStatusEsteiraExecucao.STATUS_INTERROMPIDO,
         finalizado_em=timezone.now(),
-        mensagem_erro=f'Cancelado por {quem}.',
+        mensagem_erro=f'Cancelado por {quem}.'[:2000],
     )
-    logger.info('[SYNC ESTEIRA] Execução #%s cancelada por %s.', execucao_id, quem)
-    return True, ''
+    if updated:
+        logger.info('[SYNC ESTEIRA] Execução #%s cancelada por %s.', execucao_id, quem)
+        return True, ''
+    if not SyncStatusEsteiraExecucao.objects.filter(pk=execucao_id).exists():
+        return False, 'Execução não encontrada.'
+    return False, 'Execução não está em andamento.'
 
 
 def executar_job(execucao_id: int) -> None:
@@ -741,22 +743,28 @@ def executar_job(execucao_id: int) -> None:
                     'retentar': True,
                 }
 
-            processados += 1
             _registrar_consulta_hora(consultas_hora)
 
+            # processados = pedidos finalizados (não tentativas). Retry reprocessa o mesmo
+            # pedido; contar tentativas fazia o badge passar de total (ex.: 152/85).
             if resultado.get('ignorado_sem_cpf'):
+                processados += 1
                 ignorados += 1
+                detalhes.append(resultado)
             elif resultado.get('erro'):
                 if resultado.get('retentar') and not retry:
                     retentativas.append(venda)
                     detalhes.append({**resultado, 'aguardando_retry': True})
                 else:
+                    processados += 1
                     erros += 1
                     detalhes.append(resultado)
             elif resultado.get('alterou'):
+                processados += 1
                 atualizados += 1
                 detalhes.append(resultado)
             else:
+                processados += 1
                 sem_alteracao += 1
                 detalhes.append(resultado)
 
