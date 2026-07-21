@@ -1487,18 +1487,25 @@ def _get_primeira_faixa_comissao():
     return RegraComissaoFaixa.objects.filter(finalidade='COMISSAO').order_by('id').first()
 
 
-def _valor_adiantamento_base_comissao(venda):
+def _valor_adiantamento_base_comissao(venda: Venda) -> Decimal:
     """
     Valor base do adiantamento na esteira conforme perfil do vendedor.
+    Prioriza a matriz faixa × plano, como no cálculo da folha.
     Fallback: plano.comissao_base.
     """
     from crm_app.comissao_folha_service import carregar_faixa_adiantamento_regras_faixa
     from crm_app.services.cnpj_mei_service import usa_tabela_cnpj_comissao
+    from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
     consultor = getattr(venda, 'vendedor', None)
     faixa = carregar_faixa_adiantamento_regras_faixa(consultor=consultor)
-    is_cnpj_venda = usa_tabela_cnpj_comissao(venda)
-    return Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa, is_cnpj_venda)))
+    tipo_cliente = 'CNPJ' if usa_tabela_cnpj_comissao(venda) else 'CPF'
+    valor_matriz = get_valor_faixa_plano(faixa, venda.plano, tipo_cliente)
+    if valor_matriz is not None:
+        return Decimal(str(valor_matriz))
+
+    comissao_base = getattr(getattr(venda, 'plano', None), 'comissao_base', None)
+    return Decimal(str(comissao_base)) if comissao_base is not None else Decimal('0')
 
 
 def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_manual=None):
