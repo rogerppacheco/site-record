@@ -395,8 +395,44 @@ def _parse_tabela(page: Page, cpf_consultado: str = "") -> Dict[str, Any]:
 
 
 def _capturar_screenshot_b64(page: Page) -> Optional[str]:
-    """Captura a tela atual do Br Pronto (PNG em base64) para envio no WhatsApp."""
+    """
+    Captura o trecho do relatório com a tabela de resultado (rodapé da página).
+
+    A grade fica abaixo dos filtros; um print do viewport inicial corta a tabela.
+    Prioriza screenshot do elemento da tabela; senão rola até o final e captura a tela.
+    """
     try:
+        # 1) Preferência: print direto da tabela de resultado.
+        for ctx in [page, *page.frames]:
+            try:
+                tabela = ctx.locator(SEL["tabela"]).first
+                if tabela.count() and tabela.is_visible(timeout=1500):
+                    tabela.scroll_into_view_if_needed(timeout=3000)
+                    page.wait_for_timeout(400)
+                    png_bytes = tabela.screenshot(type="png")
+                    if png_bytes:
+                        return base64.b64encode(png_bytes).decode("ascii")
+            except Exception:
+                continue
+
+        # 2) Rola até o título "Resultado da Consulta" (ou fim da página).
+        scrolled = False
+        for ctx in [page, *page.frames]:
+            try:
+                titulo = ctx.get_by_text("Resultado da Consulta", exact=False).first
+                if titulo.count() and titulo.is_visible(timeout=1500):
+                    titulo.scroll_into_view_if_needed(timeout=3000)
+                    scrolled = True
+                    break
+            except Exception:
+                continue
+        if not scrolled:
+            try:
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            except Exception:
+                pass
+        page.wait_for_timeout(500)
+
         png_bytes = page.screenshot(type="png", full_page=False)
         if not png_bytes:
             return None
