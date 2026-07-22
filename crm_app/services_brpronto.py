@@ -11,6 +11,7 @@ no finally, mesmo em erro.
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -343,6 +344,18 @@ def _parse_tabela(page: Page) -> Dict[str, Any]:
     return resultado
 
 
+def _capturar_screenshot_b64(page: Page) -> Optional[str]:
+    """Captura a tela atual do Br Pronto (PNG em base64) para envio no WhatsApp."""
+    try:
+        png_bytes = page.screenshot(type="png", full_page=False)
+        if not png_bytes:
+            return None
+        return base64.b64encode(png_bytes).decode("ascii")
+    except Exception as e:
+        logger.warning("[BrPronto] Falha ao capturar screenshot: %s", e)
+        return None
+
+
 def consultar_biometria_brpronto(
     login: str,
     senha: str,
@@ -357,6 +370,7 @@ def consultar_biometria_brpronto(
     Returns:
         Tuple (sucesso, mensagem_erro, resultado).
         Em caso de falha: (False, mensagem, {}).
+        Em sucesso, resultado pode incluir ``screenshot_b64`` (PNG da tela do relatório).
     """
     if not HAS_PLAYWRIGHT:
         return False, "Playwright não está instalado.", {}
@@ -368,7 +382,12 @@ def consultar_biometria_brpronto(
     if not login or not senha:
         return False, "Login e senha Br Pronto são obrigatórios. Configure no cadastro do usuário.", {}
 
-    resultado: Dict[str, Any] = {"aprovada": False, "data_mais_recente_apta": None, "registros": []}
+    resultado: Dict[str, Any] = {
+        "aprovada": False,
+        "data_mais_recente_apta": None,
+        "registros": [],
+        "screenshot_b64": None,
+    }
     logout_info = ""
 
     try:
@@ -395,6 +414,8 @@ def consultar_biometria_brpronto(
                     return False, err, {}
 
                 resultado = _parse_tabela(page)
+                # Print da tela do relatório (com ou sem registros) para anexar no WhatsApp.
+                resultado["screenshot_b64"] = _capturar_screenshot_b64(page)
                 return True, None, resultado
             finally:
                 try:

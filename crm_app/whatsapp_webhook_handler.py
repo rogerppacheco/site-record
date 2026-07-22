@@ -1123,7 +1123,8 @@ def _formatar_resposta_bio(resultado: dict) -> str:
 
 def _executar_consulta_bio_background(telefone: str, usuario_id: int, cpf: str) -> None:
     """
-    Thread: reserva login Br Pronto do pool, consulta ged360 e envia resultado.
+    Thread: reserva login Br Pronto do pool, consulta ged360 e envia resultado
+    (texto + print da tela do relatório quando disponível).
     Sempre libera o lock e o serviço garante logoff no GED.
     """
     from django.conf import settings
@@ -1165,17 +1166,27 @@ def _executar_consulta_bio_background(telefone: str, usuario_id: int, cpf: str) 
             headless=headless,
         )
         tempo = round(time.time() - tempo_inicio, 1)
+        whatsapp = WhatsAppService()
         if not sucesso:
-            WhatsAppService().enviar_mensagem_texto(
+            whatsapp.enviar_mensagem_texto(
                 telefone,
                 f"❌ Erro na consulta Br Pronto:\n{msg}\n\nDigite *BIO* para tentar novamente.\n\n⏱ _{tempo}s_",
             )
         else:
             corpo = _formatar_resposta_bio(resultado)
-            WhatsAppService().enviar_mensagem_texto(
-                telefone,
-                f"{corpo}\n\n⏱ _{tempo}s_",
-            )
+            caption = f"{corpo}\n\n⏱ _{tempo}s_"
+            screenshot_b64 = (resultado or {}).get("screenshot_b64")
+            if screenshot_b64:
+                try:
+                    whatsapp.enviar_imagem_b64(telefone, screenshot_b64, caption=caption)
+                except Exception as e_img:
+                    logger.warning(
+                        "[BIO BrPronto] Erro ao enviar print, enviando só texto: %s",
+                        e_img,
+                    )
+                    whatsapp.enviar_mensagem_texto(telefone, caption)
+            else:
+                whatsapp.enviar_mensagem_texto(telefone, caption)
     except Exception as e:
         logger.exception("[BIO BrPronto] Erro: %s", e)
         tempo = round(time.time() - tempo_inicio, 1)
