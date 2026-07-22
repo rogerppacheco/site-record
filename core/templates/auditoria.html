@@ -127,10 +127,28 @@
             top: 0; left: 0;
             width: 100%; height: 100%;
             background: var(--overlay-bg);
-            z-index: 9999;
+            /* Acima do modal Bootstrap (~1055) para bloquear cliques durante envio Sem SLOT */
+            z-index: 20050;
             text-align: center;
             padding-top: 20%;
             color: var(--text-primary);
+            cursor: wait;
+        }
+        .loading-overlay .spinner {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 16px;
+            border: 4px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: auditoria-spin 0.8s linear infinite;
+        }
+        .loading-overlay .loading-msg {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        @keyframes auditoria-spin {
+            to { transform: rotate(360deg); }
         }
         #overlay-captura-pap {
             display: none;
@@ -549,6 +567,10 @@
 {% endblock %}
 
 {% block content %}
+<div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
+    <div class="spinner" role="status" aria-hidden="true"></div>
+    <div class="loading-msg" id="loadingOverlayMsg">Processando...</div>
+</div>
 <main class="area-interna-section auditoria-page">
         <div class="card-modern system-container auditoria-shell">
             <div class="d-flex justify-content-between align-items-center mb-3 header-controls">
@@ -1230,7 +1252,7 @@
                     <div id="sem-slot-feedback" class="small text-muted mt-2"></div>
                 </div>
             </div>
-            </form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
+            </form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="btn-agenda-voltar" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" id="btn-agenda-confirmar" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
 
     <div class="modal fade" id="modal-biometria-lista" tabindex="-1"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header bg-secondary text-white"><h5 class="modal-title"><i class="bi bi-fingerprint"></i> Resultado da consulta Biometria (Br Pronto)</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>Protocolo</th><th>CPF/CNPJ</th><th>N. Linha</th><th>Data Envio</th><th>Data Conferência</th><th>Regional</th><th>Cód. PDV</th><th>Login</th><th>Tipo Serviço</th><th>Nome Fantasia</th><th>Resultado Análise</th></tr></thead><tbody id="tbody-biometria-lista"></tbody></table></div><div id="biometria-lista-vazia" class="p-4 text-center text-muted" style="display:none;">Nenhum registro encontrado.</div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
     <div class="modal fade" id="modal-ligacoes-auditoria" tabindex="-1">
@@ -2783,6 +2805,8 @@
             const d = coletarDadosAuditoria();
             modalAuditoria.hide(); 
             limparCamposSemSlot();
+            salvandoAgendamentoFinal = false;
+            setBotoesAgendamentoTravados(false);
             $('#agenda-os').val(vendaEmAuditoria.ordem_servico || '');
             $('#agenda-obs').val($('#script-obs-venda').val());
             if(d.data_agendamento) $('#agenda-data-final').val(d.data_agendamento); 
@@ -2823,7 +2847,24 @@
             }
         }
 
+        let salvandoAgendamentoFinal = false;
+
+        function setBotoesAgendamentoTravados(travado, mensagemOverlay) {
+            const btnConfirmar = document.getElementById('btn-agenda-confirmar');
+            const btnVoltar = document.getElementById('btn-agenda-voltar');
+            const msgEl = document.getElementById('loadingOverlayMsg');
+            if (btnConfirmar) {
+                btnConfirmar.disabled = !!travado;
+                btnConfirmar.innerHTML = travado
+                    ? '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Processando...'
+                    : 'Confirmar';
+            }
+            if (btnVoltar) btnVoltar.disabled = !!travado;
+            if (msgEl && mensagemOverlay) msgEl.textContent = mensagemOverlay;
+        }
+
         async function salvarAgendamentoFinal() {
+            if (salvandoAgendamentoFinal) return;
             const os = ($('#agenda-os').val() || '').trim(), dt = $('#agenda-data-final').val(), tr = $('#agenda-turno-final').val();
             const obs = $('#agenda-obs').val();
             if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
@@ -2839,12 +2880,18 @@
                 return;
             }
             const semSlotPayload = semSlot ? coletarPayloadSemSlot(os) : null;
+            salvandoAgendamentoFinal = true;
+            setBotoesAgendamentoTravados(
+                true,
+                semSlot
+                    ? 'Cadastrando venda e enviando comunicação Sem SLOT... Aguarde, não clique novamente.'
+                    : 'Cadastrando venda... Aguarde.'
+            );
             $('#loadingOverlay').show();
             try {
                 const dup = await verificarOsJaCadastrada(os, vendaEmAuditoria?.id);
                 if (dup && dup.existe) {
                     alert(dup.detail || 'Este pedido (O.S.) já foi cadastrado no sistema.');
-                    $('#loadingOverlay').hide();
                     return;
                 }
                 const res = await apiFetch(`${API_AUX}/status/?tipo=Esteira`);
@@ -2859,14 +2906,23 @@
                 d.data_agendamento = dt; 
                 d.periodo_agendamento = tr;
                 d.observacoes = obs;
-                enviarFinalizacao('CADASTRADA', obs, d, false, true, semSlotPayload);
+                await enviarFinalizacao('CADASTRADA', obs, d, false, true, semSlotPayload);
             } catch(e) { 
                 alert(mensagemErroAmigavel(e, 'Erro ao confirmar agendamento.')); 
-                $('#loadingOverlay').hide(); 
+            } finally {
+                salvandoAgendamentoFinal = false;
+                setBotoesAgendamentoTravados(false);
+                $('#loadingOverlay').hide();
             }
         }
 
         function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false, semSlotPayload=null) {
+            if (semSlotPayload) {
+                setBotoesAgendamentoTravados(
+                    true,
+                    'Enviando comunicação Sem SLOT ao GC e Diretoria... Aguarde.'
+                );
+            }
             return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { method: 'POST', body: JSON.stringify({ status: st, observacoes: obs, dados_atualizados: dados }) })
             .then(async () => {
                 let msg = 'Salvo!';
@@ -2875,6 +2931,7 @@
                         const r = await enviarSemSlotGC(semSlotPayload);
                         msg += ' ' + (r.detail || 'Comunicação enviada ao GC e Diretoria.');
                         if (r.success === false) msg = 'Salvo, porém: ' + (r.detail || 'verifique o envio ao GC.');
+                        if (r.duplicado) msg = 'Salvo! ' + (r.detail || 'Comunicação Sem SLOT já havia sido enviada.');
                     } catch (e) {
                         msg = 'Salvo como CADASTRADA, mas falha ao notificar GC: ' + (e.message || e);
                     }
@@ -3332,7 +3389,11 @@
             } 
         }
         
-        function cancelarAgendamento() { modalAgendamento.hide(); modalAuditoria.show(); }
+        function cancelarAgendamento() {
+            if (salvandoAgendamentoFinal) return;
+            modalAgendamento.hide();
+            modalAuditoria.show();
+        }
         
         function gerarAprovacaoMsg(d) {
             $('#loadingOverlay').hide();

@@ -1,9 +1,10 @@
 """API: sem slot na agenda (auditoria) — envio ao GC e relatório diário."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 
 import openpyxl
+from django.core.cache import cache
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -25,6 +26,30 @@ from .utils import is_member
 logger = logging.getLogger(__name__)
 
 TURNO_VALIDOS = {'MANHA', 'TARDE'}
+# Evita reenvio por cliques repetidos no Confirmar enquanto a 1ª requisição ainda processa.
+JANELA_ANTI_DUPLICATA = timedelta(minutes=5)
+LOCK_ENVIO_SEGUNDOS = 120
+
+
+def _resposta_duplicado(registro: AuditoriaSemSlotGC | None, mensagem: str) -> Response:
+    if registro is None:
+        return Response({
+            'success': True,
+            'detail': mensagem,
+            'id': None,
+            'enviado_gc': False,
+            'erros': [],
+            'duplicado': True,
+        }, status=status.HTTP_200_OK)
+    sucesso = bool(registro.enviado_gc or registro.enviados_diretoria or registro.enviado_teams)
+    return Response({
+        'success': sucesso,
+        'detail': mensagem,
+        'id': registro.id,
+        'enviado_gc': registro.enviado_gc,
+        'erros': registro.erros,
+        'duplicado': True,
+    }, status=status.HTTP_200_OK)
 
 
 class AuditoriaSemSlotEnviarView(APIView):
@@ -94,19 +119,60 @@ class AuditoriaSemSlotEnviarView(APIView):
         if turno_ag_cad not in TURNO_VALIDOS:
             turno_ag_cad = ''
 
-        registro, sucesso, msg = processar_envio_sem_slot(
-            usuario=request.user,
-            venda=venda,
-            ordem_servico=ordem_servico,
-            uf=uf,
-            endereco=endereco,
-            data_agendamento_cadastrada=data_ag_cad,
-            turno_agendamento_cadastrado=turno_ag_cad,
-            data_desejada_cliente=data_desejada_dt,
-            turno_desejado_cliente=turno_desejado,
-            telefone_contato=telefone_contato,
-            imagem_upload=imagem,
+        # Idempotência: clique múltiplo no Confirmar gera várias POSTs quase simultâneas.
+        # 1) Registro já persistido na janela → não reenvia.
+        # 2) Lock em cache → bloqueia corrida enquanto o 1º envio ainda não gravou no banco.
+        limite = timezone.now() - JANELA_ANTI_DUPLICATA
+        recente = (
+            AuditoriaSemSlotGC.objects
+            .filter(venda_id=venda.id, criado_em__gte=limite)
+            .order_by('-criado_em')
+            .first()
         )
+        if recente:
+            logger.info(
+                "[Sem SLOT] Ignorando envio duplicado venda_id=%s os=%s registro_id=%s",
+                venda.id, ordem_servico, recente.id,
+            )
+            return _resposta_duplicado(
+                recente,
+                'Comunicação Sem SLOT já enviada há pouco para esta venda (evitado reenvio duplicado).',
+            )
+
+        lock_key = f'auditoria_sem_slot_envio_venda_{venda.id}'
+        if not cache.add(lock_key, '1', timeout=LOCK_ENVIO_SEGUNDOS):
+            logger.info(
+                "[Sem SLOT] Lock ativo — ignorando envio concorrente venda_id=%s os=%s",
+                venda.id, ordem_servico,
+            )
+            recente_lock = (
+                AuditoriaSemSlotGC.objects
+                .filter(venda_id=venda.id)
+                .order_by('-criado_em')
+                .first()
+            )
+            return _resposta_duplicado(
+                recente_lock,
+                'Envio Sem SLOT já em andamento para esta venda (evitado reenvio duplicado).',
+            )
+
+        try:
+            registro, sucesso, msg = processar_envio_sem_slot(
+                usuario=request.user,
+                venda=venda,
+                ordem_servico=ordem_servico,
+                uf=uf,
+                endereco=endereco,
+                data_agendamento_cadastrada=data_ag_cad,
+                turno_agendamento_cadastrado=turno_ag_cad,
+                data_desejada_cliente=data_desejada_dt,
+                turno_desejado_cliente=turno_desejado,
+                telefone_contato=telefone_contato,
+                imagem_upload=imagem,
+            )
+        finally:
+            cache.delete(lock_key)
+
         if registro is None:
             return Response({'detail': msg}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -116,6 +182,7 @@ class AuditoriaSemSlotEnviarView(APIView):
             'id': registro.id,
             'enviado_gc': registro.enviado_gc,
             'erros': registro.erros,
+            'duplicado': False,
         }, status=status.HTTP_200_OK)
 
 
