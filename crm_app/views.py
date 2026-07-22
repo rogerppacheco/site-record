@@ -362,17 +362,15 @@ def historico_consultas_pap_bo_view(request):
 def consultar_biometria_brpronto_view(request):
     """
     Consulta biometria no Br Pronto PDV para um CPF.
-    Usa as credenciais Br Pronto do usuário logado.
+    Usa pool de logins Br Pronto (BO) — não a senha do usuário logado na auditoria —
+    e sempre faz logoff no GED ao terminar.
     Body: { "cpf": "12345678900" } ou { "venda_id": 123 }.
     """
     import re
+    from django.conf import settings
     from crm_app.services_brpronto import consultar_biometria_brpronto
+    from crm_app.pool_brpronto import obter_login_brpronto, liberar_login_brpronto
     from crm_app.models import Venda
-
-    user = request.user
-    login = getattr(user, "brpronto_login", None) or ""
-    senha = getattr(user, "brpronto_senha", None) or ""
-    dominio = getattr(user, "brpronto_dominio", None) or ""
 
     cpf = request.data.get("cpf")
     venda_id = request.data.get("venda_id")
@@ -394,13 +392,23 @@ def consultar_biometria_brpronto_view(request):
     if len(cpf_limpo) != 11:
         return Response({"ok": False, "error": "CPF deve ter 11 dígitos."}, status=400)
 
-    sucesso, msg_erro, resultado = consultar_biometria_brpronto(
-        login=login,
-        senha=senha,
-        cpf=cpf_limpo,
-        dominio=dominio or None,
-        headless=True,
-    )
+    telefone_lock = f"auditoria:{getattr(request.user, 'id', 0)}"
+    bo, msg_pool = obter_login_brpronto(telefone_lock, origem="auditoria")
+    if not bo:
+        return Response({"ok": False, "error": msg_pool or "Nenhum login Br Pronto disponível."}, status=400)
+
+    headless = getattr(settings, "BRPRONTO_HEADLESS", True)
+    try:
+        sucesso, msg_erro, resultado = consultar_biometria_brpronto(
+            login=bo.brpronto_login or "",
+            senha=bo.brpronto_senha or "",
+            cpf=cpf_limpo,
+            dominio=(bo.brpronto_dominio or None),
+            headless=headless,
+        )
+    finally:
+        liberar_login_brpronto(bo.id, telefone_lock)
+
     if not sucesso:
         return Response({"ok": False, "error": msg_erro or "Erro ao consultar Br Pronto."}, status=400)
     return Response({
@@ -408,6 +416,7 @@ def consultar_biometria_brpronto_view(request):
         "aprovada": resultado.get("aprovada", False),
         "data_mais_recente_apta": resultado.get("data_mais_recente_apta"),
         "registros": resultado.get("registros", []),
+        "login_utilizado": bo.brpronto_login,
     })
 
 

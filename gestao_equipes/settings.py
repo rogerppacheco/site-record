@@ -404,6 +404,13 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 # Variável de ambiente: PAP_HEADLESS=false para ver o navegador.
 PAP_HEADLESS = config('PAP_HEADLESS', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 
+# Br Pronto (ged360): headless=False para acompanhar a navegação no desktop
+BRPRONTO_HEADLESS = config(
+    'BRPRONTO_HEADLESS',
+    default=True,
+    cast=lambda v: str(v).lower() not in ('false', '0', 'no'),
+)
+
 # Diretório das sessões PAP (storage state Playwright). Em produção use volume Railway:
 # PAP_SESSIONS_DIR=/data/pap_sessions (ver railway.pap.toml e pap_sessions/README.md).
 PAP_SESSIONS_DIR = config(

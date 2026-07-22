@@ -1,25 +1,46 @@
 # crm_app/services_brpronto.py
 """
 Consulta de biometria no Br Pronto PDV (ged360) via Playwright.
-Usado na ferramenta de auditoria para checar se existe "Doc. Apto para Venda" para um CPF.
+
+Fluxo: login → Relatórios → Detalhado → filtrar CPF → ler "Resultado da Análise".
+Aprovado quando existir "Doc. Apto para Venda".
+
+Importante: o GED bloqueia sessão simultânea — sempre fazer logoff (Sair / logout URL)
+no finally, mesmo em erro.
 """
+
+from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import Page, sync_playwright
     HAS_PLAYWRIGHT = True
 except ImportError:
+    Page = Any  # type: ignore
     HAS_PLAYWRIGHT = False
 
-BRPRONTO_LOGIN_URL = "https://ged360.niointernet.com.br/brprontopdv/autenticacao/index"
+BRPRONTO_BASE = "https://ged360.niointernet.com.br/brprontopdv"
+BRPRONTO_LOGIN_URL = f"{BRPRONTO_BASE}/autenticacao/index"
+BRPRONTO_LOGOUT_URL = f"{BRPRONTO_BASE}/autenticacao/logout"
 STATUS_APTO_VENDA = "Doc. Apto para Venda"
-COL_RESULTADO_ANALISE = 11  # índice da coluna "Resultado da Análise" na tabela
-COL_DATA_ENVIO = 4         # índice "Data de Envio da Digitalização"
+DOMINIO_PADRAO = "BrPronto"
+
+SEL = {
+    "login": "#prkUsuario",
+    "senha": "#desSenha",
+    "dominio_hidden": "#dominio",
+    "btn_acessar": "input[type='button'][value='Acessar']",
+    "btn_cookie_aceitar": "#btnAceitar",
+    "link_sair": "a[href*='autenticacao/logout'], a:has-text('Sair')",
+    "cpf": "#cpf, input[name='num_cpf'], input[name='cpf']",
+    "btn_filtrar": "input.bt-filtro[name='btnFiltrar'], input[value='Filtrar'], button:has-text('Filtrar')",
+    "tabela": "#table-protocolo, table.registros-table",
+}
 
 
 def _normalizar_cpf(cpf: str) -> str:
@@ -27,6 +48,299 @@ def _normalizar_cpf(cpf: str) -> str:
     if not cpf:
         return ""
     return re.sub(r"\D", "", str(cpf))
+
+
+def _accept_cookies_if_present(page: Page) -> None:
+    try:
+        btn = page.locator(SEL["btn_cookie_aceitar"])
+        if btn.is_visible(timeout=1500):
+            btn.click()
+            page.wait_for_timeout(400)
+    except Exception:
+        pass
+
+
+def _ensure_logout(page: Page) -> str:
+    """
+    Encerra a sessão no servidor (obrigatório: o GED bloqueia login simultâneo).
+    Preferência: clicar em Sair; fallback: GET autenticacao/logout.
+    """
+    detalhes: List[str] = []
+    clicked = False
+    for ctx in [page, *getattr(page, "frames", [])]:
+        try:
+            loc = ctx.locator(SEL["link_sair"]).first
+            if loc.is_visible(timeout=1200):
+                loc.click()
+                clicked = True
+                detalhes.append("clicou link Sair")
+                page.wait_for_timeout(1200)
+                break
+        except Exception:
+            continue
+    try:
+        page.goto(BRPRONTO_LOGOUT_URL, wait_until="domcontentloaded", timeout=20000)
+        detalhes.append("acessou autenticacao/logout")
+        page.wait_for_timeout(800)
+    except Exception as e:
+        detalhes.append(f"logout URL falhou: {e}")
+    if not clicked and "acessou autenticacao/logout" not in " ".join(detalhes):
+        return "FALHA ao sair: " + "; ".join(detalhes)
+    return "saiu: " + "; ".join(detalhes)
+
+
+def _visible_text(page: Page, text: str, timeout: int = 1500) -> bool:
+    try:
+        return page.get_by_text(text, exact=False).first.is_visible(timeout=timeout)
+    except Exception:
+        return False
+
+
+def _login_brpronto(
+    page: Page,
+    login: str,
+    senha: str,
+    dominio: Optional[str],
+    timeout_ms: int,
+) -> Optional[str]:
+    """
+    Realiza login. Retorna mensagem de erro ou None em sucesso.
+    """
+    page.goto(BRPRONTO_LOGIN_URL, wait_until="domcontentloaded", timeout=timeout_ms)
+    page.wait_for_timeout(800)
+    _accept_cookies_if_present(page)
+
+    try:
+        page.locator(SEL["login"]).wait_for(state="visible", timeout=15000)
+    except Exception:
+        return "Página de login Br Pronto não encontrou campo de usuário."
+
+    page.locator(SEL["login"]).fill(login)
+    page.locator(SEL["senha"]).fill(senha)
+
+    # Domínio: hidden #dominio (numérico) + UI "BrPronto"
+    dominio_ui = (dominio or DOMINIO_PADRAO).strip() or DOMINIO_PADRAO
+    try:
+        hidden = page.locator(SEL["dominio_hidden"])
+        if hidden.count():
+            val = hidden.input_value()
+            logger.info("[BrPronto] domínio hidden atual=%r (UI: %s)", val, dominio_ui)
+    except Exception:
+        pass
+    try:
+        ui = page.locator("text=Domínio").locator(
+            "xpath=following::*[self::div or self::span or self::a][1]"
+        )
+        if ui.count() and dominio_ui.lower() not in (ui.first.inner_text() or "").lower():
+            ui.first.click()
+            page.get_by_text(dominio_ui, exact=True).click()
+    except Exception:
+        logger.debug("[BrPronto] Domínio mantido como está na tela")
+
+    btn = page.locator(SEL["btn_acessar"])
+    if btn.count():
+        btn.first.click()
+    else:
+        # Fallback antigo
+        alt = page.query_selector('input[type="submit"], button[type="submit"]')
+        if alt:
+            alt.click()
+        else:
+            page.keyboard.press("Enter")
+
+    page.wait_for_timeout(2500)
+
+    # Usuário bloqueado / sessão em uso
+    if _visible_text(page, "Usuário bloqueado", 2000) or _visible_text(page, "redefinir a senha", 800):
+        return (
+            "Usuário Br Pronto bloqueado ou pedindo redefinição de senha. "
+            "Use outra conta do pool ou redefina a senha no GED."
+        )
+    if _visible_text(page, "já está logado", 800) or _visible_text(page, "sessão ativa", 800):
+        return (
+            "Sessão Br Pronto ainda ativa em outro lugar. "
+            "Aguarde o logoff ou libere o login no painel."
+        )
+    if _visible_text(page, "Senha inválida", 800) or _visible_text(page, "usuário ou senha", 800):
+        return "Login ou senha Br Pronto inválidos."
+
+    # Ainda na tela de autenticação / troca de senha = falha
+    url = (page.url or "").lower()
+    if "autenticacao" in url and ("index" in url or "alterar" in url or "senha" in url):
+        if page.locator("input[name='desSenhaNovaAtual']").count():
+            return "Br Pronto exige troca de senha nesta conta. Atualize a senha no cadastro após redefinir no GED."
+        if page.locator(SEL["login"]).count() and page.locator(SEL["login"]).first.is_visible():
+            return "Falha no login Br Pronto (permaneceu na tela de autenticação)."
+
+    return None
+
+
+def _abrir_relatorio_detalhado(page: Page) -> Optional[str]:
+    """Navega Relatórios → Detalhado. Retorna erro ou None."""
+    # Pode estar em iframe
+    contexts = [page, *page.frames]
+
+    def _click_menu(texto: str) -> bool:
+        for ctx in contexts:
+            for sel in (
+                f'div.item:has-text("{texto}")',
+                f'a:has-text("{texto}")',
+                f'li:has-text("{texto}")',
+                f'span:has-text("{texto}")',
+            ):
+                try:
+                    loc = ctx.locator(sel).first
+                    if loc.is_visible(timeout=1200):
+                        loc.click()
+                        page.wait_for_timeout(1200)
+                        return True
+                except Exception:
+                    continue
+            try:
+                loc = ctx.get_by_text(texto, exact=True).first
+                if loc.is_visible(timeout=800):
+                    loc.click()
+                    page.wait_for_timeout(1200)
+                    return True
+            except Exception:
+                continue
+        return False
+
+    if not _click_menu("Relatórios"):
+        return (
+            "Menu Relatórios não encontrado. "
+            "Perfil pode não ter acesso a relatório detalhado (use conta BO / NIVEL2_BOPAP)."
+        )
+    if not _click_menu("Detalhado"):
+        return (
+            "Submenu Detalhado não encontrado após Relatórios. "
+            "Confirme que a conta tem perfil GED_BRPRONTOPDV_NIVEL2_BOPAP."
+        )
+    page.wait_for_timeout(1500)
+    return None
+
+
+def _preencher_cpf_e_filtrar(page: Page, cpf_limpo: str) -> Optional[str]:
+    cpf_input = None
+    for ctx in [page, *page.frames]:
+        try:
+            loc = ctx.locator(SEL["cpf"]).first
+            if loc.is_visible(timeout=2000):
+                cpf_input = loc
+                break
+        except Exception:
+            continue
+    if not cpf_input:
+        # Fallback por label
+        try:
+            cpf_input = page.get_by_label("CPF", exact=False).first
+            if not cpf_input.is_visible(timeout=1500):
+                cpf_input = None
+        except Exception:
+            cpf_input = None
+    if not cpf_input:
+        return "Página de relatório detalhado não encontrou campo CPF."
+
+    cpf_input.fill(cpf_limpo)
+    page.wait_for_timeout(400)
+
+    clicked = False
+    for ctx in [page, *page.frames]:
+        try:
+            btn = ctx.locator(SEL["btn_filtrar"]).first
+            if btn.is_visible(timeout=1500):
+                btn.click()
+                clicked = True
+                break
+        except Exception:
+            continue
+    if not clicked:
+        page.keyboard.press("Enter")
+    page.wait_for_timeout(3500)
+    return None
+
+
+def _parse_tabela(page: Page) -> Dict[str, Any]:
+    resultado: Dict[str, Any] = {
+        "aprovada": False,
+        "data_mais_recente_apta": None,
+        "registros": [],
+    }
+    table = None
+    for ctx in [page, *page.frames]:
+        try:
+            loc = ctx.locator(SEL["tabela"]).first
+            if loc.is_visible(timeout=2000):
+                table = loc
+                break
+        except Exception:
+            continue
+    if not table:
+        # Sem tabela = nenhum registro (consulta ok)
+        return resultado
+
+    registros: List[Dict[str, str]] = []
+    datas_aptas: List[str] = []
+    rows = table.locator("tbody tr")
+    n = rows.count()
+    for i in range(n):
+        tr = rows.nth(i)
+        cells = tr.locator("td")
+        n_cells = cells.count()
+        if n_cells < 12:
+            continue
+
+        def cell_text(idx: int) -> str:
+            cell = cells.nth(idx)
+            try:
+                div = cell.locator("div").first
+                if div.count():
+                    return (div.inner_text() or "").strip()
+            except Exception:
+                pass
+            return (cell.inner_text() or "").strip()
+
+        textos = [cell_text(j) for j in range(n_cells)]
+        registro = {
+            "protocolo": textos[0] if len(textos) > 0 else "",
+            "cpf_cnpj": textos[1] if len(textos) > 1 else "",
+            "n_linha": textos[2] if len(textos) > 2 else "",
+            "linha_provisoria": textos[3] if len(textos) > 3 else "",
+            "data_envio": textos[4] if len(textos) > 4 else "",
+            "data_conferencia": textos[5] if len(textos) > 5 else "",
+            "regional": textos[6] if len(textos) > 6 else "",
+            "cod_pdv": textos[7] if len(textos) > 7 else "",
+            "login": textos[8] if len(textos) > 8 else "",
+            "tipo_servico": textos[9] if len(textos) > 9 else "",
+            "nome_fantasia": textos[10] if len(textos) > 10 else "",
+            "resultado_analise": textos[11] if len(textos) > 11 else "",
+            "versao_app": textos[12] if len(textos) > 12 else "",
+        }
+        registros.append(registro)
+        if STATUS_APTO_VENDA in registro["resultado_analise"] and registro["data_envio"]:
+            datas_aptas.append(registro["data_envio"])
+
+    resultado["registros"] = registros
+
+    def parse_data(s: str) -> Optional[Tuple[int, int, int, int, int, int]]:
+        m = re.match(r"(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})", s.strip())
+        if m:
+            return (
+                int(m.group(3)),
+                int(m.group(2)),
+                int(m.group(1)),
+                int(m.group(4)),
+                int(m.group(5)),
+                int(m.group(6)),
+            )
+        return None
+
+    datas_parseadas = [(parse_data(d), d) for d in datas_aptas if parse_data(d)]
+    datas_parseadas.sort(key=lambda x: x[0], reverse=True)
+    if datas_parseadas:
+        resultado["aprovada"] = True
+        resultado["data_mais_recente_apta"] = datas_parseadas[0][1]
+    return resultado
 
 
 def consultar_biometria_brpronto(
@@ -40,21 +354,8 @@ def consultar_biometria_brpronto(
     """
     Consulta o Br Pronto PDV por CPF e retorna se existe biometria aprovada e a lista de registros.
 
-    Args:
-        login: Login Br Pronto (prkUsuario).
-        senha: Senha Br Pronto (desSenha).
-        cpf: CPF a consultar (apenas dígitos ou formatado).
-        dominio: Domínio no login (opcional).
-        headless: Se True, navegador em modo headless.
-        timeout_ms: Timeout geral em ms.
-
     Returns:
         Tuple (sucesso, mensagem_erro, resultado).
-        resultado: {
-            "aprovada": bool,
-            "data_mais_recente_apta": str | None,  # ex: "12/02/2026 23:02:51"
-            "registros": [ { "protocolo", "cpf_cnpj", "n_linha", "linha_provisoria", "data_envio", "data_conferencia", "regional", "cod_pdv", "login", "tipo_servico", "nome_fantasia", "resultado_analise", "versao_app" }, ... ]
-        }
         Em caso de falha: (False, mensagem, {}).
     """
     if not HAS_PLAYWRIGHT:
@@ -65,9 +366,10 @@ def consultar_biometria_brpronto(
         return False, "CPF deve ter 11 dígitos.", {}
 
     if not login or not senha:
-        return False, "Login e senha Br Pronto são obrigatórios. Configure no seu cadastro.", {}
+        return False, "Login e senha Br Pronto são obrigatórios. Configure no cadastro do usuário.", {}
 
     resultado: Dict[str, Any] = {"aprovada": False, "data_mais_recente_apta": None, "registros": []}
+    logout_info = ""
 
     try:
         with sync_playwright() as p:
@@ -79,150 +381,31 @@ def consultar_biometria_brpronto(
             page = context.new_page()
             page.set_default_timeout(timeout_ms)
 
-            # 1) Login
-            page.goto(BRPRONTO_LOGIN_URL, wait_until="domcontentloaded", timeout=timeout_ms)
-            page.wait_for_timeout(2000)
+            try:
+                err = _login_brpronto(page, login, senha, dominio, timeout_ms)
+                if err:
+                    return False, err, {}
 
-            usuario = page.query_selector('#prkUsuario')
-            if not usuario:
-                usuario = page.query_selector('input[name="prkUsuario"]')
-            if not usuario:
-                browser.close()
-                return False, "Página de login Br Pronto não encontrou campo de usuário.", {}
+                err = _abrir_relatorio_detalhado(page)
+                if err:
+                    return False, err, {}
 
-            usuario.fill(login)
-            page.query_selector('#desSenha') or page.query_selector('input[name="desSenha"]')
-            senha_el = page.query_selector('#desSenha') or page.query_selector('input[name="desSenha"]')
-            if senha_el:
-                senha_el.fill(senha)
+                err = _preencher_cpf_e_filtrar(page, cpf_limpo)
+                if err:
+                    return False, err, {}
 
-            # Domínio (opcional): pode ser select ou input
-            if dominio:
-                dom_el = page.query_selector('input[name*="dominio"], select[name*="dominio"], #dominio')
-                if dom_el:
-                    try:
-                        dom_el.fill(dominio)
-                    except Exception:
-                        try:
-                            page.select_option('select[name*="dominio"], #dominio', label=dominio)
-                        except Exception:
-                            pass
-
-            # Submeter login
-            btn = page.query_selector('input[type="submit"], button[type="submit"], .submit')
-            if btn:
-                btn.click()
-            else:
-                page.keyboard.press("Enter")
-            page.wait_for_timeout(3000)
-
-            # 2) Menu Relatórios -> Detalhado
-            relatorios = page.locator('div.item').filter(has_text="Relatórios").first
-            if relatorios.count():
-                relatorios.click()
-                page.wait_for_timeout(1500)
-            detalhado = page.locator('div.item').filter(has_text="Detalhado").first
-            if detalhado.count():
-                detalhado.click()
-            page.wait_for_timeout(2000)
-
-            # 3) Campo CPF e Filtrar
-            cpf_input = page.query_selector('#cpf') or page.query_selector('input[name="num_cpf"]')
-            if not cpf_input:
-                browser.close()
-                return False, "Página de relatório detalhado não encontrou campo CPF.", {}
-
-            cpf_input.fill(cpf_limpo)
-            page.wait_for_timeout(500)
-
-            btn_filtrar = page.query_selector('input.bt-filtro[name="btnFiltrar"], input[value="Filtrar"]')
-            if not btn_filtrar:
-                btn_filtrar = page.query_selector('input[type="submit"][value="Filtrar"]')
-            if btn_filtrar:
-                btn_filtrar.click()
-            else:
-                page.keyboard.press("Enter")
-            page.wait_for_timeout(4000)
-
-            # 4) Resultado da consulta - tabela
-            h1 = page.query_selector('h1:has-text("Resultado da Consulta")')
-            table = page.query_selector('#table-protocolo') or page.query_selector('table.registros-table')
-            if not table:
-                browser.close()
-                return True, None, {**resultado, "registros": [], "aprovada": False}
-
-            # Parsing: thead para ordem das colunas (já sabemos pela doc)
-            # Colunas: Protocolo, CPF/CNPJ, N. da Linha, Linha Provisória, Data de Envio da Digitalização,
-            #          Data da Conferência, Regional, Cód. PDV, Login, Tipo de Serviço, Nome Fantasia, Resultado da Análise, Versão APP
-            registros: List[Dict[str, str]] = []
-            rows = table.query_selector_all('tbody tr')
-            datas_aptas: List[str] = []
-
-            for tr in rows:
-                cells = tr.query_selector_all('td')
-                if len(cells) < 12:
-                    continue
-                # Extrair texto de cada célula (em .lines pode ter div)
-                def cell_text(cell):
-                    div = cell.query_selector('div')
-                    if div:
-                        return (div.inner_text() or "").strip()
-                    return (cell.inner_text() or "").strip()
-
-                textos = [cell_text(c) for c in cells]
-                if len(textos) <= COL_RESULTADO_ANALISE:
-                    continue
-
-                protocolo = textos[0] if len(textos) > 0 else ""
-                cpf_cnpj = textos[1] if len(textos) > 1 else ""
-                n_linha = textos[2] if len(textos) > 2 else ""
-                linha_provisoria = textos[3] if len(textos) > 3 else ""
-                data_envio = textos[4] if len(textos) > 4 else ""
-                data_conferencia = textos[5] if len(textos) > 5 else ""
-                regional = textos[6] if len(textos) > 6 else ""
-                cod_pdv = textos[7] if len(textos) > 7 else ""
-                login_pdv = textos[8] if len(textos) > 8 else ""
-                tipo_servico = textos[9] if len(textos) > 9 else ""
-                nome_fantasia = textos[10] if len(textos) > 10 else ""
-                resultado_analise = textos[11] if len(textos) > 11 else ""
-                versao_app = textos[12] if len(textos) > 12 else ""
-
-                registros.append({
-                    "protocolo": protocolo,
-                    "cpf_cnpj": cpf_cnpj,
-                    "n_linha": n_linha,
-                    "linha_provisoria": linha_provisoria,
-                    "data_envio": data_envio,
-                    "data_conferencia": data_conferencia,
-                    "regional": regional,
-                    "cod_pdv": cod_pdv,
-                    "login": login_pdv,
-                    "tipo_servico": tipo_servico,
-                    "nome_fantasia": nome_fantasia,
-                    "resultado_analise": resultado_analise,
-                    "versao_app": versao_app,
-                })
-
-                if STATUS_APTO_VENDA in resultado_analise and data_envio:
-                    datas_aptas.append(data_envio)
-
-            resultado["registros"] = registros
-
-            # Ordenar datas (formato DD/MM/YYYY HH:MM:SS) e pegar a mais recente
-            def parse_data(s: str) -> Optional[Tuple[int, int, int, int, int, int]]:
-                m = re.match(r"(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})", s.strip())
-                if m:
-                    return (int(m.group(3)), int(m.group(2)), int(m.group(1)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
-                return None
-
-            datas_parseadas = [(parse_data(d), d) for d in datas_aptas if parse_data(d)]
-            datas_parseadas.sort(key=lambda x: x[0], reverse=True)
-            if datas_parseadas:
-                resultado["aprovada"] = True
-                resultado["data_mais_recente_apta"] = datas_parseadas[0][1]
-
-            browser.close()
-            return True, None, resultado
+                resultado = _parse_tabela(page)
+                return True, None, resultado
+            finally:
+                try:
+                    logout_info = _ensure_logout(page)
+                    logger.info("[BrPronto] Logoff: %s (login=%s)", logout_info, login)
+                except Exception as e_logout:
+                    logger.warning("[BrPronto] Falha no logoff de %s: %s", login, e_logout)
+                try:
+                    browser.close()
+                except Exception:
+                    pass
 
     except Exception as e:
         logger.exception("[BrPronto] Erro ao consultar biometria: %s", e)

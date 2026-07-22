@@ -1048,6 +1048,147 @@ def _resetar_sessao_credito(telefone: str):
 
 
 # =============================================================================
+# FLUXO BIO (Consulta biometria no Br Pronto / ged360 por CPF)
+# =============================================================================
+
+def _iniciar_fluxo_bio(telefone: str, sessao) -> str:
+    """Inicia consulta de biometria no Br Pronto via WhatsApp (comando BIO)."""
+    usuario = _buscar_usuario_por_telefone(telefone)
+    if not usuario:
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Seu número não está cadastrado no sistema.\n"
+            "Verifique se o campo WhatsApp está preenchido no seu cadastro."
+        )
+    if not getattr(usuario, "autorizar_consulta_bio_wpp", False):
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Você não está autorizado a consultar biometria pelo WhatsApp.\n"
+            "Solicite que marquem *Autorizar consulta Bio pelo Wpp* no seu cadastro (Governança)."
+        )
+    sessao.etapa = "bio_cpf"
+    sessao.dados_temp = {
+        "usuario_id": usuario.id,
+        "usuario_nome": usuario.get_full_name() or usuario.username,
+    }
+    sessao.save()
+    return (
+        "🔍 *CONSULTA DE BIOMETRIA (Br Pronto)*\n\n"
+        "Digite o *CPF* para consultar (apenas números):\n\n"
+        "Ou digite *CANCELAR* para sair."
+    )
+
+
+def _resetar_sessao_bio(telefone: str) -> None:
+    try:
+        from crm_app.models import SessaoWhatsapp
+
+        s = SessaoWhatsapp.objects.get(telefone=telefone)
+        s.etapa = "inicial"
+        s.dados_temp = {}
+        s.save()
+    except Exception:
+        pass
+
+
+def _formatar_resposta_bio(resultado: dict) -> str:
+    """Monta mensagem WhatsApp a partir do resultado da consulta Br Pronto."""
+    registros = resultado.get("registros") or []
+    if resultado.get("aprovada"):
+        data = resultado.get("data_mais_recente_apta") or ""
+        return (
+            "✅ *Biometria APROVADA*\n\n"
+            'Status: *Doc. Apto para Venda*\n'
+            + (f"Data envio mais recente: {data}\n" if data else "")
+            + f"Registros encontrados: {len(registros)}"
+        )
+    if not registros:
+        return (
+            "⚠️ *Nenhum registro de biometria*\n\n"
+            "Não há resultados no Relatório Detalhado para este CPF."
+        )
+    # Lista resumo dos status encontrados
+    status_unicos: list[str] = []
+    for r in registros:
+        st = (r.get("resultado_analise") or "").strip() or "(vazio)"
+        if st not in status_unicos:
+            status_unicos.append(st)
+    linhas = "\n".join(f"• {s}" for s in status_unicos[:8])
+    return (
+        "⏳ *Biometria NÃO apta para venda*\n\n"
+        'Não há *"Doc. Apto para Venda"* para este CPF.\n\n'
+        f"Status encontrados ({len(registros)} registro(s)):\n{linhas}"
+    )
+
+
+def _executar_consulta_bio_background(telefone: str, usuario_id: int, cpf: str) -> None:
+    """
+    Thread: reserva login Br Pronto do pool, consulta ged360 e envia resultado.
+    Sempre libera o lock e o serviço garante logoff no GED.
+    """
+    from django.conf import settings
+    from usuarios.models import Usuario
+    from crm_app.services_brpronto import consultar_biometria_brpronto
+    from crm_app.pool_brpronto import (
+        obter_login_brpronto,
+        liberar_login_brpronto,
+        MSG_TODOS_BRPRONTO_EM_USO,
+    )
+    from crm_app.whatsapp_service import WhatsAppService
+
+    cpf_limpo = re.sub(r"\D", "", cpf)
+    if len(cpf_limpo) != 11:
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            "❌ CPF inválido (precisa 11 dígitos). Digite *BIO* para tentar novamente.",
+        )
+        _resetar_sessao_bio(telefone)
+        return
+
+    bo_usuario, msg_erro = obter_login_brpronto(telefone, origem="bio")
+    if not bo_usuario:
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            f"{msg_erro or MSG_TODOS_BRPRONTO_EM_USO}\n\nDigite *BIO* para tentar novamente.",
+        )
+        _resetar_sessao_bio(telefone)
+        return
+
+    tempo_inicio = time.time()
+    try:
+        headless = getattr(settings, "BRPRONTO_HEADLESS", True)
+        sucesso, msg, resultado = consultar_biometria_brpronto(
+            login=bo_usuario.brpronto_login or "",
+            senha=bo_usuario.brpronto_senha or "",
+            cpf=cpf_limpo,
+            dominio=bo_usuario.brpronto_dominio or None,
+            headless=headless,
+        )
+        tempo = round(time.time() - tempo_inicio, 1)
+        if not sucesso:
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"❌ Erro na consulta Br Pronto:\n{msg}\n\nDigite *BIO* para tentar novamente.\n\n⏱ _{tempo}s_",
+            )
+        else:
+            corpo = _formatar_resposta_bio(resultado)
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"{corpo}\n\n⏱ _{tempo}s_",
+            )
+    except Exception as e:
+        logger.exception("[BIO BrPronto] Erro: %s", e)
+        tempo = round(time.time() - tempo_inicio, 1)
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            f"❌ Erro ao consultar biometria: {e}\n\nDigite *BIO* para tentar novamente.\n\n⏱ _{tempo}s_",
+        )
+    finally:
+        liberar_login_brpronto(bo_usuario.id, telefone)
+        _resetar_sessao_bio(telefone)
+
+
+# =============================================================================
 # FLUXO PEDIDO (Consulta OS no PAP por CPF)
 # =============================================================================
 
@@ -7916,6 +8057,14 @@ def processar_webhook_whatsapp(data, request=None):
             if not resposta:
                 resposta = "Não foi possível iniciar o fluxo. Tente novamente."
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        elif mensagem_limpa in ['BIO', 'BIOMETRIA']:
+            logger.info("[Webhook] Comando BIO reconhecido!")
+            resposta = _iniciar_fluxo_bio(telefone_formatado, sessao)
+            _registrar_estatistica(telefone_formatado, 'BIO')
+            if not resposta:
+                resposta = "Não foi possível iniciar o fluxo. Tente novamente."
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
@@ -7939,6 +8088,7 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Andamento* - Ver agendamentos do dia\n",
                 "• *Crédito* - Consultar análise de crédito por CPF\n",
                 "• *Pedido* - Consultar pedido/O.S. por CPF no PAP\n",
+                "• *Bio* - Consultar resultado da biometria no Br Pronto\n",
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕\n",
                 "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)",
             ]
@@ -9007,6 +9157,40 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.etapa = 'pedido_aguardando'
                         sessao.save()
                         resposta = "⏳ Consultando pedido no PAP... Aguarde alguns instantes. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'bio_aguardando':
+            resposta = "⏳ Consultando biometria no Br Pronto... Aguarde. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'bio_cpf':
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "❌ Cancelado. Digite *BIO* para consultar novamente."
+            else:
+                cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
+                if not cpf_limpo or len(cpf_limpo) != 11 or not cpf_limpo.isdigit():
+                    resposta = "❌ CPF inválido. Digite 11 dígitos, ou *CANCELAR*:"
+                else:
+                    usuario_id = dados_temp.get('usuario_id')
+                    if not usuario_id:
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        resposta = "❌ Sessão expirada. Digite *BIO* para iniciar novamente."
+                    else:
+                        import threading
+                        t = threading.Thread(
+                            target=_executar_consulta_bio_background,
+                            args=(telefone_formatado, usuario_id, cpf_limpo),
+                            daemon=True,
+                        )
+                        t.start()
+                        sessao.etapa = 'bio_aguardando'
+                        sessao.save()
+                        resposta = "⏳ Consultando biometria no Br Pronto... Aguarde alguns instantes. Você receberá a resposta em seguida."
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'conta_cpf':

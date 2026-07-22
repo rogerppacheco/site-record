@@ -1366,6 +1366,36 @@ class SessaoWhatsapp(models.Model):
         return f"{self.telefone} - {self.etapa}"
 
 
+class BrProntoBoEmUso(models.Model):
+    """
+    Controla qual login Br Pronto (ged360) está em uso pela automação de biometria.
+    Evita conflito de sessão (GED bloqueia login simultâneo no mesmo usuário).
+    """
+    bo_usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.CASCADE,
+        related_name="brpronto_sessoes_em_uso",
+        help_text="Usuário cujo login Br Pronto está em uso",
+    )
+    solicitante_telefone = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    locked_at = models.DateTimeField(auto_now_add=True)
+    sessao_whatsapp_id = models.IntegerField(null=True, blank=True)
+    origem = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        help_text="origem da reserva: bio | auditoria | etc.",
+    )
+
+    class Meta:
+        db_table = "crm_brpronto_bo_em_uso"
+        verbose_name = "Br Pronto BO em Uso"
+        verbose_name_plural = "Br Pronto BOs em Uso"
+
+    def __str__(self) -> str:
+        return f"BrPronto {self.bo_usuario_id} em uso por {self.solicitante_telefone or 'sistema'}"
+
+
 class PapBoEmUso(models.Model):
     """
     Controla qual usuário BackOffice está em uso pela automação PAP.
@@ -1655,6 +1685,9 @@ class EstatisticaBotWhatsApp(models.Model):
         ('FATURA', 'Fatura'),
         ('STATUS', 'Status'),
         ('CREDITO', 'Crédito'),
+        ('BIO', 'Bio (Br Pronto)'),
+        ('PEDIDO', 'Pedido'),
+        ('VENDER', 'Vender'),
     ]
     
     telefone = models.CharField(max_length=100, db_index=True, help_text="Telefone do usuário que recebeu a mensagem")

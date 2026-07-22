@@ -746,10 +746,10 @@
                                         <small class="text-muted form-text">Exibida como •••••• por segurança</small>
                                     </div>
 
-                                    <div class="col-12 mt-3 pt-3"><h6 class="text-primary border-bottom pb-2 mb-2"><i class="bi bi-fingerprint me-1"></i> Br Pronto (Biometria – Auditoria)</h6></div>
+                                    <div class="col-12 mt-3 pt-3"><h6 class="text-primary border-bottom pb-2 mb-2"><i class="bi bi-fingerprint me-1"></i> Br Pronto (Biometria – Auditoria / BIO)</h6></div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">Login Br Pronto</label>
-                                        <input type="text" class="form-control" id="brpronto_login" placeholder="Opcional – consulta biometria">
+                                        <input type="text" class="form-control" id="brpronto_login" placeholder="Ex.: TT828860 (perfil BO)">
                                     </div>
                                     <div class="col-lg-2 col-md-6">
                                         <label class="form-label fw-bold">Senha Br Pronto</label>
@@ -757,7 +757,19 @@
                                     </div>
                                     <div class="col-lg-2 col-md-6">
                                         <label class="form-label fw-bold">Domínio Br Pronto</label>
-                                        <input type="text" class="form-control" id="brpronto_dominio" placeholder="Opcional">
+                                        <input type="text" class="form-control" id="brpronto_dominio" placeholder="BrPronto" value="BrPronto">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6 d-flex align-items-end">
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" id="brpronto_disponivel_para_automacao">
+                                            <label class="form-check-label" for="brpronto_disponivel_para_automacao">Disponibilizar no pool (bot/auditoria)</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6 d-flex align-items-end">
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" id="autorizar_consulta_bio_wpp">
+                                            <label class="form-check-label" for="autorizar_consulta_bio_wpp">Autorizar comando BIO no WhatsApp</label>
+                                        </div>
                                     </div>
 
                                     <div class="col-12 mt-3 pt-3"><h6 class="text-primary border-bottom pb-2 mb-2"><i class="bi bi-whatsapp me-1"></i> Contato (WhatsApp)</h6></div>
@@ -2469,12 +2481,16 @@
             document.getElementById('recebe_adiantamento_sabado').checked = user.recebe_adiantamento_sabado === true;
             document.getElementById('matricula_pap').value = user.matricula_pap || '';
             document.getElementById('brpronto_login').value = user.brpronto_login || '';
-            document.getElementById('brpronto_dominio').value = user.brpronto_dominio || '';
+            document.getElementById('brpronto_dominio').value = user.brpronto_dominio || 'BrPronto';
+            document.getElementById('brpronto_disponivel_para_automacao').checked = !!user.brpronto_disponivel_para_automacao;
+            document.getElementById('autorizar_consulta_bio_wpp').checked = !!user.autorizar_consulta_bio_wpp;
             ['valor_almoco', 'valor_passagem', 'valor_ajuda_custo_mensal', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         } else {
             document.getElementById('matricula_pap').value = '';
             document.getElementById('brpronto_login').value = '';
-            document.getElementById('brpronto_dominio').value = '';
+            document.getElementById('brpronto_dominio').value = 'BrPronto';
+            document.getElementById('brpronto_disponivel_para_automacao').checked = false;
+            document.getElementById('autorizar_consulta_bio_wpp').checked = false;
             document.getElementById('tel_whatsapp_2').value = '';
             document.getElementById('tel_whatsapp_3').value = '';
             document.getElementById('autorizado_chamar_no_bot').checked = true;
@@ -2495,7 +2511,7 @@
         senhaPapInput.placeholder = (user && user.senha_pap) ? '•••••• (preenchida)' : 'Deixe em branco para manter';
         const brprontoSenhaInput = document.getElementById('brpronto_senha');
         brprontoSenhaInput.value = '';
-        brprontoSenhaInput.placeholder = (user && user.brpronto_senha) ? '•••••• (preenchida)' : 'Branco = manter';
+        brprontoSenhaInput.placeholder = (user && (user.brpronto_senha_preenchida || user.brpronto_senha)) ? '•••••• (preenchida)' : 'Branco = manter';
         
         // Pequeno delay para garantir que os selects foram populados
         setTimeout(() => {
@@ -2650,7 +2666,9 @@
             recebe_adiantamento_cnpj: document.getElementById('recebe_adiantamento_cnpj').checked,
             recebe_adiantamento_sabado: document.getElementById('recebe_adiantamento_sabado').checked,
             brpronto_login: cleanValue(document.getElementById('brpronto_login').value),
-            brpronto_dominio: cleanValue(document.getElementById('brpronto_dominio').value)
+            brpronto_dominio: cleanValue(document.getElementById('brpronto_dominio').value) || 'BrPronto',
+            brpronto_disponivel_para_automacao: document.getElementById('brpronto_disponivel_para_automacao').checked,
+            autorizar_consulta_bio_wpp: document.getElementById('autorizar_consulta_bio_wpp').checked
         };
         
         // Senha PAP: só enviar se preenchida (ao editar, vazio = manter a atual)

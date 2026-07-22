@@ -186,27 +186,40 @@ class Usuario(AbstractUser):
         help_text="Se marcado, este login pode ser usado pela automação STATUS (consulta online de pedido no PAP)."
     )
 
-    # --- BR PRONTO PDV (Biometria - Auditoria) ---
+    # --- BR PRONTO PDV (Biometria - Auditoria / WhatsApp BIO) ---
     brpronto_login = models.CharField(
         max_length=100,
         blank=True,
         null=True,
         verbose_name="Login Br Pronto PDV",
-        help_text="Login para consulta de biometria no site Br Pronto (ged360). Usado na ferramenta de auditoria."
+        help_text="Login (matrícula TT) para consulta de biometria no ged360. Preferir perfil NIVEL2_BOPAP.",
     )
     brpronto_senha = models.CharField(
         max_length=128,
         blank=True,
         null=True,
         verbose_name="Senha Br Pronto PDV",
-        help_text="Senha do Br Pronto. Cada backoffice/vendedor tem o seu."
+        help_text="Senha do Br Pronto. Gerenciada na Governança; usada pelo pool da automação.",
     )
     brpronto_dominio = models.CharField(
         max_length=100,
         blank=True,
         null=True,
         verbose_name="Domínio Br Pronto PDV",
-        help_text="Domínio no login do Br Pronto (se aplicável)."
+        help_text="Domínio no login do Br Pronto (ex.: BrPronto).",
+    )
+    brpronto_disponivel_para_automacao = models.BooleanField(
+        default=False,
+        verbose_name="Disponibilizar login Br Pronto para o bot",
+        help_text=(
+            "Se marcado, este login entra no pool de consulta de biometria "
+            "(auditoria Checar biometria e comando BIO no WhatsApp)."
+        ),
+    )
+    autorizar_consulta_bio_wpp = models.BooleanField(
+        default=False,
+        verbose_name="Autorizar consulta Bio pelo Wpp",
+        help_text="Se marcado, o usuário pode usar o comando BIO no WhatsApp.",
     )
 
     # --- GESTÃO DE ACESSOS (DELEGAÇÃO) ---

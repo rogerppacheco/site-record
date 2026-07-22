@@ -75,6 +75,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     supervisor_detalhe = UsuarioLiderSerializer(source='supervisor', read_only=True)
     groups_detalhe = GroupSerializer(source='groups', many=True, read_only=True)
     supervisor_nome = serializers.SerializerMethodField()
+    brpronto_senha_preenchida = serializers.SerializerMethodField()
 
     # MÉTODO PARA OBTER O NOME DO LÍDER
     def get_supervisor_nome(self, obj):
@@ -82,6 +83,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
             nome = f"{obj.supervisor.first_name} {obj.supervisor.last_name}".strip()
             return nome if nome else obj.supervisor.username
         return "-"
+
+    def get_brpronto_senha_preenchida(self, obj) -> bool:
+        return bool(getattr(obj, "brpronto_senha", None))
 
     def validate_meta_comissao(self, value):
         """Valida e normaliza meta_comissao - aceita 0 como valor válido"""
@@ -134,7 +138,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'pode_gestao_acessos',
             'brpronto_login',
             'brpronto_senha',
+            'brpronto_senha_preenchida',
             'brpronto_dominio',
+            'brpronto_disponivel_para_automacao',
+            'autorizar_consulta_bio_wpp',
             'tel_whatsapp',
             'tel_whatsapp_2',
             'tel_whatsapp_3',
@@ -143,6 +150,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             'password': {'write_only': True, 'required': False},
+            'brpronto_senha': {'write_only': True, 'required': False},
             'perfil': {'required': False, 'allow_null': True},
             'supervisor': {'required': False, 'allow_null': True},
             'meta_comissao': {'required': False, 'allow_null': True},
