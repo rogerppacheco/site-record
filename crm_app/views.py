@@ -1901,6 +1901,23 @@ class VendaViewSet(viewsets.ModelViewSet):
         if periodo_ag in ('MANHA', 'TARDE'):
             queryset = queryset.filter(periodo_agendamento=periodo_ag)
 
+        tipo_pend = (self.request.query_params.get('tipo_pendencia') or '').strip().upper()
+        tipo_pend_norm = (
+            tipo_pend.replace('É', 'E').replace('é', 'E')
+            if tipo_pend else ''
+        )
+        if tipo_pend_norm == 'CLIENTE':
+            queryset = queryset.filter(
+                motivo_pendencia__isnull=False,
+                motivo_pendencia__tipo_pendencia__icontains='CLIENTE',
+            )
+        elif tipo_pend_norm == 'TECNICA':
+            from django.db.models import Q
+            queryset = queryset.filter(motivo_pendencia__isnull=False).filter(
+                Q(motivo_pendencia__tipo_pendencia__icontains='TÉCNICA')
+                | Q(motivo_pendencia__tipo_pendencia__icontains='TECNICA')
+            )
+
         return queryset
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)

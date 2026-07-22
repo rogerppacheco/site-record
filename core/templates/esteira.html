@@ -81,6 +81,8 @@
         }
         .table-esteira th.esteira-col-motivo,
         .table-esteira td.esteira-col-motivo { min-width: 12rem; }
+        .table-esteira th.esteira-col-tipo-pendencia,
+        .table-esteira td.esteira-col-tipo-pendencia { min-width: 8rem; white-space: nowrap; }
         .table-esteira th.esteira-col-conf,
         .table-esteira td.esteira-col-conf { min-width: 10rem; }
         .table-esteira th.esteira-col-resp,
@@ -603,6 +605,15 @@
                 </div>
             </div>
 
+            <div id="filtro-tipo-pendencia-container" class="mb-3" style="display: none;">
+                <span class="me-2 text-muted fw-bold">Tipo de pendência:</span>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" id="btn-tipo-pend-todos" onclick="filtrarTipoPendencia('', this)">Todos</button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-cliente" onclick="filtrarTipoPendencia('CLIENTE', this)">Cliente</button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-tecnica" onclick="filtrarTipoPendencia('TECNICA', this)">Técnica</button>
+                </div>
+            </div>
+
             <div id="painel-busca-instaladas" class="mb-2" style="display: none;">
                 <div id="painel-busca-instaladas-shell" class="esteira-painel-filtros-shell border rounded bg-white">
                     <div class="esteira-painel-filtros-bar">
@@ -951,6 +962,7 @@
                                 <th data-esteira-col="adiant_sabado" title="Adiantamento comissão (O.S. aberta em sábado, Regras por Faixa)">Adiant. sábado</th>
                                 <th data-esteira-col="plano">Plano</th>
                                 <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
+                                <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia" title="Tipo do cadastro do motivo (Cliente / Técnica)">Tipo de pendência</th>
                                 <th data-esteira-col="conf" class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip" title="Resposta do vendedor à consulta Posso antecipar?">Posso antecipar?</th>
                                 <th data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar" title="Resposta do consultor à consulta Posso reagendar?">Posso reagendar?</th>
@@ -1000,6 +1012,7 @@
                                 </th>
                                 <th data-esteira-col="plano"><input id="fc-plano" class="form-control form-control-sm esteira-fc-input" placeholder="Plano"></th>
                                 <th data-esteira-col="motivo" class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
+                                <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia"><input id="fc-tipo-pendencia" class="form-control form-control-sm esteira-fc-input" placeholder="Tipo"></th>
                                 <th data-esteira-col="conf" class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip">
                                     <select id="fc-posso-antecip" class="form-select form-select-sm esteira-fc-select">
@@ -1450,6 +1463,7 @@
             { key: 'adiant_sabado', label: 'Adiant. sábado' },
             { key: 'plano', label: 'Plano' },
             { key: 'motivo', label: 'Motivo Pendência' },
+            { key: 'tipo_pendencia', label: 'Tipo de pendência' },
             { key: 'conf', label: 'Conf. cliente' },
             { key: 'posso_antecip', label: 'Posso antecipar?' },
             { key: 'posso_reagendar', label: 'Posso reagendar?' },
@@ -1462,7 +1476,16 @@
                 const raw = localStorage.getItem('esteira_colunas_visiveis');
                 if (raw) {
                     const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed) && parsed.length) return parsed;
+                    if (Array.isArray(parsed) && parsed.length) {
+                        // Coluna nova: inclui após Motivo se ainda não estiver nas preferências salvas
+                        if (!parsed.includes('tipo_pendencia')) {
+                            const idxMotivo = parsed.indexOf('motivo');
+                            if (idxMotivo >= 0) parsed.splice(idxMotivo + 1, 0, 'tipo_pendencia');
+                            else parsed.push('tipo_pendencia');
+                            salvarColunasVisiveisEsteira(parsed);
+                        }
+                        return parsed;
+                    }
                 }
             } catch (e) { /* ignore */ }
             return ESTEIRA_COLUNAS.map(c => c.key);
@@ -1598,6 +1621,7 @@
 
         let filtroAtual = 'TODOS';
         let filtroTurnoAtual = '';
+        let filtroTipoPendenciaAtual = '';
         const ESTEIRA_PAGE_SIZE = 200;
         let esteiraPaginaAtual = 1;
         let esteiraPaginacaoMeta = { count: 0, totalPages: 1 };
@@ -1606,7 +1630,7 @@
         let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
-        const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'];
+        const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-tipo-pendencia', 'fc-conf', 'fc-resp'];
         let tempVendaId = null;
         let tempStatusId = null;
         const ESTEIRA_FOCO_POS_KEY = 'esteira_foco_pos_atualizacao';
@@ -2739,6 +2763,39 @@
             return /^\d{4}-\d{2}-\d{2}$/.test(status || filtroAtual);
         }
 
+        function deveExibirFiltroTipoPendencia(status) {
+            const s = status || filtroAtual;
+            return s === 'PENDEN' || s === 'TODOS';
+        }
+
+        function normalizarTipoPendenciaTexto(tipo) {
+            return String(tipo || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toUpperCase();
+        }
+
+        function obterTipoPendenciaVenda(v) {
+            if (v.motivo_pendencia_tipo) return String(v.motivo_pendencia_tipo);
+            if (v.motivo_pendencia && typeof v.motivo_pendencia === 'object' && v.motivo_pendencia.tipo_pendencia) {
+                return String(v.motivo_pendencia.tipo_pendencia);
+            }
+            if (v.motivo_pendencia && typeof motivosLista !== 'undefined' && Array.isArray(motivosLista)) {
+                const idMotivo = typeof v.motivo_pendencia === 'object' ? v.motivo_pendencia.id : v.motivo_pendencia;
+                const m = motivosLista.find(item => String(item.id) === String(idMotivo));
+                if (m && m.tipo_pendencia) return String(m.tipo_pendencia);
+            }
+            return '';
+        }
+
+        function tipoPendenciaCorrespondeFiltro(tipoTexto, filtro) {
+            if (!filtro) return true;
+            const n = normalizarTipoPendenciaTexto(tipoTexto);
+            if (filtro === 'CLIENTE') return n.includes('CLIENTE');
+            if (filtro === 'TECNICA') return n.includes('TECNICA');
+            return true;
+        }
+
         function deveExibirAbasDeDataEsteira(status) {
             const s = status || filtroAtual;
             return s === 'TODOS' || s === 'PENDEN' || s === 'AGENDADO' || ehAbaDataEsteira(s);
@@ -2790,6 +2847,12 @@
                 params.set('status', 'AGENDADO');
                 params.set('data_agendamento_dia', filtroAtual);
                 if (filtroTurnoAtual) params.set('periodo_agendamento', filtroTurnoAtual);
+            }
+            if (
+                (filtroAtual === 'PENDEN' || filtroAtual === 'TODOS')
+                && (filtroTipoPendenciaAtual === 'CLIENTE' || filtroTipoPendenciaAtual === 'TECNICA')
+            ) {
+                params.set('tipo_pendencia', filtroTipoPendenciaAtual);
             }
             return `/crm/vendas/?${params.toString()}`;
         }
@@ -2881,13 +2944,13 @@
             );
 
             if (carregarInstaladas && !temFiltroInstaladas) {
-                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
                 const paEmpty = document.getElementById('painel-instaladas-antecipacao');
                 if (paEmpty) paEmpty.style.display = 'none';
                 return;
             }
             if (carregarVendasTotais && !temFiltroVendasTotais) {
-                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 return;
             }
 
@@ -2895,7 +2958,7 @@
                 var inp = document.getElementById('filtro-busca');
                 if (inp) inp.placeholder = 'Buscar CPF ou OS...';
             }
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
 
             try {
                 const timestamp = new Date().getTime();
@@ -3015,6 +3078,7 @@
                     }
                 } else {
                     atualizarFiltroTurnoEsteira(false);
+                    atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(filtroAtual));
                 }
 
                 // Filtragem por aba — servidor já filtra nas abas paginadas
@@ -3036,6 +3100,15 @@
                             vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
                         }
                     }
+                    if (
+                        (filtroAtual === 'PENDEN' || filtroAtual === 'TODOS')
+                        && (filtroTipoPendenciaAtual === 'CLIENTE' || filtroTipoPendenciaAtual === 'TECNICA')
+                    ) {
+                        vendas = vendas.filter(v => tipoPendenciaCorrespondeFiltro(
+                            obterTipoPendenciaVenda(v),
+                            filtroTipoPendenciaAtual
+                        ));
+                    }
                 }
                 if (carregarInstaladas && contadorPrincipaisEl) contadorPrincipaisEl.textContent = `${vendas.length}`;
                 if (carregarAgendados && contadorAgendadosPrincipaisEl) {
@@ -3047,7 +3120,7 @@
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
-                    tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     const pa = document.getElementById('painel-instaladas-antecipacao');
                     if (pa) pa.style.display = 'none';
                     return;
@@ -3076,6 +3149,7 @@
 
                     // --- 2. TRATAMENTO DE MOTIVO PENDÊNCIA (PRIORIZA O NOME DO BACKEND) ---
                     let motivoPendencia = '-';
+                    let tipoPendenciaTexto = '-';
                     if (v.motivo_pendencia_nome) {
                         motivoPendencia = v.motivo_pendencia_nome; // Já vem pronto do backend
                     } else if (v.motivo_pendencia) {
@@ -3085,6 +3159,27 @@
                             const mEncontrado = motivosLista.find(m => String(m.id) === String(v.motivo_pendencia));
                             motivoPendencia = mEncontrado ? mEncontrado.nome : `(Cód: ${v.motivo_pendencia})`;
                         }
+                    }
+                    if (v.motivo_pendencia_tipo) {
+                        tipoPendenciaTexto = v.motivo_pendencia_tipo;
+                    } else if (v.motivo_pendencia && typeof v.motivo_pendencia === 'object' && v.motivo_pendencia.tipo_pendencia) {
+                        tipoPendenciaTexto = v.motivo_pendencia.tipo_pendencia;
+                    } else if (v.motivo_pendencia) {
+                        const mTipo = motivosLista.find(m => String(m.id) === String(
+                            typeof v.motivo_pendencia === 'object' ? v.motivo_pendencia.id : v.motivo_pendencia
+                        ));
+                        if (mTipo && mTipo.tipo_pendencia) tipoPendenciaTexto = mTipo.tipo_pendencia;
+                    }
+                    let tipoPendenciaHtml = '-';
+                    if (tipoPendenciaTexto && tipoPendenciaTexto !== '-') {
+                        const tipoNorm = String(tipoPendenciaTexto)
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .toUpperCase();
+                        let badgeCls = 'bg-secondary';
+                        if (tipoNorm.includes('CLIENTE')) badgeCls = 'bg-warning text-dark';
+                        else if (tipoNorm.includes('TECNICA')) badgeCls = 'bg-info text-dark';
+                        tipoPendenciaHtml = `<span class="badge ${badgeCls}">${tipoPendenciaTexto}</span>`;
                     }
 
                     // --- 3. TRATAMENTO RESP. ALTERAÇÃO (PRIORIZA nome_editor) ---
@@ -3281,6 +3376,7 @@
                             incluiTexto(nomePlano, getFiltroColuna('fc-plano')) &&
                             incluiTexto(nomeStatus, getFiltroColuna('fc-status')) &&
                             incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
+                            incluiTexto(tipoPendenciaTexto, getFiltroColuna('fc-tipo-pendencia')) &&
                             incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
                             incluiTexto(possoAntecipTexto, getFiltroColuna('fc-posso-antecip')) &&
                             incluiTexto(possoReagendarTexto, getFiltroColuna('fc-posso-reagendar')) &&
@@ -3330,6 +3426,7 @@
                             <td data-esteira-col="adiant_sabado" data-label="Adiant. sábado">${celulaAdiantSabado}</td>
                             <td data-esteira-col="plano" data-label="Plano"><span class="d-inline-block text-break">${nomePlano}</span></td>
                             <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
+                            <td data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia small" data-label="Tipo de pendência">${tipoPendenciaHtml}</td>
                             <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
                             <td data-esteira-col="posso_antecip" class="esteira-col-posso-antecip small" data-label="Posso antecipar?">${possoAntecip}</td>
                             <td data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar small" data-label="Posso reagendar?">${possoReagendar}</td>
@@ -3376,7 +3473,7 @@
                     }
                 }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="16" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                if(!silent) tbody.innerHTML = '<tr><td colspan="17" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
                 var paErr = document.getElementById('painel-instaladas-antecipacao');
                 if (paErr) paErr.style.display = 'none';
             }
@@ -3416,6 +3513,7 @@
             });
 
             atualizarFiltroTurnoEsteira(ehAbaDataEsteira(filtroAtual));
+            atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(filtroAtual));
         }
 
         function atualizarFiltroTurnoEsteira(exibir) {
@@ -3435,6 +3533,23 @@
             }
         }
 
+        function atualizarFiltroTipoPendenciaEsteira(exibir) {
+            const container = document.getElementById('filtro-tipo-pendencia-container');
+            if (container) container.style.display = exibir ? 'block' : 'none';
+            if (!exibir) filtroTipoPendenciaAtual = '';
+            document.querySelectorAll('#filtro-tipo-pendencia-container .btn').forEach(btn => {
+                btn.classList.remove('active', 'btn-primary');
+                btn.classList.add('btn-outline-secondary');
+            });
+            let btnAtivo = document.getElementById('btn-tipo-pend-todos');
+            if (exibir && filtroTipoPendenciaAtual === 'CLIENTE') btnAtivo = document.getElementById('btn-tipo-pend-cliente');
+            else if (exibir && filtroTipoPendenciaAtual === 'TECNICA') btnAtivo = document.getElementById('btn-tipo-pend-tecnica');
+            if (btnAtivo) {
+                btnAtivo.classList.add('active', 'btn-primary');
+                btnAtivo.classList.remove('btn-outline-secondary');
+            }
+        }
+
         function filtrarTurno(turno, element) {
             filtroTurnoAtual = turno || '';
             esteiraPaginaAtual = 1;
@@ -3442,6 +3557,20 @@
                 btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
             });
             if (element) { element.classList.add('active', 'btn-primary'); element.classList.remove('btn-outline-secondary'); }
+            carregarVendas();
+        }
+
+        function filtrarTipoPendencia(tipo, element) {
+            filtroTipoPendenciaAtual = tipo || '';
+            esteiraPaginaAtual = 1;
+            document.querySelectorAll('#filtro-tipo-pendencia-container .btn').forEach(btn => {
+                btn.classList.remove('active', 'btn-primary');
+                btn.classList.add('btn-outline-secondary');
+            });
+            if (element) {
+                element.classList.add('active', 'btn-primary');
+                element.classList.remove('btn-outline-secondary');
+            }
             carregarVendas();
         }
 
@@ -3971,6 +4100,7 @@
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTipoPendenciaEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'block';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
@@ -3979,7 +4109,7 @@
                 if (pa) pa.style.display = 'none';
                 limparAbasDeDataEsteira();
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                tb.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
                 return;
             }
@@ -3989,6 +4119,7 @@
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTipoPendenciaEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'block';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
@@ -4005,6 +4136,7 @@
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTipoPendenciaEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'block';
@@ -4013,7 +4145,7 @@
                 if (paTot) paTot.style.display = 'none';
                 limparAbasDeDataEsteira();
                 const tbTot = document.getElementById('tabela-esteira-body');
-                tbTot.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
+                tbTot.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 sincronizarVisaoGestaoAproveitamento(false);
                 return;
             }
@@ -4023,6 +4155,7 @@
                 sincronizarVisaoChurnTratamento(false);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTipoPendenciaEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
@@ -4038,6 +4171,7 @@
                 sincronizarVisaoGestaoAproveitamento(false);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTipoPendenciaEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
@@ -4058,6 +4192,7 @@
             if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
             if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
             atualizarFiltroTurnoEsteira(ehAbaDataEsteira(status));
+            atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(status));
             restaurarAbasDeDataEsteira();
             carregarVendas();
         }

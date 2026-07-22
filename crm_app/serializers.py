@@ -314,6 +314,11 @@ class VendaSerializer(serializers.ModelSerializer):
     plano_nome = serializers.CharField(source='plano.nome', read_only=True)
     forma_pagamento_nome = serializers.CharField(source='forma_pagamento.nome', read_only=True)
     motivo_pendencia_nome = serializers.CharField(source='motivo_pendencia.nome', read_only=True, allow_null=True)
+    motivo_pendencia_tipo = serializers.CharField(
+        source='motivo_pendencia.tipo_pendencia',
+        read_only=True,
+        allow_null=True,
+    )
     
     # Auditoria
     nome_editor = serializers.SerializerMethodField()
@@ -337,7 +342,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'status_tratamento', 'status_tratamento_nome',
             'status_esteira', 'status_esteira_nome',
             'status_comissionamento', 'status_comissionamento_nome',
-            'motivo_pendencia', 'motivo_pendencia_nome',
+            'motivo_pendencia', 'motivo_pendencia_nome', 'motivo_pendencia_tipo',
             'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
             'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
             'complemento', 'bairro', 'cidade', 'estado',             'data_abertura', 'ordem_servico', 'data_agendamento',
