@@ -347,7 +347,7 @@ def consultar_viabilidade_kmz(cep, numero):
                 "O endereço não foi localizado no mapa (KMZ), mas o número consta na base de fachadas como *viável*.\n\n"
                 "⚠️ _Sujeito a vistoria técnica local._"
             )
-        return "❌ *ENDEREÇO NÃO LOCALIZADO*\nNão conseguimos converter esse CEP e número em coordenadas GPS. Tente enviar a localização (pino) ou use o comando *Fachada* para ver os números viáveis do CEP."
+        return "❌ *ENDEREÇO NÃO LOCALIZADO*\nNão conseguimos converter esse CEP e número em coordenadas GPS. Tente enviar a localização (pino) ou use o comando *DFV* para ver os números viáveis do CEP."
 
     cliente_lat = geo_data['lat']
     cliente_lng = geo_data['lng']

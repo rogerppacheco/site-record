@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Testes do comando DFV (Power BI ao vivo) e não-regressão do FACHADA."""
+"""Testes do DFV/CDOE (Power BI) e não-regressão da Fachada desativada."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -11,9 +11,14 @@ from crm_app.services.dfv_powerbi_service import (
     DfvPowerBiError,
     DfvPowerBiTimeout,
     _montar_complemento,
+    consultar_fachadas_por_cdo,
     consultar_fachadas_por_cep,
+    formatar_numeros_rua_cdoe,
+    formatar_resumo_cdoe,
     formatar_resposta_dfv_powerbi,
     limpar_cep,
+    limpar_codigo_cdo,
+    montar_grupos_rua_cdoe,
     parse_dsr_rows,
 )
 
@@ -27,6 +32,17 @@ class LimparCepTest(SimpleTestCase):
 
     def test_zero_esquerda(self):
         self.assertEqual(limpar_cep("130000"), "00130000")
+
+
+class LimparCodigoCdoTest(SimpleTestCase):
+    def test_trim_e_upper(self):
+        self.assertEqual(limpar_codigo_cdo("  cdo-1  "), "CDO-1")
+
+    def test_remove_espacos(self):
+        self.assertEqual(limpar_codigo_cdo("CDO 123"), "CDO123")
+
+    def test_vazio(self):
+        self.assertEqual(limpar_codigo_cdo("   "), "")
 
 
 class MontarComplementoTest(SimpleTestCase):
@@ -152,6 +168,8 @@ class FormatacaoRespostaTest(SimpleTestCase):
         self.assertEqual(len(partes), 1)
         self.assertIn("NENHUMA FACHADA", partes[0])
         self.assertIn("Power BI", partes[0])
+        self.assertNotIn("Fachada", partes[0])
+        self.assertIn("CDOE", partes[0])
 
     def test_sem_viaveis_mostra_status(self):
         regs = [
@@ -197,6 +215,84 @@ class FormatacaoRespostaTest(SimpleTestCase):
         self.assertTrue(all(len(p) <= 4000 for p in partes))
 
 
+class CdoeFormatacaoTest(SimpleTestCase):
+    def _regs_duas_ruas(self):
+        return [
+            {
+                "CEP": "30130000",
+                "NO_FACHADA": "10",
+                "COMPLEMENTO1": None,
+                "COMPLEMENTO2": None,
+                "COMPLEMENTO3": None,
+                "LOGRADOURO": "RUA A",
+                "BAIRRO": "CENTRO",
+                "MUNICIPIO": "BH",
+                "UF": "MG",
+                "VIABILIDADE_ATUAL": "Viável",
+                "CODIGO_CDO": "CDO-99",
+            },
+            {
+                "CEP": "30130000",
+                "NO_FACHADA": "12",
+                "COMPLEMENTO1": "AP 1",
+                "COMPLEMENTO2": None,
+                "COMPLEMENTO3": None,
+                "LOGRADOURO": "RUA A",
+                "BAIRRO": "CENTRO",
+                "MUNICIPIO": "BH",
+                "UF": "MG",
+                "VIABILIDADE_ATUAL": "Viável",
+                "CODIGO_CDO": "CDO-99",
+            },
+            {
+                "CEP": "30140000",
+                "NO_FACHADA": "5",
+                "COMPLEMENTO1": None,
+                "COMPLEMENTO2": None,
+                "COMPLEMENTO3": None,
+                "LOGRADOURO": "RUA B",
+                "BAIRRO": "SAVASSI",
+                "MUNICIPIO": "BH",
+                "UF": "MG",
+                "VIABILIDADE_ATUAL": "Viável",
+                "CODIGO_CDO": "CDO-99",
+            },
+        ]
+
+    def test_agrupa_por_rua_cep(self):
+        grupos = montar_grupos_rua_cdoe(self._regs_duas_ruas())
+        self.assertEqual(len(grupos), 2)
+        self.assertEqual(grupos[0]["logradouro"], "RUA A")
+        self.assertEqual(len(grupos[0]["linhas"]), 2)
+        self.assertEqual(grupos[1]["logradouro"], "RUA B")
+        self.assertEqual(len(grupos[1]["linhas"]), 1)
+
+    def test_resumo_numerado(self):
+        grupos = montar_grupos_rua_cdoe(self._regs_duas_ruas())
+        texto = formatar_resumo_cdoe("cdo-99", grupos)[0]
+        self.assertIn("CDOE (Power BI ao vivo)", texto)
+        self.assertIn("CDO-99", texto)
+        self.assertIn("1)", texto)
+        self.assertIn("2)", texto)
+        self.assertIn("RUA A", texto)
+        self.assertIn("RUA B", texto)
+        self.assertIn("CANCELAR", texto)
+
+    def test_resumo_vazio(self):
+        texto = formatar_resumo_cdoe("X", [])[0]
+        self.assertIn("NENHUM ENDEREÇO", texto)
+        self.assertIn("DFV", texto)
+
+    def test_numeros_da_rua(self):
+        grupos = montar_grupos_rua_cdoe(self._regs_duas_ruas())
+        texto = formatar_numeros_rua_cdoe("CDO-99", grupos[0])[0]
+        self.assertIn("CDOE CDO-99", texto)
+        self.assertIn("RUA A", texto)
+        self.assertIn("*Total de fachadas:* 2", texto)
+        self.assertIn("10", texto)
+        self.assertIn("12 (AP 1)", texto)
+
+
 @override_settings(
     DFV_POWERBI_ENABLED=True,
     DFV_POWERBI_RESOURCE_KEY="test-key",
@@ -214,6 +310,10 @@ class ConsultarPowerBiTest(SimpleTestCase):
     def test_cep_invalido(self):
         with self.assertRaises(DfvPowerBiError):
             consultar_fachadas_por_cep("123")
+
+    def test_cdo_invalido(self):
+        with self.assertRaises(DfvPowerBiError):
+            consultar_fachadas_por_cdo("   ")
 
     @patch("crm_app.services.dfv_powerbi_service.requests.post")
     def test_timeout(self, mock_post):
@@ -276,25 +376,77 @@ class ConsultarPowerBiTest(SimpleTestCase):
         self.assertEqual(regs[0]["NO_FACHADA"], 10)
         self.assertEqual(regs[0]["LOGRADOURO"], "RUA X")
 
+    @patch("crm_app.services.dfv_powerbi_service.requests.post")
+    def test_consulta_por_cdo_filtra_coluna(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "results": [
+                {
+                    "result": {
+                        "data": {
+                            "dsr": {
+                                "DS": [
+                                    {
+                                        "ValueDicts": {},
+                                        "IC": True,
+                                        "PH": [{"DM0": []}],
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = mock_resp
+        regs = consultar_fachadas_por_cdo("CDO-99")
+        self.assertEqual(regs, [])
+        payload = mock_post.call_args.kwargs.get("data") or mock_post.call_args[1].get("data")
+        if payload is None:
+            # requests.post(..., data=json.dumps(...))
+            import json
+
+            raw = mock_post.call_args[1].get("data") if mock_post.call_args[1] else mock_post.call_args.kwargs.get("data")
+            self.assertIsNotNone(raw)
+            payload = raw
+        import json
+
+        body = json.loads(payload) if isinstance(payload, str) else payload
+        cmd = body["queries"][0]["Query"]["Commands"][0]
+        where = cmd["SemanticQueryDataShapeCommand"]["Query"]["Where"][0]
+        prop = where["Condition"]["Comparison"]["Left"]["Column"]["Property"]
+        lit = where["Condition"]["Comparison"]["Right"]["Literal"]["Value"]
+        self.assertEqual(prop, "CODIGO_CDO")
+        self.assertEqual(lit, "'CDO-99'")
+
 
 class MenuEFluxoWebhookTest(SimpleTestCase):
-    """Garante texto do MENU e que FACHADA não importa o service Power BI."""
+    """Garante texto do MENU e que Fachada foi desativada em favor de DFV/CDOE."""
 
-    def test_menu_contem_dfv_e_fachada(self):
-        # Trecho espelhado do handler (evita subir o webhook inteiro)
+    def test_menu_contem_dfv_e_cdoe_sem_fachada(self):
         linhas_menu = [
-            "• *Fachada* - Consultar fachadas por CEP\n",
             "• *DFV* - Consultar fachadas por CEP (Power BI ao vivo)\n",
+            "• *CDOE* - Consultar endereços por código do CDO (Power BI)\n",
         ]
         menu = "".join(linhas_menu)
         self.assertIn("*DFV*", menu)
+        self.assertIn("*CDOE*", menu)
         self.assertIn("Power BI ao vivo", menu)
-        self.assertIn("*Fachada*", menu)
+        self.assertNotIn("*Fachada*", menu)
+
+    def test_mensagem_redirecionamento_fachada(self):
+        msg = (
+            "A consulta de fachadas agora é pelo *DFV*.\n"
+            "Envie *DFV* no chat para consultar online a base de viabilidade da Nio."
+        )
+        self.assertIn("*DFV*", msg)
+        self.assertIn("viabilidade da Nio", msg)
 
     @patch("crm_app.utils.DFV")
     @patch("builtins.print")
-    def test_fachada_usa_apenas_base_local(self, _mock_print, mock_dfv):
-        """Não-regressão: listar_fachadas_dfv não chama Power BI."""
+    def test_listar_fachadas_local_ainda_existe(self, _mock_print, mock_dfv):
+        """Base local permanece no código (legado), mas o comando WPP não a usa mais."""
         from crm_app.utils import listar_fachadas_dfv
 
         qs = MagicMock()

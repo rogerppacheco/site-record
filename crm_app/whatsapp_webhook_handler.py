@@ -1,7 +1,7 @@
 # crm_app/whatsapp_webhook_handler.py
 """
 Handler para processar mensagens do WhatsApp e executar comandos:
-- Fachada
+- DFV / CDOE
 - Viabilidade  
 - Status
 - Fatura
@@ -7081,7 +7081,6 @@ def processar_webhook_whatsapp(data, request=None):
     from crm_app.models import SessaoWhatsapp
     from crm_app.whatsapp_service import WhatsAppService
     from crm_app.utils import (
-        listar_fachadas_dfv,
         consultar_viabilidade_kmz,
         consultar_status_venda,
         consultar_status_venda_com_decisao,
@@ -7956,17 +7955,16 @@ def processar_webhook_whatsapp(data, request=None):
             resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
                         "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
-        # FACHADA só como comando quando etapa é inicial (evita "Fachada viável" em inclusao_observacoes ser interpretado como comando)
+        # FACHADA desativada: redireciona para DFV (sem registrar estatística nem abrir fluxo)
         if etapa_atual == 'inicial' and ('FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa):
-            logger.info(f"[Webhook] Comando FACHADA reconhecido!")
-            sessao.etapa = 'fachada_cep'
-            sessao.dados_temp = {}
-            sessao.save()
-            _registrar_estatistica(telefone_formatado, 'FACHADA')
-            resposta = "Por favor, digite o CEP para consultar fachadas (apenas números):"
+            logger.info("[Webhook] Comando FACHADA reconhecido (desativado → DFV)")
+            resposta = (
+                "A consulta de fachadas agora é pelo *DFV*.\n"
+                "Envie *DFV* no chat para consultar online a base de viabilidade da Nio."
+            )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
-        # DFV: consulta ao vivo no Power BI (fluxo separado de FACHADA / base local)
+        # DFV: consulta ao vivo no Power BI por CEP
         if etapa_atual == 'inicial' and mensagem_limpa == 'DFV':
             logger.info("[Webhook] Comando DFV reconhecido!")
             from django.conf import settings as _dfv_settings
@@ -7974,7 +7972,7 @@ def processar_webhook_whatsapp(data, request=None):
             if not getattr(_dfv_settings, 'DFV_POWERBI_ENABLED', True):
                 resposta = (
                     "⚠️ A consulta *DFV* (Power BI ao vivo) está temporariamente indisponível.\n"
-                    "Use *Fachada* para consultar a base local."
+                    "Tente novamente em instantes ou use *CDOE* se souber o código do CDO."
                 )
                 return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
@@ -7987,6 +7985,43 @@ def processar_webhook_whatsapp(data, request=None):
                 "(apenas números; hífen é aceito):"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        # CDOE: consulta ao vivo no Power BI por CODIGO_CDO (resumo por rua → números)
+        if etapa_atual == 'inicial' and (
+            mensagem_limpa == 'CDOE' or mensagem_limpa.startswith('CDOE ')
+        ):
+            logger.info("[Webhook] Comando CDOE reconhecido!")
+            from django.conf import settings as _dfv_settings
+
+            if not getattr(_dfv_settings, 'DFV_POWERBI_ENABLED', True):
+                resposta = (
+                    "⚠️ A consulta *CDOE* (Power BI ao vivo) está temporariamente indisponível.\n"
+                    "Tente novamente em instantes ou use *DFV* com o CEP."
+                )
+                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+            codigo_inline = mensagem_limpa[4:].strip() if mensagem_limpa.startswith('CDOE ') else ''
+            _registrar_estatistica(telefone_formatado, 'CDOE')
+
+            if codigo_inline:
+                # Código já veio na mesma mensagem — processa direto
+                sessao.etapa = 'cdoe_codigo'
+                sessao.dados_temp = {}
+                sessao.save()
+                # Reusa o handler de etapa abaixo via mensagem_texto = codigo
+                mensagem_texto = codigo_inline
+                mensagem_limpa = codigo_inline.upper()
+                etapa_atual = 'cdoe_codigo'
+            else:
+                sessao.etapa = 'cdoe_codigo'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = (
+                    "Digite o *número/código da CDOE* (coluna CODIGO_CDO).\n"
+                    "Ex.: 12345 ou CDO-12345\n\n"
+                    "Ou envie *CANCELAR* para sair."
+                )
+                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Comando MATERIAL
         if mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
@@ -8087,8 +8122,8 @@ def processar_webhook_whatsapp(data, request=None):
             linhas_menu = [
                 "📋 *MENU*\n\n",
                 "Escolha uma opção:\n",
-                "• *Fachada* - Consultar fachadas por CEP\n",
                 "• *DFV* - Consultar fachadas por CEP (Power BI ao vivo)\n",
+                "• *CDOE* - Consultar endereços por código do CDO (Power BI)\n",
                 "• *Viabilidade* - Consultar viabilidade por CEP e número\n",
                 "• *Inclusão* - Solicitar viabilidade (formulário)\n",
                 "• *Status* - Consultar status de pedido\n",
@@ -8230,19 +8265,14 @@ def processar_webhook_whatsapp(data, request=None):
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'fachada_cep':
-            cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
-            if not cep_limpo or len(cep_limpo) < 8:
-                resposta = "❌ CEP inválido. Por favor, digite o CEP completo (somente números):"
-            else:
-                logger.info(f"[Webhook] Buscando fachadas para CEP: {cep_limpo}")
-                resposta_lista = listar_fachadas_dfv(cep_limpo)
-                if isinstance(resposta_lista, list):
-                    resposta = "🔎 Buscando todas as fachadas no DFV...\n\n" + "\n".join(resposta_lista)
-                else:
-                    resposta = f"🔎 Buscando todas as fachadas no DFV...\n\n{resposta_lista}"
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
+            # Sessões antigas ainda na etapa fachada_cep: redireciona para DFV
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = (
+                "A consulta de fachadas agora é pelo *DFV*.\n"
+                "Envie *DFV* no chat para consultar online a base de viabilidade da Nio."
+            )
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'dfv_cep':
@@ -8254,6 +8284,12 @@ def processar_webhook_whatsapp(data, request=None):
                 formatar_resposta_dfv_powerbi,
                 limpar_cep as limpar_cep_dfv,
             )
+
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return _enviar_resposta_e_retornar("Consulta *DFV* cancelada.")
 
             cep_limpo = limpar_cep_dfv(mensagem_texto)
             if len(cep_limpo) != 8:
@@ -8279,18 +8315,18 @@ def processar_webhook_whatsapp(data, request=None):
             except DfvPowerBiDisabled:
                 partes = [
                     "⚠️ A consulta *DFV* (Power BI ao vivo) está temporariamente indisponível.\n"
-                    "Use *Fachada* para consultar a base local."
+                    "Tente novamente em instantes ou use *CDOE* se souber o código do CDO."
                 ]
             except DfvPowerBiTimeout:
                 partes = [
                     "❌ Não foi possível consultar o Power BI agora (tempo esgotado).\n"
-                    "Tente novamente em instantes. A base local continua disponível em *Fachada*."
+                    "Tente novamente em instantes ou use *CDOE* se souber o código do CDO."
                 ]
             except DfvPowerBiError as exc:
                 logger.warning("[Webhook] DFV Power BI erro CEP=%s: %s", cep_limpo, exc)
                 partes = [
                     "❌ Não foi possível consultar o Power BI agora.\n"
-                    "Tente novamente em instantes. A base local continua disponível em *Fachada*."
+                    "Tente novamente em instantes ou use *CDOE* se souber o código do CDO."
                 ]
             except Exception as exc:
                 logger.exception("[Webhook] DFV Power BI falha inesperada CEP=%s: %s", cep_limpo, exc)
@@ -8313,6 +8349,165 @@ def processar_webhook_whatsapp(data, request=None):
                     whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
                 except Exception as e:
                     logger.exception("[Webhook] Erro ao enviar parte DFV %s: %s", idx + 1, e)
+            return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
+
+        elif etapa_atual in ('cdoe_codigo', 'cdoe_escolher_rua'):
+            from crm_app.services.dfv_powerbi_service import (
+                DfvPowerBiDisabled,
+                DfvPowerBiError,
+                DfvPowerBiTimeout,
+                consultar_fachadas_por_cdo,
+                formatar_numeros_rua_cdoe,
+                formatar_resumo_cdoe,
+                limpar_codigo_cdo,
+                montar_grupos_rua_cdoe,
+            )
+
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return _enviar_resposta_e_retornar("Consulta *CDOE* cancelada.")
+
+            if etapa_atual == 'cdoe_escolher_rua':
+                dados_cdoe = sessao.dados_temp or {}
+                grupos = dados_cdoe.get('cdoe_grupos') or []
+                codigo_cdo = dados_cdoe.get('cdoe_codigo') or ''
+                try:
+                    idx_rua = int(re.sub(r'\D', '', mensagem_limpa) or '0')
+                except ValueError:
+                    idx_rua = 0
+                if idx_rua < 1 or idx_rua > len(grupos):
+                    resposta = (
+                        f"❌ Opção inválida. Digite o *número da rua* (1 a {len(grupos)}) "
+                        "ou *CANCELAR* para sair."
+                    )
+                    return _enviar_resposta_e_retornar(resposta)
+
+                grupo = grupos[idx_rua - 1]
+                partes = formatar_numeros_rua_cdoe(codigo_cdo, grupo)
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+
+                for idx, parte in enumerate(partes):
+                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                    try:
+                        _elapsed = time.monotonic() - _webhook_t0
+                        if idx == len(partes) - 1:
+                            texto = (texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
+                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                    except Exception as e:
+                        logger.exception("[Webhook] Erro ao enviar parte CDOE rua %s: %s", idx + 1, e)
+                return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
+
+            # etapa cdoe_codigo
+            codigo_limpo = limpar_codigo_cdo(mensagem_texto)
+            if not codigo_limpo:
+                resposta = (
+                    "❌ Código inválido. Digite o número/código da CDOE "
+                    "(ex.: 12345 ou CDO-12345), ou *CANCELAR*:"
+                )
+                return _enviar_resposta_e_retornar(resposta)
+
+            logger.info("[Webhook] CDOE Power BI — consultando CODIGO_CDO=%s", codigo_limpo)
+            try:
+                try:
+                    whatsapp_service.enviar_mensagem_texto(
+                        telefone_formatado,
+                        f"🔎 Consultando Power BI ao vivo para a CDOE *{codigo_limpo}*...",
+                    )
+                except Exception:
+                    logger.debug("[Webhook] Falha ao enviar aviso CDOE", exc_info=True)
+
+                registros = consultar_fachadas_por_cdo(codigo_limpo)
+                grupos = montar_grupos_rua_cdoe(registros)
+                partes = formatar_resumo_cdoe(codigo_limpo, grupos)
+            except DfvPowerBiDisabled:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                partes = [
+                    "⚠️ A consulta *CDOE* (Power BI ao vivo) está temporariamente indisponível.\n"
+                    "Tente novamente em instantes ou use *DFV* com o CEP."
+                ]
+                for idx, parte in enumerate(partes):
+                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                    try:
+                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                    except Exception as e:
+                        logger.exception("[Webhook] Erro ao enviar CDOE disabled: %s", e)
+                return {'status': 'ok', 'mensagem': partes[0]}
+            except DfvPowerBiTimeout:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                partes = [
+                    "❌ Não foi possível consultar o Power BI agora (tempo esgotado).\n"
+                    "Tente novamente em instantes ou use *DFV* com o CEP."
+                ]
+                for idx, parte in enumerate(partes):
+                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                    try:
+                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                    except Exception as e:
+                        logger.exception("[Webhook] Erro ao enviar CDOE timeout: %s", e)
+                return {'status': 'ok', 'mensagem': partes[0]}
+            except DfvPowerBiError as exc:
+                logger.warning("[Webhook] CDOE Power BI erro codigo=%s: %s", codigo_limpo, exc)
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                partes = [
+                    "❌ Não foi possível consultar o Power BI agora.\n"
+                    "Tente novamente em instantes ou use *DFV* com o CEP."
+                ]
+                for idx, parte in enumerate(partes):
+                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                    try:
+                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                    except Exception as e:
+                        logger.exception("[Webhook] Erro ao enviar CDOE error: %s", e)
+                return {'status': 'ok', 'mensagem': partes[0]}
+            except Exception as exc:
+                logger.exception("[Webhook] CDOE falha inesperada codigo=%s: %s", codigo_limpo, exc)
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                partes = [
+                    "❌ Não foi possível consultar o Power BI agora.\n"
+                    "Tente novamente em instantes."
+                ]
+                for idx, parte in enumerate(partes):
+                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                    try:
+                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                    except Exception as e:
+                        logger.exception("[Webhook] Erro ao enviar CDOE unexpected: %s", e)
+                return {'status': 'ok', 'mensagem': partes[0]}
+
+            if not grupos:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+            else:
+                # Guarda só o necessário para o 2º passo (números por rua)
+                sessao.etapa = 'cdoe_escolher_rua'
+                sessao.dados_temp = {
+                    'cdoe_codigo': codigo_limpo,
+                    'cdoe_grupos': grupos,
+                }
+                sessao.save()
+
+            for idx, parte in enumerate(partes):
+                texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                try:
+                    _elapsed = time.monotonic() - _webhook_t0
+                    if idx == len(partes) - 1:
+                        texto = (texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
+                    whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                except Exception as e:
+                    logger.exception("[Webhook] Erro ao enviar parte CDOE resumo %s: %s", idx + 1, e)
             return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
         
         elif etapa_atual == 'viabilidade_cep':

@@ -1369,7 +1369,7 @@ class EstatisticasBotWhatsAppView(APIView):
             dias = request.query_params.get('dias', 30)  # Padrão: últimos 30 dias
             try:
                 dias = int(dias)
-            except:
+            except Exception:
                 dias = 30
             
             data_inicio = timezone.now() - timedelta(days=dias)
@@ -1386,69 +1386,62 @@ class EstatisticasBotWhatsAppView(APIView):
             
             comando_dict = {item['comando']: item['total'] for item in por_comando}
 
-            # Comandos exibidos nos 4 primeiros cartões da UI
-            principais = {'FACHADA', 'VIABILIDADE', 'FATURA', 'STATUS'}
-            outros_tipos = sum(
-                v for k, v in comando_dict.items()
-                if k not in principais
-            )
-            
-            # 2. Contagem por vendedor (com coluna "outros": VENDER, PEDIDO, ANDAMENTO, CREDITO, etc.)
+            # Ordem canônica (choices) + quaisquer valores extras presentes no período
+            ordem_choices = [c[0] for c in EstatisticaBotWhatsApp.COMANDO_CHOICES]
+            extras = sorted(k for k in comando_dict.keys() if k not in ordem_choices)
+            comandos_ordem = ordem_choices + extras
+
+            por_comando_detalhe = {
+                cmd: comando_dict.get(cmd, 0) for cmd in comandos_ordem
+            }
+            # Inclui no detalhe só o que tem uso, mas mantém lista completa em `comandos`
+            # (UI usa `comandos` + `por_comando_detalhe`)
+
+            # 2. Contagem por vendedor — mapa dinâmico por comando
+            annotate_kwargs = {
+                'total': Count('id'),
+            }
+            for cmd in comandos_ordem:
+                annotate_kwargs[f'cmd_{cmd}'] = Count('id', filter=Q(comando=cmd))
+
             def _annotate_por_grupo(qs):
                 return qs.values(
                     'vendedor__id',
                     'vendedor__username',
                     'vendedor__first_name',
                     'vendedor__last_name',
-                ).annotate(
-                    total=Count('id'),
-                    fachada=Count('id', filter=Q(comando='FACHADA')),
-                    viabilidade=Count('id', filter=Q(comando='VIABILIDADE')),
-                    fatura=Count('id', filter=Q(comando='FATURA')),
-                    status=Count('id', filter=Q(comando='STATUS')),
-                    outros=Count('id', filter=~Q(comando__in=list(principais))),
-                ).order_by('-total')
+                ).annotate(**annotate_kwargs).order_by('-total')
 
             por_vendedor = _annotate_por_grupo(estatisticas.filter(vendedor__isnull=False))
             por_sem_vendedor = _annotate_por_grupo(estatisticas.filter(vendedor__isnull=True))
             
-            vendedores_data = []
-            for item in por_vendedor:
+            def _linha_vendedor(item, sem_cadastro: bool) -> dict:
                 nome_completo = item.get('vendedor__first_name', '') or ''
                 sobrenome = item.get('vendedor__last_name', '') or ''
                 if sobrenome:
                     nome_completo = f"{nome_completo} {sobrenome}".strip()
                 if not nome_completo:
-                    nome_completo = item.get('vendedor__username', 'N/A')
-                
-                vendedores_data.append({
+                    nome_completo = (
+                        'Sem vínculo no cadastro (só telefone)'
+                        if sem_cadastro
+                        else item.get('vendedor__username', 'N/A')
+                    )
+                comandos_vendedor = {
+                    cmd: item.get(f'cmd_{cmd}', 0) or 0 for cmd in comandos_ordem
+                }
+                return {
                     'vendedor_id': item['vendedor__id'],
                     'vendedor_nome': nome_completo,
-                    'vendedor_username': item.get('vendedor__username', 'N/A'),
+                    'vendedor_username': item.get('vendedor__username', 'N/A') if not sem_cadastro else '—',
                     'total': item['total'],
-                    'fachada': item['fachada'],
-                    'viabilidade': item['viabilidade'],
-                    'fatura': item['fatura'],
-                    'status': item['status'],
-                    'outros': item['outros'],
-                    'sem_cadastro': False,
-                })
+                    'comandos': comandos_vendedor,
+                    'sem_cadastro': sem_cadastro,
+                }
 
-            # Quem usa o bot mas o número não bate com tel_whatsapp 1–3 no CRM
-            for item in por_sem_vendedor:
-                vendedores_data.append({
-                    'vendedor_id': None,
-                    'vendedor_nome': 'Sem vínculo no cadastro (só telefone)',
-                    'vendedor_username': '—',
-                    'total': item['total'],
-                    'fachada': item['fachada'],
-                    'viabilidade': item['viabilidade'],
-                    'fatura': item['fatura'],
-                    'status': item['status'],
-                    'outros': item['outros'],
-                    'sem_cadastro': True,
-                })
-
+            vendedores_data = [_linha_vendedor(item, False) for item in por_vendedor]
+            vendedores_data.extend(
+                _linha_vendedor(item, True) for item in por_sem_vendedor
+            )
             vendedores_data.sort(key=lambda x: x['total'], reverse=True)
             
             # 3. Totais gerais
@@ -1463,14 +1456,9 @@ class EstatisticasBotWhatsAppView(APIView):
                     'sem_vendedor': total_sem_vendedor,
                     'com_vendedor': total_geral - total_sem_vendedor
                 },
-                'por_comando': {
-                    'FACHADA': comando_dict.get('FACHADA', 0),
-                    'VIABILIDADE': comando_dict.get('VIABILIDADE', 0),
-                    'FATURA': comando_dict.get('FATURA', 0),
-                    'STATUS': comando_dict.get('STATUS', 0),
-                    'OUTROS': outros_tipos,
-                },
-                'por_comando_detalhe': comando_dict,
+                'comandos': comandos_ordem,
+                'por_comando': por_comando_detalhe,
+                'por_comando_detalhe': por_comando_detalhe,
                 'por_vendedor': vendedores_data
             })
         except Exception as e:
@@ -1481,7 +1469,8 @@ class EstatisticasBotWhatsAppView(APIView):
                 'periodo_dias': 30,
                 'data_inicio': None,
                 'totais': {'geral': 0, 'sem_vendedor': 0, 'com_vendedor': 0},
-                'por_comando': {'FACHADA': 0, 'VIABILIDADE': 0, 'FATURA': 0, 'STATUS': 0, 'OUTROS': 0},
+                'comandos': [],
+                'por_comando': {},
                 'por_comando_detalhe': {},
                 'por_vendedor': []
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

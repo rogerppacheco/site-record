@@ -1681,6 +1681,7 @@ class EstatisticaBotWhatsApp(models.Model):
     COMANDO_CHOICES = [
         ('FACHADA', 'Fachada'),
         ('DFV', 'DFV (Power BI)'),
+        ('CDOE', 'CDOE (Power BI)'),
         ('VIABILIDADE', 'Viabilidade'),
         ('FATURA', 'Fatura'),
         ('STATUS', 'Status'),
@@ -1688,6 +1689,7 @@ class EstatisticaBotWhatsApp(models.Model):
         ('BIO', 'Bio (Br Pronto)'),
         ('PEDIDO', 'Pedido'),
         ('VENDER', 'Vender'),
+        ('ANDAMENTO', 'Andamento'),
     ]
     
     telefone = models.CharField(max_length=100, db_index=True, help_text="Telefone do usuário que recebeu a mensagem")

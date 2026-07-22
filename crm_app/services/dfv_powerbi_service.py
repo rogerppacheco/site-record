@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Consulta ao vivo de fachadas por CEP no Power BI público (DFV_SUDESTE).
+Consulta ao vivo de fachadas no Power BI público (DFV_SUDESTE).
 
-Independente da base local `crm_app.models.DFV` usada pelo comando FACHADA.
+Comandos WhatsApp:
+- DFV: filtro por CEP
+- CDOE: filtro por CODIGO_CDO (resumo por rua → números)
+
+Independente da base local `crm_app.models.DFV` (legado; comando Fachada desativado).
 """
 from __future__ import annotations
 
@@ -39,6 +43,7 @@ SELECT_COLS: list[str] = [
 ]
 
 CACHE_KEY_PREFIX = "dfv_pbi:cep:"
+CACHE_KEY_PREFIX_CDO = "dfv_pbi:cdo:"
 _local_cache_lock = threading.Lock()
 _local_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
@@ -63,6 +68,19 @@ def limpar_cep(cep: str) -> str:
     if len(digitos) > 8:
         digitos = digitos[-8:]
     return digitos.zfill(8)
+
+
+def limpar_codigo_cdo(codigo: str) -> str:
+    """
+    Normaliza o código CDO informado pelo vendedor.
+
+    Remove espaços extras e mantém letras/números/hífen em maiúsculas.
+    """
+    texto = str(codigo or "").strip().upper()
+    texto = re.sub(r"\s+", "", texto)
+    # Remove aspas e caracteres de formatação comuns no WhatsApp
+    texto = texto.strip("*_`'\"")
+    return texto
 
 
 def _cfg(name: str, default: Any = None) -> Any:
@@ -202,7 +220,11 @@ def parse_dsr_rows(
     return rows, incomplete, rt
 
 
-def _build_cmd(cep: str, restart_tokens: Optional[list[Any]] = None) -> dict[str, Any]:
+def _build_cmd(
+    filter_property: str,
+    filter_value: str,
+    restart_tokens: Optional[list[Any]] = None,
+) -> dict[str, Any]:
     window_count = int(_cfg("DFV_POWERBI_WINDOW_COUNT", 5000) or 5000)
     select = [
         {
@@ -218,6 +240,9 @@ def _build_cmd(cep: str, restart_tokens: Optional[list[Any]] = None) -> dict[str
     if restart_tokens is not None:
         window_obj["RestartTokens"] = restart_tokens
 
+    # Literal string no dialecto Power BI: 'valor'
+    literal = str(filter_value).replace("'", "''")
+
     return {
         "SemanticQueryDataShapeCommand": {
             "Query": {
@@ -232,10 +257,10 @@ def _build_cmd(cep: str, restart_tokens: Optional[list[Any]] = None) -> dict[str
                                 "Left": {
                                     "Column": {
                                         "Expression": {"SourceRef": {"Source": "b"}},
-                                        "Property": "CEP",
+                                        "Property": filter_property,
                                     }
                                 },
-                                "Right": {"Literal": {"Value": f"'{cep}'"}},
+                                "Right": {"Literal": {"Value": f"'{literal}'"}},
                             }
                         }
                     }
@@ -304,11 +329,10 @@ def _rows_to_dicts(rows: list[list[Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def _cache_get(cep: str) -> Optional[list[dict[str, Any]]]:
+def _cache_get(key: str) -> Optional[list[dict[str, Any]]]:
     ttl = int(_cfg("DFV_POWERBI_CACHE_TTL_SECONDS", 600) or 0)
     if ttl <= 0:
         return None
-    key = f"{CACHE_KEY_PREFIX}{cep}"
     try:
         cached = cache.get(key)
         if cached is not None:
@@ -318,21 +342,20 @@ def _cache_get(cep: str) -> Optional[list[dict[str, Any]]]:
 
     now = time.time()
     with _local_cache_lock:
-        entry = _local_cache.get(cep)
+        entry = _local_cache.get(key)
         if not entry:
             return None
         expires_at, data = entry
         if expires_at < now:
-            _local_cache.pop(cep, None)
+            _local_cache.pop(key, None)
             return None
         return data
 
 
-def _cache_set(cep: str, data: list[dict[str, Any]]) -> None:
+def _cache_set(key: str, data: list[dict[str, Any]]) -> None:
     ttl = int(_cfg("DFV_POWERBI_CACHE_TTL_SECONDS", 600) or 0)
     if ttl <= 0:
         return
-    key = f"{CACHE_KEY_PREFIX}{cep}"
     try:
         cache.set(key, data, timeout=ttl)
         return
@@ -340,12 +363,75 @@ def _cache_set(cep: str, data: list[dict[str, Any]]) -> None:
         logger.debug("[DFV-PBI] falha ao gravar cache Django", exc_info=True)
 
     with _local_cache_lock:
-        _local_cache[cep] = (time.time() + ttl, data)
+        _local_cache[key] = (time.time() + ttl, data)
         # Evita crescimento indefinido em memória
         if len(_local_cache) > 500:
             oldest = sorted(_local_cache.items(), key=lambda kv: kv[1][0])[:100]
             for k, _ in oldest:
                 _local_cache.pop(k, None)
+
+
+def _consultar_por_filtro(
+    filter_property: str,
+    filter_value: str,
+    cache_key: str,
+    log_label: str,
+) -> list[dict[str, Any]]:
+    """Consulta paginada genérica no Power BI com cache."""
+    if not _feature_enabled():
+        raise DfvPowerBiDisabled("Consulta DFV Power BI desabilitada.")
+
+    resource_key = str(_cfg("DFV_POWERBI_RESOURCE_KEY", "") or "")
+    if not resource_key:
+        raise DfvPowerBiError("DFV_POWERBI_RESOURCE_KEY não configurada.")
+
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        logger.info("[DFV-PBI] cache hit %s=%s (%s registros)", log_label, filter_value, len(cached))
+        return cached
+
+    started = time.monotonic()
+    all_rows: list[dict[str, Any]] = []
+    restart: Optional[list[Any]] = None
+    page = 0
+    max_pages = int(_cfg("DFV_POWERBI_MAX_PAGES", 20) or 20)
+
+    try:
+        while page < max_pages:
+            page += 1
+            data = _query_page(
+                _build_cmd(filter_property, filter_value, restart_tokens=restart)
+            )
+            rows, incomplete, rt = parse_dsr_rows(data, len(SELECT_COLS))
+            all_rows.extend(_rows_to_dicts(rows))
+            logger.info(
+                "[DFV-PBI] %s=%s page=%s +%s total=%s incomplete=%s",
+                log_label,
+                filter_value,
+                page,
+                len(rows),
+                len(all_rows),
+                incomplete,
+            )
+            if not incomplete or not rt or not rows:
+                break
+            restart = rt
+    except DfvPowerBiError:
+        raise
+    except Exception as exc:
+        logger.exception("[DFV-PBI] erro inesperado %s=%s", log_label, filter_value)
+        raise DfvPowerBiError(str(exc)) from exc
+
+    elapsed = time.monotonic() - started
+    logger.info(
+        "[DFV-PBI] %s=%s concluído: %s registros em %.1fs",
+        log_label,
+        filter_value,
+        len(all_rows),
+        elapsed,
+    )
+    _cache_set(cache_key, all_rows)
+    return all_rows
 
 
 def consultar_fachadas_por_cep(cep: str) -> list[dict[str, Any]]:
@@ -360,60 +446,35 @@ def consultar_fachadas_por_cep(cep: str) -> list[dict[str, Any]]:
         DfvPowerBiTimeout: timeout HTTP
         DfvPowerBiError: demais falhas (sem fallback para base local)
     """
-    if not _feature_enabled():
-        raise DfvPowerBiDisabled("Consulta DFV Power BI desabilitada.")
-
     cep_limpo = limpar_cep(cep)
     if len(cep_limpo) != 8:
         raise DfvPowerBiError("CEP inválido.")
 
-    resource_key = str(_cfg("DFV_POWERBI_RESOURCE_KEY", "") or "")
-    if not resource_key:
-        raise DfvPowerBiError("DFV_POWERBI_RESOURCE_KEY não configurada.")
-
-    cached = _cache_get(cep_limpo)
-    if cached is not None:
-        logger.info("[DFV-PBI] cache hit CEP=%s (%s registros)", cep_limpo, len(cached))
-        return cached
-
-    started = time.monotonic()
-    all_rows: list[dict[str, Any]] = []
-    restart: Optional[list[Any]] = None
-    page = 0
-    max_pages = int(_cfg("DFV_POWERBI_MAX_PAGES", 20) or 20)
-
-    try:
-        while page < max_pages:
-            page += 1
-            data = _query_page(_build_cmd(cep_limpo, restart_tokens=restart))
-            rows, incomplete, rt = parse_dsr_rows(data, len(SELECT_COLS))
-            all_rows.extend(_rows_to_dicts(rows))
-            logger.info(
-                "[DFV-PBI] CEP=%s page=%s +%s total=%s incomplete=%s",
-                cep_limpo,
-                page,
-                len(rows),
-                len(all_rows),
-                incomplete,
-            )
-            if not incomplete or not rt or not rows:
-                break
-            restart = rt
-    except DfvPowerBiError:
-        raise
-    except Exception as exc:
-        logger.exception("[DFV-PBI] erro inesperado CEP=%s", cep_limpo)
-        raise DfvPowerBiError(str(exc)) from exc
-
-    elapsed = time.monotonic() - started
-    logger.info(
-        "[DFV-PBI] CEP=%s concluído: %s registros em %.1fs",
-        cep_limpo,
-        len(all_rows),
-        elapsed,
+    return _consultar_por_filtro(
+        filter_property="CEP",
+        filter_value=cep_limpo,
+        cache_key=f"{CACHE_KEY_PREFIX}{cep_limpo}",
+        log_label="CEP",
     )
-    _cache_set(cep_limpo, all_rows)
-    return all_rows
+
+
+def consultar_fachadas_por_cdo(codigo_cdo: str) -> list[dict[str, Any]]:
+    """
+    Consulta fachadas pelo CODIGO_CDO no Power BI (comando CDOE).
+
+    Raises:
+        DfvPowerBiDisabled / DfvPowerBiTimeout / DfvPowerBiError
+    """
+    codigo = limpar_codigo_cdo(codigo_cdo)
+    if not codigo:
+        raise DfvPowerBiError("Código CDO inválido.")
+
+    return _consultar_por_filtro(
+        filter_property="CODIGO_CDO",
+        filter_value=codigo,
+        cache_key=f"{CACHE_KEY_PREFIX_CDO}{codigo}",
+        log_label="CODIGO_CDO",
+    )
 
 
 def _ordenar_chave_fachada(num: Any) -> tuple[int, str]:
@@ -502,7 +563,7 @@ def formatar_resposta_dfv_powerbi(
                 f"❌ *NENHUMA FACHADA ENCONTRADA (Power BI)*\n\n"
                 f"Não encontramos fachadas para o CEP *{cep_limpo}* no DFV ao vivo "
                 f"(cobertura ES/MG/RJ).\n"
-                f"Tente *Fachada* (base local) ou *Viabilidade*."
+                f"Tente *Viabilidade* ou *CDOE* se souber o código do CDO."
             )
         ]
 
@@ -551,3 +612,126 @@ def formatar_resposta_dfv_powerbi(
         f"{lista_str}"
     )
     return _split_mensagem(cabecalho)
+
+
+def _chave_rua(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        str(row.get("LOGRADOURO") or "").strip().upper(),
+        limpar_cep(str(row.get("CEP") or "")),
+        str(row.get("BAIRRO") or "").strip().upper(),
+        str(row.get("MUNICIPIO") or "").strip().upper(),
+        str(row.get("UF") or "").strip().upper(),
+    )
+
+
+def montar_grupos_rua_cdoe(registros: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Agrupa registros por rua/CEP e retorna lista serializável para a sessão WhatsApp.
+
+    Cada grupo contém metadados da rua e a lista deduplicada de números (_linha).
+    """
+    if not registros:
+        return []
+
+    filtrados, so_viaveis = _filtrar_e_deduplicar(registros)
+    buckets: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
+
+    for row in filtrados:
+        chave = _chave_rua(row)
+        if chave not in buckets:
+            cep = chave[1]
+            cep_fmt = f"{cep[:5]}-{cep[5:]}" if len(cep) == 8 else (cep or "—")
+            municipio = str(row.get("MUNICIPIO") or "—").strip() or "—"
+            uf = str(row.get("UF") or "").strip()
+            buckets[chave] = {
+                "logradouro": str(row.get("LOGRADOURO") or "—").strip() or "—",
+                "cep": cep,
+                "cep_fmt": cep_fmt,
+                "bairro": str(row.get("BAIRRO") or "—").strip() or "—",
+                "municipio": municipio,
+                "uf": uf,
+                "cidade_uf": f"{municipio}/{uf}" if uf else municipio,
+                "linhas": [],
+                "so_viaveis": so_viaveis,
+            }
+        linha = row.get("_linha")
+        if linha:
+            buckets[chave]["linhas"].append(str(linha))
+
+    grupos = list(buckets.values())
+    grupos.sort(
+        key=lambda g: (
+            g.get("logradouro") or "",
+            g.get("cep") or "",
+            g.get("bairro") or "",
+        )
+    )
+    return grupos
+
+
+def formatar_resumo_cdoe(codigo_cdo: str, grupos: list[dict[str, Any]]) -> list[str]:
+    """Formata o 1º passo da CDOE: lista numerada de ruas/CEPs."""
+    codigo = limpar_codigo_cdo(codigo_cdo)
+    if not grupos:
+        return [
+            (
+                f"❌ *NENHUM ENDEREÇO ENCONTRADO (CDOE)*\n\n"
+                f"Não encontramos fachadas para o código *{codigo}* no Power BI "
+                f"(cobertura ES/MG/RJ).\n"
+                f"Confira o código e tente novamente, ou use *DFV* com o CEP."
+            )
+        ]
+
+    total_fachadas = sum(len(g.get("linhas") or []) for g in grupos)
+    linhas_resumo: list[str] = []
+    for i, g in enumerate(grupos, start=1):
+        qtd = len(g.get("linhas") or [])
+        linhas_resumo.append(
+            f"{i}) *{g.get('logradouro') or '—'}* — CEP {g.get('cep_fmt') or '—'} "
+            f"— {g.get('bairro') or '—'} ({g.get('cidade_uf') or '—'}) — "
+            f"{qtd} fachada{'s' if qtd != 1 else ''}"
+        )
+
+    texto = (
+        f"📡 *CDOE (Power BI ao vivo)*\n\n"
+        f"Código: *{codigo}*\n"
+        f"Ruas/CEPs: *{len(grupos)}* | Fachadas: *{total_fachadas}*\n\n"
+        f"Escolha a rua digitando o *número*:\n"
+        f"{chr(10).join(linhas_resumo)}\n\n"
+        f"Ou envie *CANCELAR* para sair."
+    )
+    return _split_mensagem(texto)
+
+
+def formatar_numeros_rua_cdoe(codigo_cdo: str, grupo: dict[str, Any]) -> list[str]:
+    """Formata o 2º passo da CDOE: números da rua escolhida."""
+    codigo = limpar_codigo_cdo(codigo_cdo)
+    linhas = list(grupo.get("linhas") or [])
+    logradouro = grupo.get("logradouro") or "—"
+    cep_fmt = grupo.get("cep_fmt") or "—"
+    bairro = grupo.get("bairro") or "—"
+    cidade_uf = grupo.get("cidade_uf") or "—"
+
+    if not linhas:
+        return [
+            (
+                f"❌ Nenhum número encontrado para *{logradouro}* "
+                f"(CEP {cep_fmt}) na CDOE *{codigo}*."
+            )
+        ]
+
+    aviso = ""
+    if not grupo.get("so_viaveis", True):
+        aviso = "\n⚠️ *Sem fachadas viáveis* nesta rua — exibindo todos os números encontrados.\n"
+
+    texto = (
+        f"📡 *CDOE {codigo}*\n\n"
+        f"📍 *Endereço:* {logradouro}\n"
+        f"📮 *CEP:* {cep_fmt}\n"
+        f"🏙️ *Bairro:* {bairro} | *Cidade/UF:* {cidade_uf}\n"
+        f"✅ *Total de fachadas:* {len(linhas)}"
+        f"{aviso}\n"
+        f"🔢 *Números + complementos:*\n"
+        f"{chr(10).join(linhas)}"
+    )
+    return _split_mensagem(texto)

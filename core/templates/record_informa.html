@@ -164,71 +164,12 @@
                     </div>
                 </div>
 
-                <!-- Cards por Comando (Outros = Vender, Pedido, Andamento, Crédito, etc.) -->
-                <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4">
+                <!-- Cards por Comando (todas as automações) -->
+                <div class="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-3 mb-4" id="cards-comandos">
                     <div class="col">
-                        <div class="card border-0 shadow-sm bg-primary text-white h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-white-50 mb-1">Fachada</h6>
-                                        <h3 class="mb-0 fw-bold" id="stat-fachada">0</h3>
-                                    </div>
-                                    <i class="bi bi-building fs-1 opacity-50"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="card border-0 shadow-sm bg-info text-white h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-white-50 mb-1">Viabilidade</h6>
-                                        <h3 class="mb-0 fw-bold" id="stat-viabilidade">0</h3>
-                                    </div>
-                                    <i class="bi bi-map fs-1 opacity-50"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="card border-0 shadow-sm bg-success text-white h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-white-50 mb-1">Fatura</h6>
-                                        <h3 class="mb-0 fw-bold" id="stat-fatura">0</h3>
-                                    </div>
-                                    <i class="bi bi-receipt fs-1 opacity-50"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="card border-0 shadow-sm bg-warning text-dark h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-dark-50 mb-1">Status</h6>
-                                        <h3 class="mb-0 fw-bold" id="stat-status">0</h3>
-                                    </div>
-                                    <i class="bi bi-clipboard-check fs-1 opacity-50"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="card border-0 shadow-sm bg-secondary text-white h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-white-50 mb-1 small">Outras automações</h6>
-                                        <p class="text-white-50 mb-1 small lh-sm d-none d-md-block">Vender, Pedido, Andamento, Crédito…</p>
-                                        <h3 class="mb-0 fw-bold" id="stat-outros">0</h3>
-                                    </div>
-                                    <i class="bi bi-grid-3x3-gap fs-1 opacity-50"></i>
-                                </div>
+                        <div class="card border-0 shadow-sm bg-light h-100">
+                            <div class="card-body text-muted">
+                                <span class="small">Carregando...</span>
                             </div>
                         </div>
                     </div>
@@ -237,15 +178,10 @@
                 <!-- Tabela por Vendedor -->
                 <h5 class="fw-bold text-secondary mb-3">Estatísticas por Vendedor</h5>
                 <div class="table-responsive card-modern rounded shadow-sm">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
+                    <table class="table table-hover align-middle mb-0" id="tabela-vendedores-bot">
+                        <thead class="table-light" id="thead-vendedores">
                             <tr>
                                 <th>Vendedor</th>
-                                <th class="text-center">Fachada</th>
-                                <th class="text-center">Viabilidade</th>
-                                <th class="text-center">Fatura</th>
-                                <th class="text-center">Status</th>
-                                <th class="text-center">Outras</th>
                                 <th class="text-center fw-bold">Total</th>
                             </tr>
                         </thead>
@@ -418,6 +354,27 @@
             }
         });
 
+        // Estilo dos cards por comando no Dashboard Bot
+        const BOT_COMANDO_UI = {
+            FACHADA: { label: 'Fachada', bg: 'bg-primary', text: 'text-white', muted: 'text-white-50', icon: 'bi-building' },
+            DFV: { label: 'DFV', bg: 'bg-primary', text: 'text-white', muted: 'text-white-50', icon: 'bi-broadcast' },
+            CDOE: { label: 'CDOE', bg: 'bg-indigo', text: 'text-white', muted: 'text-white-50', icon: 'bi-hdd-network', style: 'background:#4f46e5;' },
+            VIABILIDADE: { label: 'Viabilidade', bg: 'bg-info', text: 'text-white', muted: 'text-white-50', icon: 'bi-map' },
+            FATURA: { label: 'Fatura', bg: 'bg-success', text: 'text-white', muted: 'text-white-50', icon: 'bi-receipt' },
+            STATUS: { label: 'Status', bg: 'bg-warning', text: 'text-dark', muted: 'text-dark-50', icon: 'bi-clipboard-check' },
+            VENDER: { label: 'Vender', bg: 'bg-danger', text: 'text-white', muted: 'text-white-50', icon: 'bi-cart-check' },
+            PEDIDO: { label: 'Pedido', bg: 'bg-secondary', text: 'text-white', muted: 'text-white-50', icon: 'bi-file-earmark-text' },
+            ANDAMENTO: { label: 'Andamento', bg: 'bg-dark', text: 'text-white', muted: 'text-white-50', icon: 'bi-calendar-check' },
+            CREDITO: { label: 'Crédito', bg: 'bg-success', text: 'text-white', muted: 'text-white-50', icon: 'bi-cash-coin' },
+            BIO: { label: 'Bio', bg: 'bg-info', text: 'text-white', muted: 'text-white-50', icon: 'bi-fingerprint' },
+        };
+        const BOT_COMANDO_FALLBACK = { label: null, bg: 'bg-secondary', text: 'text-white', muted: 'text-white-50', icon: 'bi-puzzle' };
+
+        function rotuloComandoBot(cmd) {
+            const ui = BOT_COMANDO_UI[cmd];
+            return (ui && ui.label) ? ui.label : cmd;
+        }
+
         // Função para carregar estatísticas do dashboard
         async function carregarEstatisticas() {
             try {
@@ -431,42 +388,76 @@
                 }
                 
                 const data = await res.json();
-                
-                // Atualizar cards por comando (com verificação segura)
-                if (data.por_comando) {
-                    document.getElementById('stat-fachada').textContent = data.por_comando.FACHADA || 0;
-                    document.getElementById('stat-viabilidade').textContent = data.por_comando.VIABILIDADE || 0;
-                    document.getElementById('stat-fatura').textContent = data.por_comando.FATURA || 0;
-                    document.getElementById('stat-status').textContent = data.por_comando.STATUS || 0;
-                    document.getElementById('stat-outros').textContent = data.por_comando.OUTROS ?? 0;
+                const detalhe = data.por_comando_detalhe || data.por_comando || {};
+                const comandos = (data.comandos && data.comandos.length)
+                    ? data.comandos
+                    : Object.keys(detalhe);
+
+                // Cards dinâmicos
+                const cardsEl = document.getElementById('cards-comandos');
+                cardsEl.innerHTML = '';
+                if (!comandos.length) {
+                    cardsEl.innerHTML = `
+                        <div class="col">
+                            <div class="card border-0 shadow-sm bg-light h-100">
+                                <div class="card-body text-muted">Nenhum dado no período.</div>
+                            </div>
+                        </div>`;
+                } else {
+                    comandos.forEach(cmd => {
+                        const ui = BOT_COMANDO_UI[cmd] || { ...BOT_COMANDO_FALLBACK, label: cmd };
+                        const styleAttr = ui.style ? ` style="${ui.style}"` : '';
+                        cardsEl.innerHTML += `
+                            <div class="col">
+                                <div class="card border-0 shadow-sm ${ui.bg} ${ui.text} h-100"${styleAttr}>
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="${ui.muted} mb-1">${ui.label || cmd}</h6>
+                                                <h3 class="mb-0 fw-bold">${detalhe[cmd] || 0}</h3>
+                                            </div>
+                                            <i class="bi ${ui.icon} fs-1 opacity-50"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>`;
+                    });
                 }
-                
-                // Atualizar tabela por vendedor (com verificação segura)
+
+                // Cabeçalho dinâmico da tabela
+                const thead = document.getElementById('thead-vendedores');
+                const ths = ['<th>Vendedor</th>']
+                    .concat(comandos.map(c => `<th class="text-center">${rotuloComandoBot(c)}</th>`))
+                    .concat(['<th class="text-center fw-bold">Total</th>']);
+                thead.innerHTML = `<tr>${ths.join('')}</tr>`;
+
+                const colspan = comandos.length + 2;
                 const tbody = document.getElementById('lista-vendedores');
                 tbody.innerHTML = '';
                 
                 const vendedores = data.por_vendedor || [];
                 
                 if (vendedores.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Nenhum dado encontrado para o período selecionado.</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-muted py-4">Nenhum dado encontrado para o período selecionado.</td></tr>`;
                 } else {
                     vendedores.forEach(v => {
                         const rowClass = v.sem_cadastro ? 'table-warning' : '';
+                        const cmds = v.comandos || {};
+                        const celulas = comandos.map(c => {
+                            const n = (cmds[c] != null) ? cmds[c] : (v[c.toLowerCase()] || 0);
+                            return `<td class="text-center">${n || 0}</td>`;
+                        }).join('');
                         tbody.innerHTML += `
                             <tr class="${rowClass}">
                                 <td class="fw-bold">${v.vendedor_nome || v.vendedor_username || 'N/A'}</td>
-                                <td class="text-center">${v.fachada || 0}</td>
-                                <td class="text-center">${v.viabilidade || 0}</td>
-                                <td class="text-center">${v.fatura || 0}</td>
-                                <td class="text-center">${v.status || 0}</td>
-                                <td class="text-center">${v.outros ?? 0}</td>
+                                ${celulas}
                                 <td class="text-center fw-bold">${v.total || 0}</td>
                             </tr>
                         `;
                     });
                 }
                 
-                // Atualizar informação do período (com verificação segura)
+                // Atualizar informação do período
                 if (data.data_inicio) {
                     const dataInicio = new Date(data.data_inicio);
                     const totalGeral = data.totais?.geral || 0;
@@ -481,7 +472,7 @@
             } catch(e) { 
                 console.error('Erro ao carregar estatísticas:', e);
                 document.getElementById('lista-vendedores').innerHTML = 
-                    '<tr><td colspan="7" class="text-center text-danger py-4">Erro ao carregar dados.</td></tr>';
+                    '<tr><td colspan="12" class="text-center text-danger py-4">Erro ao carregar dados.</td></tr>';
                 document.getElementById('info-periodo').textContent = 'Erro ao carregar informações.';
             }
         }
