@@ -221,6 +221,15 @@ def _abrir_relatorio_detalhado(page: Page) -> Optional[str]:
     return None
 
 
+def _cpf_digitos_iguais(cpf_a: str, cpf_b: str) -> bool:
+    """Compara CPF/CNPJ apenas pelos dígitos (ignora máscara)."""
+    a = _normalizar_cpf(cpf_a)
+    b = _normalizar_cpf(cpf_b)
+    if not a or not b:
+        return False
+    return a == b
+
+
 def _preencher_cpf_e_filtrar(page: Page, cpf_limpo: str) -> Optional[str]:
     cpf_input = None
     for ctx in [page, *page.frames]:
@@ -242,6 +251,13 @@ def _preencher_cpf_e_filtrar(page: Page, cpf_limpo: str) -> Optional[str]:
     if not cpf_input:
         return "Página de relatório detalhado não encontrou campo CPF."
 
+    # Limpa e preenche para evitar filtro parcial / valor residual.
+    try:
+        cpf_input.click(timeout=2000)
+        cpf_input.fill("")
+        page.wait_for_timeout(200)
+    except Exception:
+        pass
     cpf_input.fill(cpf_limpo)
     page.wait_for_timeout(400)
 
@@ -257,11 +273,24 @@ def _preencher_cpf_e_filtrar(page: Page, cpf_limpo: str) -> Optional[str]:
             continue
     if not clicked:
         page.keyboard.press("Enter")
-    page.wait_for_timeout(3500)
+
+    # Aguarda a grade recarregar (evita ler lista geral / resultados de outro CPF).
+    try:
+        page.wait_for_load_state("networkidle", timeout=8000)
+    except Exception:
+        pass
+    page.wait_for_timeout(2500)
     return None
 
 
-def _parse_tabela(page: Page) -> Dict[str, Any]:
+def _parse_tabela(page: Page, cpf_consultado: str = "") -> Dict[str, Any]:
+    """
+    Lê a grade do relatório detalhado.
+
+    Se ``cpf_consultado`` for informado, ignora linhas de outros CPF/CNPJ —
+    evita falso positivo quando o filtro do GED ainda não aplicou e a tela
+    mostra a listagem geral (ex.: Doc. Apto de outro cliente).
+    """
     resultado: Dict[str, Any] = {
         "aprovada": False,
         "data_mais_recente_apta": None,
@@ -280,7 +309,9 @@ def _parse_tabela(page: Page) -> Dict[str, Any]:
         # Sem tabela = nenhum registro (consulta ok)
         return resultado
 
+    cpf_alvo = _normalizar_cpf(cpf_consultado)
     registros: List[Dict[str, str]] = []
+    registros_outros = 0
     datas_aptas: List[str] = []
     rows = table.locator("tbody tr")
     n = rows.count()
@@ -317,9 +348,28 @@ def _parse_tabela(page: Page) -> Dict[str, Any]:
             "resultado_analise": textos[11] if len(textos) > 11 else "",
             "versao_app": textos[12] if len(textos) > 12 else "",
         }
+
+        if cpf_alvo and registro["cpf_cnpj"]:
+            if not _cpf_digitos_iguais(registro["cpf_cnpj"], cpf_alvo):
+                registros_outros += 1
+                continue
+        elif cpf_alvo and not registro["cpf_cnpj"]:
+            # Linha sem CPF na coluna — não confiar para aprovação.
+            registros_outros += 1
+            continue
+
         registros.append(registro)
         if STATUS_APTO_VENDA in registro["resultado_analise"] and registro["data_envio"]:
             datas_aptas.append(registro["data_envio"])
+
+    if registros_outros:
+        logger.warning(
+            "[BrPronto] Grade com %s linha(s) de outro CPF/sem CPF (filtradas). "
+            "cpf_consultado=%s linhas_do_cpf=%s — possível filtro GED incompleto.",
+            registros_outros,
+            cpf_alvo or "(vazio)",
+            len(registros),
+        )
 
     resultado["registros"] = registros
 
@@ -413,7 +463,7 @@ def consultar_biometria_brpronto(
                 if err:
                     return False, err, {}
 
-                resultado = _parse_tabela(page)
+                resultado = _parse_tabela(page, cpf_consultado=cpf_limpo)
                 # Print da tela do relatório (com ou sem registros) para anexar no WhatsApp.
                 resultado["screenshot_b64"] = _capturar_screenshot_b64(page)
                 return True, None, resultado

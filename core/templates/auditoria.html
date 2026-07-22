@@ -2268,6 +2268,7 @@
                     $('#check-biometria').prop('checked', true);
                     $('#biometria-status-msg').text('Biometria APROVADA' + (res.data_mais_recente_apta ? ' em ' + res.data_mais_recente_apta : '')).removeClass('text-danger text-muted').addClass('text-success');
                 } else {
+                    $('#check-biometria').prop('checked', false);
                     $('#biometria-status-msg').text('Nenhuma biometria com "Doc. Apto para Venda" encontrada para este CPF.').removeClass('text-success text-muted').addClass('text-danger');
                 }
             } catch (e) {
