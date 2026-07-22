@@ -29,5 +29,6 @@ RUN python manage.py collectstatic --noinput --skip-checks
 # Comando de inicialização
 # NÃO usar --max-requests: recycle de worker mata threads daemon (Playwright no webhook).
 # Workers/threads via GUNICORN_WORKERS e GUNICORN_THREADS (default 2/2).
-RUN chmod +x /app/scripts/start_web.sh
+# Remove CRLF (Windows) para o shebang funcionar no Linux.
+RUN sed -i 's/\r$//' /app/scripts/*.sh && chmod +x /app/scripts/start_web.sh
 CMD ["/app/scripts/start_web.sh"]
