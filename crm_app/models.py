@@ -1650,6 +1650,7 @@ class EstatisticaBotWhatsApp(models.Model):
     """
     COMANDO_CHOICES = [
         ('FACHADA', 'Fachada'),
+        ('DFV', 'DFV (Power BI)'),
         ('VIABILIDADE', 'Viabilidade'),
         ('FATURA', 'Fatura'),
         ('STATUS', 'Status'),

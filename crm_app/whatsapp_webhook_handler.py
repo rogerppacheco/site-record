@@ -7814,6 +7814,28 @@ def processar_webhook_whatsapp(data, request=None):
             resposta = "Por favor, digite o CEP para consultar fachadas (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
+        # DFV: consulta ao vivo no Power BI (fluxo separado de FACHADA / base local)
+        if etapa_atual == 'inicial' and mensagem_limpa == 'DFV':
+            logger.info("[Webhook] Comando DFV reconhecido!")
+            from django.conf import settings as _dfv_settings
+
+            if not getattr(_dfv_settings, 'DFV_POWERBI_ENABLED', True):
+                resposta = (
+                    "⚠️ A consulta *DFV* (Power BI ao vivo) está temporariamente indisponível.\n"
+                    "Use *Fachada* para consultar a base local."
+                )
+                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+            sessao.etapa = 'dfv_cep'
+            sessao.dados_temp = {}
+            sessao.save()
+            _registrar_estatistica(telefone_formatado, 'DFV')
+            resposta = (
+                "Por favor, digite o *CEP* para consultar fachadas no Power BI ao vivo "
+                "(apenas números; hífen é aceito):"
+            )
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         # Comando MATERIAL
         if mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
             logger.info(f"[Webhook] Comando MATERIAL reconhecido!")
@@ -7906,6 +7928,7 @@ def processar_webhook_whatsapp(data, request=None):
                 "📋 *MENU*\n\n",
                 "Escolha uma opção:\n",
                 "• *Fachada* - Consultar fachadas por CEP\n",
+                "• *DFV* - Consultar fachadas por CEP (Power BI ao vivo)\n",
                 "• *Viabilidade* - Consultar viabilidade por CEP e número\n",
                 "• *Inclusão* - Solicitar viabilidade (formulário)\n",
                 "• *Status* - Consultar status de pedido\n",
@@ -8060,6 +8083,76 @@ def processar_webhook_whatsapp(data, request=None):
                 sessao.dados_temp = {}
                 sessao.save()
             return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'dfv_cep':
+            from crm_app.services.dfv_powerbi_service import (
+                DfvPowerBiDisabled,
+                DfvPowerBiError,
+                DfvPowerBiTimeout,
+                consultar_fachadas_por_cep,
+                formatar_resposta_dfv_powerbi,
+                limpar_cep as limpar_cep_dfv,
+            )
+
+            cep_limpo = limpar_cep_dfv(mensagem_texto)
+            if len(cep_limpo) != 8:
+                resposta = (
+                    "❌ CEP inválido. Digite o CEP completo com 8 dígitos "
+                    "(hífen é aceito, ex.: 30130-000):"
+                )
+                return _enviar_resposta_e_retornar(resposta)
+
+            logger.info("[Webhook] DFV Power BI — consultando CEP=%s", cep_limpo)
+            try:
+                # Aviso rápido para não parecer travado (consulta pode levar alguns segundos)
+                try:
+                    whatsapp_service.enviar_mensagem_texto(
+                        telefone_formatado,
+                        f"🔎 Consultando Power BI ao vivo para o CEP *{cep_limpo}*...",
+                    )
+                except Exception:
+                    logger.debug("[Webhook] Falha ao enviar aviso DFV", exc_info=True)
+
+                registros = consultar_fachadas_por_cep(cep_limpo)
+                partes = formatar_resposta_dfv_powerbi(cep_limpo, registros)
+            except DfvPowerBiDisabled:
+                partes = [
+                    "⚠️ A consulta *DFV* (Power BI ao vivo) está temporariamente indisponível.\n"
+                    "Use *Fachada* para consultar a base local."
+                ]
+            except DfvPowerBiTimeout:
+                partes = [
+                    "❌ Não foi possível consultar o Power BI agora (tempo esgotado).\n"
+                    "Tente novamente em instantes. A base local continua disponível em *Fachada*."
+                ]
+            except DfvPowerBiError as exc:
+                logger.warning("[Webhook] DFV Power BI erro CEP=%s: %s", cep_limpo, exc)
+                partes = [
+                    "❌ Não foi possível consultar o Power BI agora.\n"
+                    "Tente novamente em instantes. A base local continua disponível em *Fachada*."
+                ]
+            except Exception as exc:
+                logger.exception("[Webhook] DFV Power BI falha inesperada CEP=%s: %s", cep_limpo, exc)
+                partes = [
+                    "❌ Não foi possível consultar o Power BI agora.\n"
+                    "Tente novamente em instantes."
+                ]
+
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+
+            # Envia fatiado (mensagens longas) — sem misturar com base local
+            for idx, parte in enumerate(partes):
+                texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
+                try:
+                    _elapsed = time.monotonic() - _webhook_t0
+                    if idx == len(partes) - 1:
+                        texto = (texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
+                    whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                except Exception as e:
+                    logger.exception("[Webhook] Erro ao enviar parte DFV %s: %s", idx + 1, e)
+            return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
         
         elif etapa_atual == 'viabilidade_cep':
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)

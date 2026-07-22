@@ -304,6 +304,30 @@ N8N_TEAMS_WEBHOOK_URL = config('N8N_TEAMS_WEBHOOK_URL', default='')
 SITE_URL = config('SITE_URL', default='https://www.recordpap.com.br')
 # Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
 WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
+
+# --- DFV Power BI (comando WhatsApp DFV — ao vivo; independente da base local FACHADA) ---
+DFV_POWERBI_ENABLED = config(
+    'DFV_POWERBI_ENABLED',
+    default=True,
+    cast=lambda v: str(v).lower() not in ('false', '0', 'no'),
+)
+DFV_POWERBI_RESOURCE_KEY = config(
+    'DFV_POWERBI_RESOURCE_KEY',
+    default='8a9db8f9-7cf1-4db5-90d2-5259ad149eba',
+)
+DFV_POWERBI_TENANT = config(
+    'DFV_POWERBI_TENANT',
+    default='85b28421-d45a-4b07-889d-24b528c7f250',
+)
+DFV_POWERBI_CLUSTER = config(
+    'DFV_POWERBI_CLUSTER',
+    default='https://wabi-brazil-south-b-primary-api.analysis.windows.net',
+)
+DFV_POWERBI_MODEL_ID = config('DFV_POWERBI_MODEL_ID', default=6061538, cast=int)
+DFV_POWERBI_TIMEOUT_SECONDS = config('DFV_POWERBI_TIMEOUT_SECONDS', default=18, cast=float)
+DFV_POWERBI_CACHE_TTL_SECONDS = config('DFV_POWERBI_CACHE_TTL_SECONDS', default=600, cast=int)
+DFV_POWERBI_WINDOW_COUNT = config('DFV_POWERBI_WINDOW_COUNT', default=5000, cast=int)
+DFV_POWERBI_MAX_PAGES = config('DFV_POWERBI_MAX_PAGES', default=20, cast=int)
 # Telefones adicionais ignorados pelo webhook (vírgula). 12981750292 já está bloqueado no código.
 WHATSAPP_TELEFONES_BLOQUEADOS = [
     t.strip() for t in config('WHATSAPP_TELEFONES_BLOQUEADOS', default='').split(',') if t.strip()
