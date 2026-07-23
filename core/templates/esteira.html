@@ -953,6 +953,8 @@
                                 <th data-esteira-col="id" class="ps-3 esteira-col-id-venda esteira-col-sticky-1">ID / Data venda</th>
                                 <th data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2">Ações</th>
                                 <th data-esteira-col="os" class="esteira-col-os">O.S.</th>
+                                <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia" title="Tipo do cadastro do motivo (Cliente / Técnica)">Tipo de pendência</th>
+                                <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
                                 <th data-esteira-col="agenda" class="esteira-col-agenda">Agendamento</th>
                                 <th data-esteira-col="cliente" class="esteira-col-cliente">Cliente</th>
                                 <th data-esteira-col="status">Status Atual</th>
@@ -961,8 +963,6 @@
                                 <th data-esteira-col="adiant_comissao">Adiant. Comissão</th>
                                 <th data-esteira-col="adiant_sabado" title="Adiantamento comissão (O.S. aberta em sábado, Regras por Faixa)">Adiant. sábado</th>
                                 <th data-esteira-col="plano">Plano</th>
-                                <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
-                                <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia" title="Tipo do cadastro do motivo (Cliente / Técnica)">Tipo de pendência</th>
                                 <th data-esteira-col="conf" class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip" title="Resposta do vendedor à consulta Posso antecipar?">Posso antecipar?</th>
                                 <th data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar" title="Resposta do consultor à consulta Posso reagendar?">Posso reagendar?</th>
@@ -978,6 +978,8 @@
                                 </th>
                                 <th data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2"></th>
                                 <th data-esteira-col="os" class="esteira-col-os"><input id="fc-os" class="form-control form-control-sm esteira-fc-input" placeholder="O.S."></th>
+                                <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia"><input id="fc-tipo-pendencia" class="form-control form-control-sm esteira-fc-input" placeholder="Tipo"></th>
+                                <th data-esteira-col="motivo" class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
                                 <th data-esteira-col="agenda" class="esteira-col-agenda">
                                     <div class="esteira-fc-inline2">
                                         <input id="fc-data-agendada" class="form-control form-control-sm esteira-fc-input" placeholder="Data">
@@ -1011,8 +1013,6 @@
                                     </select>
                                 </th>
                                 <th data-esteira-col="plano"><input id="fc-plano" class="form-control form-control-sm esteira-fc-input" placeholder="Plano"></th>
-                                <th data-esteira-col="motivo" class="esteira-col-motivo"><input id="fc-motivo" class="form-control form-control-sm esteira-fc-input" placeholder="Motivo"></th>
-                                <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia"><input id="fc-tipo-pendencia" class="form-control form-control-sm esteira-fc-input" placeholder="Tipo"></th>
                                 <th data-esteira-col="conf" class="esteira-col-conf"><input id="fc-conf" class="form-control form-control-sm esteira-fc-input" placeholder="Conf."></th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip">
                                     <select id="fc-posso-antecip" class="form-select form-select-sm esteira-fc-select">
@@ -1454,6 +1454,8 @@
             { key: 'id', label: 'ID / Data venda', fixa: true },
             { key: 'acoes', label: 'Ações', fixa: true },
             { key: 'os', label: 'O.S.' },
+            { key: 'tipo_pendencia', label: 'Tipo de pendência' },
+            { key: 'motivo', label: 'Motivo Pendência' },
             { key: 'agenda', label: 'Agendamento' },
             { key: 'cliente', label: 'Cliente' },
             { key: 'status', label: 'Status Atual' },
@@ -1462,8 +1464,6 @@
             { key: 'adiant_comissao', label: 'Adiant. Comissão' },
             { key: 'adiant_sabado', label: 'Adiant. sábado' },
             { key: 'plano', label: 'Plano' },
-            { key: 'motivo', label: 'Motivo Pendência' },
-            { key: 'tipo_pendencia', label: 'Tipo de pendência' },
             { key: 'conf', label: 'Conf. cliente' },
             { key: 'posso_antecip', label: 'Posso antecipar?' },
             { key: 'posso_reagendar', label: 'Posso reagendar?' },
@@ -1477,10 +1477,10 @@
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (Array.isArray(parsed) && parsed.length) {
-                        // Coluna nova: inclui após Motivo se ainda não estiver nas preferências salvas
+                        // Coluna nova: inclui após O.S. se ainda não estiver nas preferências salvas
                         if (!parsed.includes('tipo_pendencia')) {
-                            const idxMotivo = parsed.indexOf('motivo');
-                            if (idxMotivo >= 0) parsed.splice(idxMotivo + 1, 0, 'tipo_pendencia');
+                            const idxOs = parsed.indexOf('os');
+                            if (idxOs >= 0) parsed.splice(idxOs + 1, 0, 'tipo_pendencia');
                             else parsed.push('tipo_pendencia');
                             salvarColunasVisiveisEsteira(parsed);
                         }
@@ -1630,7 +1630,7 @@
         let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
-        const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-tipo-pendencia', 'fc-conf', 'fc-resp'];
+        const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-tipo-pendencia', 'fc-motivo', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-conf', 'fc-resp'];
         let tempVendaId = null;
         let tempStatusId = null;
         const ESTEIRA_FOCO_POS_KEY = 'esteira_foco_pos_atualizacao';
@@ -3411,6 +3411,8 @@
                                 ${gridAcoes}
                             </td>
                             <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
+                            <td data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia small" data-label="Tipo de pendência">${tipoPendenciaHtml}</td>
+                            <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
                             <td data-esteira-col="agenda" class="esteira-col-agenda" data-label="Agendamento">
                                 <div>${dataAgendada}</div>
                                 <div class="esteira-turno-sub">${turno}</div>
@@ -3425,8 +3427,6 @@
                             <td data-esteira-col="adiant_comissao" data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
                             <td data-esteira-col="adiant_sabado" data-label="Adiant. sábado">${celulaAdiantSabado}</td>
                             <td data-esteira-col="plano" data-label="Plano"><span class="d-inline-block text-break">${nomePlano}</span></td>
-                            <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
-                            <td data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia small" data-label="Tipo de pendência">${tipoPendenciaHtml}</td>
                             <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
                             <td data-esteira-col="posso_antecip" class="esteira-col-posso-antecip small" data-label="Posso antecipar?">${possoAntecip}</td>
                             <td data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar small" data-label="Posso reagendar?">${possoReagendar}</td>

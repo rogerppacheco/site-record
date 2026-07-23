@@ -1910,7 +1910,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                 motivo_pendencia__tipo_pendencia__icontains='CLIENTE',
             )
         elif tipo_pend_norm == 'TECNICA':
-            from django.db.models import Q
             queryset = queryset.filter(motivo_pendencia__isnull=False).filter(
                 Q(motivo_pendencia__tipo_pendencia__icontains='TÉCNICA')
                 | Q(motivo_pendencia__tipo_pendencia__icontains='TECNICA')
