@@ -831,40 +831,78 @@ def _upload_arquivos_viabilidade(page, arquivos_paths: list) -> bool:
     return False
 
 
+def _proximo_protocolo_inclusao(uploader, base_folder: str) -> str:
+    """
+    Gera protocolo AAAAMMDDHHMMX (X começa em 1 e sobe no mesmo minuto).
+    Ex.: 2026072222371, 2026072222372, ...
+    Consulta pastas já existentes no R2 com o mesmo prefixo de data/hora.
+    """
+    from datetime import datetime
+
+    stamp = datetime.now().strftime("%Y%m%d%H%M")
+    max_seq = 0
+    try:
+        # Chaves: {R2_FOLDER_ROOT}/{base_folder}/{protocolo}/arquivo
+        root = (uploader.folder_root or "").strip("/")
+        parts = [p for p in (root, base_folder.strip("/"), stamp) if p]
+        list_prefix = "/".join(parts)
+        token = None
+        while True:
+            kwargs = {
+                "Bucket": uploader.bucket_name,
+                "Prefix": list_prefix,
+                "Delimiter": "/",
+                "MaxKeys": 1000,
+            }
+            if token:
+                kwargs["ContinuationToken"] = token
+            resp = uploader._client.list_objects_v2(**kwargs)
+            for cp in resp.get("CommonPrefixes") or []:
+                pref = (cp.get("Prefix") or "").rstrip("/")
+                nome = pref.split("/")[-1]
+                m = re.fullmatch(rf"{re.escape(stamp)}(\d+)", nome)
+                if m:
+                    max_seq = max(max_seq, int(m.group(1)))
+            if not resp.get("IsTruncated"):
+                break
+            token = resp.get("NextContinuationToken")
+    except Exception as e:
+        logger.warning("[Inclusão] Não foi possível listar protocolos no R2 (%s); usando X=1", e)
+        max_seq = 0
+
+    return f"{stamp}{max_seq + 1}"
+
+
 def _upload_inclusao_r2(dados: dict, arquivos_paths: list) -> tuple:
     """
     Salva os arquivos da inclusão em pasta do R2 (uma pasta por solicitação).
-    Pasta: Inclusao_Viabilidade/YYYY-MM-DD_HHmm_CEP_localidade/
-    Retorna (sucesso: bool, pasta_path: str, links: list)
+    Pasta: Inclusao_Viabilidade/{protocolo AAAAMMDDHHMMX}/
+    Retorna (sucesso: bool, pasta_path: str, links: list, protocolo: str)
     """
-    from datetime import datetime
     from crm_app.cloudflare_r2_service import CloudflareR2Storage
 
-    viacep = dados.get('viacep') or {}
-    cep = re.sub(r'\D', '', str(dados.get('cep', '') or ''))[:8]
-    localidade = (viacep.get('localidade') or '').strip() or 'local'
-    localidade_safe = re.sub(r'[^\w\s-]', '', localidade).strip()[:40] or 'local'
-    dt = datetime.now().strftime('%Y-%m-%d_%H%M')
-    pasta = f"{dt}_{cep}_{localidade_safe}".replace(' ', '_')
-    base_folder = getattr(settings, 'INCLUSAO_R2_FOLDER', 'Inclusao_Viabilidade')
-    folder_path = f"{base_folder}/{pasta}"
-
+    base_folder = getattr(settings, "INCLUSAO_R2_FOLDER", "Inclusao_Viabilidade")
     uploader = CloudflareR2Storage()
+    protocolo = (dados.get("protocolo") or "").strip()
+    if not protocolo:
+        protocolo = _proximo_protocolo_inclusao(uploader, base_folder)
+    folder_path = f"{base_folder}/{protocolo}"
+
     links = []
     for i, path in enumerate(arquivos_paths):
         if not path or not os.path.isfile(path):
             continue
-        ext = os.path.splitext(path)[1] or '.jpg'
-        nome = f"foto_{i+1}{ext}" if i == 0 else f"comprovante_{i}{ext}"
+        ext = os.path.splitext(path)[1] or ".jpg"
+        nome = f"foto_{i + 1}{ext}" if i == 0 else f"comprovante_{i}{ext}"
         try:
-            with open(path, 'rb') as f:
+            with open(path, "rb") as f:
                 url = uploader.upload_file(f, folder_path, nome)
                 if url:
                     links.append(url)
                     logger.info(f"[Inclusão] R2: {folder_path}/{nome} -> {url[:80]}...")
         except Exception as e:
             logger.warning(f"[Inclusão] Erro ao subir {nome} para R2: {e}")
-    return len(links) > 0, folder_path, links
+    return len(links) > 0, folder_path, links, protocolo
 
 
 def preencher_formulario_inclusao(
@@ -904,6 +942,7 @@ def preencher_formulario_inclusao(
     tem_sessao = os.path.isfile(state_path)
 
     od_pasta_used = None
+    protocolo_inclusao = None
     browser = None
     context = None
     try:
@@ -1134,9 +1173,13 @@ def preencher_formulario_inclusao(
             ok_upload = False
             if paths:
                 try:
-                    ok_od, od_pasta_used, _ = _upload_inclusao_r2(dados, paths)
+                    ok_od, od_pasta_used, _, protocolo_inclusao = _upload_inclusao_r2(dados, paths)
                     if ok_od:
-                        logger.info(f"[Inclusão] Arquivos salvos no R2: {od_pasta_used}")
+                        logger.info(
+                            "[Inclusão] Arquivos salvos no R2: %s (protocolo=%s)",
+                            od_pasta_used,
+                            protocolo_inclusao,
+                        )
                 except Exception as e:
                     logger.warning(f"[Inclusão] Upload R2 falhou (continuando): {e}")
                 ok_upload = _upload_arquivos_viabilidade(page, paths)
@@ -1144,9 +1187,13 @@ def preencher_formulario_inclusao(
                 _fechar_picker_modal(page)
                 page.wait_for_timeout(500)
 
-            # 17. Observações - textarea ou contenteditable (opcional)
-            if observacoes:
-                _fill_textlike(5, observacoes, "17-Observacoes")
+            # 17. Observações - inclui protocolo quando houver
+            obs_final = (observacoes or "").strip()
+            if protocolo_inclusao:
+                prefixo = f"Protocolo: {protocolo_inclusao}"
+                obs_final = f"{prefixo}\n{obs_final}".strip() if obs_final else prefixo
+            if obs_final:
+                _fill_textlike(5, obs_final, "17-Observacoes")
 
             # Submit
             _log_step("SUBMIT", "Procurando botão Enviar...")
@@ -1188,6 +1235,8 @@ def preencher_formulario_inclusao(
                     _log_step("SUBMIT", "Confirmado (Obrigado/Respostas enviadas)")
                     browser.close()
                     msg = "✅ Solicitação de viabilidade enviada com sucesso!"
+                    if protocolo_inclusao:
+                        msg += f"\n\n📋 *Protocolo:* `{protocolo_inclusao}`"
                     if od_pasta_used:
                         msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}"
                     return True, msg
@@ -1239,6 +1288,8 @@ def preencher_formulario_inclusao(
                 )
             else:
                 msg = "O formulário não foi enviado (botão Enviar não encontrado). "
+            if protocolo_inclusao:
+                msg += f"\n\n📋 Protocolo: {protocolo_inclusao}"
             if od_pasta_used:
                 msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}\nVocê pode anexá-los manualmente no formulário."
             return False, msg
@@ -1249,6 +1300,8 @@ def preencher_formulario_inclusao(
         if len(err_text) > 150:
             err_text = err_text[:147] + "..."
         msg = f"Erro ao preencher formulário: {err_text}"
+        if protocolo_inclusao:
+            msg += f"\n\n📋 Protocolo: {protocolo_inclusao}"
         if od_pasta_used:
             msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}\nVocê pode anexá-los manualmente."
         return False, msg
