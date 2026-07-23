@@ -606,11 +606,21 @@
             </div>
 
             <div id="filtro-tipo-pendencia-container" class="mb-3" style="display: none;">
-                <span class="me-2 text-muted fw-bold">Tipo de pendência:</span>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary active" id="btn-tipo-pend-todos" onclick="filtrarTipoPendencia('', this)">Todos</button>
-                    <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-cliente" onclick="filtrarTipoPendencia('CLIENTE', this)">Cliente</button>
-                    <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-tecnica" onclick="filtrarTipoPendencia('TECNICA', this)">Técnica</button>
+                <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="text-muted fw-bold">Tipo de pendência:</span>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-secondary active" id="btn-tipo-pend-todos" onclick="filtrarTipoPendencia('', this)">Todos</button>
+                            <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-cliente" onclick="filtrarTipoPendencia('CLIENTE', this)">Cliente</button>
+                            <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-tecnica" onclick="filtrarTipoPendencia('TECNICA', this)">Técnica</button>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2" style="min-width: min(100%, 22rem);">
+                        <label class="text-muted fw-bold mb-0" for="filtro-motivo-pendencia">Motivo:</label>
+                        <select id="filtro-motivo-pendencia" class="form-select form-select-sm" style="min-width: 14rem; max-width: 28rem;" onchange="filtrarMotivoPendencia(this.value)" title="Filtrar pela ligação com o tipo de pendência">
+                            <option value="">Todos os motivos</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -1622,6 +1632,8 @@
         let filtroAtual = 'TODOS';
         let filtroTurnoAtual = '';
         let filtroTipoPendenciaAtual = '';
+        let filtroMotivoPendenciaAtual = '';
+        let _motivosPendenciaCache = [];
         const ESTEIRA_PAGE_SIZE = 200;
         let esteiraPaginaAtual = 1;
         let esteiraPaginacaoMeta = { count: 0, totalPages: 1 };
@@ -1887,10 +1899,51 @@
                 // Forçamos trazer todos os motivos
                 const res = await apiFetch('/crm/motivos-pendencia/?page_size=1000');
                 const lista = Array.isArray(res) ? res : (res.results || []);
+                _motivosPendenciaCache = lista.slice().sort((a, b) =>
+                    String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' })
+                );
                 const select = document.getElementById('pendencia-motivo');
-                select.innerHTML = '<option value="">Selecione o motivo...</option>';
-                lista.forEach(m => { select.innerHTML += `<option value="${m.id}">${m.nome}</option>`; });
+                if (select) {
+                    select.innerHTML = '<option value="">Selecione o motivo...</option>';
+                    _motivosPendenciaCache.forEach(m => {
+                        select.innerHTML += `<option value="${m.id}">${m.nome}</option>`;
+                    });
+                }
+                popularSelectFiltroMotivoPendencia();
             } catch (e) { /* erro ao carregar motivos, já tratado */ }
+        }
+
+        function motivoCorrespondeTipoFiltro(motivo, tipoFiltro) {
+            if (!tipoFiltro) return true;
+            const n = normalizarTipoPendenciaTexto(motivo && motivo.tipo_pendencia);
+            if (tipoFiltro === 'CLIENTE') return n.includes('CLIENTE');
+            if (tipoFiltro === 'TECNICA') return n.includes('TECNICA');
+            return true;
+        }
+
+        function popularSelectFiltroMotivoPendencia() {
+            const select = document.getElementById('filtro-motivo-pendencia');
+            if (!select) return;
+            const valorAtual = filtroMotivoPendenciaAtual || select.value || '';
+            const tipo = filtroTipoPendenciaAtual || '';
+            const opcoes = _motivosPendenciaCache.filter(m => motivoCorrespondeTipoFiltro(m, tipo));
+            let html = '<option value="">Todos os motivos</option>';
+            // Sem motivo só faz sentido quando o tipo não exige motivo preenchido
+            if (!tipo) {
+                html += '<option value="SEM">Sem motivo cadastrado</option>';
+            }
+            opcoes.forEach(m => {
+                html += `<option value="${m.id}">${m.nome}</option>`;
+            });
+            select.innerHTML = html;
+            const aindaValido = [...select.options].some(o => o.value === String(valorAtual));
+            if (aindaValido) {
+                select.value = String(valorAtual);
+                filtroMotivoPendenciaAtual = String(valorAtual);
+            } else {
+                select.value = '';
+                filtroMotivoPendenciaAtual = '';
+            }
         }
 
         function formatarDataSemFuso(dataIso) {
@@ -2796,6 +2849,29 @@
             return true;
         }
 
+        function obterIdMotivoPendenciaVenda(v) {
+            if (!v) return null;
+            if (v.motivo_pendencia && typeof v.motivo_pendencia === 'object' && v.motivo_pendencia.id != null) {
+                return String(v.motivo_pendencia.id);
+            }
+            if (v.motivo_pendencia != null && v.motivo_pendencia !== '' && typeof v.motivo_pendencia !== 'object') {
+                return String(v.motivo_pendencia);
+            }
+            if (v.motivo_pendencia_id != null && v.motivo_pendencia_id !== '') {
+                return String(v.motivo_pendencia_id);
+            }
+            return null;
+        }
+
+        function motivoPendenciaCorrespondeFiltro(v, filtroMotivo) {
+            if (!filtroMotivo) return true;
+            const idAtual = obterIdMotivoPendenciaVenda(v);
+            if (String(filtroMotivo).toUpperCase() === 'SEM') {
+                return !idAtual;
+            }
+            return idAtual === String(filtroMotivo);
+        }
+
         function deveExibirAbasDeDataEsteira(status) {
             const s = status || filtroAtual;
             return s === 'TODOS' || s === 'PENDEN' || s === 'AGENDADO' || ehAbaDataEsteira(s);
@@ -2853,6 +2929,12 @@
                 && (filtroTipoPendenciaAtual === 'CLIENTE' || filtroTipoPendenciaAtual === 'TECNICA')
             ) {
                 params.set('tipo_pendencia', filtroTipoPendenciaAtual);
+            }
+            if (
+                (filtroAtual === 'PENDEN' || filtroAtual === 'TODOS')
+                && filtroMotivoPendenciaAtual
+            ) {
+                params.set('motivo_pendencia', filtroMotivoPendenciaAtual);
             }
             return `/crm/vendas/?${params.toString()}`;
         }
@@ -3108,6 +3190,12 @@
                             obterTipoPendenciaVenda(v),
                             filtroTipoPendenciaAtual
                         ));
+                    }
+                    if (
+                        (filtroAtual === 'PENDEN' || filtroAtual === 'TODOS')
+                        && filtroMotivoPendenciaAtual
+                    ) {
+                        vendas = vendas.filter(v => motivoPendenciaCorrespondeFiltro(v, filtroMotivoPendenciaAtual));
                     }
                 }
                 if (carregarInstaladas && contadorPrincipaisEl) contadorPrincipaisEl.textContent = `${vendas.length}`;
@@ -3536,8 +3624,11 @@
         function atualizarFiltroTipoPendenciaEsteira(exibir) {
             const container = document.getElementById('filtro-tipo-pendencia-container');
             if (container) container.style.display = exibir ? 'block' : 'none';
-            if (!exibir) filtroTipoPendenciaAtual = '';
-            document.querySelectorAll('#filtro-tipo-pendencia-container .btn').forEach(btn => {
+            if (!exibir) {
+                filtroTipoPendenciaAtual = '';
+                filtroMotivoPendenciaAtual = '';
+            }
+            document.querySelectorAll('#filtro-tipo-pendencia-container .btn-group .btn').forEach(btn => {
                 btn.classList.remove('active', 'btn-primary');
                 btn.classList.add('btn-outline-secondary');
             });
@@ -3547,6 +3638,11 @@
             if (btnAtivo) {
                 btnAtivo.classList.add('active', 'btn-primary');
                 btnAtivo.classList.remove('btn-outline-secondary');
+            }
+            if (exibir) popularSelectFiltroMotivoPendencia();
+            else {
+                const select = document.getElementById('filtro-motivo-pendencia');
+                if (select) select.value = '';
             }
         }
 
@@ -3563,7 +3659,7 @@
         function filtrarTipoPendencia(tipo, element) {
             filtroTipoPendenciaAtual = tipo || '';
             esteiraPaginaAtual = 1;
-            document.querySelectorAll('#filtro-tipo-pendencia-container .btn').forEach(btn => {
+            document.querySelectorAll('#filtro-tipo-pendencia-container .btn-group .btn').forEach(btn => {
                 btn.classList.remove('active', 'btn-primary');
                 btn.classList.add('btn-outline-secondary');
             });
@@ -3571,6 +3667,14 @@
                 element.classList.add('active', 'btn-primary');
                 element.classList.remove('btn-outline-secondary');
             }
+            // Recarrega opções do motivo conforme o tipo (liga tipo ↔ motivo)
+            popularSelectFiltroMotivoPendencia();
+            carregarVendas();
+        }
+
+        function filtrarMotivoPendencia(valor) {
+            filtroMotivoPendenciaAtual = (valor || '').trim();
+            esteiraPaginaAtual = 1;
             carregarVendas();
         }
 

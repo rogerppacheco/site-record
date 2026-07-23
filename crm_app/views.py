@@ -1915,6 +1915,15 @@ class VendaViewSet(viewsets.ModelViewSet):
                 | Q(motivo_pendencia__tipo_pendencia__icontains='TECNICA')
             )
 
+        # Filtro por motivo específico (esteira — aba Pendentes)
+        motivo_pend_param = (self.request.query_params.get('motivo_pendencia') or '').strip()
+        if motivo_pend_param:
+            motivo_pend_upper = motivo_pend_param.upper()
+            if motivo_pend_upper in ('SEM', 'NULL', 'NONE', '0'):
+                queryset = queryset.filter(motivo_pendencia__isnull=True)
+            elif motivo_pend_param.isdigit():
+                queryset = queryset.filter(motivo_pendencia_id=int(motivo_pend_param))
+
         return queryset
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
