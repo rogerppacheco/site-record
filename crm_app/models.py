@@ -281,6 +281,31 @@ class Venda(models.Model):
         ),
     )
 
+    # --- Biometria Br Pronto (consulta na auditoria / WhatsApp) ---
+    biometria_aprovada = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        db_index=True,
+        verbose_name="Biometria aprovada",
+        help_text=(
+            "True=Doc. Apto para Venda no Br Pronto; False=consultada sem aprovação; "
+            "null=ainda não consultada."
+        ),
+    )
+    biometria_consultada_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora consulta biometria",
+    )
+    biometria_data_apta = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name="Data biometria apta",
+        help_text="Data do Doc. Apto mais recente retornada pelo Br Pronto.",
+    )
+
     # --- Retorno auditoria: confirmação do cliente (resumo enviado ao celular) ---
     cliente_confirmou_auditoria = models.BooleanField(
         null=True,

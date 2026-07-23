@@ -121,6 +121,53 @@
             color: var(--text-primary);
             box-shadow: var(--sombra-media);
         }
+        .btn-bio {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1.5px solid var(--border-color);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            transition: transform 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+            line-height: 1;
+        }
+        .btn-bio i { font-size: 1.1rem; }
+        .btn-bio:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: var(--sombra-media);
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+        .btn-bio:disabled {
+            opacity: 0.7;
+            cursor: wait;
+        }
+        .btn-bio-pendente {
+            color: #5b6b7c;
+            border-color: #c5cdd6;
+        }
+        .btn-bio-aprovada {
+            color: #0f7a45;
+            background: #e8f8ef;
+            border-color: #8fd4ad;
+        }
+        .btn-bio-aprovada:hover:not(:disabled) {
+            color: #0a5c34;
+            border-color: #0f7a45;
+        }
+        .btn-bio-reprovada {
+            color: #b42318;
+            background: #fef3f2;
+            border-color: #f5c2c0;
+        }
+        .btn-bio-reprovada:hover:not(:disabled) {
+            color: #912018;
+            border-color: #b42318;
+        }
         .loading-overlay {
             display: none;
             position: fixed;
@@ -822,6 +869,7 @@
                                 <th>Status Tratamento</th>
                                 <th>Última Edição</th>
                                 <th>Auditor</th>
+                                <th class="text-center">Bio</th>
                                 <th class="text-end pe-4">Ações</th>
                             </tr>
                         </thead>
@@ -1921,7 +1969,7 @@
                 else selStatus.val('');
                 selStatus.on('change', function() { carregarVendasPendentes(); });
 
-                if (!lista || lista.length === 0) { tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">Nenhuma venda pendente.</td></tr>'); return; }
+                if (!lista || lista.length === 0) { tbody.append('<tr><td colspan="10" class="text-center text-muted py-4">Nenhuma venda pendente.</td></tr>'); return; }
 
                 lista.forEach(v => {
                     let nomeCliente = 'N/A'; let cpfCliente = '-';
@@ -1976,12 +2024,61 @@
                     } else {
                         btnHtml = `<button class="btn btn-auditar" onclick="tentarAuditoria(${v.id})"><i class="bi bi-headset"></i> Auditar</button>`;
                     }
+
+                    const bioHtml = renderBotaoBiometriaLista(v.id, v.biometria_aprovada, v.biometria_data_apta);
                     
-                    tbody.append(`<tr class="${classeLinha}"><td class="fw-bold text-primary">#${v.id}</td><td>${dataFormatada}</td><td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div></td><td>${nomeVendedor}</td><td>${produto}</td><td><span class="badge bg-warning text-dark">${statusNome}</span></td><td>${infoEdicao}</td><td>${auditorInfo}</td><td class="text-end">${btnHtml}</td></tr>`);
+                    tbody.append(`<tr class="${classeLinha}" data-venda-id="${v.id}"><td class="fw-bold text-primary">#${v.id}</td><td>${dataFormatada}</td><td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div></td><td>${nomeVendedor}</td><td>${produto}</td><td><span class="badge bg-warning text-dark">${statusNome}</span></td><td>${infoEdicao}</td><td>${auditorInfo}</td><td class="text-center" id="bio-cell-${v.id}">${bioHtml}</td><td class="text-end">${btnHtml}</td></tr>`);
                 });
             })
             .catch(e => { console.error(e); alert('Erro ao carregar vendas.'); })
             .finally(() => $('#loadingOverlay').hide());
+        }
+
+        function renderBotaoBiometriaLista(vendaId, aprovada, dataApta) {
+            const dataHint = dataApta ? ` (${dataApta})` : '';
+            if (aprovada === true) {
+                return `<button type="button" class="btn-bio btn-bio-aprovada" id="btn-bio-${vendaId}" onclick="consultarBiometriaNaLista(${vendaId})" title="Biometria APROVADA${dataHint}. Clique para consultar novamente." aria-label="Biometria aprovada"><i class="bi bi-shield-check" aria-hidden="true"></i></button>`;
+            }
+            if (aprovada === false) {
+                return `<button type="button" class="btn-bio btn-bio-reprovada" id="btn-bio-${vendaId}" onclick="consultarBiometriaNaLista(${vendaId})" title="Biometria NÃO aprovada. Clique para consultar novamente." aria-label="Biometria não aprovada"><i class="bi bi-shield-x" aria-hidden="true"></i></button>`;
+            }
+            return `<button type="button" class="btn-bio btn-bio-pendente" id="btn-bio-${vendaId}" onclick="consultarBiometriaNaLista(${vendaId})" title="Consultar biometria no Br Pronto" aria-label="Consultar biometria"><i class="bi bi-fingerprint" aria-hidden="true"></i></button>`;
+        }
+
+        async function consultarBiometriaNaLista(vendaId) {
+            const btn = document.getElementById(`btn-bio-${vendaId}`);
+            if (!btn || btn.disabled) return;
+            const htmlAnterior = btn.innerHTML;
+            const classAnterior = btn.className;
+            btn.disabled = true;
+            btn.className = 'btn-bio btn-bio-pendente';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+            btn.title = 'Consultando Br Pronto...';
+            try {
+                const res = await apiFetch(`${API_AUX}/consultar-biometria-brpronto/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ venda_id: vendaId }),
+                });
+                if (!res.ok) {
+                    alert(res.error || 'Erro ao consultar biometria.');
+                    btn.disabled = false;
+                    btn.className = classAnterior;
+                    btn.innerHTML = htmlAnterior;
+                    return;
+                }
+                const cell = document.getElementById(`bio-cell-${vendaId}`);
+                if (cell) {
+                    cell.innerHTML = renderBotaoBiometriaLista(vendaId, !!res.aprovada, res.data_mais_recente_apta);
+                }
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : String(e);
+                let erro = msg;
+                try { if (msg.indexOf('{') >= 0) erro = JSON.parse(msg).error || msg; } catch (_) {}
+                alert(erro);
+                btn.disabled = false;
+                btn.className = classAnterior;
+                btn.innerHTML = htmlAnterior;
+            }
         }
 
         // =========================================================================
@@ -2050,6 +2147,14 @@
                 ajustarLayoutCamposEnderecoAuditoria();
                 atualizarSaudacao();
                 $('.form-check-input').prop('checked', false);
+                if (v.biometria_aprovada === true) {
+                    $('#check-biometria').prop('checked', true);
+                    $('#biometria-status-msg').text('Biometria APROVADA' + (v.biometria_data_apta ? ' em ' + v.biometria_data_apta : '')).removeClass('text-danger text-muted').addClass('text-success');
+                } else if (v.biometria_aprovada === false) {
+                    $('#biometria-status-msg').text('Última consulta: biometria NÃO aprovada.').removeClass('text-success text-muted').addClass('text-danger');
+                } else {
+                    $('#biometria-status-msg').text('').removeClass('text-success text-danger').addClass('text-muted');
+                }
                 $('.nav-link').removeClass('active'); $('.tab-pane').removeClass('show active');
                 $('#pills-identidade-tab').addClass('active'); $('#pills-identidade').addClass('show active');
                 modalAuditoria.show();
@@ -2270,6 +2375,14 @@
                 } else {
                     $('#check-biometria').prop('checked', false);
                     $('#biometria-status-msg').text('Nenhuma biometria com "Doc. Apto para Venda" encontrada para este CPF.').removeClass('text-success text-muted').addClass('text-danger');
+                }
+                if (vendaEmAuditoria && vendaEmAuditoria.id) {
+                    vendaEmAuditoria.biometria_aprovada = !!res.aprovada;
+                    vendaEmAuditoria.biometria_data_apta = res.data_mais_recente_apta || null;
+                    const cell = document.getElementById(`bio-cell-${vendaEmAuditoria.id}`);
+                    if (cell) {
+                        cell.innerHTML = renderBotaoBiometriaLista(vendaEmAuditoria.id, !!res.aprovada, res.data_mais_recente_apta);
+                    }
                 }
             } catch (e) {
                 const msg = (e && e.message) ? e.message : String(e);

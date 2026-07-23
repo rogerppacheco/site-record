@@ -365,15 +365,18 @@ def consultar_biometria_brpronto_view(request):
     Usa pool de logins Br Pronto (BO) — não a senha do usuário logado na auditoria —
     e sempre faz logoff no GED ao terminar.
     Body: { "cpf": "12345678900" } ou { "venda_id": 123 }.
+    Com venda_id, persiste biometria_aprovada / biometria_consultada_em na Venda.
     """
     import re
     from django.conf import settings
+    from django.utils import timezone
     from crm_app.services_brpronto import consultar_biometria_brpronto
     from crm_app.pool_brpronto import obter_login_brpronto, liberar_login_brpronto
     from crm_app.models import Venda
 
     cpf = request.data.get("cpf")
     venda_id = request.data.get("venda_id")
+    venda = None
 
     if venda_id is not None:
         try:
@@ -411,12 +414,30 @@ def consultar_biometria_brpronto_view(request):
 
     if not sucesso:
         return Response({"ok": False, "error": msg_erro or "Erro ao consultar Br Pronto."}, status=400)
+
+    aprovada = bool(resultado.get("aprovada", False))
+    data_apta = resultado.get("data_mais_recente_apta") or None
+    if venda is not None:
+        venda.biometria_aprovada = aprovada
+        venda.biometria_consultada_em = timezone.now()
+        venda.biometria_data_apta = data_apta
+        venda.save(update_fields=[
+            "biometria_aprovada",
+            "biometria_consultada_em",
+            "biometria_data_apta",
+            "data_ultima_alteracao",
+        ])
+
     return Response({
         "ok": True,
-        "aprovada": resultado.get("aprovada", False),
-        "data_mais_recente_apta": resultado.get("data_mais_recente_apta"),
+        "aprovada": aprovada,
+        "data_mais_recente_apta": data_apta,
         "registros": resultado.get("registros", []),
         "login_utilizado": bo.brpronto_login,
+        "biometria_aprovada": aprovada if venda is not None else None,
+        "biometria_consultada_em": (
+            venda.biometria_consultada_em.isoformat() if venda and venda.biometria_consultada_em else None
+        ),
     })
 
 
