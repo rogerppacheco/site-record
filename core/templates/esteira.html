@@ -617,7 +617,7 @@
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2" style="min-width: min(100%, 22rem);">
                         <label class="text-muted fw-bold mb-0" for="filtro-motivo-pendencia">Motivo:</label>
-                        <select id="filtro-motivo-pendencia" class="form-select form-select-sm" style="min-width: 14rem; max-width: 28rem;" onchange="filtrarMotivoPendencia(this.value)" title="Filtrar pela ligação com o tipo de pendência">
+                        <select id="filtro-motivo-pendencia" class="form-select form-select-sm" style="min-width: 14rem; max-width: 28rem;" onchange="filtrarMotivoPendencia(this.value)" title="Somente motivos que existem nas pendências da esteira">
                             <option value="">Todos os motivos</option>
                         </select>
                     </div>
@@ -1634,6 +1634,8 @@
         let filtroTipoPendenciaAtual = '';
         let filtroMotivoPendenciaAtual = '';
         let _motivosPendenciaCache = [];
+        let _motivosPendenciaNaEsteira = [];
+        let _semMotivoPendentesNaEsteira = 0;
         const ESTEIRA_PAGE_SIZE = 200;
         let esteiraPaginaAtual = 1;
         let esteiraPaginacaoMeta = { count: 0, totalPages: 1 };
@@ -1896,7 +1898,7 @@
 
         async function carregarMotivosPendencia() {
             try {
-                // Forçamos trazer todos os motivos
+                // Cadastro completo — usado no modal de marcar pendência
                 const res = await apiFetch('/crm/motivos-pendencia/?page_size=1000');
                 const lista = Array.isArray(res) ? res : (res.results || []);
                 _motivosPendenciaCache = lista.slice().sort((a, b) =>
@@ -1909,7 +1911,6 @@
                         select.innerHTML += `<option value="${m.id}">${m.nome}</option>`;
                     });
                 }
-                popularSelectFiltroMotivoPendencia();
             } catch (e) { /* erro ao carregar motivos, já tratado */ }
         }
 
@@ -1921,19 +1922,38 @@
             return true;
         }
 
+        function atualizarMotivosPendenciaNaEsteira(data) {
+            const lista = Array.isArray(data && data.motivos_pendentes) ? data.motivos_pendentes : [];
+            _motivosPendenciaNaEsteira = lista
+                .filter(m => m && m.id != null)
+                .map(m => ({
+                    id: m.id,
+                    nome: m.nome || `(Cód: ${m.id})`,
+                    tipo_pendencia: m.tipo_pendencia || '',
+                    count: m.count || 0,
+                }))
+                .sort((a, b) =>
+                    String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' })
+                );
+            _semMotivoPendentesNaEsteira = Number(data && data.sem_motivo_pendentes) || 0;
+            popularSelectFiltroMotivoPendencia();
+        }
+
         function popularSelectFiltroMotivoPendencia() {
             const select = document.getElementById('filtro-motivo-pendencia');
             if (!select) return;
             const valorAtual = filtroMotivoPendenciaAtual || select.value || '';
             const tipo = filtroTipoPendenciaAtual || '';
-            const opcoes = _motivosPendenciaCache.filter(m => motivoCorrespondeTipoFiltro(m, tipo));
+            // Só motivos que existem nas pendências da esteira (não o cadastro inteiro)
+            const opcoes = _motivosPendenciaNaEsteira.filter(m => motivoCorrespondeTipoFiltro(m, tipo));
             let html = '<option value="">Todos os motivos</option>';
-            // Sem motivo só faz sentido quando o tipo não exige motivo preenchido
-            if (!tipo) {
-                html += '<option value="SEM">Sem motivo cadastrado</option>';
+            // "Sem motivo" só quando há pendências sem FK e o tipo não exige motivo preenchido
+            if (!tipo && _semMotivoPendentesNaEsteira > 0) {
+                html += `<option value="SEM">Sem motivo cadastrado (${_semMotivoPendentesNaEsteira})</option>`;
             }
             opcoes.forEach(m => {
-                html += `<option value="${m.id}">${m.nome}</option>`;
+                const qtd = m.count ? ` (${m.count})` : '';
+                html += `<option value="${m.id}">${m.nome}${qtd}</option>`;
             });
             select.innerHTML = html;
             const aindaValido = [...select.options].some(o => o.value === String(valorAtual));
@@ -2902,6 +2922,7 @@
                     pendentes: data.pendentes || 0,
                     datas: data.datas || {},
                 });
+                atualizarMotivosPendenciaNaEsteira(data);
                 if (deveExibirAbasDeDataEsteira()) {
                     gerarAbasDeData([], data.datas || {});
                 }

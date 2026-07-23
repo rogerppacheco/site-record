@@ -2153,11 +2153,38 @@ class VendaViewSet(viewsets.ModelViewSet):
             for row in datas_rows
             if row['data_agendamento']
         }
+
+        # Motivos que de fato existem nas pendências da esteira (para o filtro da aba)
+        pendentes_qs = qs.filter(status_esteira__nome__icontains='PENDEN')
+        motivos_rows = (
+            pendentes_qs.filter(motivo_pendencia__isnull=False)
+            .values(
+                'motivo_pendencia_id',
+                'motivo_pendencia__nome',
+                'motivo_pendencia__tipo_pendencia',
+            )
+            .annotate(count=Count('id'))
+            .order_by('motivo_pendencia__nome')
+        )
+        motivos_pendentes = [
+            {
+                'id': row['motivo_pendencia_id'],
+                'nome': row['motivo_pendencia__nome'],
+                'tipo_pendencia': row['motivo_pendencia__tipo_pendencia'] or '',
+                'count': row['count'],
+            }
+            for row in motivos_rows
+            if row['motivo_pendencia_id']
+        ]
+        sem_motivo_pendentes = pendentes_qs.filter(motivo_pendencia__isnull=True).count()
+
         return Response({
             'todos': total_todos,
             'pendentes': total_pendentes,
             'agendados_total': sum(datas.values()),
             'datas': datas,
+            'motivos_pendentes': motivos_pendentes,
+            'sem_motivo_pendentes': sem_motivo_pendentes,
         })
 
     @action(detail=False, methods=['get'])
