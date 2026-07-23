@@ -18,6 +18,10 @@ docs/heroku_env.txt
 
 # Playwright (estado do navegador)
 .playwright_state.json
+.playwright_google_form_state.json
+.playwright_google_profile/
+.tmp_google_form_state.b64
+scripts/_teste_inclusao_foto.jpg
 
 # Traces PAP Playwright (podem passar de 100 MB — GitHub rejeita o push)
 downloads/pap_trace*.zip

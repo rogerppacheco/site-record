@@ -385,6 +385,17 @@ RECAPTCHA_SOLVER_API_URL = config('RECAPTCHA_SOLVER_API_URL', default='')
 # Caminho para armazenar/reusar cookies da Nio (storage state do Playwright)
 NIO_STORAGE_STATE = os.path.join(BASE_DIR, '.playwright_state.json')
 
+# Sessão Google Forms (Inclusão/Viabilidade). Gere com:
+#   .venv\Scripts\python.exe scripts\salvar_sessao_google_form.py
+# Em produção, aponte para volume persistente (ex.: /data/google_form_state.json).
+GOOGLE_FORM_STORAGE_STATE = config(
+    'GOOGLE_FORM_STORAGE_STATE',
+    default=os.path.join(BASE_DIR, '.playwright_google_form_state.json'),
+)
+# Alternativa para produção sem volume: JSON do storage state em base64
+# (gerar localmente com scripts/salvar_sessao_google_form.py e colar no Railway).
+GOOGLE_FORM_STORAGE_STATE_B64 = config('GOOGLE_FORM_STORAGE_STATE_B64', default='')
+
 # --- CONFIGURAÇÕES DE ARQUIVOS ESTÁTICOS E MÍDIA ---
 # Para upload de PDFs das faturas M-10
 MEDIA_URL = '/media/'

@@ -31,8 +31,6 @@ FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScnXtSMB3EMutB88IfAg3ihGxUj
 CODIGO_SAP = "1068561"
 EXECUTIVO = "ROGERIO PEREIRA PACHECO"
 TIPO_CANAL = "PAP"
-# Email do campo formulário - lido de GOOGLE_FORM_EMAIL (fallback: comunicacao@recordpap.com.br)
-EMAIL = os.environ.get("GOOGLE_FORM_EMAIL", "comunicacao@recordpap.com.br")
 EMPRESA_VENDAS = "RECORD"
 
 # Mapeamento UF (sigla ViaCEP) -> nome completo (Google Forms)
@@ -61,6 +59,115 @@ TIPO_LOGRADOURO_MAP = {
     "SERVIDAO": "Servidão",
     "SERVIDÃO": "Servidão",
 }
+
+
+def _env_ou_decouple(chave: str, default: str = "") -> str:
+    """Lê variável de ambiente; se vazia, tenta django-environ/decouple (.env)."""
+    val = (os.environ.get(chave) or "").strip()
+    if val:
+        return val
+    try:
+        from decouple import config as env_config
+        return str(env_config(chave, default=default) or default).strip()
+    except Exception:
+        return default
+
+
+def _email_formulario() -> str:
+    return _env_ou_decouple("GOOGLE_FORM_EMAIL", "comunicacao@recordpap.com.br")
+
+
+def _senha_formulario() -> str:
+    return _env_ou_decouple("GOOGLE_FORM_PASSWORD", "")
+
+
+def _caminho_storage_state() -> str:
+    """Caminho do storage state Playwright da sessão Google Forms."""
+    path = getattr(settings, "GOOGLE_FORM_STORAGE_STATE", None)
+    if path:
+        return str(path)
+    return os.path.join(str(settings.BASE_DIR), ".playwright_google_form_state.json")
+
+
+def _garantir_storage_state_arquivo() -> bool:
+    """
+    Garante que o arquivo de sessão exista.
+    Em produção (Railway) o disco do container é efêmero — use
+    GOOGLE_FORM_STORAGE_STATE_B64 com o JSON em base64 (gerado localmente
+    por scripts/salvar_sessao_google_form.py).
+    """
+    path = _caminho_storage_state()
+    if os.path.isfile(path) and os.path.getsize(path) > 50:
+        return True
+
+    b64 = _env_ou_decouple("GOOGLE_FORM_STORAGE_STATE_B64", "")
+    if not b64:
+        return False
+
+    try:
+        import base64
+
+        raw = base64.b64decode(b64.strip(), validate=False)
+        # Aceitar JSON puro ou já em bytes
+        if raw[:1] != b"{":
+            # às vezes cola-se o JSON sem base64 por engano
+            raw = b64.strip().encode("utf-8")
+        pasta = os.path.dirname(path)
+        if pasta:
+            os.makedirs(pasta, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(raw)
+        logger.info(
+            "[Inclusão] Storage state escrito a partir de GOOGLE_FORM_STORAGE_STATE_B64 (%s bytes) -> %s",
+            len(raw),
+            path,
+        )
+        return True
+    except Exception as e:
+        logger.warning("[Inclusão] Falha ao materializar storage state do env: %s", e)
+        return False
+
+
+def _esta_no_formulario(page) -> bool:
+    """True se a página atual parece ser o Google Forms (não a tela de login)."""
+    url = (page.url or "").lower()
+    if "accounts.google.com" in url:
+        return False
+    if "docs.google.com/forms" in url:
+        return True
+    # Fallback: botão Enviar / campos do form
+    try:
+        if page.locator('span:has-text("Enviar"), button:has-text("Enviar")').count() > 0:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _salvar_storage_state(context) -> Optional[str]:
+    """Persiste cookies/sessão Google para reuso. Retorna o caminho ou None."""
+    path = _caminho_storage_state()
+    try:
+        pasta = os.path.dirname(path)
+        if pasta:
+            os.makedirs(pasta, exist_ok=True)
+        context.storage_state(path=path)
+        logger.info("[Inclusão] Storage state Google salvo em %s", path)
+        return path
+    except Exception as e:
+        logger.warning("[Inclusão] Falha ao salvar storage state: %s", e)
+        return None
+
+
+def _invalidar_storage_state() -> None:
+    """Remove sessão salva (ex.: expirada / login inválido)."""
+    path = _caminho_storage_state()
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+            logger.info("[Inclusão] Storage state invalidado: %s", path)
+    except Exception as e:
+        logger.warning("[Inclusão] Não foi possível invalidar storage state: %s", e)
 
 
 def _limpar_cep(cep: str) -> str:
@@ -240,15 +347,21 @@ def _clicar_opcao(page, texto: str) -> bool:
 def _fazer_login_google(page) -> bool:
     """
     Se a página redirecionou para login do Google, faz login com GOOGLE_FORM_EMAIL e GOOGLE_FORM_PASSWORD.
+    Preferir sessão salva (storage state); este fluxo é o fallback.
     Retorna True se fez login (ou não precisava), False se falhou.
     """
-    url = page.url
-    if "accounts.google.com" not in url:
-        return True  # Já está no formulário
-    email = os.environ.get("GOOGLE_FORM_EMAIL", "comunicacao@recordpap.com.br")
-    password = os.environ.get("GOOGLE_FORM_PASSWORD", "")
+    if _esta_no_formulario(page):
+        return True
+    if "accounts.google.com" not in (page.url or ""):
+        return True  # Já está no formulário / outra página
+
+    email = _email_formulario()
+    password = _senha_formulario()
     if not password:
-        logger.warning("[Inclusão] GOOGLE_FORM_PASSWORD não configurada - não é possível fazer login")
+        logger.warning(
+            "[Inclusão] Sem sessão salva e GOOGLE_FORM_PASSWORD vazia. "
+            "Rode: python scripts/salvar_sessao_google_form.py"
+        )
         return False
     try:
         def _clicar_avancar():
@@ -335,7 +448,7 @@ def _fazer_login_google(page) -> bool:
         # "Agora não" pode aparecer DEPOIS da senha (Google oferece passkey após login)
         for tentativa in range(5):
             page.wait_for_timeout(2000)
-            if "accounts.google.com" not in page.url:
+            if _esta_no_formulario(page) or "accounts.google.com" not in page.url:
                 logger.info(f"[Inclusão] Saiu do login (tentativa {tentativa + 1})")
                 break
             # Aguardar botão "Agora não" aparecer (até 3s)
@@ -350,6 +463,7 @@ def _fazer_login_google(page) -> bool:
                 page.wait_for_timeout(3000)
         if "accounts.google.com" in page.url:
             logger.warning("[Inclusão] Ainda em accounts.google.com após tentativas de pular passkey")
+            return False
     except Exception as e:
         logger.warning(f"[Inclusão] Erro no login Google: {e}")
         return False
@@ -364,83 +478,178 @@ TEXTAREAS_FORM = 'textarea:not([name="g-recaptcha-response"])'
 CONTENTEDITABLE_FORM = 'div[contenteditable="true"], [role="textbox"]'
 
 
+def _dropdown_valor_selecionado(page, nth_dropdown: int) -> str:
+    """Retorna o data-value da opção selecionada no listbox nth, ou ''."""
+    try:
+        lbs = page.locator('div[role="listbox"]')
+        if lbs.count() <= nth_dropdown:
+            return ""
+        sel = lbs.nth(nth_dropdown).locator('[role="option"][aria-selected="true"]').first
+        if sel.count() == 0:
+            return ""
+        return (sel.get_attribute("data-value") or sel.inner_text() or "").strip()
+    except Exception:
+        return ""
+
+
 def _selecionar_dropdown(page, valor: str, nth_dropdown: int = 0) -> bool:
     """
-    Abre o dropdown pelo índice (0=Executivo, 1=Empresa, 2=UF) e seleciona valor.
-    Google Forms: trigger pode ser div[role="option"] com span "Escolher" ou span.vRMGwf.oJeWuf.
+    Abre o listbox pelo índice (0=Executivo, 1=Empresa, 2=UF) e seleciona o valor.
+
+    Importante: no Google Forms as opções ficam no DOM mesmo com o menu fechado.
+    Clicar com force=True em opção oculta NÃO seleciona — precisa abrir o listbox.
     """
+    valor = (valor or "").strip()
+    if not valor:
+        return False
+
     try:
-        page.keyboard.press('Escape')
-        page.wait_for_timeout(300)
-        page.keyboard.press('Escape')
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+        page.keyboard.press("Escape")
         page.wait_for_timeout(200)
 
-        # Se o dropdown já estiver aberto, clicar na opção
-        for sel in [
-            f'div[role="option"][data-value="{valor}"]',
-            f'div[role="option"][data-value="{valor.upper()}"]',
-            f'div[role="option"][data-value="{valor.lower()}"]',
-            f'div[role="option"]:has(span:has-text("{valor}"))',
-            f'span.vRMGwf.oJeWuf:has-text("{valor}")',
-        ]:
-            opt = page.locator(sel).first
-            if opt.count() > 0:
-                try:
-                    opt.click(force=True, timeout=2000)
-                    _log_step("Dropdown", f"{valor} (já aberto)", ok=True)
-                    return True
-                except Exception:
-                    pass
+        listboxes = page.locator('div[role="listbox"]')
+        n_lb = listboxes.count()
+        if n_lb <= nth_dropdown:
+            _log_step(
+                "Dropdown",
+                f"listbox nth={nth_dropdown} inexistente (total={n_lb})",
+                ok=False,
+            )
+            return False
 
-        # Abrir dropdown: tentar container div[role="option"] que contém "Escolher" (estado fechado)
-        trigger = page.locator('div[role="option"]').filter(has=page.locator('span:has-text("Escolher")'))
-        if trigger.count() > nth_dropdown:
-            tr = trigger.nth(nth_dropdown)
-            tr.scroll_into_view_if_needed()
-            page.wait_for_timeout(300)
-            tr.click(force=True, timeout=5000)
-            page.wait_for_timeout(1200)
-        else:
-            # Fallback: span "Escolher" (ordem: 0=Executivo, 1=Empresa, 2=UF)
-            dd = page.locator('span.vRMGwf.oJeWuf').filter(has_text='Escolher')
-            if dd.count() == 0:
-                dd = page.get_by_text('Escolher', exact=True)
-            if dd.count() == 0:
-                dd = page.locator('span.vRMGwf.oJeWuf').filter(has_text=re.compile(r'Selecione|Escolher', re.I))
-            if dd.count() == 0:
-                dd = page.locator('span').filter(has_text=re.compile(r'Selecione', re.I))
-            if dd.count() <= nth_dropdown:
-                _log_step("Dropdown", f"Trigger não encontrado (nth={nth_dropdown})", ok=False)
-                return False
-            dd = dd.nth(nth_dropdown)
-            dd.scroll_into_view_if_needed()
-            page.wait_for_timeout(300)
-            dd.click(force=True, timeout=5000)
-            page.wait_for_timeout(1200)
+        lb = listboxes.nth(nth_dropdown)
+        lb.scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
 
-        # Selecionar a opção no menu aberto
-        for sel in [
-            f'div[role="option"][data-value="{valor}"]',
-            f'div[role="option"][data-value="{valor.upper()}"]',
-            f'div[role="option"][data-value="{valor.lower()}"]',
-            f'div[role="option"]:has(span:has-text("{valor}"))',
-            f'span.vRMGwf.oJeWuf:has-text("{valor}")',
-        ]:
-            opt = page.locator(sel).first
-            if opt.count() > 0:
-                opt.scroll_into_view_if_needed()
-                page.wait_for_timeout(300)
-                opt.click(force=True, timeout=5000)
-                return True
-        opt = page.get_by_text(valor, exact=True).first
-        if opt.count() > 0:
-            opt.scroll_into_view_if_needed()
-            page.wait_for_timeout(300)
-            opt.click(force=True, timeout=5000)
+        # Já selecionado?
+        atual = _dropdown_valor_selecionado(page, nth_dropdown)
+        if atual and atual.casefold() == valor.casefold():
+            _log_step("Dropdown", f"{valor} (já selecionado)", ok=True)
             return True
+
+        # Abrir listbox (clicar no trigger / no próprio listbox)
+        expanded = (lb.get_attribute("aria-expanded") or "").lower() == "true"
+        if not expanded:
+            # Preferir o span "Escolher" / valor atual dentro deste listbox
+            trigger = lb.locator('span.vRMGwf.oJeWuf, [role="option"][aria-selected="true"]').first
+            try:
+                if trigger.count() > 0:
+                    trigger.click(timeout=5000)
+                else:
+                    lb.click(timeout=5000)
+            except Exception:
+                lb.click(force=True, timeout=5000)
+            page.wait_for_timeout(600)
+
+        # Opção DENTRO deste listbox (nunca buscar na página inteira)
+        candidatos = [
+            f'[role="option"][data-value="{valor}"]',
+            f'[role="option"][data-value="{valor.upper()}"]',
+            f'[role="option"][data-value="{valor.lower()}"]',
+        ]
+        opt = None
+        for sel in candidatos:
+            loc = lb.locator(sel)
+            if loc.count() > 0:
+                opt = loc.first
+                break
+        if opt is None:
+            # Match por texto exato (case-insensitive via filter)
+            loc = lb.locator('[role="option"]').filter(has_text=re.compile(rf"^{re.escape(valor)}$", re.I))
+            if loc.count() > 0:
+                opt = loc.first
+
+        if opt is None:
+            _log_step("Dropdown", f"Opção '{valor}' não encontrada no listbox {nth_dropdown}", ok=False)
+            page.keyboard.press("Escape")
+            return False
+
+        opt.scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
+        try:
+            opt.click(timeout=5000)
+        except Exception:
+            opt.click(force=True, timeout=5000)
+        page.wait_for_timeout(500)
+
+        # Fechar se ainda aberto
+        if (lb.get_attribute("aria-expanded") or "").lower() == "true":
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+
+        selecionado = _dropdown_valor_selecionado(page, nth_dropdown)
+        ok = bool(selecionado) and selecionado.casefold() == valor.casefold()
+        _log_step(
+            "Dropdown",
+            f"nth={nth_dropdown} pediu='{valor}' ficou='{selecionado}'",
+            ok=ok,
+        )
+        return ok
     except Exception as e:
         logger.warning(f"[Inclusão] Dropdown '{valor}' (nth={nth_dropdown}) erro: {e}")
-    return False
+        _log_step("Dropdown", str(e), ok=False)
+        return False
+
+
+def _limpar_formulario_google(page) -> bool:
+    """
+    Clica em 'Limpar formulário' e confirma o diálogo.
+    Com conta logada o Forms reabre com rascunho da tentativa anterior;
+    limpar evita misturar dados/arquivos antigos com a solicitação atual.
+    """
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+
+        link = page.get_by_text(re.compile(r"^Limpar formul[aá]rio$|^Clear form$", re.I)).first
+        if link.count() == 0:
+            link = page.locator('span:has-text("Limpar formulário"), span:has-text("Clear form")').first
+        if link.count() == 0:
+            _log_step("0-Limpar", "Link Limpar formulário não encontrado", ok=False)
+            return False
+
+        link.scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
+        link.click(timeout=5000)
+        page.wait_for_timeout(1000)
+
+        # Diálogo: botão de confirmação (não o Cancelar)
+        dialog = page.locator('[role="dialog"], [role="alertdialog"], div[aria-modal="true"]')
+        confirm = None
+        if dialog.count() > 0:
+            d = dialog.last
+            for sel in [
+                'span:has-text("Limpar formulário")',
+                'span:has-text("Clear form")',
+                'button:has-text("Limpar formulário")',
+                'button:has-text("Clear form")',
+                '[role="button"]:has-text("Limpar")',
+                '[role="button"]:has-text("Clear")',
+            ]:
+                btn = d.locator(sel).filter(has_not_text=re.compile(r"Cancel|Cancelar", re.I))
+                if btn.count() > 0:
+                    confirm = btn.last
+                    break
+        if confirm is None:
+            # Fallback na página
+            confirm = page.locator(
+                'div[role="dialog"] span:has-text("Limpar formulário"), '
+                'div[role="dialog"] button:has-text("Limpar formulário")'
+            ).last
+
+        if confirm is not None and confirm.count() > 0:
+            confirm.click(timeout=5000)
+            page.wait_for_timeout(1500)
+            _log_step("0-Limpar", "OK (confirmado)")
+            return True
+
+        _log_step("0-Limpar", "Clicou no link, mas diálogo de confirmação não apareceu", ok=False)
+        return False
+    except Exception as e:
+        _log_step("0-Limpar", str(e), ok=False)
+        return False
 
 
 def _fechar_picker_modal(page) -> None:
@@ -477,8 +686,11 @@ def _fechar_picker_modal(page) -> None:
 def _upload_arquivos_viabilidade(page, arquivos_paths: list) -> bool:
     """
     Faz upload de um ou mais arquivos no formulário Google Forms.
-    Aceita lista de caminhos (foto + comprovantes). O botão do form aceita múltiplos arquivos.
-    Tenta: input direto com lista, depois Adicionar arquivo com filechooser.
+
+    Fluxo que funciona com sessão Google autenticada:
+    1) Clicar em "Adicionar arquivo" (abre Google Picker em iframe)
+    2) set_input_files no input[type=file] oculto DENTRO do iframe do picker
+       (não depende do filechooser nativo, que costuma falhar no Playwright)
     """
     if not arquivos_paths:
         return False
@@ -490,72 +702,132 @@ def _upload_arquivos_viabilidade(page, arquivos_paths: list) -> bool:
     if not paths_abs:
         _log_step("16-Foto", "Nenhum arquivo válido encontrado", ok=False)
         return False
-    # 1) Tentar input[type="file"] direto (aceita múltiplos)
+
+    def _tem_anexo_na_pagina() -> bool:
+        """Indícios de que o Forms aceitou o(s) arquivo(s)."""
+        nomes = [os.path.basename(p) for p in paths_abs]
+        for nome in nomes:
+            stem = os.path.splitext(nome)[0]
+            for trecho in (nome, stem, ".jpg", ".jpeg", ".png", ".pdf"):
+                if trecho and page.locator(f"text={trecho}").count() > 0:
+                    return True
+        for trecho in ("Remover arquivo", "Remove file", "1 arquivo", "arquivos"):
+            if page.locator(f"text={trecho}").count() > 0:
+                return True
+        return False
+
+    def _set_files_em_frames(paths: list) -> bool:
+        """Procura input[type=file] em todos os frames e aplica set_input_files."""
+        for frame in page.frames:
+            try:
+                fi = frame.locator('input[type="file"]')
+                if fi.count() == 0:
+                    continue
+                fi.first.set_input_files(paths, timeout=10000)
+                _log_step(
+                    "16-Foto",
+                    f"set_input_files em frame ({len(paths)} arquivo(s)) url={frame.url[:60]}",
+                )
+                return True
+            except Exception as e:
+                _log_step("16-Foto", f"frame {frame.url[:40]}: {e}", ok=False)
+        return False
+
+    # 1) Input direto na página (raro no Forms moderno, mas barato tentar)
     try:
-        fi = page.locator('input[type="file"]').first
+        fi = page.locator('input[type="file"]')
         if fi.count() > 0:
-            fi.set_input_files(paths_abs, timeout=8000)
-            _log_step("16-Foto", f"OK (input direto, {len(paths_abs)} arquivo(s))")
+            fi.first.set_input_files(paths_abs, timeout=8000)
             page.wait_for_timeout(2000)
-            return True
+            if _tem_anexo_na_pagina():
+                _log_step("16-Foto", f"OK (input direto, {len(paths_abs)} arquivo(s))")
+                return True
     except Exception as e:
         _log_step("16-Foto", f"input direto: {e}", ok=False)
-    # 2) "Adicionar arquivo" abre modal com iframe picker
+
+    # 2) Abrir Google Picker via "Adicionar arquivo"
+    btn_add = page.locator('span.NPEfkd.RveJvd.snByac:has-text("Adicionar arquivo")').first
+    if btn_add.count() == 0:
+        btn_add = page.get_by_role("button", name=re.compile(r"Adicionar arquivo|Add file", re.I)).first
+    if btn_add.count() == 0:
+        btn_add = page.get_by_text("Adicionar arquivo", exact=False).first
+    if btn_add.count() == 0:
+        _log_step("16-Foto", "Botão Adicionar arquivo não encontrado", ok=False)
+        return False
+
     try:
-        btn_add = page.locator('span.NPEfkd.RveJvd.snByac:has-text("Adicionar arquivo")').first
-        if btn_add.count() == 0:
-            btn_add = page.get_by_text('Adicionar arquivo').first
-        if btn_add.count() == 0:
-            _log_step("16-Foto", "Botão Adicionar arquivo não encontrado", ok=False)
-            return False
+        btn_add.scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        # Às vezes o clique já dispara filechooser (sem picker)
         try:
-            with page.expect_file_chooser(timeout=3000) as fc_info:
-                btn_add.click()
-            fc = fc_info.value
-            fc.set_files(paths_abs)
-            _log_step("16-Foto", f"OK (Adicionar arquivo direto, {len(paths_abs)} arquivo(s))")
-            page.wait_for_timeout(2000)
-            return True
+            with page.expect_file_chooser(timeout=2500) as fc_info:
+                btn_add.click(timeout=5000)
+            fc_info.value.set_files(paths_abs)
+            page.wait_for_timeout(2500)
+            if _tem_anexo_na_pagina():
+                _log_step("16-Foto", f"OK (filechooser no botão, {len(paths_abs)} arquivo(s))")
+                return True
+        except Exception:
+            # Picker modal esperado
+            pass
+
+        # Aguardar iframe do picker
+        try:
+            page.wait_for_selector(
+                'iframe[src*="docs.google.com/picker"], iframe[src*="picker"]',
+                timeout=8000,
+            )
         except Exception:
             pass
-        page.wait_for_timeout(2500)
-        # Modal Google Picker (iframe): botão "Procurar" pode ter jsname="V67aGc" ou classe UywwFc-vQzf8d
+        page.wait_for_timeout(1500)
+
+        # Estratégia principal: input oculto dentro do iframe do picker
+        if _set_files_em_frames(paths_abs):
+            page.wait_for_timeout(3000)
+            if _tem_anexo_na_pagina():
+                _log_step("16-Foto", f"OK (picker iframe input, {len(paths_abs)} arquivo(s))")
+                return True
+            # Às vezes o picker precisa de confirmação / espera extra
+            page.wait_for_timeout(3000)
+            if _tem_anexo_na_pagina():
+                _log_step("16-Foto", f"OK (picker iframe, delay extra, {len(paths_abs)} arquivo(s))")
+                return True
+
+        # Fallback: botão Procurar/Browse + filechooser
         try:
-            picker_frame = page.frame_locator('iframe[src*="docs.google.com/picker"]')
+            picker = page.frame_locator(
+                'iframe[src*="docs.google.com/picker"], iframe[src*="picker"]'
+            )
             for sel in [
                 '[jsname="V67aGc"]',
                 'span.UywwFc-vQzf8d:has-text("Procurar")',
                 'span:has-text("Procurar")',
                 'button:has-text("Procurar")',
+                'button:has-text("Browse")',
                 '[role="button"]:has-text("Procurar")',
+                '[role="button"]:has-text("Browse")',
             ]:
-                btn_procurar = picker_frame.locator(sel).first
-                if btn_procurar.count() > 0:
-                    btn_procurar.wait_for(state='visible', timeout=5000)
+                btn_procurar = picker.locator(sel).first
+                if btn_procurar.count() == 0:
+                    continue
+                try:
+                    btn_procurar.wait_for(state="visible", timeout=4000)
                     with page.expect_file_chooser(timeout=12000) as fc_info:
                         btn_procurar.click(force=True)
-                    fc = fc_info.value
-                    fc.set_files(paths_abs)
-                    _log_step("16-Foto", f"OK (FileChooser via Procurar, {len(paths_abs)} arquivo(s))")
-                    page.wait_for_timeout(2000)
-                    return True
-        except Exception as e_iframe:
-            _log_step("16-Foto", f"Procurar (iframe): {e_iframe}", ok=False)
-        # Última tentativa: Procurar na página principal (se o picker não estiver em iframe)
-        try:
-            btn_main = page.locator('[jsname="V67aGc"], span.UywwFc-vQzf8d:has-text("Procurar"), span:has-text("Procurar")').first
-            if btn_main.count() > 0:
-                btn_main.wait_for(state='visible', timeout=3000)
-                with page.expect_file_chooser(timeout=10000) as fc_info:
-                    btn_main.click(force=True)
-                fc_info.value.set_files(paths_abs)
-                _log_step("16-Foto", f"OK (Procurar página principal, {len(paths_abs)} arquivo(s))")
-                page.wait_for_timeout(2000)
-                return True
-        except Exception:
-            pass
-    except Exception:
-        pass
+                    fc_info.value.set_files(paths_abs)
+                    page.wait_for_timeout(3000)
+                    if _tem_anexo_na_pagina():
+                        _log_step("16-Foto", f"OK (Procurar+filechooser, {len(paths_abs)} arquivo(s))")
+                        return True
+                except Exception as e_fc:
+                    _log_step("16-Foto", f"Procurar {sel[:30]}: {e_fc}", ok=False)
+        except Exception as e_picker:
+            _log_step("16-Foto", f"picker fallback: {e_picker}", ok=False)
+
+    except Exception as e:
+        _log_step("16-Foto", f"fluxo Adicionar arquivo: {e}", ok=False)
+
+    _log_step("16-Foto", "Todas as estratégias de upload falharam", ok=False)
     return False
 
 
@@ -627,32 +899,92 @@ def preencher_formulario_inclusao(
     cep_formatado = formatar_cep(cep)
 
     headless = getattr(settings, 'PAP_HEADLESS', True)
+    _garantir_storage_state_arquivo()
+    state_path = _caminho_storage_state()
+    tem_sessao = os.path.isfile(state_path)
 
     od_pasta_used = None
+    browser = None
+    context = None
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless)
-            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            launch_opts = {"headless": headless}
+            if headless:
+                launch_opts["args"] = [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ]
+            browser = p.chromium.launch(**launch_opts)
+            context_kwargs = {
+                "viewport": {"width": 1280, "height": 900},
+                "user_agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+            }
+            if tem_sessao:
+                context_kwargs["storage_state"] = state_path
+                logger.info("[Inclusão] Usando storage state: %s", state_path)
+            else:
+                logger.warning(
+                    "[Inclusão] Sem storage state em %s — tentará login por senha. "
+                    "Recomendado: python scripts/salvar_sessao_google_form.py",
+                    state_path,
+                )
+            context = browser.new_context(**context_kwargs)
+            if headless:
+                context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+                )
             page = context.new_page()
             page.set_default_timeout(20000)
 
             page.goto(FORM_URL, wait_until='domcontentloaded')
-            page.wait_for_load_state('networkidle', timeout=15000)
+            try:
+                page.wait_for_load_state('networkidle', timeout=15000)
+            except Exception:
+                pass
             page.wait_for_timeout(1500)
 
-            # Login no Google (se redirecionou para accounts.google.com)
-            if not _fazer_login_google(page):
-                browser.close()
-                return False, "Não foi possível fazer login no Google. Verifique GOOGLE_FORM_EMAIL e GOOGLE_FORM_PASSWORD no .env"
-            page.wait_for_timeout(2000)
-            # Se ainda estiver no login, tentar voltar ao formulário
-            if "accounts.google.com" in page.url:
-                page.goto(FORM_URL, wait_until='domcontentloaded')
-                page.wait_for_load_state('networkidle', timeout=15000)
+            # Se a sessão salva expirou, cai no login por senha (fallback)
+            if not _esta_no_formulario(page):
+                if tem_sessao:
+                    logger.warning("[Inclusão] Sessão salva não abriu o form — tentando login e invalidando state")
+                    _invalidar_storage_state()
+                if not _fazer_login_google(page):
+                    browser.close()
+                    return (
+                        False,
+                        "Não foi possível abrir o formulário Google. "
+                        "Rode localmente: python scripts/salvar_sessao_google_form.py "
+                        "e publique o arquivo de sessão (GOOGLE_FORM_STORAGE_STATE).",
+                    )
                 page.wait_for_timeout(1500)
+                if not _esta_no_formulario(page):
+                    page.goto(FORM_URL, wait_until='domcontentloaded')
+                    try:
+                        page.wait_for_load_state('networkidle', timeout=15000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(1500)
+                if not _esta_no_formulario(page):
+                    url_final = page.url
+                    browser.close()
+                    return (
+                        False,
+                        f"Login Google incompleto (ainda em: {url_final[:80]}...). "
+                        "Faça login manual com scripts/salvar_sessao_google_form.py",
+                    )
+                # Login OK — persistir cookies para as próximas execuções
+                _salvar_storage_state(context)
+            else:
+                # Sessão válida — renovar arquivo (cookies atualizados)
+                _salvar_storage_state(context)
 
-            # Limpar overlays/dropdowns abertos antes de preencher
-            page.keyboard.press('Escape')
+            # Limpar rascunho da sessão Google (dados/arquivos de tentativas anteriores)
+            _limpar_formulario_google(page)
+            page.keyboard.press("Escape")
             page.wait_for_timeout(300)
 
             # Inputs de texto do formulário (exclui reCAPTCHA - name="ca")
@@ -664,11 +996,17 @@ def preencher_formulario_inclusao(
             n_ce = contenteditables.count()
             _log_step("INIT", f"URL={page.url[:80]}... inputs={n_inputs} textareas={n_textareas} contenteditable={n_ce}")
 
+            if n_inputs < 1 and n_textareas < 1 and n_ce < 1:
+                browser.close()
+                return False, "Formulário aberto, mas nenhum campo editável foi encontrado (layout mudou?)."
+
             # Ordem do formulário (manter alinhado):
             #  1) Código SAP   2) Executivo   3) Tipo canal   4) E-mail   5) Empresa
             #  6) UF/Estado   7) CEP         8) Cidade       9) Tipo logradouro
             # 10) Nome logradouro  11) Nº fachada  12) Bairro  13) Complementos
             # 14) Fachadas vizinhos  15) Coordenadas  16) Foto/vídeo  17) Observações
+
+            email_campo = _email_formulario()
 
             def _fill_textlike(idx: int, valor: str, step_name: str) -> bool:
                 """Preenche campo de texto longo (textarea OU div contenteditable). Google Forms pode usar ambos."""
@@ -719,7 +1057,7 @@ def preencher_formulario_inclusao(
             # 4. E-mail
             _log_step("4-Email", "")
             try:
-                page.locator('input[type="email"]').first.fill(EMAIL, timeout=8000)
+                page.locator('input[type="email"]').first.fill(email_campo, timeout=8000)
             except Exception as e:
                 _log_step("4-Email", str(e), ok=False)
                 raise
@@ -817,29 +1155,35 @@ def preencher_formulario_inclusao(
                 submit = page.locator('span.NPEfkd:has-text("Enviar")').first
             if submit.count() == 0:
                 submit = page.locator('span:has-text("Enviar")').first
+            clicou_enviar = False
+            erros_val: list = []
             if submit.count() > 0:
                 _log_step("SUBMIT", "Clicando Enviar...")
                 _fechar_picker_modal(page)  # Garantir que modal não bloqueie
                 page.wait_for_timeout(300)
                 try:
                     submit.click(timeout=15000)
-                except Exception as submit_err:
+                    clicou_enviar = True
+                except Exception:
                     # Modal pode estar bloqueando; tentar fechar e force click
                     _fechar_picker_modal(page)
                     page.wait_for_timeout(500)
                     submit.click(force=True, timeout=10000)
+                    clicou_enviar = True
                 page.wait_for_timeout(5000)
                 # Verificar confirmação - apenas frases específicas da página de sucesso
                 # (evitar falso positivo: "registrada"/"sua resposta" podem aparecer em labels do form)
                 confirm_sel = [
                     'text="Obrigado"', 'text="Respostas enviadas"',
+                    'text="Sua resposta foi registrada"',
                     'text=Your response has been recorded', 'text=Thank you',
-                    '[data-params*="confirmationMessage"]'
+                    'text=Response recorded',
+                    '[data-params*="confirmationMessage"]',
                 ]
-                still_has_form = page.locator('span:has-text("Enviar")').count() > 0
-                confirmed = (not still_has_form) and any(
-                    page.locator(s).count() > 0 for s in confirm_sel
-                )
+                still_has_form = page.locator('span:has-text("Enviar"), button:has-text("Enviar")').count() > 0
+                confirmed = any(page.locator(s).count() > 0 for s in confirm_sel)
+                if not confirmed and not still_has_form and "formResponse" in (page.url or ""):
+                    confirmed = True
                 if confirmed:
                     _log_step("SUBMIT", "Confirmado (Obrigado/Respostas enviadas)")
                     browser.close()
@@ -847,16 +1191,54 @@ def preencher_formulario_inclusao(
                     if od_pasta_used:
                         msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}"
                     return True, msg
+                for sel in [
+                    'text="Esta pergunta é obrigatória"',
+                    'text="This is a required question"',
+                    'text="Arquivo obrigatório"',
+                    'div[role="alert"]',
+                    '.freebirdFormviewerViewItemsItemErrorMessage',
+                ]:
+                    try:
+                        loc = page.locator(sel)
+                        if loc.count() > 0:
+                            txt = (loc.first.inner_text(timeout=1000) or "").strip()
+                            if txt:
+                                erros_val.append(txt[:120])
+                    except Exception:
+                        pass
+                if erros_val:
+                    _log_step("SUBMIT", f"Validação: {erros_val[0]}", ok=False)
+                elif still_has_form:
+                    _log_step("SUBMIT", "Clicou Enviar mas o formulário continua na tela", ok=False)
             else:
                 _log_step("SUBMIT", "Botão Enviar não encontrado", ok=False)
+            # Capturar URL antes de fechar o browser (diagnóstico)
+            url_atual = ""
+            try:
+                url_atual = page.url or ""
+            except Exception:
+                pass
             browser.close()
             # Formulário NÃO foi enviado - avisar o usuário
-            if "accounts.google.com" in page.url:
-                msg = "O formulário não foi preenchido: ainda na tela de login. Tente novamente ou clique em 'Agora não' se o Google oferecer login mais rápido."
-            elif ok_upload is False and od_pasta_used:
-                msg = "O formulário não foi enviado. O upload automático da foto falhou (o Google Forms pode bloquear em ambiente automatizado). "
+            if "accounts.google.com" in url_atual:
+                msg = (
+                    "O formulário não foi preenchido: ainda na tela de login. "
+                    "Rode: python scripts/salvar_sessao_google_form.py"
+                )
+            elif clicou_enviar and erros_val:
+                msg = f"O formulário não foi enviado: {erros_val[0]}"
+            elif ok_upload is False and paths:
+                msg = (
+                    "O formulário não foi enviado. O upload automático da foto falhou "
+                    "(o Google Forms pode bloquear em ambiente automatizado). "
+                )
+            elif clicou_enviar:
+                msg = (
+                    "O formulário foi preenchido e o Enviar foi clicado, mas a confirmação "
+                    "não apareceu (campo obrigatório vazio ou upload pendente?)."
+                )
             else:
-                msg = "O formulário não foi enviado (campos ou botão não encontrados). "
+                msg = "O formulário não foi enviado (botão Enviar não encontrado). "
             if od_pasta_used:
                 msg += f"\n\n📁 Arquivos salvos no R2: {od_pasta_used}\nVocê pode anexá-los manualmente no formulário."
             return False, msg
