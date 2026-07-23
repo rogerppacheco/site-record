@@ -74,11 +74,31 @@ def _env_ou_decouple(chave: str, default: str = "") -> str:
 
 
 def _email_formulario() -> str:
+    """E-mail preenchido no *campo* do Google Forms (não é a conta de login)."""
     return _env_ou_decouple("GOOGLE_FORM_EMAIL", "comunicacao@recordpap.com.br")
 
 
+def _email_login_google() -> str:
+    """
+    Conta Google usada para autenticar / abrir o formulário (storage state).
+    Separada do e-mail do campo do form.
+    """
+    return _env_ou_decouple(
+        "GOOGLE_FORM_LOGIN_EMAIL",
+        "roggerio@gmail.com",
+    )
+
+
+def _senha_login_google() -> str:
+    """Senha da conta de login. Aceita GOOGLE_FORM_LOGIN_PASSWORD ou fallback GOOGLE_FORM_PASSWORD."""
+    return _env_ou_decouple("GOOGLE_FORM_LOGIN_PASSWORD", "") or _env_ou_decouple(
+        "GOOGLE_FORM_PASSWORD", ""
+    )
+
+
 def _senha_formulario() -> str:
-    return _env_ou_decouple("GOOGLE_FORM_PASSWORD", "")
+    """Compat: senha de login (legado usava GOOGLE_FORM_PASSWORD)."""
+    return _senha_login_google()
 
 
 def _caminho_storage_state() -> str:
@@ -128,19 +148,42 @@ def _garantir_storage_state_arquivo() -> bool:
         return False
 
 
+def _url_real_pagina(page) -> str:
+    """URL efetiva da página (location.href), mais confiável que page.url após login Google."""
+    try:
+        href = page.evaluate("() => location.href")
+        if href:
+            return str(href)
+    except Exception:
+        pass
+    try:
+        return page.url or ""
+    except Exception:
+        return ""
+
+
 def _esta_no_formulario(page) -> bool:
     """True se a página atual parece ser o Google Forms (não a tela de login)."""
-    url = (page.url or "").lower()
+    try:
+        url = (_url_real_pagina(page) or "").lower()
+    except Exception:
+        return False
+
+    # Conteúdo do form (mais confiável que a URL sozinha)
+    try:
+        if page.locator('div[role="listbox"]').count() >= 1:
+            return True
+        if page.locator('span:has-text("Enviar"), button:has-text("Enviar")').count() > 0:
+            return True
+        if page.get_by_text("Limpar formulário", exact=False).count() > 0:
+            return True
+    except Exception:
+        pass
+
     if "accounts.google.com" in url:
         return False
     if "docs.google.com/forms" in url:
         return True
-    # Fallback: botão Enviar / campos do form
-    try:
-        if page.locator('span:has-text("Enviar"), button:has-text("Enviar")').count() > 0:
-            return True
-    except Exception:
-        pass
     return False
 
 
@@ -344,22 +387,80 @@ def _clicar_opcao(page, texto: str) -> bool:
     return False
 
 
+def _resolver_accountchooser_google(page) -> bool:
+    """
+    Se estiver na tela 'Choose an account', tenta selecionar GOOGLE_FORM_LOGIN_EMAIL.
+    Retorna True se saiu do accountchooser (ou não estava nele).
+    """
+    url = page.url or ""
+    if "accountchooser" not in url:
+        return True
+
+    email = _email_login_google()
+    logger.warning("[Inclusão] Google pediu accountchooser; tentando conta de login %s", email)
+
+    # Conta alvo (login)
+    for sel in [
+        f'div[data-identifier="{email}"]',
+        f'[data-email="{email}"]',
+        f'text={email}',
+    ]:
+        loc = page.locator(sel)
+        if loc.count() > 0:
+            try:
+                loc.first.click(timeout=5000)
+                page.wait_for_timeout(3000)
+                if "accountchooser" not in (page.url or ""):
+                    return True
+            except Exception as e:
+                logger.warning("[Inclusão] Clique na conta %s falhou: %s", email, e)
+
+    # Conta errada / signed out → "Use another account"
+    for texto in ("Use another account", "Usar outra conta"):
+        btn = page.get_by_text(texto, exact=False)
+        if btn.count() > 0:
+            try:
+                btn.first.click(timeout=5000)
+                page.wait_for_timeout(2000)
+                logger.info("[Inclusão] Clicou em '%s'", texto)
+                return "accountchooser" not in (page.url or "")
+            except Exception:
+                pass
+
+    try:
+        body = (page.inner_text("body") or "")[:400]
+        logger.warning(
+            "[Inclusão] accountchooser sem a conta esperada. Trecho: %s",
+            body.replace("\n", " | ")[:300],
+        )
+    except Exception:
+        pass
+    return False
+
+
 def _fazer_login_google(page) -> bool:
     """
-    Se a página redirecionou para login do Google, faz login com GOOGLE_FORM_EMAIL e GOOGLE_FORM_PASSWORD.
-    Preferir sessão salva (storage state); este fluxo é o fallback.
-    Retorna True se fez login (ou não precisava), False se falhou.
+    Se a página redirecionou para login do Google, autentica com
+    GOOGLE_FORM_LOGIN_EMAIL / GOOGLE_FORM_LOGIN_PASSWORD (conta dona do form).
+    GOOGLE_FORM_EMAIL é só o valor do campo e-mail dentro do formulário.
     """
     if _esta_no_formulario(page):
         return True
     if "accounts.google.com" not in (page.url or ""):
-        return True  # Já está no formulário / outra página
+        return True
 
-    email = _email_formulario()
-    password = _senha_formulario()
+    if "accountchooser" in (page.url or ""):
+        _resolver_accountchooser_google(page)
+        if _esta_no_formulario(page):
+            return True
+        page.wait_for_timeout(1000)
+
+    email = _email_login_google()
+    password = _senha_login_google()
     if not password:
         logger.warning(
-            "[Inclusão] Sem sessão salva e GOOGLE_FORM_PASSWORD vazia. "
+            "[Inclusão] Sem sessão salva e senha de login vazia "
+            "(GOOGLE_FORM_LOGIN_PASSWORD / GOOGLE_FORM_PASSWORD). "
             "Rode: python scripts/salvar_sessao_google_form.py"
         )
         return False
@@ -380,7 +481,6 @@ def _fazer_login_google(page) -> bool:
             return False
 
         def _pular_passkey():
-            """Clica em 'Agora não' ou 'Not now' para pular passkey/login mais rápido."""
             for texto in ['Agora não', 'Not now', 'Agora nao']:
                 try:
                     btn = page.get_by_role('button', name=texto)
@@ -419,7 +519,6 @@ def _fazer_login_google(page) -> bool:
                     pass
             return False
 
-        # Campo de email (identifierId)
         email_input = page.locator('#identifierId').first
         if email_input.count() > 0:
             email_input.click()
@@ -429,13 +528,13 @@ def _fazer_login_google(page) -> bool:
             _clicar_avancar()
             page.wait_for_timeout(3000)
 
-        # Tela "Login mais rápido" (passkey) - ANTES da senha
         if 'passkeyenrollment' in page.url or page.locator('text=Login mais rápido').count() > 0:
             if _pular_passkey():
                 page.wait_for_timeout(2000)
 
-        # Campo de senha
-        password_input = page.locator('input[type="password"]').first
+        password_input = page.locator('input[type="password"]:not([aria-hidden="true"])').first
+        if password_input.count() == 0:
+            password_input = page.locator('input[name="Passwd"], input[name="password"]').first
         if password_input.count() > 0:
             password_input.click()
             page.wait_for_timeout(300)
@@ -445,13 +544,13 @@ def _fazer_login_google(page) -> bool:
             page.wait_for_timeout(5000)
             page.wait_for_load_state('networkidle', timeout=10000)
 
-        # "Agora não" pode aparecer DEPOIS da senha (Google oferece passkey após login)
         for tentativa in range(5):
             page.wait_for_timeout(2000)
             if _esta_no_formulario(page) or "accounts.google.com" not in page.url:
                 logger.info(f"[Inclusão] Saiu do login (tentativa {tentativa + 1})")
                 break
-            # Aguardar botão "Agora não" aparecer (até 3s)
+            if "accountchooser" in (page.url or ""):
+                _resolver_accountchooser_google(page)
             try:
                 page.get_by_text("Agora não", exact=False).first.wait_for(state='visible', timeout=3000)
             except Exception:
@@ -462,12 +561,26 @@ def _fazer_login_google(page) -> bool:
             if _pular_passkey():
                 page.wait_for_timeout(3000)
         if "accounts.google.com" in page.url:
-            logger.warning("[Inclusão] Ainda em accounts.google.com após tentativas de pular passkey")
+            logger.warning(
+                "[Inclusão] Ainda em accounts.google.com após tentativas (url=%s)",
+                (page.url or "")[:120],
+            )
             return False
     except Exception as e:
         logger.warning(f"[Inclusão] Erro no login Google: {e}")
         return False
     return True
+
+
+def _mensagem_sessao_google_invalida(page_url: str = "") -> str:
+    login = _email_login_google()
+    return (
+        "Não foi possível abrir o formulário Google: sessão inválida ou expirada. "
+        f"Faça login com *{login}* rodando localmente:\n"
+        "`python scripts/salvar_sessao_google_form.py`\n"
+        "Depois: `python scripts/publicar_sessao_google_railway.py`"
+        + (f"\n(URL: {page_url[:80]}...)" if page_url else "")
+    )
 
 
 # Seletor para inputs de texto do formulário - EXCLUI o campo do reCAPTCHA (name="ca", aria-label com "ouve")
@@ -992,13 +1105,13 @@ def preencher_formulario_inclusao(
                     logger.warning("[Inclusão] Sessão salva não abriu o form — tentando login e invalidando state")
                     _invalidar_storage_state()
                 if not _fazer_login_google(page):
+                    url_fail = ""
+                    try:
+                        url_fail = page.url or ""
+                    except Exception:
+                        pass
                     browser.close()
-                    return (
-                        False,
-                        "Não foi possível abrir o formulário Google. "
-                        "Rode localmente: python scripts/salvar_sessao_google_form.py "
-                        "e publique o arquivo de sessão (GOOGLE_FORM_STORAGE_STATE).",
-                    )
+                    return False, _mensagem_sessao_google_invalida(url_fail)
                 page.wait_for_timeout(1500)
                 if not _esta_no_formulario(page):
                     page.goto(FORM_URL, wait_until='domcontentloaded')
@@ -1010,11 +1123,7 @@ def preencher_formulario_inclusao(
                 if not _esta_no_formulario(page):
                     url_final = page.url
                     browser.close()
-                    return (
-                        False,
-                        f"Login Google incompleto (ainda em: {url_final[:80]}...). "
-                        "Faça login manual com scripts/salvar_sessao_google_form.py",
-                    )
+                    return False, _mensagem_sessao_google_invalida(url_final)
                 # Login OK — persistir cookies para as próximas execuções
                 _salvar_storage_state(context)
             else:

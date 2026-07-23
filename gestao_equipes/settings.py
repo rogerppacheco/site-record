@@ -388,6 +388,12 @@ NIO_STORAGE_STATE = os.path.join(BASE_DIR, '.playwright_state.json')
 # Sessão Google Forms (Inclusão/Viabilidade). Gere com:
 #   .venv\Scripts\python.exe scripts\salvar_sessao_google_form.py
 # Em produção, aponte para volume persistente (ex.: /data/google_form_state.json).
+# Sessão Google Forms (Inclusão/Viabilidade). Gere com:
+#   .venv\Scripts\python.exe scripts\salvar_sessao_google_form.py
+# Login da sessão = GOOGLE_FORM_LOGIN_EMAIL (ex. roggerio@gmail.com).
+# Campo e-mail do form = GOOGLE_FORM_EMAIL (ex. comunicacao@recordpap.com.br).
+# Em produção, aponte para volume persistente (ex.: /data/google_form_state.json)
+# ou use GOOGLE_FORM_STORAGE_STATE_B64.
 GOOGLE_FORM_STORAGE_STATE = config(
     'GOOGLE_FORM_STORAGE_STATE',
     default=os.path.join(BASE_DIR, '.playwright_google_form_state.json'),
@@ -395,6 +401,8 @@ GOOGLE_FORM_STORAGE_STATE = config(
 # Alternativa para produção sem volume: JSON do storage state em base64
 # (gerar localmente com scripts/salvar_sessao_google_form.py e colar no Railway).
 GOOGLE_FORM_STORAGE_STATE_B64 = config('GOOGLE_FORM_STORAGE_STATE_B64', default='')
+GOOGLE_FORM_LOGIN_EMAIL = config('GOOGLE_FORM_LOGIN_EMAIL', default='roggerio@gmail.com')
+GOOGLE_FORM_EMAIL = config('GOOGLE_FORM_EMAIL', default='comunicacao@recordpap.com.br')
 
 # --- CONFIGURAÇÕES DE ARQUIVOS ESTÁTICOS E MÍDIA ---
 # Para upload de PDFs das faturas M-10
