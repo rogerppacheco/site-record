@@ -124,6 +124,48 @@ class ZapiProvider(WhatsAppProvider):
             return True, resp
         return False, None
 
+    def enviar_lista_opcoes(
+        self,
+        telefone: str,
+        mensagem: str,
+        opcoes: List[Dict[str, str]],
+        titulo_lista: str = "Opções",
+        botao_label: str = "Ver opções",
+    ) -> Tuple[bool, Any]:
+        """Envia lista interativa via /send-option-list (máx. ~10 itens)."""
+        if not opcoes:
+            return False, None
+        # WhatsApp costuma limitar títulos a 24 chars e ~10 opções
+        options_payload = []
+        for opt in opcoes[:10]:
+            title = str(opt.get("title") or "")[:24]
+            options_payload.append(
+                {
+                    "id": str(opt.get("id") or title)[:200],
+                    "title": title,
+                    "description": str(opt.get("description") or "")[:72],
+                }
+            )
+        url = f"{self.base_url}/send-option-list"
+        telefone_limpo = destino_zapi(telefone)
+        payload: Dict[str, Any] = {
+            "phone": telefone_limpo,
+            "message": (mensagem or "").strip(),
+            "optionList": {
+                "title": (titulo_lista or "Opções")[:60],
+                "buttonLabel": (botao_label or "Ver opções")[:20],
+                "options": options_payload,
+            },
+        }
+        resp = self._send_request(url, payload)
+        if not resp or not isinstance(resp, dict):
+            return False, None
+        if resp.get("error"):
+            return False, None
+        if self.resposta_indica_sucesso(resp):
+            return True, resp
+        return False, None
+
     def enviar_imagem_b64(
         self, telefone: str, img_b64: str, caption: str = ""
     ) -> Optional[Dict[str, Any]]:

@@ -18,7 +18,9 @@ from crm_app.services.dfv_powerbi_service import (
     formatar_resposta_dfv_powerbi,
     limpar_cep,
     limpar_codigo_cdo,
+    limpar_uf,
     montar_grupos_rua_cdoe,
+    variantes_codigo_cdo,
     parse_dsr_rows,
 )
 
@@ -43,6 +45,19 @@ class LimparCodigoCdoTest(SimpleTestCase):
 
     def test_vazio(self):
         self.assertEqual(limpar_codigo_cdo("   "), "")
+
+    def test_variantes_so_digitos(self):
+        variantes = variantes_codigo_cdo("28005")
+        self.assertIn("28005", variantes)
+        self.assertIn("CDOE-28005", variantes)
+        self.assertEqual(variantes[0], "28005")
+        # CDOE- deve vir cedo na lista (após o bruto)
+        self.assertLess(variantes.index("CDOE-28005"), variantes.index("CDO-28005"))
+
+    def test_limpar_uf(self):
+        self.assertEqual(limpar_uf("mg"), "MG")
+        self.assertEqual(limpar_uf("cdoe_uf_RJ"), "RJ")
+        self.assertEqual(limpar_uf("SP"), "")
 
 
 class MontarComplementoTest(SimpleTestCase):
@@ -379,10 +394,11 @@ class ConsultarPowerBiTest(SimpleTestCase):
         self.assertEqual(regs[0]["LOGRADOURO"], "RUA X")
 
     @patch("crm_app.services.dfv_powerbi_service.requests.post")
-    def test_consulta_por_cdo_filtra_coluna(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
+    def test_consulta_por_cdo_tenta_variante_cdoe(self, mock_post):
+        import json
+
+        # 1ª chamada (28005) vazia; 2ª (CDOE-28005) com 1 registro
+        vazia = {
             "results": [
                 {
                     "result": {
@@ -401,26 +417,77 @@ class ConsultarPowerBiTest(SimpleTestCase):
                 }
             ]
         }
-        mock_post.return_value = mock_resp
-        regs = consultar_fachadas_por_cdo("CDO-99")
-        self.assertEqual(regs, [])
-        payload = mock_post.call_args.kwargs.get("data") or mock_post.call_args[1].get("data")
-        if payload is None:
-            # requests.post(..., data=json.dumps(...))
-            import json
+        com_dado = {
+            "results": [
+                {
+                    "result": {
+                        "data": {
+                            "dsr": {
+                                "DS": [
+                                    {
+                                        "ValueDicts": {
+                                            "D0": [
+                                                "31930470",
+                                                "RUA X",
+                                                "Y",
+                                                "BELO HORIZONTE",
+                                                "MG",
+                                                "Viável",
+                                                "CDOE-28005",
+                                            ]
+                                        },
+                                        "IC": True,
+                                        "PH": [
+                                            {
+                                                "DM0": [
+                                                    {
+                                                        "S": [
+                                                            {"N": "G0", "DN": "D0"},
+                                                            {"N": "G1"},
+                                                            {"N": "G2"},
+                                                            {"N": "G3"},
+                                                            {"N": "G4"},
+                                                            {"N": "G5", "DN": "D0"},
+                                                            {"N": "G6", "DN": "D0"},
+                                                            {"N": "G7", "DN": "D0"},
+                                                            {"N": "G8", "DN": "D0"},
+                                                            {"N": "G9", "DN": "D0"},
+                                                            {"N": "G10", "DN": "D0"},
+                                                        ],
+                                                        "C": [0, 10, 1, 2, 3, 4, 5, 6],
+                                                        "\u00d8": (1 << 2) | (1 << 3) | (1 << 4),
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        }
 
-            raw = mock_post.call_args[1].get("data") if mock_post.call_args[1] else mock_post.call_args.kwargs.get("data")
-            self.assertIsNotNone(raw)
-            payload = raw
-        import json
+        def _side_effect(*args, **kwargs):
+            raw = kwargs.get("data") or (args[1] if len(args) > 1 else None)
+            body = json.loads(raw) if isinstance(raw, str) else raw
+            cmd = body["queries"][0]["Query"]["Commands"][0]
+            where = cmd["SemanticQueryDataShapeCommand"]["Query"]["Where"]
+            lit = where[0]["Condition"]["Comparison"]["Right"]["Literal"]["Value"]
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            if lit == "'CDOE-28005'":
+                mock_resp.json.return_value = com_dado
+            else:
+                mock_resp.json.return_value = vazia
+            return mock_resp
 
-        body = json.loads(payload) if isinstance(payload, str) else payload
-        cmd = body["queries"][0]["Query"]["Commands"][0]
-        where = cmd["SemanticQueryDataShapeCommand"]["Query"]["Where"][0]
-        prop = where["Condition"]["Comparison"]["Left"]["Column"]["Property"]
-        lit = where["Condition"]["Comparison"]["Right"]["Literal"]["Value"]
-        self.assertEqual(prop, "CODIGO_CDO")
-        self.assertEqual(lit, "'CDO-99'")
+        mock_post.side_effect = _side_effect
+        regs, codigo = consultar_fachadas_por_cdo("28005", uf="MG")
+        self.assertEqual(codigo, "CDOE-28005")
+        self.assertEqual(len(regs), 1)
+        self.assertEqual(regs[0]["MUNICIPIO"], "BELO HORIZONTE")
 
 
 class MenuEFluxoWebhookTest(SimpleTestCase):

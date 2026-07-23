@@ -27,6 +27,17 @@ class WhatsAppProvider(ABC):
     ) -> Tuple[bool, Any]:
         ...
 
+    def enviar_lista_opcoes(
+        self,
+        telefone: str,
+        mensagem: str,
+        opcoes: List[Dict[str, str]],
+        titulo_lista: str = "Opções",
+        botao_label: str = "Ver opções",
+    ) -> Tuple[bool, Any]:
+        """Lista interativa (Z-API option list). Default: não suportado."""
+        return False, None
+
     @abstractmethod
     def enviar_imagem_b64(
         self, telefone: str, img_b64: str, caption: str = ""

@@ -83,6 +83,55 @@ def limpar_codigo_cdo(codigo: str) -> str:
     return texto
 
 
+def variantes_codigo_cdo(codigo: str) -> list[str]:
+    """
+    Gera candidatas de CODIGO_CDO para consulta no Power BI.
+
+    No DFV o valor costuma ser CDOE-28005; o vendedor muitas vezes digita só 28005.
+    """
+    bruto = limpar_codigo_cdo(codigo)
+    if not bruto:
+        return []
+
+    digitos = re.sub(r"\D", "", bruto)
+    ordered: list[str] = []
+
+    def _add(valor: str) -> None:
+        v = limpar_codigo_cdo(valor)
+        if v and v not in ordered:
+            ordered.append(v)
+
+    _add(bruto)
+    if digitos:
+        # Formato observado no Power BI (prioridade)
+        _add(f"CDOE-{digitos}")
+        _add(f"CDO-{digitos}")
+        _add(f"CDOE{digitos}")
+        _add(f"CDO{digitos}")
+        _add(digitos)
+
+    # Se veio com CDO- mas a base usa CDOE-
+    if bruto.startswith("CDO-") and not bruto.startswith("CDOE-"):
+        _add("CDOE-" + bruto[4:])
+    if bruto.startswith("CDOE-"):
+        _add("CDO-" + bruto[5:])
+
+    return ordered
+
+
+def limpar_uf(uf: str) -> str:
+    """Normaliza UF (MG/ES/RJ). Aceita texto ou id de botão cdoe_uf_MG."""
+    texto = str(uf or "").strip().upper()
+    texto = texto.replace("CDOE_UF_", "").replace("UF_", "")
+    texto = re.sub(r"[^A-Z]", "", texto)
+    if len(texto) >= 2:
+        texto = texto[:2]
+    return texto if texto in ("MG", "ES", "RJ") else ""
+
+
+CDOE_UFS: tuple[str, ...] = ("MG", "ES", "RJ")
+
+
 def _cfg(name: str, default: Any = None) -> Any:
     return getattr(settings, name, default)
 
@@ -221,8 +270,7 @@ def parse_dsr_rows(
 
 
 def _build_cmd(
-    filter_property: str,
-    filter_value: str,
+    filters: list[tuple[str, str]],
     restart_tokens: Optional[list[Any]] = None,
 ) -> dict[str, Any]:
     window_count = int(_cfg("DFV_POWERBI_WINDOW_COUNT", 5000) or 5000)
@@ -240,8 +288,25 @@ def _build_cmd(
     if restart_tokens is not None:
         window_obj["RestartTokens"] = restart_tokens
 
-    # Literal string no dialecto Power BI: 'valor'
-    literal = str(filter_value).replace("'", "''")
+    where_clauses: list[dict[str, Any]] = []
+    for filter_property, filter_value in filters:
+        literal = str(filter_value).replace("'", "''")
+        where_clauses.append(
+            {
+                "Condition": {
+                    "Comparison": {
+                        "ComparisonKind": 0,
+                        "Left": {
+                            "Column": {
+                                "Expression": {"SourceRef": {"Source": "b"}},
+                                "Property": filter_property,
+                            }
+                        },
+                        "Right": {"Literal": {"Value": f"'{literal}'"}},
+                    }
+                }
+            }
+        )
 
     return {
         "SemanticQueryDataShapeCommand": {
@@ -249,22 +314,7 @@ def _build_cmd(
                 "Version": 2,
                 "From": [{"Name": "b", "Entity": ENTITY, "Type": 0}],
                 "Select": select,
-                "Where": [
-                    {
-                        "Condition": {
-                            "Comparison": {
-                                "ComparisonKind": 0,
-                                "Left": {
-                                    "Column": {
-                                        "Expression": {"SourceRef": {"Source": "b"}},
-                                        "Property": filter_property,
-                                    }
-                                },
-                                "Right": {"Literal": {"Value": f"'{literal}'"}},
-                            }
-                        }
-                    }
-                ],
+                "Where": where_clauses,
             },
             "Binding": {
                 "Primary": {"Groupings": [{"Projections": list(range(len(SELECT_COLS)))}]},
@@ -372,8 +422,7 @@ def _cache_set(key: str, data: list[dict[str, Any]]) -> None:
 
 
 def _consultar_por_filtro(
-    filter_property: str,
-    filter_value: str,
+    filters: list[tuple[str, str]],
     cache_key: str,
     log_label: str,
 ) -> list[dict[str, Any]]:
@@ -387,7 +436,7 @@ def _consultar_por_filtro(
 
     cached = _cache_get(cache_key)
     if cached is not None:
-        logger.info("[DFV-PBI] cache hit %s=%s (%s registros)", log_label, filter_value, len(cached))
+        logger.info("[DFV-PBI] cache hit %s (%s registros)", log_label, len(cached))
         return cached
 
     started = time.monotonic()
@@ -399,15 +448,12 @@ def _consultar_por_filtro(
     try:
         while page < max_pages:
             page += 1
-            data = _query_page(
-                _build_cmd(filter_property, filter_value, restart_tokens=restart)
-            )
+            data = _query_page(_build_cmd(filters, restart_tokens=restart))
             rows, incomplete, rt = parse_dsr_rows(data, len(SELECT_COLS))
             all_rows.extend(_rows_to_dicts(rows))
             logger.info(
-                "[DFV-PBI] %s=%s page=%s +%s total=%s incomplete=%s",
+                "[DFV-PBI] %s page=%s +%s total=%s incomplete=%s",
                 log_label,
-                filter_value,
                 page,
                 len(rows),
                 len(all_rows),
@@ -419,14 +465,13 @@ def _consultar_por_filtro(
     except DfvPowerBiError:
         raise
     except Exception as exc:
-        logger.exception("[DFV-PBI] erro inesperado %s=%s", log_label, filter_value)
+        logger.exception("[DFV-PBI] erro inesperado %s", log_label)
         raise DfvPowerBiError(str(exc)) from exc
 
     elapsed = time.monotonic() - started
     logger.info(
-        "[DFV-PBI] %s=%s concluído: %s registros em %.1fs",
+        "[DFV-PBI] %s concluído: %s registros em %.1fs",
         log_label,
-        filter_value,
         len(all_rows),
         elapsed,
     )
@@ -451,30 +496,97 @@ def consultar_fachadas_por_cep(cep: str) -> list[dict[str, Any]]:
         raise DfvPowerBiError("CEP inválido.")
 
     return _consultar_por_filtro(
-        filter_property="CEP",
-        filter_value=cep_limpo,
+        filters=[("CEP", cep_limpo)],
         cache_key=f"{CACHE_KEY_PREFIX}{cep_limpo}",
-        log_label="CEP",
+        log_label=f"CEP={cep_limpo}",
     )
 
 
-def consultar_fachadas_por_cdo(codigo_cdo: str) -> list[dict[str, Any]]:
+def filtrar_registros_por_uf(
+    registros: list[dict[str, Any]], uf: str
+) -> list[dict[str, Any]]:
+    uf_limpo = limpar_uf(uf)
+    if not uf_limpo:
+        return list(registros)
+    return [
+        r
+        for r in registros
+        if str(r.get("UF") or "").strip().upper() == uf_limpo
+    ]
+
+
+def consultar_fachadas_por_cdo(
+    codigo_cdo: str,
+    uf: Optional[str] = None,
+) -> tuple[list[dict[str, Any]], str]:
     """
     Consulta fachadas pelo CODIGO_CDO no Power BI (comando CDOE).
 
-    Raises:
-        DfvPowerBiDisabled / DfvPowerBiTimeout / DfvPowerBiError
+    Tenta variantes (ex.: 28005 → CDOE-28005). Se UF for informada, filtra no
+    Power BI e, se necessário, em memória.
+
+    Returns:
+        (registros, codigo_encontrado)
     """
-    codigo = limpar_codigo_cdo(codigo_cdo)
-    if not codigo:
+    variantes = variantes_codigo_cdo(codigo_cdo)
+    if not variantes:
         raise DfvPowerBiError("Código CDO inválido.")
 
-    return _consultar_por_filtro(
-        filter_property="CODIGO_CDO",
-        filter_value=codigo,
-        cache_key=f"{CACHE_KEY_PREFIX_CDO}{codigo}",
-        log_label="CODIGO_CDO",
-    )
+    uf_limpo = limpar_uf(uf) if uf else ""
+    last_error: Optional[Exception] = None
+
+    for variante in variantes:
+        filters: list[tuple[str, str]] = [("CODIGO_CDO", variante)]
+        cache_key = f"{CACHE_KEY_PREFIX_CDO}{variante}"
+        log_label = f"CODIGO_CDO={variante}"
+        if uf_limpo:
+            filters.append(("UF", uf_limpo))
+            cache_key = f"{cache_key}:uf:{uf_limpo}"
+            log_label = f"{log_label}|UF={uf_limpo}"
+
+        try:
+            regs = _consultar_por_filtro(
+                filters=filters,
+                cache_key=cache_key,
+                log_label=log_label,
+            )
+        except DfvPowerBiError as exc:
+            last_error = exc
+            continue
+
+        if uf_limpo and regs:
+            regs = filtrar_registros_por_uf(regs, uf_limpo)
+
+        if regs:
+            return regs, variante
+
+        # Sem UF no filtro Power BI: tenta variante sem UF e filtra depois
+        # (já tentamos com UF no Where; se vazio, próxima variante)
+
+    if last_error and not isinstance(last_error, DfvPowerBiDisabled):
+        # Se todas falharam por erro de API, propaga o último
+        # Mas variantes sem resultado não são erro — retorna vazio
+        pass
+
+    # Última tentativa: só código sem UF no Where (se UF pedida e Where UF falhou)
+    if uf_limpo:
+        for variante in variantes:
+            try:
+                regs = _consultar_por_filtro(
+                    filters=[("CODIGO_CDO", variante)],
+                    cache_key=f"{CACHE_KEY_PREFIX_CDO}{variante}",
+                    log_label=f"CODIGO_CDO={variante}",
+                )
+            except DfvPowerBiError:
+                continue
+            filtrados = filtrar_registros_por_uf(regs, uf_limpo)
+            if filtrados:
+                return filtrados, variante
+            if regs and not filtrados:
+                # Código existe, mas não neste UF
+                return [], variante
+
+    return [], variantes[0]
 
 
 def _ordenar_chave_fachada(num: Any) -> tuple[int, str]:
@@ -670,8 +782,74 @@ def montar_grupos_rua_cdoe(registros: list[dict[str, Any]]) -> list[dict[str, An
     return grupos
 
 
+def listar_cidades_cdoe(grupos: list[dict[str, Any]]) -> list[str]:
+    """Cidades distintas dos grupos, ordenadas."""
+    cidades = sorted(
+        {
+            str(g.get("municipio") or "").strip().upper()
+            for g in grupos
+            if str(g.get("municipio") or "").strip()
+        }
+    )
+    return cidades
+
+
+def filtrar_grupos_por_cidade(
+    grupos: list[dict[str, Any]], cidade: str
+) -> list[dict[str, Any]]:
+    alvo = _sem_acentos(str(cidade or "")).strip().upper()
+    if not alvo:
+        return list(grupos)
+    out: list[dict[str, Any]] = []
+    for g in grupos:
+        nome = _sem_acentos(str(g.get("municipio") or "")).strip().upper()
+        if nome == alvo:
+            out.append(g)
+    return out
+
+
+def resolver_cidade_escolhida(
+    escolha: str, cidades: list[str]
+) -> Optional[str]:
+    """Resolve índice (1-based), id cdoe_cid_N ou nome da cidade."""
+    texto = str(escolha or "").strip()
+    if not texto or not cidades:
+        return None
+
+    upper = texto.upper()
+    m = re.match(r"^(?:CDOE_CID_)?(\d+)$", upper.replace(" ", ""))
+    if m:
+        idx = int(m.group(1))
+        if 1 <= idx <= len(cidades):
+            return cidades[idx - 1]
+
+    alvo = _sem_acentos(upper)
+    for cidade in cidades:
+        if _sem_acentos(cidade) == alvo:
+            return cidade
+    # match parcial
+    for cidade in cidades:
+        if alvo and alvo in _sem_acentos(cidade):
+            return cidade
+    return None
+
+
+def formatar_pedido_cidade_cdoe(
+    codigo_cdo: str, uf: str, cidades: list[str]
+) -> list[str]:
+    linhas = [f"{i}) {c}" for i, c in enumerate(cidades, start=1)]
+    texto = (
+        f"📡 *CDOE {codigo_cdo}* — UF *{uf}*\n\n"
+        f"Encontramos *{len(cidades)}* cidades. Escolha a cidade:\n"
+        f"{chr(10).join(linhas)}\n\n"
+        f"Digite o *número* da cidade (ou o nome) / use a lista se aparecer.\n"
+        f"Ou *CANCELAR* para sair."
+    )
+    return _split_mensagem(texto)
+
+
 def formatar_resumo_cdoe(codigo_cdo: str, grupos: list[dict[str, Any]]) -> list[str]:
-    """Formata o 1º passo da CDOE: lista numerada de ruas/CEPs."""
+    """Formata o passo de ruas da CDOE: lista numerada de ruas/CEPs."""
     codigo = limpar_codigo_cdo(codigo_cdo)
     if not grupos:
         return [
@@ -679,7 +857,8 @@ def formatar_resumo_cdoe(codigo_cdo: str, grupos: list[dict[str, Any]]) -> list[
                 f"❌ *NENHUM ENDEREÇO ENCONTRADO (CDOE)*\n\n"
                 f"Não encontramos fachadas para o código *{codigo}* no Power BI "
                 f"(cobertura ES/MG/RJ).\n"
-                f"Confira o código e tente novamente, ou use *DFV* com o CEP."
+                f"Confira o código (ex.: *CDOE-28005* ou *28005*) e tente novamente, "
+                f"ou use *DFV* com o CEP."
             )
         ]
 

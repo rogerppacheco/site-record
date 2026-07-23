@@ -58,6 +58,25 @@ class WhatsAppService:
             telefone, mensagem, button_actions, title=title, footer=footer
         )
 
+    def enviar_lista_opcoes(
+        self,
+        telefone,
+        mensagem,
+        opcoes,
+        titulo_lista="Opções",
+        botao_label="Ver opções",
+    ):
+        fn = getattr(self._provider, "enviar_lista_opcoes", None)
+        if not callable(fn):
+            return False, None
+        return fn(
+            telefone,
+            mensagem,
+            opcoes,
+            titulo_lista=titulo_lista,
+            botao_label=botao_label,
+        )
+
     def enviar_resumo_pap_com_botao_confirmar(self, telefone, resumo, texto_extra=""):
         message = f"{resumo}{texto_extra}".strip()
         return self.enviar_mensagem_com_botoes_reply(

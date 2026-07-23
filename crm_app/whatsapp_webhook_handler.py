@@ -6858,6 +6858,9 @@ _BTN_ZAPI_ID_PARA_COMANDO = {
     "pap_venda_confirmar_envio": "CONFIRMAR",
     "pap_venda_iniciar_sim": "SIM",
     "pap_venda_iniciar_cancelar": "CANCELAR",
+    "cdoe_uf_MG": "MG",
+    "cdoe_uf_ES": "ES",
+    "cdoe_uf_RJ": "RJ",
 }
 
 
@@ -6883,11 +6886,88 @@ def _texto_efetivo_botao_zapi(data):
     return msg or ""
 
 
+def _extrair_texto_lista_opcoes_zapi(data) -> str:
+    """Extrai seleção de option-list (cidade etc.) do webhook Z-API."""
+    if not isinstance(data, dict):
+        return ""
+
+    def _from_dict(d: dict) -> str:
+        if not isinstance(d, dict):
+            return ""
+        for key in (
+            "selectedRowId",
+            "selectedOptionId",
+            "optionId",
+            "id",
+            "title",
+            "description",
+            "message",
+            "text",
+        ):
+            val = d.get(key)
+            if val is not None and str(val).strip():
+                # Prefere id se for cdoe_cid_N; senão título/texto
+                pass
+        oid = (
+            d.get("selectedRowId")
+            or d.get("selectedOptionId")
+            or d.get("optionId")
+            or d.get("id")
+            or ""
+        )
+        title = (
+            d.get("title")
+            or d.get("description")
+            or d.get("message")
+            or d.get("text")
+            or ""
+        )
+        oid_s = str(oid).strip()
+        title_s = str(title).strip()
+        if oid_s.startswith("cdoe_cid_"):
+            return oid_s
+        return title_s or oid_s
+
+    for key in (
+        "listResponseMessage",
+        "listResponse",
+        "optionListResponse",
+        "selectedOption",
+    ):
+        block = data.get(key)
+        if isinstance(block, dict):
+            txt = _from_dict(block)
+            if txt:
+                return txt
+        # nested singleSelectReply
+        if isinstance(block, dict):
+            nested = block.get("singleSelectReply") or block.get("selectedRow")
+            if isinstance(nested, dict):
+                txt = _from_dict(nested)
+                if txt:
+                    return txt
+
+    # busca rasa em message
+    msg = data.get("message")
+    if isinstance(msg, dict):
+        for key in ("listResponseMessage", "listResponse", "interactiveResponseMessage"):
+            block = msg.get(key)
+            if isinstance(block, dict):
+                txt = _from_dict(block.get("singleSelectReply") or block)
+                if txt:
+                    return txt
+    return ""
+
+
 def _aplicar_resposta_botao_zapi(data, mensagem_texto):
     """
     Clique em botão (ex.: send-button-actions) vem como buttonsResponseMessage;
     mapeia ids conhecidos para o comando textual esperado pelo fluxo.
     """
+    lista_txt = _extrair_texto_lista_opcoes_zapi(data)
+    if lista_txt and not (mensagem_texto or "").strip():
+        mensagem_texto = lista_txt
+
     br = _buscar_buttons_response_zapi(data)
     if not br:
         return mensagem_texto
@@ -6906,6 +6986,10 @@ def _aplicar_resposta_botao_zapi(data, mensagem_texto):
     if bid in _BTN_ZAPI_ID_PARA_COMANDO:
         padrao = _BTN_ZAPI_ID_PARA_COMANDO[bid]
         return (msg or padrao).strip()
+    if bid.startswith("cdoe_uf_"):
+        return bid.replace("cdoe_uf_", "") or msg
+    if bid.startswith("cdoe_cid_"):
+        return bid
     if bid.startswith('pa_') and msg:
         return msg.strip()
     if bid.startswith('pa_'):
@@ -7986,7 +8070,7 @@ def processar_webhook_whatsapp(data, request=None):
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
-        # CDOE: consulta ao vivo no Power BI por CODIGO_CDO (resumo por rua → números)
+        # CDOE: consulta ao vivo no Power BI por CODIGO_CDO (código → UF → cidade? → rua → números)
         if etapa_atual == 'inicial' and (
             mensagem_limpa == 'CDOE' or mensagem_limpa.startswith('CDOE ')
         ):
@@ -8004,21 +8088,48 @@ def processar_webhook_whatsapp(data, request=None):
             _registrar_estatistica(telefone_formatado, 'CDOE')
 
             if codigo_inline:
-                # Código já veio na mesma mensagem — processa direto
-                sessao.etapa = 'cdoe_codigo'
-                sessao.dados_temp = {}
+                from crm_app.services.dfv_powerbi_service import limpar_codigo_cdo
+
+                codigo_limpo = limpar_codigo_cdo(codigo_inline)
+                if not codigo_limpo:
+                    resposta = (
+                        "❌ Código inválido. Digite *CDOE* e informe o código "
+                        "(ex.: 28005 ou CDOE-28005)."
+                    )
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+                sessao.etapa = 'cdoe_uf'
+                sessao.dados_temp = {'cdoe_codigo_informado': codigo_limpo}
                 sessao.save()
-                # Reusa o handler de etapa abaixo via mensagem_texto = codigo
-                mensagem_texto = codigo_inline
-                mensagem_limpa = codigo_inline.upper()
-                etapa_atual = 'cdoe_codigo'
+                resposta = (
+                    f"Código *{codigo_limpo}* anotado.\n"
+                    "Agora escolha o *estado (UF)* da consulta:\n"
+                    "• *MG*  • *ES*  • *RJ*\n\n"
+                    "Ou *CANCELAR* para sair."
+                )
+                texto_uf = _com_prefixo_primeira_mensagem(resposta)
+                try:
+                    ok_btn, _ = whatsapp_service.enviar_mensagem_com_botoes_reply(
+                        telefone_formatado,
+                        texto_uf,
+                        [
+                            {"id": "cdoe_uf_MG", "type": "REPLY", "label": "MG"},
+                            {"id": "cdoe_uf_ES", "type": "REPLY", "label": "ES"},
+                            {"id": "cdoe_uf_RJ", "type": "REPLY", "label": "RJ"},
+                        ],
+                        title="CDOE — UF",
+                    )
+                    if ok_btn:
+                        return {'status': 'ok', 'mensagem': resposta}
+                except Exception:
+                    logger.debug("[Webhook] Falha botões UF CDOE", exc_info=True)
+                return _enviar_resposta_e_retornar(texto_uf)
             else:
                 sessao.etapa = 'cdoe_codigo'
                 sessao.dados_temp = {}
                 sessao.save()
                 resposta = (
-                    "Digite o *número/código da CDOE* (coluna CODIGO_CDO).\n"
-                    "Ex.: 12345 ou CDO-12345\n\n"
+                    "Digite o *número/código da CDOE*.\n"
+                    "Ex.: *28005* ou *CDOE-28005*\n\n"
                     "Ou envie *CANCELAR* para sair."
                 )
                 return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
@@ -8351,17 +8462,135 @@ def processar_webhook_whatsapp(data, request=None):
                     logger.exception("[Webhook] Erro ao enviar parte DFV %s: %s", idx + 1, e)
             return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
 
-        elif etapa_atual in ('cdoe_codigo', 'cdoe_escolher_rua'):
+        elif etapa_atual in (
+            'cdoe_codigo',
+            'cdoe_uf',
+            'cdoe_escolher_cidade',
+            'cdoe_escolher_rua',
+        ):
             from crm_app.services.dfv_powerbi_service import (
+                CDOE_UFS,
                 DfvPowerBiDisabled,
                 DfvPowerBiError,
                 DfvPowerBiTimeout,
                 consultar_fachadas_por_cdo,
+                filtrar_grupos_por_cidade,
                 formatar_numeros_rua_cdoe,
+                formatar_pedido_cidade_cdoe,
                 formatar_resumo_cdoe,
                 limpar_codigo_cdo,
+                limpar_uf,
+                listar_cidades_cdoe,
                 montar_grupos_rua_cdoe,
+                resolver_cidade_escolhida,
             )
+
+            def _enviar_partes_cdoe(partes_msg, prefixar_primeira: bool = True):
+                for idx, parte in enumerate(partes_msg):
+                    texto = (
+                        _com_prefixo_primeira_mensagem(parte)
+                        if prefixar_primeira and idx == 0
+                        else parte
+                    )
+                    try:
+                        _elapsed = time.monotonic() - _webhook_t0
+                        if idx == len(partes_msg) - 1:
+                            texto = (texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
+                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
+                    except Exception as e:
+                        logger.exception("[Webhook] Erro ao enviar parte CDOE %s: %s", idx + 1, e)
+                return {'status': 'ok', 'mensagem': partes_msg[0] if partes_msg else 'ok'}
+
+            def _pedir_uf_cdoe(codigo_ref: str, prefixar: bool = True):
+                resposta_uf = (
+                    f"Código *{codigo_ref}* anotado.\n"
+                    "Agora escolha o *estado (UF)* da consulta:\n"
+                    "• *MG*  • *ES*  • *RJ*\n\n"
+                    "Ou *CANCELAR* para sair."
+                )
+                texto_uf = (
+                    _com_prefixo_primeira_mensagem(resposta_uf) if prefixar else resposta_uf
+                )
+                try:
+                    ok_btn, _ = whatsapp_service.enviar_mensagem_com_botoes_reply(
+                        telefone_formatado,
+                        texto_uf,
+                        [
+                            {"id": "cdoe_uf_MG", "type": "REPLY", "label": "MG"},
+                            {"id": "cdoe_uf_ES", "type": "REPLY", "label": "ES"},
+                            {"id": "cdoe_uf_RJ", "type": "REPLY", "label": "RJ"},
+                        ],
+                        title="CDOE — UF",
+                    )
+                    if ok_btn:
+                        return {'status': 'ok', 'mensagem': resposta_uf}
+                except Exception:
+                    logger.debug("[Webhook] Falha botões UF CDOE", exc_info=True)
+                return _enviar_resposta_e_retornar(texto_uf)
+
+            def _apos_consulta_cdoe(codigo_encontrado: str, uf_val: str, registros):
+                grupos = montar_grupos_rua_cdoe(registros)
+                if not grupos:
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    return _enviar_partes_cdoe(
+                        formatar_resumo_cdoe(codigo_encontrado, [])
+                    )
+
+                cidades = listar_cidades_cdoe(grupos)
+                if len(cidades) > 1:
+                    sessao.etapa = 'cdoe_escolher_cidade'
+                    sessao.dados_temp = {
+                        'cdoe_codigo': codigo_encontrado,
+                        'cdoe_uf': uf_val,
+                        'cdoe_cidades': cidades,
+                        'cdoe_grupos': grupos,
+                    }
+                    sessao.save()
+                    partes_cid = formatar_pedido_cidade_cdoe(
+                        codigo_encontrado, uf_val, cidades
+                    )
+                    # Tenta lista interativa (botão) com as cidades reais do Power BI
+                    try:
+                        opcoes = [
+                            {
+                                "id": f"cdoe_cid_{i}",
+                                "title": str(c)[:24],
+                                "description": f"{uf_val} — opção {i}",
+                            }
+                            for i, c in enumerate(cidades[:10], start=1)
+                        ]
+                        ok_lista, _ = whatsapp_service.enviar_lista_opcoes(
+                            telefone_formatado,
+                            partes_cid[0],
+                            opcoes,
+                            titulo_lista="Cidades",
+                            botao_label="Escolher cidade",
+                        )
+                        if ok_lista:
+                            # Se a lista couber em 1 mensagem e a lista API enviou o texto, ok
+                            for extra in partes_cid[1:]:
+                                whatsapp_service.enviar_mensagem_texto(
+                                    telefone_formatado, extra
+                                )
+                            return {'status': 'ok', 'mensagem': partes_cid[0]}
+                    except Exception:
+                        logger.debug(
+                            "[Webhook] Lista cidades CDOE indisponível; usa texto",
+                            exc_info=True,
+                        )
+                    return _enviar_partes_cdoe(partes_cid)
+
+                # Uma cidade só — vai direto para ruas
+                sessao.etapa = 'cdoe_escolher_rua'
+                sessao.dados_temp = {
+                    'cdoe_codigo': codigo_encontrado,
+                    'cdoe_uf': uf_val,
+                    'cdoe_grupos': grupos,
+                }
+                sessao.save()
+                return _enviar_partes_cdoe(formatar_resumo_cdoe(codigo_encontrado, grupos))
 
             if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
                 sessao.etapa = 'inicial'
@@ -8389,126 +8618,128 @@ def processar_webhook_whatsapp(data, request=None):
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
+                return _enviar_partes_cdoe(partes)
 
-                for idx, parte in enumerate(partes):
-                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
-                    try:
-                        _elapsed = time.monotonic() - _webhook_t0
-                        if idx == len(partes) - 1:
-                            texto = (texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
-                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
-                    except Exception as e:
-                        logger.exception("[Webhook] Erro ao enviar parte CDOE rua %s: %s", idx + 1, e)
-                return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
+            if etapa_atual == 'cdoe_escolher_cidade':
+                dados_cdoe = sessao.dados_temp or {}
+                cidades = dados_cdoe.get('cdoe_cidades') or []
+                grupos = dados_cdoe.get('cdoe_grupos') or []
+                codigo_cdo = dados_cdoe.get('cdoe_codigo') or ''
+                cidade = resolver_cidade_escolhida(mensagem_texto or mensagem_limpa, cidades)
+                if not cidade:
+                    resposta = (
+                        f"❌ Cidade inválida. Digite o *número* (1 a {len(cidades)}) "
+                        "ou o nome da cidade, ou *CANCELAR*."
+                    )
+                    return _enviar_resposta_e_retornar(resposta)
+                grupos_cid = filtrar_grupos_por_cidade(grupos, cidade)
+                sessao.etapa = 'cdoe_escolher_rua'
+                sessao.dados_temp = {
+                    'cdoe_codigo': codigo_cdo,
+                    'cdoe_uf': dados_cdoe.get('cdoe_uf') or '',
+                    'cdoe_grupos': grupos_cid,
+                }
+                sessao.save()
+                return _enviar_partes_cdoe(formatar_resumo_cdoe(codigo_cdo, grupos_cid))
 
-            # etapa cdoe_codigo
-            codigo_limpo = limpar_codigo_cdo(mensagem_texto)
-            if not codigo_limpo:
+            if etapa_atual == 'cdoe_codigo':
+                codigo_limpo = limpar_codigo_cdo(mensagem_texto)
+                if not codigo_limpo:
+                    resposta = (
+                        "❌ Código inválido. Digite o número/código da CDOE "
+                        "(ex.: *28005* ou *CDOE-28005*), ou *CANCELAR*:"
+                    )
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.etapa = 'cdoe_uf'
+                sessao.dados_temp = {'cdoe_codigo_informado': codigo_limpo}
+                sessao.save()
+                return _pedir_uf_cdoe(codigo_limpo, prefixar=False)
+
+            # etapa cdoe_uf
+            uf_limpo = limpar_uf(mensagem_limpa or mensagem_texto)
+            if not uf_limpo:
                 resposta = (
-                    "❌ Código inválido. Digite o número/código da CDOE "
-                    "(ex.: 12345 ou CDO-12345), ou *CANCELAR*:"
+                    "❌ UF inválida. Escolha *MG*, *ES* ou *RJ* "
+                    f"(cobertura: {', '.join(CDOE_UFS)}), ou *CANCELAR*."
                 )
                 return _enviar_resposta_e_retornar(resposta)
 
-            logger.info("[Webhook] CDOE Power BI — consultando CODIGO_CDO=%s", codigo_limpo)
+            codigo_informado = (sessao.dados_temp or {}).get('cdoe_codigo_informado') or ''
+            if not codigo_informado:
+                sessao.etapa = 'cdoe_codigo'
+                sessao.dados_temp = {}
+                sessao.save()
+                return _enviar_resposta_e_retornar(
+                    "Digite novamente o *código da CDOE* (ex.: 28005):"
+                )
+
+            logger.info(
+                "[Webhook] CDOE Power BI — codigo=%s UF=%s",
+                codigo_informado,
+                uf_limpo,
+            )
             try:
                 try:
                     whatsapp_service.enviar_mensagem_texto(
                         telefone_formatado,
-                        f"🔎 Consultando Power BI ao vivo para a CDOE *{codigo_limpo}*...",
+                        f"🔎 Consultando Power BI para *{codigo_informado}* em *{uf_limpo}*...",
                     )
                 except Exception:
                     logger.debug("[Webhook] Falha ao enviar aviso CDOE", exc_info=True)
 
-                registros = consultar_fachadas_por_cdo(codigo_limpo)
-                grupos = montar_grupos_rua_cdoe(registros)
-                partes = formatar_resumo_cdoe(codigo_limpo, grupos)
+                registros, codigo_encontrado = consultar_fachadas_por_cdo(
+                    codigo_informado, uf=uf_limpo
+                )
             except DfvPowerBiDisabled:
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
-                partes = [
-                    "⚠️ A consulta *CDOE* (Power BI ao vivo) está temporariamente indisponível.\n"
-                    "Tente novamente em instantes ou use *DFV* com o CEP."
-                ]
-                for idx, parte in enumerate(partes):
-                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
-                    try:
-                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
-                    except Exception as e:
-                        logger.exception("[Webhook] Erro ao enviar CDOE disabled: %s", e)
-                return {'status': 'ok', 'mensagem': partes[0]}
+                return _enviar_partes_cdoe(
+                    [
+                        "⚠️ A consulta *CDOE* (Power BI ao vivo) está temporariamente indisponível.\n"
+                        "Tente novamente em instantes ou use *DFV* com o CEP."
+                    ]
+                )
             except DfvPowerBiTimeout:
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
-                partes = [
-                    "❌ Não foi possível consultar o Power BI agora (tempo esgotado).\n"
-                    "Tente novamente em instantes ou use *DFV* com o CEP."
-                ]
-                for idx, parte in enumerate(partes):
-                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
-                    try:
-                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
-                    except Exception as e:
-                        logger.exception("[Webhook] Erro ao enviar CDOE timeout: %s", e)
-                return {'status': 'ok', 'mensagem': partes[0]}
+                return _enviar_partes_cdoe(
+                    [
+                        "❌ Não foi possível consultar o Power BI agora (tempo esgotado).\n"
+                        "Tente novamente em instantes ou use *DFV* com o CEP."
+                    ]
+                )
             except DfvPowerBiError as exc:
-                logger.warning("[Webhook] CDOE Power BI erro codigo=%s: %s", codigo_limpo, exc)
+                logger.warning(
+                    "[Webhook] CDOE Power BI erro codigo=%s: %s", codigo_informado, exc
+                )
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
-                partes = [
-                    "❌ Não foi possível consultar o Power BI agora.\n"
-                    "Tente novamente em instantes ou use *DFV* com o CEP."
-                ]
-                for idx, parte in enumerate(partes):
-                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
-                    try:
-                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
-                    except Exception as e:
-                        logger.exception("[Webhook] Erro ao enviar CDOE error: %s", e)
-                return {'status': 'ok', 'mensagem': partes[0]}
+                return _enviar_partes_cdoe(
+                    [
+                        "❌ Não foi possível consultar o Power BI agora.\n"
+                        "Tente novamente em instantes ou use *DFV* com o CEP."
+                    ]
+                )
             except Exception as exc:
-                logger.exception("[Webhook] CDOE falha inesperada codigo=%s: %s", codigo_limpo, exc)
+                logger.exception(
+                    "[Webhook] CDOE falha inesperada codigo=%s: %s",
+                    codigo_informado,
+                    exc,
+                )
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
-                partes = [
-                    "❌ Não foi possível consultar o Power BI agora.\n"
-                    "Tente novamente em instantes."
-                ]
-                for idx, parte in enumerate(partes):
-                    texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
-                    try:
-                        whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
-                    except Exception as e:
-                        logger.exception("[Webhook] Erro ao enviar CDOE unexpected: %s", e)
-                return {'status': 'ok', 'mensagem': partes[0]}
+                return _enviar_partes_cdoe(
+                    [
+                        "❌ Não foi possível consultar o Power BI agora.\n"
+                        "Tente novamente em instantes."
+                    ]
+                )
 
-            if not grupos:
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
-            else:
-                # Guarda só o necessário para o 2º passo (números por rua)
-                sessao.etapa = 'cdoe_escolher_rua'
-                sessao.dados_temp = {
-                    'cdoe_codigo': codigo_limpo,
-                    'cdoe_grupos': grupos,
-                }
-                sessao.save()
-
-            for idx, parte in enumerate(partes):
-                texto = parte if idx > 0 else _com_prefixo_primeira_mensagem(parte)
-                try:
-                    _elapsed = time.monotonic() - _webhook_t0
-                    if idx == len(partes) - 1:
-                        texto = (texto.strip() + f"\n\n⏱ _{_elapsed:.1f}s_").strip()
-                    whatsapp_service.enviar_mensagem_texto(telefone_formatado, texto)
-                except Exception as e:
-                    logger.exception("[Webhook] Erro ao enviar parte CDOE resumo %s: %s", idx + 1, e)
-            return {'status': 'ok', 'mensagem': partes[0] if partes else 'ok'}
+            return _apos_consulta_cdoe(codigo_encontrado, uf_limpo, registros)
         
         elif etapa_atual == 'viabilidade_cep':
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
