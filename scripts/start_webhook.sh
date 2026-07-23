@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Railway não executa release phase — garante schema antes do worker.
+# Railway nÃ£o executa release phase â€” garante schema antes do worker.
 if [ -f /app/scripts/migrate_unpooled.sh ]; then
   sh /app/scripts/migrate_unpooled.sh --noinput
 else

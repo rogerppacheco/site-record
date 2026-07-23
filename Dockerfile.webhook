@@ -11,6 +11,7 @@ COPY . /app/
 RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
-RUN chmod +x /app/scripts/start_webhook.sh /app/scripts/migrate_unpooled.sh
+RUN sed -i 's/\r$//' /app/scripts/*.sh \
+    && chmod +x /app/scripts/start_webhook.sh /app/scripts/migrate_unpooled.sh
 
 CMD ["/app/scripts/start_webhook.sh"]
