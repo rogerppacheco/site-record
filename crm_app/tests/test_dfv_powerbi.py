@@ -160,6 +160,8 @@ class FormatacaoRespostaTest(SimpleTestCase):
         self.assertIn("*Total de fachadas:* 2", texto)
         self.assertIn("10 (CA 1 | BL A)", texto)
         self.assertIn("12 (AP 101)", texto)
+        # formato compacto com vírgula (como a antiga Fachada)
+        self.assertIn("10 (CA 1 | BL A), 12 (AP 101)", texto)
         # ordenado por número
         self.assertLess(texto.index("10 (CA 1"), texto.index("12 (AP 101)"))
 

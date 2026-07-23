@@ -585,7 +585,8 @@ def formatar_resposta_dfv_powerbi(
     cdos_str = ", ".join(cdos) if cdos else "—"
 
     linhas_num = [r["_linha"] for r in filtrados if r.get("_linha")]
-    lista_str = "\n".join(linhas_num)
+    # Mesmo formato da antiga consulta Fachada: números separados por vírgula
+    lista_str = ", ".join(linhas_num)
 
     aviso_status = ""
     if not so_viaveis:
@@ -608,7 +609,7 @@ def formatar_resposta_dfv_powerbi(
         f"📡 *CDO(s):* {cdos_str}\n"
         f"✅ *Total de fachadas:* {len(filtrados)}"
         f"{aviso_status}\n"
-        f"🔢 *Números + complementos:*\n"
+        f"🔢 *Números Disponíveis (com complemento):*\n"
         f"{lista_str}"
     )
     return _split_mensagem(cabecalho)
@@ -731,7 +732,7 @@ def formatar_numeros_rua_cdoe(codigo_cdo: str, grupo: dict[str, Any]) -> list[st
         f"🏙️ *Bairro:* {bairro} | *Cidade/UF:* {cidade_uf}\n"
         f"✅ *Total de fachadas:* {len(linhas)}"
         f"{aviso}\n"
-        f"🔢 *Números + complementos:*\n"
-        f"{chr(10).join(linhas)}"
+        f"🔢 *Números Disponíveis (com complemento):*\n"
+        f"{', '.join(linhas)}"
     )
     return _split_mensagem(texto)
