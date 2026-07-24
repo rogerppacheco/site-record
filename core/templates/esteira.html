@@ -266,6 +266,47 @@
             gap: 0.45rem;
         }
 
+        #esteira-faixa-datas {
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem 0.65rem;
+            margin-bottom: 0.3rem;
+            min-height: 0;
+        }
+        #esteira-faixa-datas[hidden] { display: none !important; }
+        #abas-esteira-datas {
+            margin-bottom: 0 !important;
+            border-bottom: none;
+            flex-wrap: wrap;
+            gap: 0.15rem;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #abas-esteira-datas .nav-link {
+            padding: 0.15rem 0.4rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.72rem;
+            line-height: 1.2;
+            color: var(--text-secondary);
+            background: var(--bg-secondary);
+        }
+        #abas-esteira-datas .nav-link:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+        #abas-esteira-datas .nav-link.active {
+            color: var(--accent-primary);
+            font-weight: 700;
+            border-color: var(--accent-primary);
+            background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-secondary));
+        }
+        #esteira-faixa-datas #filtro-turno-container {
+            margin-bottom: 0 !important;
+            flex: 0 0 auto;
+        }
         #esteira-filtros-avancados {
             flex-shrink: 0;
             margin-bottom: 0.3rem;
@@ -273,17 +314,6 @@
             border: 1px solid var(--border-color);
             border-radius: 8px;
             background: var(--bg-secondary);
-        }
-        #abas-esteira-datas {
-            margin-bottom: 0.3rem !important;
-            border-bottom: none;
-            flex-wrap: wrap;
-            gap: 0.15rem;
-        }
-        #abas-esteira-datas .nav-link {
-            padding: 0.2rem 0.45rem;
-            border: 1px solid transparent;
-            border-radius: 6px;
         }
         .esteira-filtros-contextuais { margin-bottom: 0.25rem !important; }
         .esteira-filtros-contextuais:last-child { margin-bottom: 0 !important; }
@@ -816,7 +846,7 @@ min-width: 100%;
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" id="menu-mais-acoes-esteira">
                             <li id="li-filtros-avancados">
-                                <button type="button" class="dropdown-item" id="btn-toggle-filtros-esteira" aria-expanded="false" aria-controls="esteira-filtros-avancados" title="Datas, tipo e motivo">
+                                <button type="button" class="dropdown-item" id="btn-toggle-filtros-esteira" aria-expanded="false" aria-controls="esteira-filtros-avancados" title="Tipo e motivo de pendência">
                                     <i class="bi bi-funnel"></i> Filtros da lista
                                 </button>
                             </li>
@@ -876,10 +906,8 @@ min-width: 100%;
                 </div>
             </div>
 
-            <div id="esteira-filtros-avancados" hidden>
-                <div class="small text-muted fw-semibold mb-1" id="esteira-filtros-datas-label">Datas de agendamento</div>
+            <div id="esteira-faixa-datas" hidden>
                 <ul class="nav nav-tabs" id="abas-esteira-datas" role="tablist" aria-label="Datas de agendamento"></ul>
-
                 <div id="filtro-turno-container" class="esteira-filtros-contextuais" style="display: none;">
                     <div class="esteira-filtro-inline esteira-filtro-chips">
                         <span class="text-muted fw-bold small">Turno:</span>
@@ -890,7 +918,9 @@ min-width: 100%;
                         </div>
                     </div>
                 </div>
+            </div>
 
+            <div id="esteira-filtros-avancados" hidden>
                 <div id="filtro-tipo-pendencia-container" class="esteira-filtros-contextuais" style="display: none;">
                     <div class="esteira-filtros-linha">
                         <div class="esteira-filtro-inline esteira-filtro-chips">
@@ -2307,10 +2337,8 @@ min-width: 100%;
             } else if (opts.mostrarAntecip) {
                 btnFluxo = `<button type="button" class="${sm} btn-icon-warning" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning" aria-hidden="true"></i></button>`;
             }
-            // pencil-square = dados do status (agenda/motivo); pencil = edição completa da venda
-            const btnStatusDados = opts.editarStatusHtml || slot;
             const btnEdit = `<button type="button" class="${sm} btn-icon-primary" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil" aria-hidden="true"></i></button>`;
-            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, dados do status, editar">${btnEnd}${btnTel}${btnFluxo}${btnStatusDados}${btnEdit}</div>`;
+            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, editar">${btnEnd}${btnTel}${btnFluxo}${btnEdit}</div>`;
         }
 
         var esteiraScrollSyncLock = false;
@@ -2350,28 +2378,32 @@ min-width: 100%;
             label.textContent = partes.length ? ('· ' + partes.join(' · ')) : '';
         }
 
+        function atualizarFaixaDatasEsteira() {
+            const faixa = document.getElementById('esteira-faixa-datas');
+            if (!faixa) return;
+            // Sempre visível em Todos / Agendados / aba de data — não depende do painel "Filtros da lista"
+            faixa.hidden = !abaUsaChipsDeData(filtroAtual);
+        }
+
         function aplicarEstadoFiltrosAvancadosEsteira(aberto, persistir) {
             const painel = document.getElementById('esteira-filtros-avancados');
             const btn = document.getElementById('btn-toggle-filtros-esteira');
             if (!painel || !btn) return;
-            // Em abas sem filtros de lista (Gestão/Churn), esconde o botão
-            const semFiltrosLista = filtroAtual === 'GESTAO_APROVEITAMENTO' || filtroAtual === 'CHURN_TRATAMENTO';
+            // Painel só para tipo/motivo (Pendentes e Todos). Datas ficam na faixa dedicada.
+            const temFiltrosPendencia = deveExibirFiltroTipoPendencia(filtroAtual);
             const liFiltros = document.getElementById('li-filtros-avancados');
-            if (liFiltros) liFiltros.style.display = semFiltrosLista ? 'none' : '';
-            if (semFiltrosLista) {
+            if (liFiltros) liFiltros.style.display = temFiltrosPendencia ? '' : 'none';
+            if (!temFiltrosPendencia) {
                 painel.hidden = true;
                 btn.setAttribute('aria-expanded', 'false');
+                atualizarFaixaDatasEsteira();
                 atualizarResumoFiltrosEsteira();
                 return;
             }
             painel.hidden = !aberto;
             btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
-            const datasLabel = document.getElementById('esteira-filtros-datas-label');
-            const datasUl = document.getElementById('abas-esteira-datas');
-            const mostrarDatas = abaUsaChipsDeData(filtroAtual);
-            if (datasLabel) datasLabel.style.display = mostrarDatas ? '' : 'none';
-            if (datasUl) datasUl.style.display = mostrarDatas ? '' : 'none';
             if (persistir) localStorage.setItem(LS_FILTROS_AVANCADOS_ESTEIRA, aberto ? '1' : '0');
+            atualizarFaixaDatasEsteira();
             atualizarResumoFiltrosEsteira();
         }
 
@@ -2391,6 +2423,8 @@ min-width: 100%;
         function limparAbasDeDataEsteira() {
             const ul = document.getElementById('abas-esteira-datas');
             if (ul) ul.innerHTML = '';
+            const faixa = document.getElementById('esteira-faixa-datas');
+            if (faixa) faixa.hidden = true;
             atualizarResumoFiltrosEsteira();
         }
 
@@ -3739,7 +3773,7 @@ min-width: 100%;
                     const nomeStatusJs = String(nomeStatus || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                     const statusIdJs = String(statusId || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                     const btnEditarStatus = temDadosEditaveis
-                        ? `<button type="button" class="btn btn-icon btn-icon-sm btn-icon-neutral" onclick="editarStatusExistente(${v.id}, '${nomeStatusJs}', '${statusIdJs}')" title="Editar dados do status" aria-label="Editar dados do status #${v.id}"><i class="bi bi-pencil-square" aria-hidden="true"></i></button>`
+                        ? `<button type="button" class="btn btn-icon btn-icon-sm btn-icon-primary" onclick="editarStatusExistente(${v.id}, '${nomeStatusJs}', '${statusIdJs}')" title="Editar dados" aria-label="Editar dados do status #${v.id}"><i class="bi bi-pencil-square" aria-hidden="true"></i></button>`
                         : '';
 
                     let confCliente = '-';
@@ -3859,7 +3893,6 @@ min-width: 100%;
                         telefone: (v.telefone1 && v.telefone1.trim()) ? String(v.telefone1).replace(/"/g, '&quot;') : '',
                         mostrarReagendar: vendaElegivelPossoReagendar(v, nomeStatus),
                         mostrarAntecip: vendaElegivelPossoAntecipar(v, nomeStatus),
-                        editarStatusHtml: btnEditarStatus,
                     });
 
                     htmlContent += `
@@ -3887,7 +3920,7 @@ min-width: 100%;
                                 <div class="fw-bold">${nomeCliente}</div>
                                 <div class="small text-muted text-break">${docCliente}</div>
                             </td>
-                            <td data-esteira-col="status" data-label="Status"><div class="esteira-status-cell">${selectStatus}</div></td>
+                            <td data-esteira-col="status" data-label="Status"><div class="esteira-status-cell">${selectStatus}${btnEditarStatus}</div></td>
                             <td data-esteira-col="vendedor" data-label="Vendedor">${nomeVendedor}</td>
                             <td data-esteira-col="adiant_cnpj" data-label="Adiant. CNPJ">${celulaAdiantCnpj}</td>
                             <td data-esteira-col="adiant_comissao" data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
@@ -3979,7 +4012,11 @@ min-width: 100%;
 
             atualizarFiltroTurnoEsteira(ehAbaDataEsteira(filtroAtual));
             atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(filtroAtual));
-            aplicarEstadoFiltrosAvancadosEsteira(localStorage.getItem(LS_FILTROS_AVANCADOS_ESTEIRA) === '1', false);
+            atualizarFaixaDatasEsteira();
+            aplicarEstadoFiltrosAvancadosEsteira(
+                deveExibirFiltroTipoPendencia(filtroAtual) && localStorage.getItem(LS_FILTROS_AVANCADOS_ESTEIRA) === '1',
+                false
+            );
             atualizarResumoFiltrosEsteira();
         }
 
@@ -4682,10 +4719,7 @@ min-width: 100%;
             atualizarFiltroTurnoEsteira(ehAbaDataEsteira(status));
             atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(status));
             restaurarAbasDeDataEsteira();
-            // Ao escolher uma data, abre o painel para contexto visual
-            if (ehAbaDataEsteira(status)) {
-                aplicarEstadoFiltrosAvancadosEsteira(true, true);
-            }
+            atualizarFaixaDatasEsteira();
             carregarVendas();
         }
 
