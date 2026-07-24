@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Record PAP — Inclusão Forms",
+  "version": "1.0.0",
+  "description": "Abre e preenche o Google Forms de Inclusão/Viabilidade a partir da Auditoria Record PAP.",
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://recordpap.com.br/*",
+    "https://www.recordpap.com.br/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "https://docs.google.com/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://recordpap.com.br/*",
+        "https://www.recordpap.com.br/*",
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*"
+      ],
+      "js": ["content_auditoria.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://docs.google.com/forms/*"],
+      "js": ["content_forms.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Record Inclusão Forms"
+  }
+}

@@ -9326,6 +9326,8 @@ def processar_webhook_whatsapp(data, request=None):
                         return _enviar_resposta_e_retornar("⏳ Enviando solicitação de viabilidade... Aguarde.")
                     _inclusao_form_em_execucao.add(telefone_formatado)
                 try:
+                    from crm_app.services_inclusao_viabilidade import criar_demanda_inclusao
+
                     dados_finais = {**dados_temp, 'observacoes': dados_temp.get('observacoes', '')}
                     foto_path = dados_temp.get('foto_path')
                     comprovantes = dados_temp.get('comprovantes_paths') or []
@@ -9333,7 +9335,14 @@ def processar_webhook_whatsapp(data, request=None):
                     arquivos_paths = [p for p in arquivos_paths if p and os.path.isfile(p)]
                     sessao.etapa = 'inclusao_enviando'
                     sessao.save(update_fields=['etapa'])
-                    sucesso, msg = preencher_formulario_inclusao(dados_finais, arquivos_paths=arquivos_paths)
+                    # Railway não preenche o Google Forms (sessão Google bloqueada).
+                    # Cria demanda na Auditoria; auditor envia via extensão Chrome local.
+                    sucesso, msg = criar_demanda_inclusao(
+                        dados_finais,
+                        arquivos_paths=arquivos_paths,
+                        telefone_solicitante=telefone_formatado,
+                        solicitante=usuario_whatsapp,
+                    )
                     for p in arquivos_paths:
                         try:
                             if p and os.path.isfile(p):
@@ -9358,6 +9367,7 @@ def processar_webhook_whatsapp(data, request=None):
                     "Confirme que você *não* está tentando criar um complemento ou fachada que não existe "
                     "para recompra, ou anexar fotos/comprovante que não sejam verdadeiros, ou algo que possa "
                     "prejudicar a Record como parceiro Nio.\n\n"
+                    "Ao confirmar, a solicitação irá para a *Auditoria* (envio ao Google Forms pelo auditor).\n\n"
                     "Digite *SIM* para enviar ou *CANCELAR* para desistir."
                 )
                 return _enviar_resposta_e_retornar(resposta)

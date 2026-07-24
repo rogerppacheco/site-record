@@ -2036,6 +2036,70 @@ class AuditoriaSemSlotGC(models.Model):
         return f"Sem SLOT {self.ordem_servico or '—'} ({self.criado_em.strftime('%d/%m/%Y')})"
 
 
+class DemandaInclusaoViabilidade(models.Model):
+    """
+    Solicitação de Inclusão/Viabilidade coletada no WhatsApp.
+    O Google Forms é preenchido localmente pelo auditor (extensão Chrome).
+    """
+
+    STATUS_PENDENTE = "PENDENTE"
+    STATUS_EM_ANDAMENTO = "EM_ANDAMENTO"
+    STATUS_ENVIADA = "ENVIADA"
+    STATUS_ERRO = "ERRO"
+    STATUS_CANCELADA = "CANCELADA"
+    STATUS_CHOICES = [
+        (STATUS_PENDENTE, "Pendente"),
+        (STATUS_EM_ANDAMENTO, "Em andamento"),
+        (STATUS_ENVIADA, "Enviada ao Forms"),
+        (STATUS_ERRO, "Erro"),
+        (STATUS_CANCELADA, "Cancelada"),
+    ]
+
+    protocolo = models.CharField(max_length=32, unique=True, db_index=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDENTE,
+        db_index=True,
+    )
+    telefone_solicitante = models.CharField(max_length=30, blank=True, default="", db_index=True)
+    solicitante = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="demandas_inclusao_solicitadas",
+    )
+    auditor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="demandas_inclusao_auditadas",
+    )
+    # Snapshot dos dados coletados + payload pronto para a extensão Chrome
+    dados = models.JSONField(default=dict, blank=True)
+    form_payload = models.JSONField(default=dict, blank=True)
+    arquivos_urls = models.JSONField(default=list, blank=True)
+    r2_folder = models.CharField(max_length=255, blank=True, default="")
+    observacoes = models.TextField(blank=True, default="")
+    erro_mensagem = models.TextField(blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    enviado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Demanda Inclusão/Viabilidade"
+        verbose_name_plural = "Demandas Inclusão/Viabilidade"
+        ordering = ["-criado_em"]
+        indexes = [
+            models.Index(fields=["status", "-criado_em"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Inclusão {self.protocolo} ({self.status})"
+
+
 class LancamentoFinanceiro(models.Model):
     TIPOS_CHOICES = [
         ('ADIANTAMENTO_CNPJ', 'Adiantamento CNPJ'),

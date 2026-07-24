@@ -990,7 +990,8 @@ def _upload_inclusao_r2(dados: dict, arquivos_paths: list) -> tuple:
     """
     Salva os arquivos da inclusão em pasta do R2 (uma pasta por solicitação).
     Pasta: Inclusao_Viabilidade/{protocolo AAAAMMDDHHMMX}/
-    Retorna (sucesso: bool, pasta_path: str, links: list, protocolo: str)
+    Retorna (sucesso: bool, pasta_path: str, links: list[dict], protocolo: str)
+    links: [{"url": "...", "nome": "foto_1.jpg"}, ...]
     """
     from crm_app.cloudflare_r2_service import CloudflareR2Storage
 
@@ -1001,7 +1002,7 @@ def _upload_inclusao_r2(dados: dict, arquivos_paths: list) -> tuple:
         protocolo = _proximo_protocolo_inclusao(uploader, base_folder)
     folder_path = f"{base_folder}/{protocolo}"
 
-    links = []
+    links: list = []
     for i, path in enumerate(arquivos_paths):
         if not path or not os.path.isfile(path):
             continue
@@ -1011,11 +1012,126 @@ def _upload_inclusao_r2(dados: dict, arquivos_paths: list) -> tuple:
             with open(path, "rb") as f:
                 url = uploader.upload_file(f, folder_path, nome)
                 if url:
-                    links.append(url)
+                    links.append({"url": url, "nome": nome})
                     logger.info(f"[Inclusão] R2: {folder_path}/{nome} -> {url[:80]}...")
         except Exception as e:
             logger.warning(f"[Inclusão] Erro ao subir {nome} para R2: {e}")
     return len(links) > 0, folder_path, links, protocolo
+
+
+def montar_payload_formulario_inclusao(
+    dados: dict,
+    protocolo: str,
+    arquivos: Optional[list] = None,
+) -> dict:
+    """
+    Monta o payload consumido pela extensão Chrome para preencher o Google Forms.
+    """
+    viacep = dados.get("viacep") or {}
+    uf_sigla = (viacep.get("uf") or "").upper()
+    logradouro = viacep.get("logradouro", "") or ""
+    observacoes = (dados.get("observacoes") or "").strip()
+    prefixo = f"Protocolo: {protocolo}"
+    obs_final = f"{prefixo}\n{observacoes}".strip() if observacoes else prefixo
+
+    arquivos_norm: list = []
+    for item in arquivos or []:
+        if isinstance(item, dict) and item.get("url"):
+            arquivos_norm.append(
+                {
+                    "url": item["url"],
+                    "nome": item.get("nome") or "arquivo.jpg",
+                }
+            )
+        elif isinstance(item, str) and item:
+            arquivos_norm.append({"url": item, "nome": item.rsplit("/", 1)[-1] or "arquivo.jpg"})
+
+    return {
+        "form_url": FORM_URL,
+        "protocolo": protocolo,
+        "codigo_sap": CODIGO_SAP,
+        "executivo": EXECUTIVO,
+        "tipo_canal": TIPO_CANAL,
+        "email": _email_formulario(),
+        "empresa": EMPRESA_VENDAS,
+        "uf_sigla": uf_sigla,
+        "uf": UF_SIGLA_PARA_NOME.get(uf_sigla, uf_sigla),
+        "cep": formatar_cep(dados.get("cep", "")),
+        "cidade": viacep.get("localidade", "") or "",
+        "tipo_logradouro": obter_tipo_logradouro(logradouro),
+        "logradouro": logradouro,
+        "numero": str(dados.get("numero_fachada", "") or "0"),
+        "bairro": viacep.get("bairro", "") or "",
+        "complementos": dados.get("complementos", "") or "sem complementos",
+        "fachadas_vizinhos": dados.get("fachadas_vizinhos", "") or "",
+        "coordenadas": dados.get("coordenadas", "") or "",
+        "observacoes": obs_final,
+        "arquivos": arquivos_norm,
+    }
+
+
+def criar_demanda_inclusao(
+    dados: dict,
+    arquivos_paths: Optional[list] = None,
+    *,
+    telefone_solicitante: str = "",
+    solicitante=None,
+) -> Tuple[bool, str]:
+    """
+    Persiste a solicitação para a Auditoria (sem preencher o Google Forms no servidor).
+    Sobe arquivos no R2 e cria DemandaInclusaoViabilidade.
+    """
+    from crm_app.models import DemandaInclusaoViabilidade
+
+    paths = [p for p in (arquivos_paths or []) if p and os.path.isfile(p)]
+    if not paths:
+        return False, "Nenhum arquivo anexado (foto/comprovante) para criar a demanda."
+
+    try:
+        ok_r2, folder_path, links, protocolo = _upload_inclusao_r2(dados, paths)
+    except Exception as e:
+        logger.exception("[Inclusão] Falha no upload R2 ao criar demanda: %s", e)
+        return False, f"Falha ao salvar anexos no R2: {e}"
+
+    if not ok_r2 or not protocolo:
+        return False, "Não foi possível salvar os anexos no R2."
+
+    payload = montar_payload_formulario_inclusao(dados, protocolo, links)
+    snapshot = {
+        "cep": dados.get("cep"),
+        "viacep": dados.get("viacep") or {},
+        "numero_fachada": dados.get("numero_fachada"),
+        "complementos": dados.get("complementos"),
+        "fachadas_vizinhos": dados.get("fachadas_vizinhos"),
+        "coordenadas": dados.get("coordenadas"),
+        "observacoes": dados.get("observacoes") or "",
+    }
+
+    demanda = DemandaInclusaoViabilidade.objects.create(
+        protocolo=protocolo,
+        status=DemandaInclusaoViabilidade.STATUS_PENDENTE,
+        telefone_solicitante=(telefone_solicitante or "")[:30],
+        solicitante=solicitante if getattr(solicitante, "pk", None) else None,
+        dados=snapshot,
+        form_payload=payload,
+        arquivos_urls=links,
+        r2_folder=folder_path or "",
+        observacoes=payload.get("observacoes") or "",
+    )
+
+    msg = (
+        "✅ Solicitação registrada na *Auditoria* para envio ao Google Forms.\n\n"
+        f"📋 *Protocolo:* `{protocolo}`\n"
+        f"🆔 Demanda #{demanda.id}\n\n"
+        "Um auditor abrirá o pedido localmente (extensão Chrome) e anexará os arquivos."
+    )
+    logger.info(
+        "[Inclusão] Demanda #%s criada protocolo=%s solicitante=%s",
+        demanda.id,
+        protocolo,
+        telefone_solicitante,
+    )
+    return True, msg
 
 
 def preencher_formulario_inclusao(

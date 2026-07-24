@@ -629,6 +629,8 @@
                     <div class="btn-group btn-group-sm" role="group" id="aba-principal-auditoria">
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-lista" value="lista" checked>
                         <label class="btn btn-outline-primary" for="aba-lista"><i class="bi bi-list-ul me-1"></i> Lista</label>
+                        <input type="radio" class="btn-check" name="aba-principal" id="aba-inclusao" value="inclusao">
+                        <label class="btn btn-outline-primary" for="aba-inclusao"><i class="bi bi-geo-alt me-1"></i> Inclusão</label>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-resumo" value="resumo">
                         <label class="btn btn-outline-primary" for="aba-resumo"><i class="bi bi-bar-chart me-1"></i> Resumo</label>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-historico-ligacoes" value="historico_ligacoes">
@@ -875,6 +877,59 @@
                         </thead>
                         <tbody id="listaVendasBody"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Painel Inclusão / Viabilidade (Google Forms via extensão Chrome) -->
+            <div id="painel-inclusao" style="display: none;">
+                <div class="card card-modern mb-3">
+                    <div class="card-body py-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <h5 class="mb-1"><i class="bi bi-geo-alt me-2"></i>Inclusão / Viabilidade</h5>
+                                <p class="text-muted small mb-0">
+                                    Demandas do WhatsApp. Clique em <strong>Abrir no Forms</strong> com a extensão Chrome instalada
+                                    (login Google no navegador). Os anexos sobem do R2 para o formulário.
+                                </p>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <span id="inclusao-ext-status" class="badge bg-secondary">Extensão: verificando…</span>
+                                <select class="form-select form-select-sm" id="filtro-inclusao-status" style="min-width: 160px;">
+                                    <option value="">Pendentes + andamento</option>
+                                    <option value="PENDENTE">Pendente</option>
+                                    <option value="EM_ANDAMENTO">Em andamento</option>
+                                    <option value="ENVIADA">Enviadas</option>
+                                    <option value="ERRO">Erro</option>
+                                    <option value="TODAS">Todas</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="carregarDemandasInclusao()">
+                                    <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-modern auditoria-table-shell">
+                    <div class="table-responsive auditoria-table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3">ID</th>
+                                    <th>Protocolo</th>
+                                    <th>Criado</th>
+                                    <th>Endereço</th>
+                                    <th>Solicitante</th>
+                                    <th>Status</th>
+                                    <th>Auditor</th>
+                                    <th>Arq.</th>
+                                    <th class="text-end pe-4">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaInclusaoBody">
+                                <tr><td colspan="9" class="text-center text-muted">Carregue a aba Inclusão.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1602,13 +1657,19 @@
                 const aba = document.querySelector('input[name="aba-principal"]:checked');
                 const valor = aba ? aba.value : 'lista';
                 const listVisible = (valor === 'lista');
+                const inclusaoVisible = (valor === 'inclusao');
                 const resumoVisible = (valor === 'resumo');
                 const historicoVisible = (valor === 'historico_ligacoes');
                 $('#painel-lista').toggle(listVisible);
                 $('#painel-lista-tabela').toggle(listVisible);
+                $('#painel-inclusao').toggle(inclusaoVisible);
                 $('#painel-resumo').toggle(resumoVisible);
                 $('#painel-historico-ligacoes').toggle(historicoVisible);
                 $('#btn-atualizar-lista').toggle(listVisible);
+                if (inclusaoVisible) {
+                    atualizarStatusExtensaoInclusao();
+                    carregarDemandasInclusao();
+                }
                 if (resumoVisible) carregarResumoAuditoria();
                 if (historicoVisible) {
                     garantirPeriodoPadraoHistoricoLigacoes();
@@ -1616,10 +1677,111 @@
                     carregarHistoricoLigacoesPainel();
                 }
             });
+            $('#filtro-inclusao-status').on('change', function() { carregarDemandasInclusao(); });
             carregarAuxiliares().then(() => {
                 carregarVendasPendentes();
             });
         });
+
+        // =========================================================================
+        // INCLUSÃO / VIABILIDADE (extensão Chrome)
+        // =========================================================================
+        function atualizarStatusExtensaoInclusao() {
+            const el = document.getElementById('inclusao-ext-status');
+            if (!el) return;
+            const ok = !!(window.__RECORD_INCLUSAO_EXT__);
+            el.className = ok ? 'badge bg-success' : 'badge bg-warning text-dark';
+            el.textContent = ok
+                ? 'Extensão: ativa'
+                : 'Extensão: não detectada — instale em chrome://extensions';
+        }
+
+        function formatarDataInclusao(iso) {
+            if (!iso) return '—';
+            try {
+                const d = new Date(iso);
+                return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+            } catch (_) {
+                return iso;
+            }
+        }
+
+        function badgeStatusInclusao(st) {
+            const map = {
+                PENDENTE: 'bg-warning text-dark',
+                EM_ANDAMENTO: 'bg-info text-dark',
+                ENVIADA: 'bg-success',
+                ERRO: 'bg-danger',
+                CANCELADA: 'bg-secondary',
+            };
+            return `<span class="badge ${map[st] || 'bg-secondary'}">${st || '—'}</span>`;
+        }
+
+        async function carregarDemandasInclusao() {
+            const tbody = document.getElementById('listaInclusaoBody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Carregando…</td></tr>';
+            atualizarStatusExtensaoInclusao();
+            try {
+                const st = (document.getElementById('filtro-inclusao-status') || {}).value || '';
+                const qs = st ? `?status=${encodeURIComponent(st)}&page_size=100` : '?page_size=100';
+                const data = await apiFetch(`${API_AUX}/auditoria/inclusao-viabilidade/${qs}`);
+                const rows = data.results || [];
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Nenhuma demanda.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((d) => {
+                    const end = [d.logradouro, d.numero, d.cidade, d.uf].filter(Boolean).join(', ') || '—';
+                    const podeAbrir = d.status === 'PENDENTE' || d.status === 'EM_ANDAMENTO' || d.status === 'ERRO';
+                    const btn = podeAbrir
+                        ? `<button type="button" class="btn btn-sm btn-primary" onclick="abrirInclusaoNoForms(${d.id})" title="Preencher Google Forms via extensão">
+                                <i class="bi bi-box-arrow-up-right"></i> Abrir no Forms
+                           </button>`
+                        : `<span class="text-muted small">—</span>`;
+                    return `<tr>
+                        <td class="ps-3">${d.id}</td>
+                        <td><code>${d.protocolo || ''}</code></td>
+                        <td>${formatarDataInclusao(d.criado_em)}</td>
+                        <td class="small">${end}</td>
+                        <td class="small">${d.solicitante_nome || d.telefone_solicitante || '—'}</td>
+                        <td>${badgeStatusInclusao(d.status)}</td>
+                        <td class="small">${d.auditor_nome || '—'}</td>
+                        <td class="text-center">${d.qtd_arquivos || 0}</td>
+                        <td class="text-end pe-4">${btn}</td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">${mensagemErroAmigavel(err)}</td></tr>`;
+            }
+        }
+
+        async function abrirInclusaoNoForms(demandaId) {
+            atualizarStatusExtensaoInclusao();
+            if (!window.__RECORD_INCLUSAO_EXT__) {
+                alert(
+                    'Extensão Chrome não detectada.\n\n' +
+                    '1) Abra chrome://extensions\n' +
+                    '2) Ative o Modo do desenvolvedor\n' +
+                    '3) "Carregar sem compactação" → pasta chrome_extension_inclusao_forms do projeto\n' +
+                    '4) Recarregue esta página e tente de novo.\n\n' +
+                    'É necessário estar logado no Google no Chrome (conta que abre o formulário).'
+                );
+                return;
+            }
+            const token = localStorage.getItem('accessToken') || '';
+            if (!token) {
+                alert('Faça login novamente (token ausente).');
+                return;
+            }
+            window.postMessage({
+                source: 'record-pap-auditoria',
+                type: 'RECORD_INCLUSAO_ABRIR_FORMS',
+                demandaId: demandaId,
+                apiBase: window.location.origin + '/api/crm',
+                accessToken: token,
+            }, window.location.origin);
+        }
 
         // =========================================================================
         // FUNÇÕES AUXILIARES DE LÓGICA

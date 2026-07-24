@@ -194,6 +194,13 @@ from .auditoria_ligacoes_api import (
     AuditoriaLigacaoWebhookView,
 )
 from .auditoria_sem_slot_api import AuditoriaSemSlotEnviarView, AuditoriaSemSlotRelatorioView
+from .auditoria_inclusao_api import (
+    DemandaInclusaoListView,
+    DemandaInclusaoDetailView,
+    DemandaInclusaoIniciarView,
+    DemandaInclusaoConcluirView,
+    DemandaInclusaoErroView,
+)
 from .pendencia_indevida_api import PendenciaIndevidaRegistrarView, PendenciaIndevidaRelatorioView
 from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWppTentativaListView
 from .esteira_sync_status_pap_api import (
@@ -448,6 +455,33 @@ urlpatterns = [
     # --- Auditoria: sem slot na agenda (comunicação GC) ---
     path('auditoria/sem-slot/enviar/', AuditoriaSemSlotEnviarView.as_view(), name='auditoria-sem-slot-enviar'),
     path('auditoria/sem-slot/relatorio/', AuditoriaSemSlotRelatorioView.as_view(), name='auditoria-sem-slot-relatorio'),
+
+    # --- Auditoria: Inclusão/Viabilidade (Forms via extensão Chrome) ---
+    path(
+        'auditoria/inclusao-viabilidade/',
+        DemandaInclusaoListView.as_view(),
+        name='auditoria-inclusao-list',
+    ),
+    path(
+        'auditoria/inclusao-viabilidade/<int:pk>/',
+        DemandaInclusaoDetailView.as_view(),
+        name='auditoria-inclusao-detail',
+    ),
+    path(
+        'auditoria/inclusao-viabilidade/<int:pk>/iniciar/',
+        DemandaInclusaoIniciarView.as_view(),
+        name='auditoria-inclusao-iniciar',
+    ),
+    path(
+        'auditoria/inclusao-viabilidade/<int:pk>/concluir/',
+        DemandaInclusaoConcluirView.as_view(),
+        name='auditoria-inclusao-concluir',
+    ),
+    path(
+        'auditoria/inclusao-viabilidade/<int:pk>/erro/',
+        DemandaInclusaoErroView.as_view(),
+        name='auditoria-inclusao-erro',
+    ),
 
     # --- Esteira: config e pendência indevida ---
     path('esteira/config/', ConfigEsteiraVendasView.as_view(), name='esteira-vendas-config'),
