@@ -14,13 +14,100 @@
    Auditoria — estilos theme-aware (Record PAP Design System v17)
    ========================================================================== */
 .auditoria-shell { max-width: 1600px; width: 100%; }
-.auditoria-page-title { font-size: 1.8rem; margin: 0; color: var(--text-primary); }
-.auditoria-table-responsive { overflow-y: visible; overflow-x: auto; padding: 4px; }
+.auditoria-page-title { font-size: 1.35rem; margin: 0; color: var(--text-primary); line-height: 1.2; }
 .auditoria-kpi-card {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border-color) !important;
 }
 .auditoria-table-shell { background: transparent; box-shadow: none; border: none; padding: 0; }
+
+/* Layout operacional: chrome fixo + só a tabela rola */
+main.area-interna-section.auditoria-page {
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.65rem clamp(0.75rem, 2vw, 1.25rem);
+    min-height: 0;
+}
+main.area-interna-section.auditoria-page.auditoria-modo-lista {
+    height: calc(100vh - 100px);
+    height: calc(100dvh - 100px);
+    max-height: calc(100vh - 100px);
+    max-height: calc(100dvh - 100px);
+    overflow: hidden;
+}
+main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
+    height: auto;
+    max-height: none;
+    min-height: calc(100vh - 100px);
+    min-height: calc(100dvh - 100px);
+    overflow: auto;
+}
+.auditoria-page .auditoria-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0.85rem 1rem !important;
+}
+.auditoria-page.auditoria-modo-lista .auditoria-shell {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+}
+.auditoria-page .header-controls {
+    flex-shrink: 0;
+    margin-bottom: 0.5rem !important;
+    gap: 0.5rem;
+}
+.auditoria-page .header-controls .text-muted {
+    font-size: 0.8rem;
+}
+.auditoria-filtros-bar {
+    flex-shrink: 0;
+    margin-bottom: 0.5rem !important;
+    padding: 0.55rem 0.75rem !important;
+}
+.auditoria-filtros-avancados {
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.55rem;
+    margin-top: 0.55rem;
+}
+.auditoria-filtro-pesquisa { max-width: 420px; }
+.auditoria-page.auditoria-modo-lista #painel-lista-tabela {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.auditoria-table-responsive {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 0;
+    -webkit-overflow-scrolling: touch;
+}
+.auditoria-table-responsive > .table {
+    margin-bottom: 0;
+}
+.auditoria-table-responsive thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    box-shadow: inset 0 -1px 0 var(--border-color);
+    white-space: nowrap;
+}
+.auditoria-page.auditoria-modo-lista #painel-lista-tabela .table {
+    --bs-table-bg: transparent;
+}
+.auditoria-page.auditoria-modo-lista #painel-lista-tabela .table > :not(caption) > * > * {
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+}
 .auditoria-modal-bar {
     background: var(--bg-card);
     border-bottom: 1px solid var(--border-color);
@@ -267,9 +354,35 @@
         .container.compact-container { max-width: 1200px; padding: 0; }
         .tab-pane { padding: 0; }
 
-        /* Banner "Próximo TT da vez" na auditoria */
-        #proximo-tt-banner { display: none; border-left: 4px solid var(--accent-primary); }
-        #proximo-tt-banner .tt-matricula { font-size: 1.25rem; font-weight: 800; font-family: monospace; }
+        /* Banner "Próximo TT da vez" — barra fina de 1 linha */
+        #proximo-tt-banner {
+            display: none;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.65rem;
+            flex-shrink: 0;
+            margin-bottom: 0.5rem !important;
+            padding: 0.35rem 0.65rem;
+            border-radius: 8px;
+            border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+            border-left: 3px solid var(--accent-primary);
+            background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-card));
+            font-size: 0.85rem;
+            line-height: 1.3;
+        }
+        #proximo-tt-banner .tt-matricula {
+            font-size: 0.95rem;
+            font-weight: 800;
+            font-family: ui-monospace, monospace;
+            color: var(--text-primary);
+        }
+        #proximo-tt-banner .auditoria-tt-acoes {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem;
+            margin-left: auto;
+        }
 
         /* Cards e linhas mais próximas */
         .row.g-3 { row-gap: 10px; }
@@ -618,14 +731,14 @@
     <div class="spinner" role="status" aria-hidden="true"></div>
     <div class="loading-msg" id="loadingOverlayMsg">Processando...</div>
 </div>
-<main class="area-interna-section auditoria-page">
+<main class="area-interna-section auditoria-page auditoria-modo-lista">
         <div class="card-modern system-container auditoria-shell">
-            <div class="d-flex justify-content-between align-items-center mb-3 header-controls">
+            <div class="d-flex justify-content-between align-items-center flex-wrap header-controls">
                 <div>
                     <h1 class="auditoria-page-title">Auditoria de Vendas</h1>
-                    <p class="text-muted mb-0">Validação de dados e qualidade (Script Oficial).</p>
+                    <p class="text-muted mb-0 d-none d-md-block">Validação de dados e qualidade (Script Oficial).</p>
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
                     <div class="btn-group btn-group-sm" role="group" id="aba-principal-auditoria">
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-lista" value="lista" checked>
                         <label class="btn btn-outline-primary" for="aba-lista"><i class="bi bi-list-ul me-1"></i> Lista</label>
@@ -636,68 +749,62 @@
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-historico-ligacoes" value="historico_ligacoes">
                         <label class="btn btn-outline-primary" for="aba-historico-ligacoes"><i class="bi bi-telephone me-1"></i> Histórico ligações</label>
                     </div>
-                    <button type="button" class="btn btn-outline-secondary fw-bold shadow-sm" id="btn-relatorio-sem-slot" onclick="abrirModalRelatorioSemSlot()" title="Exportar registros em que a agenda do PAP não atendeu o cliente">
-                        <i class="bi bi-file-earmark-spreadsheet"></i> Relatório Sem SLOT
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-relatorio-sem-slot" onclick="abrirModalRelatorioSemSlot()" title="Exportar registros em que a agenda do PAP não atendeu o cliente">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> <span class="d-none d-lg-inline">Relatório Sem SLOT</span>
                     </button>
-                    <button class="btn btn-outline-primary fw-bold shadow-sm" id="btn-atualizar-lista" onclick="carregarVendasPendentes()">
-                        <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                    <button class="btn btn-sm btn-outline-primary" id="btn-atualizar-lista" onclick="carregarVendasPendentes(); carregarProximoTTBanner();" title="Atualizar lista e próximo TT">
+                        <i class="bi bi-arrow-clockwise"></i> <span class="d-none d-sm-inline">Atualizar</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Próximo TT da vez: destaque para usar esta matrícula ao registrar venda -->
-            <div class="alert alert-primary d-flex align-items-center mb-3 shadow-sm" id="proximo-tt-banner" role="alert">
-                <i class="bi bi-person-badge-fill me-3" style="font-size: 1.5rem;"></i>
-                <div class="flex-grow-1">
-                    <strong>Próximo TT da vez:</strong>
-                    <span class="tt-matricula ms-2" id="proximo-tt-matricula">—</span>
-                    <span class="text-muted ms-2" id="proximo-tt-dias"> </span>
-                    <span class="text-muted small d-block mt-1">Use esta matrícula ao atribuir o vendedor na venda para priorizar quem está há mais tempo sem vender.</span>
-                </div>
-                <div class="d-flex flex-wrap align-items-center gap-2 ms-2">
-                    <span class="small text-muted me-1">Marcar uso de hoje:</span>
-                    <button type="button" class="btn btn-success btn-sm" id="btn-proximo-tt-deu-certo" title="Marque se conseguiu atribuir venda a este TT hoje">
+            <!-- Próximo TT da vez: barra compacta (some após marcar uso do dia) -->
+            <div id="proximo-tt-banner" role="status" aria-live="polite" title="Use esta matrícula ao atribuir o vendedor na venda">
+                <i class="bi bi-person-badge-fill text-primary" aria-hidden="true"></i>
+                <strong>Próximo TT:</strong>
+                <span class="tt-matricula" id="proximo-tt-matricula">—</span>
+                <span class="text-muted" id="proximo-tt-dias"></span>
+                <div class="auditoria-tt-acoes">
+                    <button type="button" class="btn btn-success btn-sm py-0 px-2" id="btn-proximo-tt-deu-certo" title="Marque se conseguiu atribuir venda a este TT hoje">
                         <i class="bi bi-check-lg"></i> Deu certo
                     </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" id="btn-proximo-tt-nao-deu" title="Marque se não foi possível ter venda para este TT hoje">
-                        <i class="bi bi-x-lg"></i> Não deu certo
+                    <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" id="btn-proximo-tt-nao-deu" title="Marque se não foi possível ter venda para este TT hoje">
+                        <i class="bi bi-x-lg"></i> Não deu
                     </button>
+                    <a href="/controle-tts/" class="btn btn-outline-primary btn-sm py-0 px-2" target="_blank" title="Abrir Controle de TT's">Controle</a>
                 </div>
-                <a href="/controle-tts/" class="btn btn-outline-primary btn-sm ms-2" target="_blank">Ver Controle de TT's</a>
             </div>
 
-            <!-- Filtros e abas por data (visível apenas na aba Lista) -->
-            <div class="card card-modern mb-3" id="painel-lista">
-                <div class="card-body py-3">
-                    <div class="row g-3 align-items-end mb-3">
-                        <div class="col-auto">
-                            <label class="form-label small fw-bold text-muted mb-1">Status Tratamento</label>
+            <!-- Filtros: pesquisa + período sempre visíveis; Status sob "Filtros" -->
+            <div class="card card-modern auditoria-filtros-bar" id="painel-lista">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="input-group input-group-sm auditoria-filtro-pesquisa flex-grow-1">
+                        <input type="text" class="form-control" id="filtro-pesquisa" placeholder="Pesquisar CPF, nome ou consultor..." aria-label="Pesquisar CPF, nome ou consultor">
+                        <button class="btn btn-primary" type="button" onclick="aplicarFiltrosAuditoria()" title="Pesquisar">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    <div class="btn-group btn-group-sm" role="group" id="abas-data-auditoria" aria-label="Período">
+                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-todos" value="todos" checked>
+                        <label class="btn btn-outline-secondary" for="aba-data-todos">Todos</label>
+                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-hoje" value="hoje">
+                        <label class="btn btn-outline-secondary" for="aba-data-hoje">Hoje</label>
+                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-ontem" value="ontem">
+                        <label class="btn btn-outline-secondary" for="aba-data-ontem">Ontem</label>
+                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-7dias" value="7dias">
+                        <label class="btn btn-outline-secondary" for="aba-data-7dias">7 dias</label>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-toggle-filtros-auditoria" aria-expanded="false" aria-controls="auditoria-filtros-avancados" title="Mostrar ou ocultar filtros avançados">
+                        <i class="bi bi-funnel"></i> Filtros
+                    </button>
+                </div>
+                <div id="auditoria-filtros-avancados" class="auditoria-filtros-avancados" hidden>
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <div>
+                            <label class="form-label small fw-bold text-muted mb-1" for="filtro-status-tratamento">Status Tratamento</label>
                             <select class="form-select form-select-sm" id="filtro-status-tratamento" style="min-width: 200px;" title="Ao selecionar, a lista é atualizada automaticamente">
                                 <option value="">Todos</option>
                             </select>
-                        </div>
-                        <div class="col"></div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-bold text-muted mb-1">Pesquisar (CPF, nome ou consultor)</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="filtro-pesquisa" placeholder="Digite CPF, nome do cliente ou consultor...">
-                                <button class="btn btn-primary" type="button" onclick="aplicarFiltrosAuditoria()" title="Pesquisar">
-                                    <i class="bi bi-search"></i> Pesquisar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="small fw-bold text-muted me-1">Período:</span>
-                        <div class="btn-group btn-group-sm" role="group" id="abas-data-auditoria">
-                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-todos" value="todos" checked>
-                            <label class="btn btn-outline-secondary" for="aba-data-todos">Todos</label>
-                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-hoje" value="hoje">
-                            <label class="btn btn-outline-secondary" for="aba-data-hoje">Hoje</label>
-                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-ontem" value="ontem">
-                            <label class="btn btn-outline-secondary" for="aba-data-ontem">Ontem</label>
-                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-7dias" value="7dias">
-                            <label class="btn btn-outline-secondary" for="aba-data-7dias">Últimos 7 dias</label>
                         </div>
                     </div>
                 </div>
@@ -860,8 +967,8 @@
 
             <div class="card-modern auditoria-table-shell" id="painel-lista-tabela">
                 <div class="table-responsive auditoria-table-responsive">
-                    <table class="table table-hover mb-0 align-middle">
-                        <thead class="table-light">
+                    <table class="table table-sm table-hover mb-0 align-middle">
+                        <thead>
                             <tr>
                                 <th class="ps-3">ID</th>
                                 <th>Data Venda</th>
@@ -1531,6 +1638,30 @@
 
         /** Carrega o banner "Próximo TT da vez" (primeiro da fila do Controle de TTs) para destacar na auditoria. */
         let proximoTTMatriculaAtual = null;
+        const LS_FILTROS_AVANCADOS_AUDITORIA = 'auditoria_filtros_avancados_abertos';
+
+        function aplicarEstadoFiltrosAvancadosAuditoria(aberto) {
+            const painel = document.getElementById('auditoria-filtros-avancados');
+            const btn = document.getElementById('btn-toggle-filtros-auditoria');
+            if (!painel || !btn) return;
+            painel.hidden = !aberto;
+            btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+            btn.classList.toggle('active', aberto);
+            btn.classList.toggle('btn-outline-secondary', !aberto);
+            btn.classList.toggle('btn-secondary', aberto);
+        }
+
+        function initFiltrosAvancadosAuditoria() {
+            const preferencia = localStorage.getItem(LS_FILTROS_AVANCADOS_AUDITORIA);
+            // Recolhido por padrão; só abre se o auditor salvou preferência explícita
+            aplicarEstadoFiltrosAvancadosAuditoria(preferencia === '1');
+            $('#btn-toggle-filtros-auditoria').on('click', function() {
+                const painel = document.getElementById('auditoria-filtros-avancados');
+                const aberto = !!(painel && painel.hidden);
+                aplicarEstadoFiltrosAvancadosAuditoria(aberto);
+                localStorage.setItem(LS_FILTROS_AVANCADOS_AUDITORIA, aberto ? '1' : '0');
+            });
+        }
 
         async function carregarProximoTTBanner() {
             const banner = document.getElementById('proximo-tt-banner');
@@ -1559,15 +1690,17 @@
             }
         }
 
-        /** Marca o resultado do uso do "próximo TT" (deu certo = venda registrada, não deu certo = não foi possível) e atualiza o banner para o próximo. */
+        /** Marca o resultado do uso do "próximo TT" e esconde o banner (feedback de tarefa concluída). */
         async function marcarProximoTTResultado(tipo) {
             if (!proximoTTMatriculaAtual) return;
             const hoje = new Date();
             const dataStr = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
             const body = { matricula_vendedor: proximoTTMatriculaAtual, data: dataStr, tipo: tipo };
+            const banner = document.getElementById('proximo-tt-banner');
             try {
                 await apiFetch(`${API_AUX}/controle-tts/tratado/`, { method: 'POST', body: JSON.stringify(body) });
-                await carregarProximoTTBanner();
+                proximoTTMatriculaAtual = null;
+                if (banner) banner.style.display = 'none';
             } catch (e) {
                 alert('Erro ao marcar: ' + (e.message || 'tente novamente.'));
             }
@@ -1578,6 +1711,7 @@
         } else $(document).ready(function() {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
             carregarProximoTTBanner();
+            initFiltrosAvancadosAuditoria();
             ['#agenda-os', '#repro-os'].forEach(function(sel) {
                 $(sel).on('input blur', function() {
                     this.value = aplicarMascaraOs(this.value);
@@ -1660,8 +1794,17 @@
                 const inclusaoVisible = (valor === 'inclusao');
                 const resumoVisible = (valor === 'resumo');
                 const historicoVisible = (valor === 'historico_ligacoes');
+                document.querySelector('.auditoria-page')?.classList.toggle('auditoria-modo-lista', listVisible);
                 $('#painel-lista').toggle(listVisible);
-                $('#painel-lista-tabela').toggle(listVisible);
+                const tabelaLista = document.getElementById('painel-lista-tabela');
+                if (tabelaLista) {
+                    // Limpa inline style ao mostrar para o CSS flex (scroll da tabela) voltar a valer
+                    tabelaLista.style.display = listVisible ? '' : 'none';
+                }
+                const ttBanner = document.getElementById('proximo-tt-banner');
+                if (ttBanner) {
+                    ttBanner.style.display = (listVisible && proximoTTMatriculaAtual) ? 'flex' : 'none';
+                }
                 $('#painel-inclusao').toggle(inclusaoVisible);
                 $('#painel-resumo').toggle(resumoVisible);
                 $('#painel-historico-ligacoes').toggle(historicoVisible);
@@ -1685,15 +1828,63 @@
 
         // =========================================================================
         // INCLUSÃO / VIABILIDADE (extensão Chrome)
+        // ID estável (manifest key). Usado com externally_connectable.
         // =========================================================================
+        const RECORD_INCLUSAO_EXT_ID = 'cgmpkggpemhfojadajkcofmjmbhbihla';
+        let inclusaoExtDetectada = false;
+
+        function marcarExtensaoInclusao(ok, detalhe) {
+            inclusaoExtDetectada = !!ok;
+            window.__RECORD_INCLUSAO_EXT__ = !!ok;
+            const el = document.getElementById('inclusao-ext-status');
+            if (!el) return;
+            el.className = ok ? 'badge bg-success' : 'badge bg-warning text-dark';
+            el.textContent = ok
+                ? ('Extensão: ativa' + (detalhe ? ` (${detalhe})` : ''))
+                : 'Extensão: não detectada — instale em chrome://extensions';
+        }
+
         function atualizarStatusExtensaoInclusao() {
             const el = document.getElementById('inclusao-ext-status');
             if (!el) return;
-            const ok = !!(window.__RECORD_INCLUSAO_EXT__);
-            el.className = ok ? 'badge bg-success' : 'badge bg-warning text-dark';
-            el.textContent = ok
-                ? 'Extensão: ativa'
-                : 'Extensão: não detectada — instale em chrome://extensions';
+
+            // 1) Content script já injetou
+            if (window.__RECORD_INCLUSAO_EXT__ || document.documentElement.getAttribute('data-record-inclusao-ext') === '1') {
+                marcarExtensaoInclusao(true, 'content-script');
+                return;
+            }
+
+            // 2) Ping via postMessage (content script)
+            let pong = false;
+            const onPong = (ev) => {
+                if (ev.origin !== window.location.origin) return;
+                if (ev.data && ev.data.source === 'record-inclusao-ext' && ev.data.type === 'RECORD_INCLUSAO_PONG') {
+                    pong = true;
+                    marcarExtensaoInclusao(true, 'pong');
+                }
+            };
+            window.addEventListener('message', onPong);
+            window.postMessage({ source: 'record-pap-auditoria', type: 'RECORD_INCLUSAO_PING' }, window.location.origin);
+
+            // 3) Ping direto na extensão (externally_connectable)
+            try {
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage(RECORD_INCLUSAO_EXT_ID, { type: 'PING' }, (resp) => {
+                        const err = chrome.runtime.lastError;
+                        if (!err && resp && resp.ok) {
+                            marcarExtensaoInclusao(true, 'runtime');
+                        } else if (!pong && !inclusaoExtDetectada) {
+                            marcarExtensaoInclusao(false);
+                        }
+                    });
+                    return;
+                }
+            } catch (_) { /* ignore */ }
+
+            setTimeout(() => {
+                window.removeEventListener('message', onPong);
+                if (!pong && !inclusaoExtDetectada) marcarExtensaoInclusao(false);
+            }, 400);
         }
 
         function formatarDataInclusao(iso) {
@@ -1758,27 +1949,64 @@
 
         async function abrirInclusaoNoForms(demandaId) {
             atualizarStatusExtensaoInclusao();
-            if (!window.__RECORD_INCLUSAO_EXT__) {
-                alert(
-                    'Extensão Chrome não detectada.\n\n' +
-                    '1) Abra chrome://extensions\n' +
-                    '2) Ative o Modo do desenvolvedor\n' +
-                    '3) "Carregar sem compactação" → pasta chrome_extension_inclusao_forms do projeto\n' +
-                    '4) Recarregue esta página e tente de novo.\n\n' +
-                    'É necessário estar logado no Google no Chrome (conta que abre o formulário).'
-                );
-                return;
-            }
             const token = localStorage.getItem('accessToken') || '';
             if (!token) {
                 alert('Faça login novamente (token ausente).');
+                return;
+            }
+            const payload = {
+                type: 'INCLUSAO_START',
+                demandaId: demandaId,
+                apiBase: window.location.origin + '/api/crm',
+                accessToken: token,
+            };
+
+            // Preferência: falar direto com a extensão (externally_connectable)
+            try {
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage(RECORD_INCLUSAO_EXT_ID, payload, (resp) => {
+                        const err = chrome.runtime.lastError;
+                        if (!err && resp && resp.ok) {
+                            marcarExtensaoInclusao(true, 'runtime');
+                            return;
+                        }
+                        // Fallback: content script via postMessage
+                        window.postMessage({
+                            source: 'record-pap-auditoria',
+                            type: 'RECORD_INCLUSAO_ABRIR_FORMS',
+                            ...payload,
+                        }, window.location.origin);
+                        if (err || !resp?.ok) {
+                            setTimeout(() => {
+                                if (!window.__RECORD_INCLUSAO_EXT__) {
+                                    alert(
+                                        'Extensão Chrome não detectada.\n\n' +
+                                        'Feche o Chrome e execute:\n' +
+                                        'C:\\site-record\\scripts\\abrir_chrome_com_extensao_inclusao.bat\n\n' +
+                                        'Ou em chrome://extensions: Modo do desenvolvedor → Carregar sem compactação →\n' +
+                                        'C:\\site-record\\chrome_extension_inclusao_forms'
+                                    );
+                                }
+                            }, 600);
+                        }
+                    });
+                    return;
+                }
+            } catch (_) { /* ignore */ }
+
+            if (!window.__RECORD_INCLUSAO_EXT__ && document.documentElement.getAttribute('data-record-inclusao-ext') !== '1') {
+                alert(
+                    'Extensão Chrome não detectada.\n\n' +
+                    'Feche o Chrome e execute:\n' +
+                    'C:\\site-record\\scripts\\abrir_chrome_com_extensao_inclusao.bat'
+                );
                 return;
             }
             window.postMessage({
                 source: 'record-pap-auditoria',
                 type: 'RECORD_INCLUSAO_ABRIR_FORMS',
                 demandaId: demandaId,
-                apiBase: window.location.origin + '/api/crm',
+                apiBase: payload.apiBase,
                 accessToken: token,
             }, window.location.origin);
         }

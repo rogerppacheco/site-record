@@ -10,35 +10,39 @@
 
 {% block extra_css %}
 <style>
-/* --- ESTILO DE CARDS FLUTUANTES NA TABELA --- */
-        table.table {
-            border-collapse: separate !important; 
-            border-spacing: 0 16px !important;    
+/* --- Densidade da tabela (modo operacional) --- */
+        .table-esteira {
+            border-collapse: separate !important;
+            border-spacing: 0 2px !important;
         }
         
         /* Reset das células */
-        .table > :not(caption) > * > * {
+        .table-esteira > :not(caption) > * > * {
             background-color: transparent; 
             border-bottom-width: 0;
             box-shadow: none;
             vertical-align: middle;
+            padding: 4px 8px !important;
+            font-size: 0.8125rem;
         }
 
         /* Estilo do cabeçalho */
-        .table thead th {
+        .table-esteira thead th {
             border: none;
-            font-size: 0.85rem;
+            font-size: 0.72rem;
             text-transform: uppercase;
             color: var(--text-secondary);
             font-weight: 600;
-            letter-spacing: 0.5px;
-            padding-bottom: 0;
+            letter-spacing: 0.4px;
+            padding: 6px 8px !important;
         }
 
         /* Select limpo */
         .status-select { 
-            min-width: 160px; 
-            font-size: 0.9rem; 
+            min-width: 140px; 
+            font-size: 0.8rem; 
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
             border: 1px solid var(--border-color);
             background-color: var(--bg-secondary);
             color: var(--text-primary);
@@ -47,32 +51,310 @@
         .nav-tabs .nav-link.active { color: var(--accent-primary); border-bottom: 3px solid var(--accent-primary); background: transparent; }
         input[type="text"], textarea { text-transform: uppercase; }
         
-        .nav-link.data-tab { font-size: 0.85rem; color: var(--text-secondary); }
+        .nav-link.data-tab { font-size: 0.8rem; color: var(--text-secondary); }
         .nav-link.data-tab.active { color: var(--accent-primary); font-weight: bold; }
 
-        /* Esconde barra de rolagem horizontal padrão se não for necessária */
-        .table-responsive::-webkit-scrollbar { height: 6px; }
-        .table-responsive::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
+        .table-responsive::-webkit-scrollbar { height: 11px; width: 11px; }
+        .table-responsive::-webkit-scrollbar-track {
+            background: color-mix(in srgb, var(--border-color) 55%, var(--bg-secondary));
+            border-radius: 6px;
+        }
+        .table-responsive::-webkit-scrollbar-thumb {
+            background-color: color-mix(in srgb, var(--text-secondary) 55%, var(--accent-primary));
+            border-radius: 6px;
+            border: 2px solid color-mix(in srgb, var(--border-color) 55%, var(--bg-secondary));
+            min-height: 40px;
+        }
+        .table-responsive::-webkit-scrollbar-thumb:hover {
+            background-color: var(--accent-primary);
+        }
+        #esteira-scroll-main {
+            scrollbar-width: auto;
+            scrollbar-color: color-mix(in srgb, var(--text-secondary) 55%, var(--accent-primary))
+                color-mix(in srgb, var(--border-color) 55%, var(--bg-secondary));
+        }
         .contador-instaladas { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; color: var(--text-secondary); }
         .contador-instaladas strong { color: var(--accent-primary); }
 
-        /* Rolagem horizontal + larguras mínimas: evita colunas finais ilegíveis em telas estreitas */
-        .esteira-table-scroll {
+        main.area-interna-section.esteira-page-main {
+            align-items: stretch !important;
+            justify-content: flex-start !important;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 0.3rem clamp(0.45rem, 1.2vw, 0.75rem);
+            min-height: 0;
+        }
+        main.area-interna-section.esteira-page-main.esteira-modo-lista {
+            height: calc(100vh - 100px);
+            height: calc(100dvh - 100px);
+            max-height: calc(100vh - 100px);
+            max-height: calc(100dvh - 100px);
+            overflow: hidden;
+        }
+        main.area-interna-section.esteira-page-main:not(.esteira-modo-lista) {
+            height: auto;
+            max-height: none;
+            min-height: calc(100vh - 100px);
+            min-height: calc(100dvh - 100px);
+            overflow: auto;
+        }
+        .esteira-page-main .esteira-shell {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: min(1600px, 100%) !important;
+            margin-left: auto;
+            margin-right: auto;
+            min-width: 0;
+            min-height: 0;
+            padding: 0.35rem 0.45rem !important;
+        }
+        .esteira-page-main.esteira-modo-lista .esteira-shell {
+            height: 100%;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        .esteira-chrome {
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.4rem 0.55rem;
+            margin-bottom: 0.3rem;
+            min-width: 0;
+        }
+        .esteira-page-title {
+            font-size: 1.05rem;
+            margin: 0;
+            line-height: 1.1;
+            color: var(--text-primary);
+            white-space: nowrap;
+            flex-shrink: 0;
+            font-weight: 700;
+        }
+        .esteira-abas {
+            margin-bottom: 0 !important;
+            border-bottom: none;
+            flex: 1 1 auto;
+            min-width: 0;
+            flex-wrap: nowrap;
             overflow-x: auto;
-            overflow-y: visible;
+            scrollbar-width: thin;
+        }
+        .esteira-abas .nav-link {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+        .esteira-pag-chrome {
+            display: none;
+            align-items: center;
+            gap: 0.2rem;
+            flex-shrink: 0;
+            padding: 0.1rem 0.25rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+        .esteira-pag-btn {
+            padding: 0 0.35rem !important;
+            line-height: 1.2;
+            font-size: 1rem;
+            font-weight: 700;
+            min-width: 1.5rem;
+        }
+        .esteira-pag-btn:disabled {
+            opacity: 0.35;
+            cursor: default;
+            pointer-events: none;
+        }
+        .esteira-pag-info {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            min-width: 4.5rem;
+            text-align: center;
+        }
+        .esteira-status-cell {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 0;
+        }
+        .esteira-status-cell .status-select {
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 11rem;
+        }
+        .esteira-acoes-grid.btn-icon-grid {
+            grid-template-rows: none;
+            grid-auto-rows: var(--btn-icon-size-sm);
+            grid-template-columns: repeat(2, var(--btn-icon-size-sm));
+        }
+        .esteira-filtros-linha {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem 0.85rem;
+        }
+        .esteira-filtro-inline {
+            display: inline-flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.4rem;
+            min-width: 0;
+        }
+        .esteira-filtro-inline > .text-muted,
+        .esteira-filtro-inline > label {
+            flex: 0 0 auto;
+            margin: 0;
+            white-space: nowrap;
+        }
+        .esteira-filtro-inline .form-select {
+            flex: 1 1 auto;
+            width: auto;
+            min-width: 10rem;
+            max-width: 18rem;
+        }
+        .esteira-filtro-chips .btn {
+            padding: 0.15rem 0.45rem !important;
+            font-size: 0.72rem !important;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .esteira-filtros-resumo {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            max-width: 9rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 1;
+        }
+        .esteira-filtros-resumo:empty { display: none; }
+        .esteira-chrome-acoes {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.3rem;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+        .esteira-chrome .esteira-busca-wrap {
+            width: 150px;
+            max-width: 22vw;
+        }
+        .esteira-chrome .btn {
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.25rem 0.45rem;
+            white-space: nowrap;
+        }
+        @media (max-width: 991.98px) {
+            .esteira-chrome { flex-wrap: wrap; }
+            .esteira-chrome-acoes { margin-left: 0; width: 100%; justify-content: flex-end; }
+            .esteira-abas { order: 3; flex: 1 1 100%; }
+        }
+        #menu-mais-acoes-esteira .dropdown-item {
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        #esteira-filtros-avancados {
+            flex-shrink: 0;
+            margin-bottom: 0.3rem;
+            padding: 0.35rem 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+        #abas-esteira-datas {
+            margin-bottom: 0.3rem !important;
+            border-bottom: none;
+            flex-wrap: wrap;
+            gap: 0.15rem;
+        }
+        #abas-esteira-datas .nav-link {
+            padding: 0.2rem 0.45rem;
+            border: 1px solid transparent;
+            border-radius: 6px;
+        }
+        .esteira-filtros-contextuais { margin-bottom: 0.25rem !important; }
+        .esteira-filtros-contextuais:last-child { margin-bottom: 0 !important; }
+        .esteira-pendencia-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.2rem;
+            line-height: 1.25;
+        }
+        .esteira-pendencia-cell .badge {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+        .esteira-pendencia-motivo {
+            color: var(--color-danger, #dc3545);
+            font-weight: 700;
+            font-size: 0.78rem;
+            word-break: break-word;
+        }
+        #painel-busca-instaladas,
+        #painel-busca-agendados,
+        #painel-busca-vendas-totais,
+        #painel-gestao-aproveitamento,
+        #painel-churn-tratamento { flex-shrink: 0; }
+        .esteira-page-main.esteira-modo-lista #esteira-area-tabela {
+            flex: 1 1 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .esteira-scroll-wrapper {
+            flex: 1 1 0;
+            min-height: 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            width: 100%;
+        }
+        .esteira-scroll-wrapper.card:hover { transform: none; box-shadow: none; }
+        .esteira-table-scroll,
+        #esteira-scroll-main.esteira-table-scroll {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow: auto !important;
             -webkit-overflow-scrolling: touch;
-            padding-bottom: 10px;
-            margin-bottom: 0.25rem;
+            padding-bottom: 0;
+            margin-bottom: 0;
         }
         .table-esteira {
             width: max-content;
-            min-width: 100%;
+min-width: 100%;
             table-layout: auto;
-            --esteira-sticky-w1: 9rem;
-            --esteira-sticky-w2: 6.5rem;
+            --esteira-sticky-w1: 8.5rem;
+            --esteira-sticky-w2: 6rem;
         }
         .table-esteira thead th {
             white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: var(--bg-secondary) !important;
+            box-shadow: inset 0 -1px 0 var(--border-color);
+        }
+        .table-esteira thead #linha-filtros-colunas th {
+            top: 1.85rem;
+            z-index: 10;
+            background-color: var(--bg-secondary) !important;
         }
         .table-esteira .esteira-col-cliente {
             white-space: normal;
@@ -104,6 +386,9 @@
         .table-esteira th.esteira-col-os,
         .table-esteira td.esteira-col-os { min-width: 7.5rem; }
         .table-esteira [data-esteira-col].esteira-col-oculta { display: none !important; }
+        #esteira-paginacao {
+            flex-shrink: 0;
+        }
 
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -173,64 +458,7 @@
             font-weight: 700;
         }
 
-        /* Esteira: título visível + tabela sem cortar à esquerda */
-        main.area-interna-section.esteira-page-main {
-            align-items: flex-start !important;
-            justify-content: flex-start !important;
-            width: 100%;
-            max-width: 100%;
-            box-sizing: border-box;
-            padding-left: clamp(0.75rem, 2.5vw, 1.5rem);
-            padding-right: clamp(0.75rem, 2.5vw, 1.5rem);
-        }
-        main.area-interna-section.esteira-page-main .system-container {
-            width: 100%;
-            max-width: min(1600px, 100%) !important;
-            margin-left: auto;
-            margin-right: auto;
-            min-width: 0;
-        }
-        .esteira-scroll-wrapper {
-            width: 100%;
-            min-width: 0;
-            overflow: visible;
-        }
-        .esteira-scroll-wrapper.card:hover {
-            transform: none;
-            box-shadow: none;
-        }
-        .esteira-scroll-sentinel {
-            height: 1px;
-            margin: 0;
-            pointer-events: none;
-        }
-        .esteira-scroll-top {
-            position: sticky;
-            top: 80px;
-            z-index: 1010;
-            overflow-x: auto;
-            overflow-y: hidden;
-            height: 12px;
-            margin-bottom: 4px;
-            scrollbar-width: thin;
-            background: transparent;
-            transition: background-color 0.15s ease, box-shadow 0.15s ease;
-        }
-        .esteira-scroll-top.esteira-scroll-top--pinned {
-            background: color-mix(in srgb, var(--bg-card) 96%, transparent);
-            -webkit-backdrop-filter: blur(8px);
-            backdrop-filter: blur(8px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-            border-bottom: 1px solid var(--border-color);
-        }
-        .esteira-scroll-top::-webkit-scrollbar { height: 8px; }
-        .esteira-scroll-top::-webkit-scrollbar-thumb {
-            background-color: var(--border-color);
-            border-radius: 4px;
-        }
-        .esteira-scroll-top-inner { height: 1px; }
-
-        /* Duas primeiras colunas fixas na rolagem horizontal (sticky) */
+        /* Sticky horizontal + vertical (hierarquia z-index) */
         .esteira-col-id-venda { vertical-align: middle; }
         .esteira-col-agenda { min-width: 7rem; vertical-align: middle; }
         .esteira-col-agenda .esteira-turno-sub {
@@ -239,7 +467,10 @@
             font-weight: 600;
             letter-spacing: 0.02em;
         }
-
+        .table-esteira tbody td {
+            position: relative;
+            z-index: 1;
+        }
         .table-esteira thead th.esteira-col-sticky-1,
         .table-esteira tbody td.esteira-col-sticky-1 {
             position: sticky;
@@ -264,17 +495,25 @@
             box-shadow: 6px 0 14px -10px rgba(0, 0, 0, 0.22);
             vertical-align: middle;
         }
-        .table-esteira thead th.esteira-col-sticky-1 {
-            z-index: 6;
-            background-color: var(--bg-secondary) !important;
-            white-space: normal;
+        /* Colunas fixas no corpo */
+        .table-esteira tbody td.esteira-col-sticky-1,
+        .table-esteira tbody td.esteira-col-sticky-2 {
+            z-index: 2;
         }
+        /* Canto superior esquerdo: sticky top + left */
+        .table-esteira thead th.esteira-col-sticky-1,
         .table-esteira thead th.esteira-col-sticky-2 {
-            z-index: 5;
+            z-index: 12;
+            top: 0;
             background-color: var(--bg-secondary) !important;
             white-space: normal;
         }
-        .table-esteira tbody td.esteira-col-sticky-1 { z-index: 4; }
+        .table-esteira thead #linha-filtros-colunas th.esteira-col-sticky-1,
+        .table-esteira thead #linha-filtros-colunas th.esteira-col-sticky-2 {
+            top: 1.85rem;
+            z-index: 12;
+            background-color: var(--bg-secondary) !important;
+        }
 
         .gestao-aprov-kpi {
             border: 1px solid var(--border-color);
@@ -295,7 +534,6 @@
         .table-gestao-aprov tbody td { text-align: center; vertical-align: middle; }
         .table-gestao-aprov .text-start { text-align: left !important; }
         .gestao-aprov-nota { font-size: 0.78rem; color: var(--text-secondary); }
-        .table-esteira tbody td.esteira-col-sticky-2 { z-index: 3; }
 
         .table-esteira tbody tr.esteira-row-venda {
             background-color: var(--bg-card);
@@ -370,18 +608,31 @@
 
         /* ========== Mobile: cards legíveis (rótulo acima do valor; sticky desligado) ========== */
         @media (max-width: 767.98px) {
-            .esteira-scroll-top {
-                display: none !important;
-            }
             main.area-interna-section.esteira-page-main {
                 padding-left: 0.65rem;
                 padding-right: 0.65rem;
+                height: auto !important;
+                max-height: none !important;
+                overflow: auto !important;
             }
-            main.area-interna-section.esteira-page-main .system-container {
+            main.area-interna-section.esteira-page-main .esteira-shell {
+                height: auto !important;
+                overflow: visible !important;
                 padding: 0.85rem !important;
             }
+            .esteira-page-main.esteira-modo-lista #esteira-area-tabela {
+                flex: none;
+                overflow: visible;
+            }
+            .esteira-scroll-wrapper {
+                flex: none;
+                overflow: visible;
+            }
             #esteira-scroll-main.table-responsive {
+                flex: none;
                 overflow-x: hidden !important;
+                overflow-y: visible !important;
+                max-height: none !important;
             }
             #esteira-scroll-main .table-esteira {
                 width: 100% !important;
@@ -478,6 +729,9 @@
                 line-height: 1.3;
                 word-break: break-word;
             }
+            #esteira-scroll-main .table-esteira .esteira-status-cell {
+                width: 100%;
+            }
             #esteira-scroll-main .table-esteira .status-select {
                 min-width: 0 !important;
                 width: 100%;
@@ -521,105 +775,138 @@
 {% endblock %}
 
 {% block content %}
-<main class="area-interna-section esteira-page-main">
-        <div class="system-container" style="max-width: 1600px;">
-            <div class="d-flex justify-content-between align-items-start align-items-md-center flex-wrap gap-3 mb-4 header-controls">
-                <div class="flex-shrink-0">
-                    <h1 style="font-size: 1.8rem; margin: 0;">Esteira de Vendas</h1>
-                    <p class="text-muted mb-0">Acompanhamento e tratamento de pendências.</p>
+<main class="area-interna-section esteira-page-main esteira-modo-lista">
+        <div class="system-container esteira-shell" style="max-width: 1600px;">
+            <div class="esteira-chrome">
+                <h1 class="esteira-page-title">Esteira</h1>
+                <ul class="nav nav-tabs esteira-abas" id="abas-esteira">
+                    <li class="nav-item"><a class="nav-link active" href="#" data-tab="TODOS" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" data-tab="INSTALADAS" onclick="filtrarStatus('INSTALADAS', this)" title="Vendas já instaladas – ajustar Data instalação (no cliente)">Instaladas</a></li>
+                    <li class="nav-item" id="tab-vendas-totais-item"><a class="nav-link" href="#" data-tab="VENDAS_TOTAIS" onclick="filtrarStatus('VENDAS_TOTAIS', this)">Vendas Totais</a></li>
+                    <li class="nav-item" id="tab-gestao-aproveitamento-item"><a class="nav-link" href="#" data-tab="GESTAO_APROVEITAMENTO" onclick="filtrarStatus('GESTAO_APROVEITAMENTO', this)">Gestão</a></li>
+                    <li class="nav-item" id="tab-churn-tratamento-item"><a class="nav-link" href="#" data-tab="CHURN_TRATAMENTO" onclick="filtrarStatus('CHURN_TRATAMENTO', this)">Churn</a></li>
+                </ul>
+                <div id="esteira-paginacao" class="esteira-pag-chrome" style="display: none;" title="Paginação da lista">
+                    <button type="button" class="btn btn-sm btn-outline-secondary esteira-pag-btn" id="btn-esteira-pag-anterior" onclick="mudarPaginaEsteira(-1)" aria-label="Página anterior">‹</button>
+                    <span id="esteira-paginacao-info" class="esteira-pag-info">—</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary esteira-pag-btn" id="btn-esteira-pag-proxima" onclick="mudarPaginaEsteira(1)" aria-label="Próxima página">›</button>
                 </div>
-
-                <div class="d-flex flex-wrap align-items-center esteira-toolbar-principal ms-md-auto">
-                    <div class="input-group input-group-sm mb-1 mb-md-0 me-md-1" style="max-width: min(280px, 100%);">
-                        <span class="input-group-text bg-white py-1"><i class="bi bi-search"></i></span>
-                        <input type="text" id="filtro-busca" class="form-control py-1" placeholder="CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()" title="Buscar por CPF ou número da O.S.">
+                <span id="esteira-filtros-resumo" class="esteira-filtros-resumo" aria-live="polite"></span>
+                <div class="esteira-chrome-acoes">
+                    <div class="input-group input-group-sm esteira-busca-wrap">
+                        <span class="input-group-text bg-white py-0 px-2"><i class="bi bi-search"></i></span>
+                        <input type="text" id="filtro-busca" class="form-control form-control-sm py-0" placeholder="CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()" title="Buscar por CPF ou número da O.S.">
                     </div>
-
-                    <div class="esteira-toolbar-acoes-wrap">
-                        <button id="btn-toggle-wpp" class="btn btn-sm btn-outline-secondary" style="display: none;" onclick="toggleEnvioZap()" title="Alternar envio de WhatsApp ao mudar status" type="button">
-                            <i class="bi bi-whatsapp"></i><span class="esteira-wpp-label d-none d-sm-inline ms-1">ON</span>
+                    <button type="button" id="btn-sync-status-pap" class="btn btn-sm btn-outline-primary" style="display: none;" onclick="iniciarSyncStatusPap()" title="Consultar PAP e atualizar pedidos AGENDADO/PENDENCIADA">
+                        <i class="bi bi-cloud-arrow-down"></i>
+                    </button>
+                    <button type="button" id="btn-cancel-sync-status-pap" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="cancelarSyncStatusPap()" title="Cancelar sincronização">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                    <span id="sync-status-pap-badge" class="badge bg-secondary" style="display: none; font-size: 0.65rem;"></span>
+                    <button type="button" onclick="carregarVendas()" class="btn btn-sm btn-primary" title="Recarregar a lista da esteira">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                    <div class="dropdown">
+                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Opções">
+                            <i class="bi bi-three-dots-vertical"></i><span class="d-none d-xl-inline ms-1">Opções</span>
+                            <span id="esteira-filtros-colunas-badge" class="badge rounded-pill bg-primary ms-1 d-none">!</span>
                         </button>
-
-                        <button type="button" id="btn-adiant-sabado-lote" onclick="abrirModalAdiantSabadoLote()" class="btn btn-sm btn-outline-primary" style="display: none;" title="Marcar em lote as vendas de um sábado (abertura O.S.) para vendedores habilitados">
-                            <i class="bi bi-calendar-check"></i><span class="d-none d-lg-inline ms-1">Adiant. sábado</span>
-                        </button>
-
-                        <button type="button" onclick="exportarAgendamentosDia()" class="btn btn-sm btn-outline-success" title="Baixar planilha de agendamentos do dia para envio à operadora">
-                            <i class="bi bi-file-earmark-excel"></i><span class="d-none d-lg-inline ms-1">Exportar hoje</span>
-                        </button>
-
-                        <button type="button" onclick="exportarAgendadosPendentesEsteira()" class="btn btn-sm btn-outline-success" title="Baixar relatório Excel com todas as vendas agendadas e pendentes na esteira">
-                            <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Agend. / Pend.</span>
-                        </button>
-
-                        <button type="button" id="btn-sync-status-pap" class="btn btn-sm btn-outline-primary" style="display: none;" onclick="iniciarSyncStatusPap()" title="Consultar PAP e atualizar pedidos AGENDADO/PENDENCIADA (com intervalos anti-bloqueio)">
-                            <i class="bi bi-cloud-arrow-down"></i><span class="d-none d-lg-inline ms-1">Sync PAP</span>
-                        </button>
-                        <button type="button" id="btn-cancel-sync-status-pap" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="cancelarSyncStatusPap()" title="Cancelar sincronização em andamento">
-                            <i class="bi bi-x-circle"></i><span class="d-none d-lg-inline ms-1">Cancelar sync</span>
-                        </button>
-                        <span id="sync-status-pap-badge" class="badge bg-secondary ms-1" style="display: none; font-size: 0.7rem;"></span>
-
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="abrirModalRelatorioPendenciasIndevidas()" title="Exportar pendências indevidas por período">
-                            <i class="bi bi-file-earmark-spreadsheet"></i><span class="d-none d-lg-inline ms-1">Pend. indevidas</span>
-                        </button>
-
-                        <button type="button" id="btn-config-esteira-wpp" class="btn btn-sm btn-outline-secondary" style="display: none;" onclick="abrirModalConfigEsteira()" title="WhatsApp BackOffice nas mensagens de pendência CLIENTE ao cliente">
-                            <i class="bi bi-gear"></i><span class="d-none d-lg-inline ms-1">WPP BackOffice</span>
-                        </button>
-
-                        <div class="dropdown d-inline-block">
-                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Escolher colunas visíveis">
-                                <i class="bi bi-layout-three-columns"></i><span class="d-none d-lg-inline ms-1">Colunas</span>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end p-2" id="menu-colunas-esteira" style="min-width: 14rem; max-height: 70vh; overflow-y: auto;"></ul>
-                        </div>
-
-                        <button type="button" onclick="abrirModalEnviarLembrete()" class="btn btn-sm btn-outline-success" title="Enviar mensagem de lembrete para clientes agendados na data e turno escolhidos">
-                            <i class="bi bi-whatsapp"></i><span class="d-none d-lg-inline ms-1">Lembrete</span>
-                        </button>
-
-                        <button type="button" onclick="carregarVendas()" class="btn btn-sm btn-primary" title="Recarregar a lista da esteira">
-                            <i class="bi bi-arrow-clockwise"></i><span class="d-none d-sm-inline ms-1">Atualizar</span>
-                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="menu-mais-acoes-esteira">
+                            <li id="li-filtros-avancados">
+                                <button type="button" class="dropdown-item" id="btn-toggle-filtros-esteira" aria-expanded="false" aria-controls="esteira-filtros-avancados" title="Datas, tipo e motivo">
+                                    <i class="bi bi-funnel"></i> Filtros da lista
+                                </button>
+                            </li>
+                            <li id="li-filtros-colunas" class="d-none">
+                                <button type="button" class="dropdown-item" id="btn-toggle-filtros-colunas" onclick="togglePainelFiltrosColunas()" aria-expanded="false" title="Filtros por coluna no cabeçalho">
+                                    <i class="bi bi-funnel-fill"></i> <span class="esteira-btn-filtros-label">Filtros na tabela</span>
+                                </button>
+                            </li>
+                            <li id="li-limpar-filtros-colunas" class="d-none">
+                                <button type="button" class="dropdown-item" onclick="limparSomenteFiltrosColunas()" title="Limpar filtros das colunas">
+                                    <i class="bi bi-x-circle"></i> Limpar filtros de coluna
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li id="li-toggle-wpp" style="display: none;">
+                                <button type="button" id="btn-toggle-wpp" class="dropdown-item" onclick="toggleEnvioZap()" title="Alternar envio de WhatsApp ao mudar status">
+                                    <i class="bi bi-whatsapp"></i> WhatsApp: <span class="esteira-wpp-label">ON</span>
+                                </button>
+                            </li>
+                            <li id="li-adiant-sabado-lote" style="display: none;">
+                                <button type="button" id="btn-adiant-sabado-lote" class="dropdown-item" onclick="abrirModalAdiantSabadoLote()" title="Marcar em lote as vendas de um sábado">
+                                    <i class="bi bi-calendar-check"></i> Adiant. sábado
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="exportarAgendamentosDia()" title="Baixar planilha de agendamentos do dia">
+                                    <i class="bi bi-file-earmark-excel"></i> Exportar hoje
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="exportarAgendadosPendentesEsteira()" title="Baixar relatório Excel agendadas e pendentes">
+                                    <i class="bi bi-file-earmark-spreadsheet"></i> Agend. / Pend.
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="abrirModalRelatorioPendenciasIndevidas()" title="Exportar pendências indevidas">
+                                    <i class="bi bi-exclamation-diamond"></i> Pend. indevidas
+                                </button>
+                            </li>
+                            <li id="li-config-esteira-wpp" style="display: none;">
+                                <button type="button" id="btn-config-esteira-wpp" class="dropdown-item" onclick="abrirModalConfigEsteira()" title="WhatsApp BackOffice">
+                                    <i class="bi bi-gear"></i> WPP BackOffice
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="abrirModalEnviarLembrete()" title="Enviar lembrete WhatsApp">
+                                    <i class="bi bi-whatsapp"></i> Lembrete
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li class="px-2 pb-1">
+                                <div class="small text-muted mb-1 px-1">Colunas visíveis</div>
+                                <ul class="list-unstyled mb-0 p-1" id="menu-colunas-esteira" style="max-height: 40vh; overflow-y: auto;"></ul>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
 
-            <ul class="nav nav-tabs mb-3" id="abas-esteira">
-                <li class="nav-item"><a class="nav-link active" href="#" data-tab="TODOS" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-tab="INSTALADAS" onclick="filtrarStatus('INSTALADAS', this)" title="Vendas já instaladas – ajustar Data instalação (no cliente)">Instaladas</a></li>
-                <li class="nav-item" id="tab-vendas-totais-item"><a class="nav-link" href="#" data-tab="VENDAS_TOTAIS" onclick="filtrarStatus('VENDAS_TOTAIS', this)">Vendas Totais</a></li>
-                <li class="nav-item" id="tab-gestao-aproveitamento-item"><a class="nav-link" href="#" data-tab="GESTAO_APROVEITAMENTO" onclick="filtrarStatus('GESTAO_APROVEITAMENTO', this)">Gestão Aproveitamento</a></li>
-                <li class="nav-item" id="tab-churn-tratamento-item"><a class="nav-link" href="#" data-tab="CHURN_TRATAMENTO" onclick="filtrarStatus('CHURN_TRATAMENTO', this)">Churn / Cancelamentos</a></li>
-            </ul>
+            <div id="esteira-filtros-avancados" hidden>
+                <div class="small text-muted fw-semibold mb-1" id="esteira-filtros-datas-label">Datas de agendamento</div>
+                <ul class="nav nav-tabs" id="abas-esteira-datas" role="tablist" aria-label="Datas de agendamento"></ul>
 
-            <div id="filtro-turno-container" class="mb-3" style="display: none;">
-                <span class="me-2 text-muted fw-bold">Turno:</span>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary active" id="btn-turno-todos" onclick="filtrarTurno('', this)">Todos os turnos</button>
-                    <button type="button" class="btn btn-outline-secondary" id="btn-turno-manha" onclick="filtrarTurno('MANHA', this)">Manhã</button>
-                    <button type="button" class="btn btn-outline-secondary" id="btn-turno-tarde" onclick="filtrarTurno('TARDE', this)">Tarde</button>
-                </div>
-            </div>
-
-            <div id="filtro-tipo-pendencia-container" class="mb-3" style="display: none;">
-                <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="text-muted fw-bold">Tipo de pendência:</span>
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-outline-secondary active" id="btn-tipo-pend-todos" onclick="filtrarTipoPendencia('', this)">Todos</button>
-                            <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-cliente" onclick="filtrarTipoPendencia('CLIENTE', this)">Cliente</button>
-                            <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-tecnica" onclick="filtrarTipoPendencia('TECNICA', this)">Técnica</button>
+                <div id="filtro-turno-container" class="esteira-filtros-contextuais" style="display: none;">
+                    <div class="esteira-filtro-inline esteira-filtro-chips">
+                        <span class="text-muted fw-bold small">Turno:</span>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Filtro de turno">
+                            <button type="button" class="btn btn-outline-secondary active" id="btn-turno-todos" onclick="filtrarTurno('', this)">Todos</button>
+                            <button type="button" class="btn btn-outline-secondary" id="btn-turno-manha" onclick="filtrarTurno('MANHA', this)">Manhã</button>
+                            <button type="button" class="btn btn-outline-secondary" id="btn-turno-tarde" onclick="filtrarTurno('TARDE', this)">Tarde</button>
                         </div>
                     </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2" style="min-width: min(100%, 22rem);">
-                        <label class="text-muted fw-bold mb-0" for="filtro-motivo-pendencia">Motivo:</label>
-                        <select id="filtro-motivo-pendencia" class="form-select form-select-sm" style="min-width: 14rem; max-width: 28rem;" onchange="filtrarMotivoPendencia(this.value)" title="Somente motivos que existem nas pendências da esteira">
-                            <option value="">Todos os motivos</option>
-                        </select>
+                </div>
+
+                <div id="filtro-tipo-pendencia-container" class="esteira-filtros-contextuais" style="display: none;">
+                    <div class="esteira-filtros-linha">
+                        <div class="esteira-filtro-inline esteira-filtro-chips">
+                            <span class="text-muted fw-bold small">Tipo:</span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de pendência">
+                                <button type="button" class="btn btn-outline-secondary active" id="btn-tipo-pend-todos" onclick="filtrarTipoPendencia('', this)">Todos</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-cliente" onclick="filtrarTipoPendencia('CLIENTE', this)">Cliente</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btn-tipo-pend-tecnica" onclick="filtrarTipoPendencia('TECNICA', this)">Técnica</button>
+                            </div>
+                        </div>
+                        <div class="esteira-filtro-inline">
+                            <label class="text-muted fw-bold small" for="filtro-motivo-pendencia">Motivo:</label>
+                            <select id="filtro-motivo-pendencia" class="form-select form-select-sm" onchange="filtrarMotivoPendencia(this.value)" title="Somente motivos que existem nas pendências da esteira">
+                                <option value="">Todos os motivos</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -941,30 +1228,16 @@
             </div>
 
             <div id="esteira-area-tabela">
-            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
-                <p class="small text-muted mb-0 flex-grow-1" style="min-width: 10rem;"><i class="bi bi-arrows-expand"></i> Rolagem horizontal: a barra <strong>permanece no topo</strong> ao descer; também há barra abaixo da tabela (ambas movem juntas).</p>
-                <div id="esteira-toolbar-filtros" class="d-none align-items-center gap-2 flex-wrap justify-content-end flex-shrink-0">
-                    <button type="button" id="btn-toggle-filtros-colunas" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" onclick="togglePainelFiltrosColunas()" aria-expanded="false" title="Mostrar ou ocultar filtros por coluna na tabela">
-                        <i class="bi bi-funnel"></i><span class="esteira-btn-filtros-label">Filtros na tabela</span>
-                    </button>
-                    <span id="esteira-filtros-colunas-badge" class="badge rounded-pill bg-primary d-none">Filtros ativos</span>
-                    <button type="button" class="btn btn-sm btn-link text-secondary py-0 px-1" onclick="limparSomenteFiltrosColunas()" title="Limpar filtros das colunas">Limpar colunas</button>
-                </div>
-            </div>
             <div class="card border-0 shadow-none esteira-scroll-wrapper" style="background: transparent;">
-                <div class="esteira-scroll-sentinel" id="esteira-scroll-sentinel" aria-hidden="true"></div>
-                <div class="esteira-scroll-top" id="esteira-scroll-top" aria-hidden="true">
-                    <div class="esteira-scroll-top-inner" id="esteira-scroll-top-inner"></div>
-                </div>
-                <div class="table-responsive esteira-table-scroll" id="esteira-scroll-main" style="overflow-y: visible;">
-                    <table class="table table-esteira mb-0">
+                <div class="table-responsive esteira-table-scroll" id="esteira-scroll-main">
+                    <table class="table table-sm table-esteira mb-0">
                         <thead>
                             <tr>
                                 <th data-esteira-col="id" class="ps-3 esteira-col-id-venda esteira-col-sticky-1">ID / Data venda</th>
                                 <th data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2">Ações</th>
                                 <th data-esteira-col="os" class="esteira-col-os">O.S.</th>
                                 <th data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia" title="Tipo do cadastro do motivo (Cliente / Técnica)">Tipo de pendência</th>
-                                <th data-esteira-col="motivo" class="esteira-col-motivo">Motivo Pendência</th>
+                                <th data-esteira-col="motivo" class="esteira-col-motivo" title="Tipo (badge) + motivo da pendência">Pendência</th>
                                 <th data-esteira-col="agenda" class="esteira-col-agenda">Agendamento</th>
                                 <th data-esteira-col="cliente" class="esteira-col-cliente">Cliente</th>
                                 <th data-esteira-col="status">Status Atual</th>
@@ -1046,13 +1319,6 @@
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
                     </table>
-                </div>
-                <div id="esteira-paginacao" class="d-flex justify-content-between align-items-center px-2 py-2 border-top bg-light small" style="display:none !important;">
-                    <span id="esteira-paginacao-info" class="text-muted"></span>
-                    <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-secondary" id="btn-esteira-pag-anterior" onclick="mudarPaginaEsteira(-1)">Anterior</button>
-                        <button type="button" class="btn btn-outline-secondary" id="btn-esteira-pag-proxima" onclick="mudarPaginaEsteira(1)">Próxima</button>
-                    </div>
                 </div>
             </div>
             </div>
@@ -1464,8 +1730,7 @@
             { key: 'id', label: 'ID / Data venda', fixa: true },
             { key: 'acoes', label: 'Ações', fixa: true },
             { key: 'os', label: 'O.S.' },
-            { key: 'tipo_pendencia', label: 'Tipo de pendência' },
-            { key: 'motivo', label: 'Motivo Pendência' },
+            { key: 'motivo', label: 'Pendência' },
             { key: 'agenda', label: 'Agendamento' },
             { key: 'cliente', label: 'Cliente' },
             { key: 'status', label: 'Status Atual' },
@@ -1487,14 +1752,15 @@
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (Array.isArray(parsed) && parsed.length) {
-                        // Coluna nova: inclui após O.S. se ainda não estiver nas preferências salvas
-                        if (!parsed.includes('tipo_pendencia')) {
-                            const idxOs = parsed.indexOf('os');
-                            if (idxOs >= 0) parsed.splice(idxOs + 1, 0, 'tipo_pendencia');
-                            else parsed.push('tipo_pendencia');
-                            salvarColunasVisiveisEsteira(parsed);
+                        // tipo_pendencia foi unificado na coluna Pendência
+                        const limpo = parsed.filter(k => k !== 'tipo_pendencia');
+                        if (!limpo.includes('motivo')) {
+                            const idxOs = limpo.indexOf('os');
+                            if (idxOs >= 0) limpo.splice(idxOs + 1, 0, 'motivo');
+                            else limpo.push('motivo');
                         }
-                        return parsed;
+                        if (limpo.length !== parsed.length) salvarColunasVisiveisEsteira(limpo);
+                        return limpo;
                     }
                 }
             } catch (e) { /* ignore */ }
@@ -1505,11 +1771,49 @@
             localStorage.setItem('esteira_colunas_visiveis', JSON.stringify(keys));
         }
 
+        /** Colunas forçadas pelo contexto da aba (sobrescrevem preferência do usuário). */
+        function regrasColunasPorAba(status) {
+            const hide = new Set(['tipo_pendencia']); // sempre unificado em Pendência
+            const show = new Set();
+            const ehData = /^\d{4}-\d{2}-\d{2}$/.test(status || '');
+            if (status === 'TODOS' || status === 'PENDEN') {
+                show.add('motivo');
+            } else {
+                hide.add('motivo');
+            }
+            if (status === 'PENDEN') {
+                hide.add('agenda');
+            }
+            if (status === 'AGENDADO' || ehData) {
+                show.add('agenda');
+                hide.add('motivo');
+            }
+            if (status === 'INSTALADAS') {
+                hide.add('motivo');
+                hide.add('agenda');
+                hide.add('conf');
+                hide.add('posso_reagendar');
+                show.add('adiant_cnpj');
+                show.add('adiant_comissao');
+                show.add('adiant_sabado');
+                show.add('comissao');
+            }
+            if (status === 'VENDAS_TOTAIS') {
+                hide.add('motivo');
+            }
+            return { hide, show };
+        }
+
         function aplicarVisibilidadeColunasEsteira() {
-            const visiveis = new Set(chavesColunasVisiveisEsteira());
+            const prefs = new Set(chavesColunasVisiveisEsteira());
+            const { hide, show } = regrasColunasPorAba(filtroAtual);
+            hide.forEach(k => prefs.delete(k));
+            show.forEach(k => prefs.add(k));
+            // Coluna tipo_pendencia nunca aparece sozinha
+            prefs.delete('tipo_pendencia');
             document.querySelectorAll('[data-esteira-col]').forEach(el => {
                 const k = el.getAttribute('data-esteira-col');
-                el.classList.toggle('esteira-col-oculta', !visiveis.has(k));
+                el.classList.toggle('esteira-col-oculta', !prefs.has(k));
             });
         }
 
@@ -1636,7 +1940,8 @@
         let _motivosPendenciaCache = [];
         let _motivosPendenciaNaEsteira = [];
         let _semMotivoPendentesNaEsteira = 0;
-        const ESTEIRA_PAGE_SIZE = 200;
+        /** Página menor: com 200, abas como Todos (~182) ficavam em 1 página e a seta › parecia “quebrada”. */
+        const ESTEIRA_PAGE_SIZE = 50;
         let esteiraPaginaAtual = 1;
         let esteiraPaginacaoMeta = { count: 0, totalPages: 1 };
         let esteiraContadores = null;
@@ -1706,8 +2011,10 @@
         
         document.addEventListener('DOMContentLoaded', () => {
             sincronizarVisaoGestaoAproveitamento(false);
+            atualizarModoViewportEsteira(filtroAtual || 'TODOS');
+            initFiltrosAvancadosEsteira();
             const btnLoteSab = document.getElementById('btn-adiant-sabado-lote');
-            if (btnLoteSab && podeMarcarAdiantSabado) btnLoteSab.style.display = 'inline-flex';
+            if (btnLoteSab && podeMarcarAdiantSabado) setEsteiraMenuItemVisivel('li-adiant-sabado-lote', true);
             carregarContadoresEsteira().finally(() => carregarVendas());
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
@@ -1738,24 +2045,15 @@
             if (cbSelComissaoVisiveis && !podeEditarAdiantamentosFinanceiros) cbSelComissaoVisiveis.style.display = 'none';
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
 
-            inicializarScrollStickyEsteira();
-
-            var resizeEsteiraT = null;
-            window.addEventListener('resize', function() {
-                clearTimeout(resizeEsteiraT);
-                resizeEsteiraT = setTimeout(function() { syncEsteiraScrollbars(); }, 100);
-            });
-
             if (podeConfigEsteiraBackoffice) {
-                const btnCfg = document.getElementById('btn-config-esteira-wpp');
-                if (btnCfg) btnCfg.style.display = 'inline-flex';
+                setEsteiraMenuItemVisivel('li-config-esteira-wpp', true);
                 const btnSync = document.getElementById('btn-sync-status-pap');
                 if (btnSync) btnSync.style.display = 'inline-flex';
                 pollSyncStatusPap();
             }
             if (podeConfigurarZap) {
-                const btnZap = document.getElementById('btn-toggle-wpp');
-                if (btnZap) { btnZap.style.display = 'inline-flex'; atualizarBotaoZap(); }
+                setEsteiraMenuItemVisivel('li-toggle-wpp', true);
+                atualizarBotaoZap();
             }
         });
 
@@ -1887,12 +2185,10 @@
             if (!btn) return;
             let span = btn.querySelector('.esteira-wpp-label');
             if (!span) {
-                btn.innerHTML = '<i class="bi bi-whatsapp"></i><span class="esteira-wpp-label d-none d-sm-inline ms-1"></span>';
+                btn.innerHTML = '<i class="bi bi-whatsapp"></i> WhatsApp: <span class="esteira-wpp-label"></span>';
                 span = btn.querySelector('.esteira-wpp-label');
             }
             if (span) span.textContent = envioWhatsappAtivo ? 'ON' : 'OFF';
-            btn.classList.toggle('btn-outline-success', envioWhatsappAtivo);
-            btn.classList.toggle('btn-outline-secondary', !envioWhatsappAtivo);
             btn.title = envioWhatsappAtivo ? 'Enviar WhatsApp ao alterar status' : 'Silenciar WhatsApp ao alterar status';
         }
 
@@ -1998,75 +2294,109 @@
 
         function montarGridAcoesEsteira(vendaId, opts) {
             const slot = '<span class="btn-icon-slot" aria-hidden="true"></span>';
+            const sm = 'btn btn-icon btn-icon-sm';
             const btnEnd = opts.endereco
-                ? `<button type="button" class="btn btn-icon btn-icon-neutral" onclick="copiarEndereco(this)" data-endereco="${opts.endereco}" title="Copiar endereço completo" aria-label="Copiar endereço"><i class="bi bi-geo-alt" aria-hidden="true"></i></button>`
+                ? `<button type="button" class="${sm} btn-icon-neutral" onclick="copiarEndereco(this)" data-endereco="${opts.endereco}" title="Copiar endereço" aria-label="Copiar endereço"><i class="bi bi-geo-alt" aria-hidden="true"></i></button>`
                 : slot;
             const btnTel = opts.telefone
-                ? `<button type="button" class="btn btn-icon btn-icon-neutral" onclick="copiarTelefone(this)" data-telefone="${opts.telefone}" title="Copiar telefone" aria-label="Copiar telefone"><i class="bi bi-telephone" aria-hidden="true"></i></button>`
+                ? `<button type="button" class="${sm} btn-icon-neutral" onclick="copiarTelefone(this)" data-telefone="${opts.telefone}" title="Copiar telefone" aria-label="Copiar telefone"><i class="bi bi-telephone" aria-hidden="true"></i></button>`
                 : slot;
-            let btnWpp = slot;
+            let btnFluxo = slot;
             if (opts.mostrarReagendar) {
-                btnWpp = `<button type="button" class="btn btn-icon btn-icon-info" onclick="enviarPossoReagendar(${vendaId}, this)" title="Consultar consultor: posso reagendar?" aria-label="Posso reagendar?"><i class="bi bi-calendar-plus" aria-hidden="true"></i></button>`;
+                btnFluxo = `<button type="button" class="${sm} btn-icon-info" onclick="enviarPossoReagendar(${vendaId}, this)" title="Posso reagendar?" aria-label="Posso reagendar?"><i class="bi bi-calendar-plus" aria-hidden="true"></i></button>`;
             } else if (opts.mostrarAntecip) {
-                btnWpp = `<button type="button" class="btn btn-icon btn-icon-warning" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Consultar vendedor: posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning" aria-hidden="true"></i></button>`;
+                btnFluxo = `<button type="button" class="${sm} btn-icon-warning" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning" aria-hidden="true"></i></button>`;
             }
-            const btnEdit = `<button type="button" class="btn btn-icon btn-icon-primary" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil" aria-hidden="true"></i></button>`;
-            return `<div class="btn-icon-grid esteira-acoes-grid">${btnEnd}${btnTel}${btnWpp}${btnEdit}</div>`;
+            // pencil-square = dados do status (agenda/motivo); pencil = edição completa da venda
+            const btnStatusDados = opts.editarStatusHtml || slot;
+            const btnEdit = `<button type="button" class="${sm} btn-icon-primary" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil" aria-hidden="true"></i></button>`;
+            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, dados do status, editar">${btnEnd}${btnTel}${btnFluxo}${btnStatusDados}${btnEdit}</div>`;
         }
 
         var esteiraScrollSyncLock = false;
         var esteiraScrollListenersOk = false;
         var esteiraScrollStickyOk = false;
-        function inicializarScrollStickyEsteira() {
-            if (esteiraScrollStickyOk) return;
-            var sentinel = document.getElementById('esteira-scroll-sentinel');
-            var top = document.getElementById('esteira-scroll-top');
-            if (!sentinel || !top) return;
-            if (window.matchMedia('(max-width: 767.98px)').matches) return;
-            esteiraScrollStickyOk = true;
-            var obs = new IntersectionObserver(function(entries) {
-                entries.forEach(function(e) {
-                    top.classList.toggle('esteira-scroll-top--pinned', !e.isIntersecting);
+        /** Barra de scroll sincronizada removida: scroll nativo em #esteira-scroll-main. */
+        function inicializarScrollStickyEsteira() { /* no-op */ }
+        function inicializarSyncScrollEsteira() { /* no-op */ }
+        function syncEsteiraScrollbars() { /* no-op — mantido por chamadas legadas */ }
+
+        const LS_FILTROS_AVANCADOS_ESTEIRA = 'esteira_filtros_avancados_aberto';
+
+        function abaUsaChipsDeData(status) {
+            if (!status) return false;
+            return status === 'TODOS' || status === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(status);
+        }
+
+        function atualizarModoViewportEsteira(status) {
+            const main = document.querySelector('.esteira-page-main');
+            if (!main) return;
+            const paginaLivre = status === 'GESTAO_APROVEITAMENTO' || status === 'CHURN_TRATAMENTO';
+            main.classList.toggle('esteira-modo-lista', !paginaLivre);
+            if (typeof aplicarVisibilidadeColunasEsteira === 'function') aplicarVisibilidadeColunasEsteira();
+        }
+
+        function atualizarResumoFiltrosEsteira() {
+            const label = document.getElementById('esteira-filtros-resumo');
+            if (!label) return;
+            const partes = [];
+            if (ehAbaDataEsteira(filtroAtual)) {
+                const ativo = document.querySelector('#abas-esteira-datas .nav-link.active');
+                if (ativo) partes.push(ativo.textContent.trim());
+            }
+            if (filtroTipoPendenciaAtual) partes.push(filtroTipoPendenciaAtual);
+            if (filtroMotivoPendenciaAtual) partes.push('motivo');
+            if (filtroTurnoAtual) partes.push(filtroTurnoAtual === 'MANHA' ? 'Manhã' : 'Tarde');
+            label.textContent = partes.length ? ('· ' + partes.join(' · ')) : '';
+        }
+
+        function aplicarEstadoFiltrosAvancadosEsteira(aberto, persistir) {
+            const painel = document.getElementById('esteira-filtros-avancados');
+            const btn = document.getElementById('btn-toggle-filtros-esteira');
+            if (!painel || !btn) return;
+            // Em abas sem filtros de lista (Gestão/Churn), esconde o botão
+            const semFiltrosLista = filtroAtual === 'GESTAO_APROVEITAMENTO' || filtroAtual === 'CHURN_TRATAMENTO';
+            const liFiltros = document.getElementById('li-filtros-avancados');
+            if (liFiltros) liFiltros.style.display = semFiltrosLista ? 'none' : '';
+            if (semFiltrosLista) {
+                painel.hidden = true;
+                btn.setAttribute('aria-expanded', 'false');
+                atualizarResumoFiltrosEsteira();
+                return;
+            }
+            painel.hidden = !aberto;
+            btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+            const datasLabel = document.getElementById('esteira-filtros-datas-label');
+            const datasUl = document.getElementById('abas-esteira-datas');
+            const mostrarDatas = abaUsaChipsDeData(filtroAtual);
+            if (datasLabel) datasLabel.style.display = mostrarDatas ? '' : 'none';
+            if (datasUl) datasUl.style.display = mostrarDatas ? '' : 'none';
+            if (persistir) localStorage.setItem(LS_FILTROS_AVANCADOS_ESTEIRA, aberto ? '1' : '0');
+            atualizarResumoFiltrosEsteira();
+        }
+
+        function initFiltrosAvancadosEsteira() {
+            const preferencia = localStorage.getItem(LS_FILTROS_AVANCADOS_ESTEIRA);
+            aplicarEstadoFiltrosAvancadosEsteira(preferencia === '1', false);
+            const btn = document.getElementById('btn-toggle-filtros-esteira');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    const painel = document.getElementById('esteira-filtros-avancados');
+                    const aberto = !!(painel && painel.hidden);
+                    aplicarEstadoFiltrosAvancadosEsteira(aberto, true);
                 });
-            }, { root: null, rootMargin: '-80px 0px 0px 0px', threshold: 0 });
-            obs.observe(sentinel);
-        }
-        function inicializarSyncScrollEsteira() {
-            if (esteiraScrollListenersOk) return;
-            var top = document.getElementById('esteira-scroll-top');
-            var main = document.getElementById('esteira-scroll-main');
-            if (!top || !main) return;
-            esteiraScrollListenersOk = true;
-            top.addEventListener('scroll', function() {
-                if (esteiraScrollSyncLock) return;
-                esteiraScrollSyncLock = true;
-                main.scrollLeft = top.scrollLeft;
-                esteiraScrollSyncLock = false;
-            });
-            main.addEventListener('scroll', function() {
-                if (esteiraScrollSyncLock) return;
-                esteiraScrollSyncLock = true;
-                top.scrollLeft = main.scrollLeft;
-                esteiraScrollSyncLock = false;
-            });
-        }
-        function syncEsteiraScrollbars() {
-            inicializarScrollStickyEsteira();
-            inicializarSyncScrollEsteira();
-            var main = document.getElementById('esteira-scroll-main');
-            var inner = document.getElementById('esteira-scroll-top-inner');
-            var top = document.getElementById('esteira-scroll-top');
-            if (!main || !inner) return;
-            inner.style.width = main.scrollWidth + 'px';
-            if (top) {
-                var needsHScroll = main.scrollWidth > main.clientWidth + 1;
-                top.style.display = needsHScroll ? '' : 'none';
             }
-            if (top && top.scrollLeft !== main.scrollLeft) {
-                esteiraScrollSyncLock = true;
-                top.scrollLeft = main.scrollLeft;
-                esteiraScrollSyncLock = false;
-            }
+        }
+
+        function limparAbasDeDataEsteira() {
+            const ul = document.getElementById('abas-esteira-datas');
+            if (ul) ul.innerHTML = '';
+            atualizarResumoFiltrosEsteira();
+        }
+
+        function setEsteiraMenuItemVisivel(liId, visivel) {
+            const li = document.getElementById(liId);
+            if (li) li.style.display = visivel ? '' : 'none';
         }
 
         function inicializarFiltrosColunas() {
@@ -2124,12 +2454,11 @@
         }
 
         function sincronizarToolbarEFiltrosColunas() {
-            const toolbar = document.getElementById('esteira-toolbar-filtros');
+            const liFiltros = document.getElementById('li-filtros-colunas');
+            const liLimpar = document.getElementById('li-limpar-filtros-colunas');
             const sup = filtrosColunasSuportadosNaAbaAtual();
-            if (toolbar) {
-                toolbar.classList.toggle('d-none', !sup);
-                toolbar.classList.toggle('d-flex', sup);
-            }
+            if (liFiltros) liFiltros.classList.toggle('d-none', !sup);
+            if (liLimpar) liLimpar.classList.toggle('d-none', !sup);
             if (!sup) {
                 const lf = document.getElementById('linha-filtros-colunas');
                 if (lf) lf.style.display = 'none';
@@ -2970,19 +3299,37 @@
                 bar.style.display = 'none';
                 return;
             }
-            bar.style.display = 'flex';
+            bar.style.display = 'inline-flex';
             const total = esteiraPaginacaoMeta.count || 0;
-            const totalPages = esteiraPaginacaoMeta.totalPages || 1;
+            const totalPages = Math.max(1, esteiraPaginacaoMeta.totalPages || 1);
             const ini = total ? ((esteiraPaginaAtual - 1) * ESTEIRA_PAGE_SIZE) + 1 : 0;
             const fim = Math.min(esteiraPaginaAtual * ESTEIRA_PAGE_SIZE, total);
-            if (info) info.textContent = total ? `Exibindo ${ini}–${fim} de ${total} (página ${esteiraPaginaAtual}/${totalPages})` : 'Nenhum registro';
-            if (btnAnt) btnAnt.disabled = esteiraPaginaAtual <= 1;
-            if (btnProx) btnProx.disabled = esteiraPaginaAtual >= totalPages;
+            const multiPagina = totalPages > 1;
+            if (info) {
+                info.textContent = total ? `${ini}–${fim}/${total}` : '0';
+                info.title = total
+                    ? (multiPagina
+                        ? `Exibindo ${ini}–${fim} de ${total} · página ${esteiraPaginaAtual} de ${totalPages}`
+                        : `Todos os ${total} registros nesta página`)
+                    : 'Nenhum registro';
+            }
+            if (btnAnt) {
+                btnAnt.disabled = !multiPagina || esteiraPaginaAtual <= 1;
+                btnAnt.style.visibility = multiPagina ? 'visible' : 'hidden';
+                btnAnt.title = multiPagina ? 'Página anterior' : 'Só há uma página';
+            }
+            if (btnProx) {
+                btnProx.disabled = !multiPagina || esteiraPaginaAtual >= totalPages;
+                btnProx.style.visibility = multiPagina ? 'visible' : 'hidden';
+                btnProx.title = multiPagina ? 'Próxima página' : 'Só há uma página';
+            }
         }
 
         function mudarPaginaEsteira(delta) {
+            if (!usaPaginacaoServerEsteira()) return;
+            const totalPages = Math.max(1, esteiraPaginacaoMeta.totalPages || 1);
             const nova = esteiraPaginaAtual + delta;
-            if (nova < 1 || nova > (esteiraPaginacaoMeta.totalPages || 1)) return;
+            if (nova < 1 || nova > totalPages || nova === esteiraPaginaAtual) return;
             esteiraPaginaAtual = nova;
             carregarVendas();
         }
@@ -3389,7 +3736,11 @@
                         const sUpper = String(nomeStatus).toUpperCase();
                         temDadosEditaveis = (sUpper.includes('AGENDADO') || sUpper === 'INSTALADA' || sUpper.includes('PENDEN') || sUpper.includes('CANCEL'));
                     }
-                    const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${nomeStatus}', '${statusId}')" title="Editar dados" aria-label="Editar dados da venda #${v.id}"><i class="bi bi-pencil-square"></i></button>` : '';
+                    const nomeStatusJs = String(nomeStatus || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const statusIdJs = String(statusId || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const btnEditarStatus = temDadosEditaveis
+                        ? `<button type="button" class="btn btn-icon btn-icon-sm btn-icon-neutral" onclick="editarStatusExistente(${v.id}, '${nomeStatusJs}', '${statusIdJs}')" title="Editar dados do status" aria-label="Editar dados do status #${v.id}"><i class="bi bi-pencil-square" aria-hidden="true"></i></button>`
+                        : '';
 
                     let confCliente = '-';
                     if (v.cliente_confirmou_lembrete_instalacao === true) {
@@ -3508,6 +3859,7 @@
                         telefone: (v.telefone1 && v.telefone1.trim()) ? String(v.telefone1).replace(/"/g, '&quot;') : '',
                         mostrarReagendar: vendaElegivelPossoReagendar(v, nomeStatus),
                         mostrarAntecip: vendaElegivelPossoAntecipar(v, nomeStatus),
+                        editarStatusHtml: btnEditarStatus,
                     });
 
                     htmlContent += `
@@ -3520,8 +3872,13 @@
                                 ${gridAcoes}
                             </td>
                             <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
-                            <td data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia small" data-label="Tipo de pendência">${tipoPendenciaHtml}</td>
-                            <td data-esteira-col="motivo" class="esteira-col-motivo text-danger small fw-bold" data-label="Motivo pendência">${motivoPendencia}</td>
+                            <td data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia small esteira-col-oculta" data-label="Tipo de pendência" hidden>${tipoPendenciaHtml}</td>
+                            <td data-esteira-col="motivo" class="esteira-col-motivo" data-label="Pendência">
+                                <div class="esteira-pendencia-cell">
+                                    ${tipoPendenciaHtml && tipoPendenciaHtml !== '-' ? tipoPendenciaHtml : ''}
+                                    <span class="esteira-pendencia-motivo">${motivoPendencia}</span>
+                                </div>
+                            </td>
                             <td data-esteira-col="agenda" class="esteira-col-agenda" data-label="Agendamento">
                                 <div>${dataAgendada}</div>
                                 <div class="esteira-turno-sub">${turno}</div>
@@ -3530,7 +3887,7 @@
                                 <div class="fw-bold">${nomeCliente}</div>
                                 <div class="small text-muted text-break">${docCliente}</div>
                             </td>
-                            <td data-esteira-col="status" data-label="Status"><div class="d-flex align-items-center flex-wrap gap-1">${selectStatus}${btnEditar}</div></td>
+                            <td data-esteira-col="status" data-label="Status"><div class="esteira-status-cell">${selectStatus}</div></td>
                             <td data-esteira-col="vendedor" data-label="Vendedor">${nomeVendedor}</td>
                             <td data-esteira-col="adiant_cnpj" data-label="Adiant. CNPJ">${celulaAdiantCnpj}</td>
                             <td data-esteira-col="adiant_comissao" data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
@@ -3589,10 +3946,9 @@
         }
 
         function gerarAbasDeData(todasVendas, contagemDatas = {}) {
-            const ul = document.getElementById('abas-esteira');
+            const ul = document.getElementById('abas-esteira-datas');
             if (!ul) return;
-            // Manter abas fixas e remover só as abas de data
-            while (ul.children.length > totalAbasFixas) { ul.removeChild(ul.lastChild); }
+            ul.innerHTML = '';
 
             // Preferir datas do endpoint de contadores (paginação server-side);
             // fallback: extrair das vendas carregadas (abas legadas).
@@ -3623,6 +3979,8 @@
 
             atualizarFiltroTurnoEsteira(ehAbaDataEsteira(filtroAtual));
             atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(filtroAtual));
+            aplicarEstadoFiltrosAvancadosEsteira(localStorage.getItem(LS_FILTROS_AVANCADOS_ESTEIRA) === '1', false);
+            atualizarResumoFiltrosEsteira();
         }
 
         function atualizarFiltroTurnoEsteira(exibir) {
@@ -3674,6 +4032,7 @@
                 btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
             });
             if (element) { element.classList.add('active', 'btn-primary'); element.classList.remove('btn-outline-secondary'); }
+            atualizarResumoFiltrosEsteira();
             carregarVendas();
         }
 
@@ -3690,12 +4049,14 @@
             }
             // Recarrega opções do motivo conforme o tipo (liga tipo ↔ motivo)
             popularSelectFiltroMotivoPendencia();
+            atualizarResumoFiltrosEsteira();
             carregarVendas();
         }
 
         function filtrarMotivoPendencia(valor) {
             filtroMotivoPendenciaAtual = (valor || '').trim();
             esteiraPaginaAtual = 1;
+            atualizarResumoFiltrosEsteira();
             carregarVendas();
         }
 
@@ -3878,7 +4239,8 @@
             const painel = document.getElementById('painel-gestao-aproveitamento');
             const areaTabela = document.getElementById('esteira-area-tabela');
             if (painel) painel.style.display = visivel ? 'block' : 'none';
-            if (areaTabela) areaTabela.style.display = visivel ? 'none' : 'block';
+            // '' deixa o CSS flex (modo lista) voltar a valer
+            if (areaTabela) areaTabela.style.display = visivel ? 'none' : '';
         }
 
         async function popularFiltroGestaoAproveitamento() {
@@ -4038,7 +4400,7 @@
             const areaTabela = document.getElementById('esteira-area-tabela');
             const painelGestao = document.getElementById('painel-gestao-aproveitamento');
             if (painel) painel.style.display = visivel ? 'block' : 'none';
-            if (areaTabela) areaTabela.style.display = visivel ? 'none' : 'block';
+            if (areaTabela) areaTabela.style.display = visivel ? 'none' : '';
             if (painelGestao && visivel) painelGestao.style.display = 'none';
         }
 
@@ -4203,14 +4565,11 @@
                 return;
             }
             filtroAtual = status;
+            atualizarModoViewportEsteira(status);
             if (usaPaginacaoServerEsteira()) esteiraPaginaAtual = 1;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
-            if(element) element.classList.add('active');
-            function limparAbasDeDataEsteira() {
-                const ul = document.getElementById('abas-esteira');
-                if (!ul) return;
-                while (ul.children.length > totalAbasFixas) ul.removeChild(ul.lastChild);
-            }
+            document.querySelectorAll('#abas-esteira-datas .nav-link').forEach(l => l.classList.remove('active'));
+            if (element) element.classList.add('active');
 
             function restaurarAbasDeDataEsteira() {
                 if (esteiraContadores && esteiraContadores.datas) {
@@ -4233,6 +4592,7 @@
                 var pa = document.getElementById('painel-instaladas-antecipacao');
                 if (pa) pa.style.display = 'none';
                 limparAbasDeDataEsteira();
+                aplicarEstadoFiltrosAvancadosEsteira(false, false);
                 var tb = document.getElementById('tabela-esteira-body');
                 tb.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
@@ -4269,6 +4629,7 @@
                 var paTot = document.getElementById('painel-instaladas-antecipacao');
                 if (paTot) paTot.style.display = 'none';
                 limparAbasDeDataEsteira();
+                aplicarEstadoFiltrosAvancadosEsteira(false, false);
                 const tbTot = document.getElementById('tabela-esteira-body');
                 tbTot.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 sincronizarVisaoGestaoAproveitamento(false);
@@ -4285,6 +4646,7 @@
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
                 limparAbasDeDataEsteira();
+                aplicarEstadoFiltrosAvancadosEsteira(false, false);
                 sincronizarVisaoGestaoAproveitamento(true);
                 popularFiltroGestaoAproveitamento();
                 carregarGestaoAproveitamento();
@@ -4301,6 +4663,7 @@
                 document.getElementById('painel-busca-agendados').style.display = 'none';
                 document.getElementById('painel-busca-vendas-totais').style.display = 'none';
                 limparAbasDeDataEsteira();
+                aplicarEstadoFiltrosAvancadosEsteira(false, false);
                 sincronizarVisaoChurnTratamento(true);
                 churnTratamentoPagina = 1;
                 popularFiltroChurnTratamento();
@@ -4319,6 +4682,10 @@
             atualizarFiltroTurnoEsteira(ehAbaDataEsteira(status));
             atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(status));
             restaurarAbasDeDataEsteira();
+            // Ao escolher uma data, abre o painel para contexto visual
+            if (ehAbaDataEsteira(status)) {
+                aplicarEstadoFiltrosAvancadosEsteira(true, true);
+            }
             carregarVendas();
         }
 
