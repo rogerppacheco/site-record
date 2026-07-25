@@ -1958,6 +1958,14 @@ class VendaViewSet(viewsets.ModelViewSet):
         if periodo_ag in ('MANHA', 'TARDE'):
             queryset = queryset.filter(periodo_agendamento=periodo_ag)
 
+        status_agendamento_param = (self.request.query_params.get('status_agendamento') or '').strip()
+        if status_agendamento_param:
+            status_agendamento_upper = status_agendamento_param.upper()
+            if status_agendamento_upper in ('SEM', 'NULL', 'NONE', '0'):
+                queryset = queryset.filter(status_agendamento__isnull=True)
+            elif status_agendamento_param.isdigit():
+                queryset = queryset.filter(status_agendamento_id=int(status_agendamento_param))
+
         tipo_pend = (self.request.query_params.get('tipo_pendencia') or '').strip().upper()
         tipo_pend_norm = (
             tipo_pend.replace('É', 'E').replace('é', 'E')

@@ -909,12 +909,20 @@ min-width: 100%;
             <div id="esteira-faixa-datas" hidden>
                 <ul class="nav nav-tabs" id="abas-esteira-datas" role="tablist" aria-label="Datas de agendamento"></ul>
                 <div id="filtro-turno-container" class="esteira-filtros-contextuais" style="display: none;">
-                    <div class="esteira-filtro-inline esteira-filtro-chips">
-                        <span class="text-muted fw-bold small">Turno:</span>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Filtro de turno">
-                            <button type="button" class="btn btn-outline-secondary active" id="btn-turno-todos" onclick="filtrarTurno('', this)">Todos</button>
-                            <button type="button" class="btn btn-outline-secondary" id="btn-turno-manha" onclick="filtrarTurno('MANHA', this)">Manhã</button>
-                            <button type="button" class="btn btn-outline-secondary" id="btn-turno-tarde" onclick="filtrarTurno('TARDE', this)">Tarde</button>
+                    <div class="esteira-filtros-linha">
+                        <div id="filtro-turno-chips" class="esteira-filtro-inline esteira-filtro-chips">
+                            <span class="text-muted fw-bold small">Turno:</span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Filtro de turno">
+                                <button type="button" class="btn btn-outline-secondary active" id="btn-turno-todos" onclick="filtrarTurno('', this)">Todos</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btn-turno-manha" onclick="filtrarTurno('MANHA', this)">Manhã</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btn-turno-tarde" onclick="filtrarTurno('TARDE', this)">Tarde</button>
+                            </div>
+                        </div>
+                        <div id="filtro-status-agendamento-wrap" class="esteira-filtro-inline">
+                            <label class="text-muted fw-bold small" for="filtro-status-agendamento">Status agend.:</label>
+                            <select id="filtro-status-agendamento" class="form-select form-select-sm" onchange="filtrarStatusAgendamento(this.value)" title="Filtrar pelo status do agendamento" style="min-width: 9rem; max-width: 14rem;">
+                                <option value="">Todos</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -1988,6 +1996,7 @@ min-width: 100%;
 
         let filtroAtual = 'TODOS';
         let filtroTurnoAtual = '';
+        let filtroStatusAgendamentoAtual = '';
         let filtroTipoPendenciaAtual = '';
         let filtroMotivoPendenciaAtual = '';
         let _motivosPendenciaCache = [];
@@ -2402,6 +2411,11 @@ min-width: 100%;
             if (filtroTipoPendenciaAtual) partes.push(filtroTipoPendenciaAtual);
             if (filtroMotivoPendenciaAtual) partes.push('motivo');
             if (filtroTurnoAtual) partes.push(filtroTurnoAtual === 'MANHA' ? 'Manhã' : 'Tarde');
+            if (filtroStatusAgendamentoAtual) {
+                const sel = document.getElementById('filtro-status-agendamento');
+                const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+                partes.push(opt && opt.textContent ? opt.textContent.trim() : 'status agend.');
+            }
             label.textContent = partes.length ? ('· ' + partes.join(' · ')) : '';
         }
 
@@ -3410,6 +3424,12 @@ min-width: 100%;
                 if (filtroTurnoAtual) params.set('periodo_agendamento', filtroTurnoAtual);
             }
             if (
+                (filtroAtual === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual))
+                && filtroStatusAgendamentoAtual
+            ) {
+                params.set('status_agendamento', filtroStatusAgendamentoAtual);
+            }
+            if (
                 (filtroAtual === 'PENDEN' || filtroAtual === 'TODOS')
                 && (filtroTipoPendenciaAtual === 'CLIENTE' || filtroTipoPendenciaAtual === 'TECNICA')
             ) {
@@ -3684,6 +3704,12 @@ min-width: 100%;
                         if (filtroTurnoAtual === 'MANHA' || filtroTurnoAtual === 'TARDE') {
                             vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
                         }
+                    }
+                    if (
+                        (filtroAtual === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual))
+                        && filtroStatusAgendamentoAtual
+                    ) {
+                        vendas = vendas.filter(v => statusAgendamentoCorrespondeFiltro(v, filtroStatusAgendamentoAtual));
                     }
                     if (
                         (filtroAtual === 'PENDEN' || filtroAtual === 'TODOS')
@@ -4111,7 +4137,7 @@ min-width: 100%;
                 li.appendChild(a); ul.appendChild(li);
             });
 
-            atualizarFiltroTurnoEsteira(ehAbaDataEsteira(filtroAtual));
+            atualizarFiltroTurnoEsteira(ehAbaDataEsteira(filtroAtual) || filtroAtual === 'AGENDADO');
             atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(filtroAtual));
             atualizarFaixaDatasEsteira();
             aplicarEstadoFiltrosAvancadosEsteira(
@@ -4121,20 +4147,83 @@ min-width: 100%;
             atualizarResumoFiltrosEsteira();
         }
 
+        function statusAgendamentoCorrespondeFiltro(venda, filtro) {
+            const raw = filtro == null ? '' : String(filtro).trim();
+            if (!raw) return true;
+            const upper = raw.toUpperCase();
+            const idAtual = venda.status_agendamento
+                ? (typeof venda.status_agendamento === 'object' ? venda.status_agendamento.id : venda.status_agendamento)
+                : null;
+            if (upper === 'SEM' || upper === 'NULL' || upper === 'NONE' || upper === '0') {
+                return idAtual == null;
+            }
+            return String(idAtual || '') === String(raw);
+        }
+
+        function popularSelectFiltroStatusAgendamento() {
+            const select = document.getElementById('filtro-status-agendamento');
+            if (!select) return;
+            const valorAtual = filtroStatusAgendamentoAtual || '';
+            const opts = ['<option value="">Todos</option>', '<option value="SEM">Sem status</option>'];
+            (_statusAgendamentoCache || []).forEach(s => {
+                opts.push(`<option value="${s.id}">${s.nome}</option>`);
+            });
+            select.innerHTML = opts.join('');
+            select.value = valorAtual;
+            if (valorAtual && select.value !== String(valorAtual)) {
+                select.value = '';
+                filtroStatusAgendamentoAtual = '';
+            }
+        }
+
+        async function garantirCacheStatusAgendamentoFiltro() {
+            if (_statusAgendamentoCache && _statusAgendamentoCache.length) return;
+            try {
+                const res = await apiFetch('/crm/status-agendamento/?ativo=1');
+                const lista = Array.isArray(res) ? res : (res && res.results ? res.results : []);
+                _statusAgendamentoCache = lista.slice().sort((a, b) =>
+                    (a.ordem ?? 0) - (b.ordem ?? 0)
+                    || String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' })
+                );
+            } catch (e) {
+                console.warn('Falha ao carregar status de agendamento para filtro', e);
+                _statusAgendamentoCache = _statusAgendamentoCache || [];
+            }
+        }
+
         function atualizarFiltroTurnoEsteira(exibir) {
             const containerTurno = document.getElementById('filtro-turno-container');
-            if (containerTurno) containerTurno.style.display = exibir ? 'block' : 'none';
-            if (!exibir) filtroTurnoAtual = '';
-            document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
+            const chipsTurno = document.getElementById('filtro-turno-chips');
+            const wrapStatus = document.getElementById('filtro-status-agendamento-wrap');
+            const exibirTurno = ehAbaDataEsteira(filtroAtual);
+            const exibirStatus = exibirTurno || filtroAtual === 'AGENDADO';
+            const exibirContainer = exibir && exibirStatus;
+
+            if (containerTurno) containerTurno.style.display = exibirContainer ? 'block' : 'none';
+            if (chipsTurno) chipsTurno.style.display = exibirTurno ? '' : 'none';
+            if (wrapStatus) wrapStatus.style.display = exibirStatus ? '' : 'none';
+
+            if (!exibirTurno) filtroTurnoAtual = '';
+            if (!exibirStatus) {
+                filtroStatusAgendamentoAtual = '';
+                const sel = document.getElementById('filtro-status-agendamento');
+                if (sel) sel.value = '';
+            }
+
+            document.querySelectorAll('#filtro-turno-chips .btn').forEach(btn => {
                 btn.classList.remove('active', 'btn-primary');
                 btn.classList.add('btn-outline-secondary');
             });
             let btnAtivo = document.getElementById('btn-turno-todos');
-            if (exibir && filtroTurnoAtual === 'MANHA') btnAtivo = document.getElementById('btn-turno-manha');
-            else if (exibir && filtroTurnoAtual === 'TARDE') btnAtivo = document.getElementById('btn-turno-tarde');
+            if (exibirTurno && filtroTurnoAtual === 'MANHA') btnAtivo = document.getElementById('btn-turno-manha');
+            else if (exibirTurno && filtroTurnoAtual === 'TARDE') btnAtivo = document.getElementById('btn-turno-tarde');
             if (btnAtivo) {
                 btnAtivo.classList.add('active', 'btn-primary');
                 btnAtivo.classList.remove('btn-outline-secondary');
+            }
+
+            if (exibirStatus) {
+                garantirCacheStatusAgendamentoFiltro().then(popularSelectFiltroStatusAgendamento);
             }
         }
 
@@ -4166,10 +4255,17 @@ min-width: 100%;
         function filtrarTurno(turno, element) {
             filtroTurnoAtual = turno || '';
             esteiraPaginaAtual = 1;
-            document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
+            document.querySelectorAll('#filtro-turno-chips .btn').forEach(btn => {
                 btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
             });
             if (element) { element.classList.add('active', 'btn-primary'); element.classList.remove('btn-outline-secondary'); }
+            atualizarResumoFiltrosEsteira();
+            carregarVendas();
+        }
+
+        function filtrarStatusAgendamento(valor) {
+            filtroStatusAgendamentoAtual = valor || '';
+            esteiraPaginaAtual = 1;
             atualizarResumoFiltrosEsteira();
             carregarVendas();
         }
@@ -4741,7 +4837,7 @@ min-width: 100%;
                 sincronizarVisaoGestaoAproveitamento(false);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
-                atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTurnoEsteira(true);
                 atualizarFiltroTipoPendenciaEsteira(false);
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'block';
@@ -4817,7 +4913,7 @@ min-width: 100%;
             document.getElementById('painel-busca-vendas-totais').style.display = 'none';
             if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
             if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
-            atualizarFiltroTurnoEsteira(ehAbaDataEsteira(status));
+            atualizarFiltroTurnoEsteira(ehAbaDataEsteira(status) || status === 'AGENDADO');
             atualizarFiltroTipoPendenciaEsteira(deveExibirFiltroTipoPendencia(status));
             restaurarAbasDeDataEsteira();
             atualizarFaixaDatasEsteira();
