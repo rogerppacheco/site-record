@@ -1826,6 +1826,13 @@ class AnteciparInstalacaoConfig(models.Model):
     """Configuração única para a ferramenta Antecipar Instalação (número GC e grupo WhatsApp)."""
     nome_gc = models.CharField(max_length=100, blank=True, default='', verbose_name="Nome do GC")
     telefone_gc = models.CharField(max_length=20, blank=True, default='21979630377', verbose_name="Telefone do GC")
+    email_gc = models.EmailField(
+        max_length=254,
+        blank=True,
+        default='',
+        verbose_name="E-mail do GC",
+        help_text="Destino dos pedidos de ajuda/socorro (abrir chamado TI, etc.).",
+    )
     grupo = models.ForeignKey(
         GrupoDisparo, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name="Grupo WhatsApp (ex: Record PAP)"
@@ -1865,6 +1872,90 @@ class AnteciparInstalacaoConfig(models.Model):
     def __str__(self):
         nome_gc = self.nome_gc or 'não definido'
         return f"GC: {nome_gc} ({self.telefone_gc or 'não definido'}) | Grupo: {self.grupo.nome if self.grupo else 'não definido'}"
+
+
+class EtapaErroAjudaGc(models.Model):
+    """Opções de 'qual etapa do erro' para pedidos de ajuda ao GC (auditoria ou esteira)."""
+
+    CONTEXTO_AUDITORIA = 'auditoria'
+    CONTEXTO_ESTEIRA = 'esteira'
+    CONTEXTO_CHOICES = [
+        (CONTEXTO_AUDITORIA, 'Auditoria'),
+        (CONTEXTO_ESTEIRA, 'Esteira'),
+    ]
+
+    contexto = models.CharField(max_length=20, choices=CONTEXTO_CHOICES, db_index=True)
+    nome = models.CharField(max_length=255)
+    ordem = models.PositiveSmallIntegerField(default=0)
+    ativo = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_etapa_erro_ajuda_gc'
+        verbose_name = 'Etapa de erro (Ajuda GC)'
+        verbose_name_plural = 'Etapas de erro (Ajuda GC)'
+        ordering = ['contexto', 'ordem', 'nome']
+        unique_together = ('contexto', 'nome')
+
+    def __str__(self) -> str:
+        return f'{self.get_contexto_display()}: {self.nome}'
+
+
+class PedidoAjudaGc(models.Model):
+    """Histórico de pedidos de ajuda/socorro enviados ao GC da Nio."""
+
+    TIPO_ABRIR_CHAMADO_TI = 'abrir_chamado_ti'
+    TIPO_CHOICES = [
+        (TIPO_ABRIR_CHAMADO_TI, 'Abrir chamado com TI'),
+    ]
+    ORIGEM_AUDITORIA = 'auditoria'
+    ORIGEM_ESTEIRA = 'esteira'
+    ORIGEM_CHOICES = [
+        (ORIGEM_AUDITORIA, 'Auditoria'),
+        (ORIGEM_ESTEIRA, 'Esteira'),
+    ]
+
+    tipo = models.CharField(max_length=40, choices=TIPO_CHOICES, default=TIPO_ABRIR_CHAMADO_TI)
+    origem = models.CharField(max_length=20, choices=ORIGEM_CHOICES, db_index=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='pedidos_ajuda_gc',
+    )
+    venda = models.ForeignKey(
+        Venda,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pedidos_ajuda_gc',
+    )
+    nome_gc = models.CharField(max_length=100, blank=True, default='')
+    email_gc = models.EmailField(max_length=254, blank=True, default='')
+    telefone_gc = models.CharField(max_length=20, blank=True, default='')
+    pdv = models.CharField(max_length=20, default='1068561')
+    login_bo = models.CharField(max_length=100, blank=True, default='')
+    login_vendedor = models.CharField(max_length=100, blank=True, default='')
+    cpf_cnpj_cliente = models.CharField(max_length=20, blank=True, default='')
+    numero_pedido = models.CharField(max_length=50, blank=True, default='')
+    contato = models.CharField(max_length=120, blank=True, default='')
+    etapa_erro = models.CharField(max_length=255, blank=True, default='')
+    detalhe_cenario = models.TextField(blank=True, default='')
+    numero_registro = models.CharField(max_length=80, blank=True, default='')
+    evidencia = models.FileField(upload_to='pedido_ajuda_gc/%Y/%m/', blank=True, null=True)
+    mensagem_enviada = models.TextField(blank=True, default='')
+    enviado_email = models.BooleanField(default=False)
+    enviado_whatsapp = models.BooleanField(default=False)
+    erros = models.JSONField(default=list, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crm_pedido_ajuda_gc'
+        verbose_name = 'Pedido de ajuda GC'
+        verbose_name_plural = 'Pedidos de ajuda GC'
+        ordering = ['-criado_em']
+
+    def __str__(self) -> str:
+        return f'#{self.pk} {self.get_tipo_display()} ({self.origem})'
 
 
 class AnteciparInstalacaoSolicitacao(models.Model):

@@ -9,6 +9,7 @@ from .models import (
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
     RegraCampanha, FaturaM10, GrupoDisparo,
     RegraComissaoFaixa, ConfigComissaoVendedor, RegraComissaoFaixaPlano,
+    EtapaErroAjudaGc,
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -223,6 +224,34 @@ class StatusAgendamentoSerializer(serializers.ModelSerializer):
                 'Já existe um status de agendamento com este nome.'
             )
         return nome
+
+
+class EtapaErroAjudaGcSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EtapaErroAjudaGc
+        fields = '__all__'
+
+    def validate_nome(self, value: str) -> str:
+        nome = (value or '').strip()
+        if not nome:
+            raise serializers.ValidationError('Informe o nome da etapa.')
+        return nome
+
+    def validate(self, attrs):
+        contexto = attrs.get('contexto') or getattr(self.instance, 'contexto', None)
+        nome = attrs.get('nome')
+        if nome is None and self.instance:
+            nome = self.instance.nome
+        nome = (nome or '').strip()
+        qs = EtapaErroAjudaGc.objects.filter(contexto=contexto, nome__iexact=nome)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {'nome': 'Já existe esta etapa para o mesmo contexto.'}
+            )
+        attrs['nome'] = nome
+        return attrs
 
 
 class RegraComissaoSerializer(serializers.ModelSerializer):

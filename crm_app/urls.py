@@ -27,6 +27,12 @@ from .views_whatsapp_ia_governanca import (
     whatsapp_telefones_sem_ia_view,
     whatsapp_telefone_sem_ia_detail_view,
 )
+from .pedido_ajuda_gc_api import (
+    EtapaErroAjudaGcListCreateView,
+    EtapaErroAjudaGcDetailView,
+    PedidoAjudaGcContextoView,
+    PedidoAjudaGcEnviarView,
+)
 from .views import (
     listar_screenshots_debug,
     baixar_screenshot_debug,
@@ -281,6 +287,10 @@ urlpatterns = [
     path('motivos-pendencia/<int:pk>/', MotivoPendenciaDetailView.as_view(), name='motivo-detail'),
     path('status-agendamento/', StatusAgendamentoListCreateView.as_view(), name='status-agendamento-list'),
     path('status-agendamento/<int:pk>/', StatusAgendamentoDetailView.as_view(), name='status-agendamento-detail'),
+    path('etapas-erro-ajuda-gc/', EtapaErroAjudaGcListCreateView.as_view(), name='etapas-erro-ajuda-gc-list'),
+    path('etapas-erro-ajuda-gc/<int:pk>/', EtapaErroAjudaGcDetailView.as_view(), name='etapas-erro-ajuda-gc-detail'),
+    path('pedido-ajuda-gc/contexto/', PedidoAjudaGcContextoView.as_view(), name='pedido-ajuda-gc-contexto'),
+    path('pedido-ajuda-gc/enviar/', PedidoAjudaGcEnviarView.as_view(), name='pedido-ajuda-gc-enviar'),
 
     path('regras-comissao/', RegraComissaoListCreateView.as_view(), name='regra-list'),
     path('regras-comissao/<int:pk>/', RegraComissaoDetailView.as_view(), name='regra-detail'),

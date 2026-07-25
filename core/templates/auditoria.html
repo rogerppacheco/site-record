@@ -1539,6 +1539,8 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         </div>
     </div>
 
+{% include "partials/pedido_ajuda_gc_modal.html" %}
+
 {% endblock %}
 
 {% block extra_js %}
@@ -2414,6 +2416,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                     } else {
                         btnHtml = `<button class="btn btn-auditar" onclick="tentarAuditoria(${v.id})"><i class="bi bi-headset"></i> Auditar</button>`;
                     }
+                    btnHtml += ` <button type="button" class="btn btn-icon btn-icon-sm btn-icon-danger ms-1" onclick="abrirPedidoAjudaGc(${v.id}, 'auditoria')" title="Pedido de ajuda ao GC (TI)" aria-label="Pedido de ajuda ao GC"><i class="bi bi-life-preserver" aria-hidden="true"></i></button>`;
 
                     const bioHtml = renderBotaoBiometriaLista(v.id, v.biometria_aprovada, v.biometria_data_apta);
                     

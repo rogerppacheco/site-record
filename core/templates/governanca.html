@@ -445,7 +445,7 @@
 
             <section id="cadastros_gerais-section" class="content-section">
                 <h3 class="mb-4">Cadastros Gerais do CRM</h3>
-                <div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'planos')">Planos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'formasPagamento')">Pagamentos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'status')">Status</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'statusAgendamento')">Status Agendamento</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'pendencias')">Pendências</button></li></ul></div>
+                <div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'planos')">Planos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'formasPagamento')">Pagamentos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'status')">Status</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'statusAgendamento')">Status Agendamento</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'pendencias')">Pendências</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'etapasAjudaGc')">Etapas Ajuda GC</button></li></ul></div>
                     <div class="card-body">
                         <div id="operadoras" class="tab-content active"><form id="form-operadora" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="operadora_id"><div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="operadora_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">CNPJ</label><input type="text" class="form-control" id="operadora_cnpj"></div><div class="col-md-3"><label class="form-label fw-bold">Status</label><select id="operadora_status" class="form-select" required><option value="1">Ativo</option><option value="0">Inativo</option></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>CNPJ</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-operadoras"></tbody></table></div>
                         <div id="planos" class="tab-content" style="display:none;">
@@ -478,6 +478,36 @@
                             <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Ordem</th><th>Cor</th><th>Ativo</th><th>Ações</th></tr></thead><tbody id="lista-status-agendamento"></tbody></table>
                         </div>
                         <div id="pendencias" class="tab-content" style="display:none;"><form id="form-pendencia" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="pendencia_id"><div class="col-md-6"><label class="form-label fw-bold">Motivo</label><input type="text" class="form-control" id="pendencia_nome" required></div><div class="col-md-4"><label class="form-label fw-bold">Tipo</label><input type="text" class="form-control" id="pendencia_tipo" placeholder="Ex: Documentação" required></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead><tbody id="lista-pendencias"></tbody></table></div>
+                        <div id="etapasAjudaGc" class="tab-content" style="display:none;">
+                            <p class="small text-muted mb-3">Opções de “qual etapa do erro” exibidas no pedido de ajuda ao GC (Auditoria e Esteira).</p>
+                            <form id="form-etapa-ajuda-gc" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
+                                <input type="hidden" id="etapa_ajuda_gc_id">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Contexto</label>
+                                    <select id="etapa_ajuda_gc_contexto" class="form-select" required>
+                                        <option value="auditoria">Auditoria</option>
+                                        <option value="esteira">Esteira</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Nome da etapa</label>
+                                    <input type="text" class="form-control" id="etapa_ajuda_gc_nome" required maxlength="255" placeholder="Ex: Etapa 2: Consulta de viabilidade">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label fw-bold">Ordem</label>
+                                    <input type="number" class="form-control" id="etapa_ajuda_gc_ordem" value="0" min="0">
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label fw-bold">Ativo</label>
+                                    <select id="etapa_ajuda_gc_ativo" class="form-select"><option value="true">Sim</option><option value="false">Não</option></select>
+                                </div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div>
+                            </form>
+                            <table class="table table-hover align-middle">
+                                <thead class="table-light"><tr><th>Contexto</th><th>Nome</th><th>Ordem</th><th>Ativo</th><th>Ações</th></tr></thead>
+                                <tbody id="lista-etapas-ajuda-gc"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -1205,6 +1235,7 @@
         if(tabName === 'status') carregarStatus();
         if(tabName === 'statusAgendamento') carregarStatusAgendamento();
         if(tabName === 'pendencias') carregarMotivosPendencia();
+        if(tabName === 'etapasAjudaGc') carregarEtapasAjudaGc();
         if(tabName === 'operadoras') carregarOperadoras();
         if(tabName === 'planos') { carregarOperadoras(); carregarPlanos(); }
         if(tabName === 'recebimento_operadora_tab') carregarComissoesOperadora();
@@ -3040,6 +3071,66 @@
         }
     };
     window.excluirPendencia = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'DELETE'}); carregarMotivosPendencia(); } };
+
+    let listaEtapasAjudaGc = [];
+    async function carregarEtapasAjudaGc() {
+        const res = await apiFetch('/crm/etapas-erro-ajuda-gc/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        listaEtapasAjudaGc = lista;
+        const tbody = document.getElementById('lista-etapas-ajuda-gc');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        lista.forEach(e => {
+            const ctxLabel = e.contexto === 'esteira' ? 'Esteira' : 'Auditoria';
+            tbody.innerHTML += `<tr>
+                <td>${ctxLabel}</td>
+                <td>${e.nome}</td>
+                <td>${e.ordem}</td>
+                <td>${e.ativo ? 'Sim' : 'Não'}</td>
+                <td class="text-end"><div class="btn-icon-group justify-content-end">
+                    <button class="btn btn-icon btn-icon-primary" onclick="editarEtapaAjudaGc(${e.id})" title="Editar" aria-label="Editar"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                    <button class="btn btn-icon btn-icon-danger" onclick="excluirEtapaAjudaGc(${e.id})" title="Excluir" aria-label="Excluir"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                </div></td></tr>`;
+        });
+    }
+    window.editarEtapaAjudaGc = (id) => {
+        const e = listaEtapasAjudaGc.find(item => item.id === id);
+        if (!e) return;
+        document.getElementById('etapa_ajuda_gc_id').value = e.id;
+        document.getElementById('etapa_ajuda_gc_contexto').value = e.contexto;
+        document.getElementById('etapa_ajuda_gc_nome').value = e.nome;
+        document.getElementById('etapa_ajuda_gc_ordem').value = e.ordem;
+        document.getElementById('etapa_ajuda_gc_ativo').value = e.ativo ? 'true' : 'false';
+        document.getElementById('etapasAjudaGc').scrollIntoView({ behavior: 'smooth' });
+    };
+    window.excluirEtapaAjudaGc = async (id) => {
+        if (!confirm('Excluir esta etapa?')) return;
+        await apiFetch(`/crm/etapas-erro-ajuda-gc/${id}/`, { method: 'DELETE' });
+        carregarEtapasAjudaGc();
+    };
+    var formEtapaAjudaGc = document.getElementById('form-etapa-ajuda-gc');
+    if (formEtapaAjudaGc) formEtapaAjudaGc.onsubmit = async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('etapa_ajuda_gc_id').value;
+        const body = {
+            contexto: document.getElementById('etapa_ajuda_gc_contexto').value,
+            nome: document.getElementById('etapa_ajuda_gc_nome').value.trim(),
+            ordem: parseInt(document.getElementById('etapa_ajuda_gc_ordem').value || '0', 10),
+            ativo: document.getElementById('etapa_ajuda_gc_ativo').value === 'true',
+        };
+        try {
+            if (id) {
+                await apiFetch(`/crm/etapas-erro-ajuda-gc/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });
+            } else {
+                await apiFetch('/crm/etapas-erro-ajuda-gc/', { method: 'POST', body: JSON.stringify(body) });
+            }
+            document.getElementById('form-etapa-ajuda-gc').reset();
+            document.getElementById('etapa_ajuda_gc_id').value = '';
+            carregarEtapasAjudaGc();
+        } catch (err) {
+            alert(err.message || 'Erro ao salvar etapa.');
+        }
+    };
 
     async function carregarRegrasComissao() {
         const [resRegras, resPlanos, resUsers] = await Promise.all([apiFetch('/crm/regras-comissao/'), apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]);

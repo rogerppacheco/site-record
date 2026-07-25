@@ -15512,6 +15512,7 @@ class ConfigAnteciparInstalacaoView(APIView):
         return Response({
             'nome_gc': config.nome_gc or '',
             'telefone_gc': config.telefone_gc or '',
+            'email_gc': config.email_gc or '',
             'grupo_id': config.grupo_id,
             'grupo_nome': config.grupo.nome if config.grupo else None,
             'grupos': grupos,
@@ -15533,6 +15534,9 @@ class ConfigAnteciparInstalacaoView(APIView):
         if 'nome_gc' in request.data:
             val = request.data.get('nome_gc')
             config.nome_gc = (val if val is not None else '').strip()[:100]
+        if 'email_gc' in request.data:
+            val = request.data.get('email_gc')
+            config.email_gc = (val if val is not None else '').strip()[:254]
         if 'grupo_id' in request.data:
             gid = request.data.get('grupo_id')
             if gid is None or gid == '':
@@ -15562,6 +15566,7 @@ class ConfigAnteciparInstalacaoView(APIView):
         return Response({
             'nome_gc': config.nome_gc or '',
             'telefone_gc': config.telefone_gc or '',
+            'email_gc': config.email_gc or '',
             'grupo_id': config.grupo_id,
             'grupo_nome': config.grupo.nome if config.grupo else None,
             'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),

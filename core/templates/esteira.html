@@ -403,8 +403,8 @@ min-width: 100%;
         .table-esteira td.esteira-col-comissao-cb { min-width: 3rem; text-align: center; }
         .table-esteira th.esteira-col-acoes,
         .table-esteira td.esteira-col-acoes {
-            min-width: 6.5rem;
-            max-width: 6.5rem;
+            min-width: 7.25rem;
+            max-width: 7.25rem;
             white-space: normal;
             vertical-align: middle;
             padding-left: 0.35rem !important;
@@ -1714,6 +1714,8 @@ min-width: 100%;
         </div>
     </div>
 
+{% include "partials/pedido_ajuda_gc_modal.html" %}
+
 {% endblock %}
 
 {% block extra_js %}
@@ -2374,7 +2376,8 @@ min-width: 100%;
                 btnFluxo = `<button type="button" class="${sm} btn-icon-warning" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning" aria-hidden="true"></i></button>`;
             }
             const btnEdit = `<button type="button" class="${sm} btn-icon-primary" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil" aria-hidden="true"></i></button>`;
-            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, editar">${btnEnd}${btnTel}${btnFluxo}${btnEdit}</div>`;
+            const btnAjuda = `<button type="button" class="${sm} btn-icon-danger" onclick="abrirPedidoAjudaGc(${vendaId}, 'esteira')" title="Pedido de ajuda ao GC (TI)" aria-label="Pedido de ajuda ao GC"><i class="bi bi-life-preserver" aria-hidden="true"></i></button>`;
+            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, editar, ajuda">${btnEnd}${btnTel}${btnFluxo}${btnEdit}${btnAjuda}</div>`;
         }
 
         var esteiraScrollSyncLock = false;
