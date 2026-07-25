@@ -98,7 +98,7 @@ O PDF é tentado **primeiro pela API** (endpoint de download da fatura). Se a AP
 ### Importante
 
 - Use **PAP_HEADLESS=false** só em **ambiente de teste local** (sua máquina com monitor).
-- Em **produção** (Railway, Heroku, etc.) **não** defina `PAP_HEADLESS=false`: lá não há tela e o padrão é navegador em segundo plano (`PAP_HEADLESS=true`).
+- Em **produção** (Railway) **não** defina `PAP_HEADLESS=false`: lá não há tela e o padrão é navegador em segundo plano (`PAP_HEADLESS=true`).
 
 ---
 
@@ -108,7 +108,7 @@ Em produção não há tela, então não dá para "abrir o navegador" no servido
 
 ### Ativar em produção
 
-1. **Variável de ambiente** no Railway/Heroku: `PAP_CAPTURE_SCREENSHOTS=true`
+1. **Variável de ambiente** no Railway: `PAP_CAPTURE_SCREENSHOTS=true`
 2. A automação salva:
    - **Screenshots** em `downloads/` como `pap_venda_{sessao_id}_{etapa}_{timestamp}.png`
    - **Trace** (quando screenshots estão ativos) como `pap_trace_{sessao_id}_{timestamp}.zip`

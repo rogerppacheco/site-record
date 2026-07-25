@@ -17,17 +17,14 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
     'testserver',
-    'record-pap-app-80fd14bb6cb5.herokuapp.com',
     'www.recordpap.com.br',
     'recordpap.com.br',
-    '.herokuapp.com',
     'site-record-production.up.railway.app',
     'site-record.up.railway.app',
     'pleasing-recreation.up.railway.app',
     'healthcheck.railway.app',
-    # Permite qualquer subdomínio do Railway ou Heroku
+    # Permite qualquer subdomínio do Railway
     '.up.railway.app',
-    '.herokuapp.com',
     # Teste local: ngrok (ex.: d021-177-137-82-21.ngrok-free.app)
     '.ngrok-free.app',
     '.ngrok.io',
@@ -95,7 +92,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'gestao_equipes.wsgi.application'
 
 # ==============================================================================
-# CONFIGURAÇÃO DE BANCO DE DADOS (JawsDB MySQL vs SQLite)
+# CONFIGURAÇÃO DE BANCO DE DADOS (PostgreSQL no Railway vs SQLite local)
 # ==============================================================================
 
 # 1. Padrão: SQLite (Para uso local no seu computador)
@@ -106,13 +103,12 @@ DATABASES = {
     }
 }
 
-# 2. Produção: PostgreSQL (Railway) ou MySQL (JawsDB - Heroku)
-# Suporta DATABASE_URL (PostgreSQL no Railway) ou JAWSDB_URL (MySQL no Heroku)
+# 2. Produção: PostgreSQL (Railway)
+# Suporta DATABASE_URL (PostgreSQL no Railway; PgBouncer quando ativo)
 from gestao_equipes.database import django_database_options, is_pgbouncer_enabled
 
 database_url = config('DATABASE_URL', default=None)  # Railway PostgreSQL (PgBouncer quando ativo)
 database_unpooled_url = config('DATABASE_UNPOOLED_URL', default=None)
-jawsdb_url = config('JAWSDB_URL', default=None)      # Heroku MySQL
 
 _pgbouncer_active = bool(database_url and is_pgbouncer_enabled())
 
@@ -154,20 +150,6 @@ if database_url:
     _pool_label = "PgBouncer" if _pgbouncer_active else "direct"
     print(f"OK - PostgreSQL ({_pool_label}): host={_h!r} db={_n!r}")
 
-elif jawsdb_url:
-    # Usar MySQL (JawsDB - Heroku)
-    DATABASES['default'] = dj_database_url.parse(
-        jawsdb_url,
-        conn_max_age=600,
-        ssl_require=False
-    )
-    # MySQL settings
-    DATABASES['default']['ENGINE'] = 'django.db.backends.mysql'
-    DATABASES['default']['OPTIONS'] = {
-        'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        'charset': 'utf8mb4',
-    }
-    print("[OK] Usando MySQL (JawsDB)")
 else:
     print("[WARNING] Nenhuma variável de ambiente de banco encontrada. Usando SQLite.")
 
@@ -247,7 +229,6 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
-    'https://record-pap-app-80fd14bb6cb5.herokuapp.com',
     'https://www.recordpap.com.br',
     'https://recordpap.com.br',
 ]
@@ -255,7 +236,6 @@ CORS_ALLOWED_ORIGINS = [
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
-    'https://record-pap-app-80fd14bb6cb5.herokuapp.com',
     'https://www.recordpap.com.br',
     'https://recordpap.com.br',
 ]
@@ -414,7 +394,6 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 
-# --- LOGGING PARA DEBUG NO HEROKU ---
 # ==============================================================================
 # AUTOMAÇÃO PAP (VENDER NO WHATSAPP)
 # ==============================================================================

@@ -272,11 +272,11 @@ python manage.py runserver
 http://localhost:8000/registrar-faturas.html?contrato_id=1
 ```
 
-### **Passo 5: Deploy para Heroku**
+### **Passo 5: Deploy para Railway**
 ```bash
 git add .
 git commit -m "Add registro manual de 10 faturas M-10"
-git push heroku main
+git push origin main
 ```
 
 ---
@@ -393,7 +393,7 @@ arquivo_pdf=<novo_pdf>
 ## 📞 Suporte
 
 Se encontrar algum problema:
-1. Verifique os logs: `heroku logs --tail`
+1. Verifique os logs: `railway logs`
 2. Teste localmente primeiro
 3. Verifique se a migration foi aplicada
 4. Confirme se as configurações de MEDIA estão corretas

@@ -14,8 +14,6 @@ downloads/
 media/
 site-record.git/
 .env
-heroku_env.txt
-docs/heroku_env.txt
 .playwright_state.json
 node_modules/
 *.zip

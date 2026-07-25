@@ -51,8 +51,6 @@ Os arquivos ESTABELE da Receita Federal são **muito grandes**:
 | Serviço | Plano gratuito | Planos pagos |
 |---------|----------------|--------------|
 | **Railway PostgreSQL** | ~500 MB | até 32 GB+ |
-| **Heroku Postgres** | 10 MB | até 64 GB |
-| **JawsDB MySQL** | ~5 MB | até 64 GB |
 
 ### Recomendações
 

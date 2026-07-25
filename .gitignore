@@ -12,10 +12,6 @@ db.sqlite3
 # Arquivos de Ambiente com Senhas
 .env
 
-# Arquivos de Ambiente do Heroku (e cópia em docs/)
-heroku_env.txt
-docs/heroku_env.txt
-
 # Playwright (estado do navegador)
 .playwright_state.json
 .playwright_google_form_state.json

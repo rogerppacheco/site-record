@@ -212,14 +212,15 @@ python manage.py buscar_faturas_nio --limite 1
 
 ## 🌐 **Deploy em Produção**
 
-### **Heroku:**
+### **Railway:**
 
-1. **Procfile** já está configurado:
+1. **Procfile** já está configurado (web + scheduler):
 ```
-web: gunicorn gestao_equipes.wsgi
+web: sh scripts/start_web.sh
+scheduler: python manage.py run_scheduler
 ```
 
-2. O scheduler inicia automaticamente com o servidor
+2. O serviço **scheduler** roda em processo próprio (1 réplica)
 
 ### **VPS/Servidor Dedicado:**
 

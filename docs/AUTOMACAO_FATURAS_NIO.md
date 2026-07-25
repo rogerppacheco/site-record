@@ -153,12 +153,8 @@ def _extrair_dados_pagina(self):
 - Use com responsabilidade e moderação
 - Não abuse da automação
 
-### **5. Produção (Heroku)**
-- No Heroku, precisa configurar buildpack do Chrome:
-  ```bash
-  heroku buildpacks:add heroku/google-chrome
-  heroku buildpacks:add heroku/chromedriver
-  ```
+### **5. Produção (Railway)**
+- O Chrome/Chromedriver é instalado no build via `playwright install` (fase `release` do `Procfile`), então não é preciso configurar buildpack manualmente.
 
 ---
 

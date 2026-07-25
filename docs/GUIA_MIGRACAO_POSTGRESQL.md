@@ -1,7 +1,6 @@
 # 🚀 GUIA COMPLETO: Migração MySQL → PostgreSQL (Railway)
 
 ## STATUS ATUAL:
-✅ MySQL (JawsDB): 28.788 registros, 56 tabelas
 ✅ PostgreSQL (Railway): Criado e online
 ✅ Backup JSON: backup_mysql_producao_20260102_221849.json
 ✅ Conexões: Testadas e funcionando
@@ -62,21 +61,18 @@ python manage.py shell
 
 ---
 
-## PASSO 4: CONFIGURAR NO HEROKU
+## PASSO 4: CONFIGURAR NO RAILWAY
 
 ```bash
-# Adicionar variável de ambiente com PostgreSQL
-heroku config:set DATABASE_URL='postgresql://postgres:tpOxGAuhWgQLedMRcYARBiPCkGMyZUkz@maglev.proxy.rlwy.net:56422/railway' --app record-pap-app
+# No painel do Railway, serviço web → aba Variables, defina:
+#   DATABASE_URL = (a connection string do serviço Postgres do projeto)
 
-# Revert settings.py para MySQL (deixar como estava)
-# (para não quebrar a build do Heroku)
-
-# Deploy
+# Deploy (automático ao enviar para main)
 git add .
 git commit -m "PREP: Pronto para migrar para PostgreSQL"
-git push heroku main:master
+git push origin main
 
-# Heroku vai detectar DATABASE_URL e usar PostgreSQL
+# O app detecta DATABASE_URL e usa PostgreSQL
 ```
 
 ---
@@ -85,33 +81,18 @@ git push heroku main:master
 
 ```bash
 # Ver logs
-heroku logs -n 100 --tail --app record-pap-app
+railway logs
 
 # Verificar no banco PostgreSQL
-```
-
----
-
-## 🔄 ROLLBACK (Se der problema)
-
-```bash
-# Voltar para MySQL
-heroku config:unset DATABASE_URL --app record-pap-app
-
-# Ou usar o JAWSDB original
-heroku config:set JAWSDB_URL='mysql://...' --app record-pap-app
-
-# Reiniciar
-heroku restart --app record-pap-app
+railway connect Postgres
 ```
 
 ---
 
 ## ⚠️ IMPORTANTE:
 
-1. **LOCAL**: Use PostgreSQL para testar
-2. **HEROKU**: Use variável de ambiente DATABASE_URL
-3. **ROLLBACK**: JawsDB continua ativo por 7 dias (você paga, mas pode voltar rapidinho)
+1. **LOCAL**: Use PostgreSQL (ou SQLite) para testar
+2. **RAILWAY**: Use a variável de ambiente DATABASE_URL do serviço Postgres
 
 ---
 

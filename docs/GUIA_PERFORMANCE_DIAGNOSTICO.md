@@ -148,25 +148,23 @@ if settings.DEBUG:
 
 Acessar: http://localhost:8000/api/crm/vendas/ → Painel "Queries" no canto inferior direito
 
-### 3. Heroku - Verificar logs de slowness
+### 3. Railway - Verificar logs de slowness
 
 ```bash
-# Ver logs com timestamp
-heroku logs -n 500 --tail
+# Ver logs do serviço web
+railway logs
 
-# Filtrar apenas por erros de timeout
-heroku logs --tail | grep "H12"
-
-# Análise de performance
-heroku pg:info  # Informações do banco
-heroku pg:psql  # Acessar PostgreSQL
+# Acessar o PostgreSQL (abre o psql do banco vinculado ao projeto)
+railway connect Postgres
 ```
+
+Informações do banco (uso de disco, conexões) ficam no painel do Railway → serviço **Postgres** → aba **Metrics**.
 
 ### 4. PostgreSQL - EXPLAIN ANALYZE
 
-No Heroku:
+No Railway:
 ```bash
-heroku pg:psql
+railway connect Postgres
 
 # Dentro do psql:
 EXPLAIN ANALYZE SELECT * FROM crm_venda 
@@ -234,21 +232,23 @@ AND ativo = true;
 - [x] Adicionada paginação (50 registros/página)
 - [x] Adicionado `editado_por` ao select_related
 - [x] Índices criados em migration 0065 e 0066
-- [ ] Testar em produção e monitorar Heroku logs
+- [ ] Testar em produção e monitorar os logs do Railway
 - [ ] Se necessário, adicionar Redis cache
 - [ ] Se necessário, criar database views para relatórios
 
 ---
 
-## 🚀 Deploy para Heroku
+## 🚀 Deploy para Railway
+
+O deploy é automático ao enviar para a branch `main` (serviço web ligado ao GitHub). As migrações rodam na fase `release` do `Procfile`.
 
 ```bash
 git add -A
 git commit -m "Performance: Fix N+1 queries, optimize serializers, add pagination"
-git push heroku main
+git push origin main
 
 # Verificar se subiu sem erros
-heroku logs --tail
+railway logs
 ```
 
 Teste após o deploy:
@@ -268,18 +268,13 @@ Tempo esperado:
 
 1. **Verificar índices foram criados:**
    ```bash
-   heroku pg:psql
+   railway connect Postgres
    SELECT * FROM pg_stat_user_indexes WHERE relname = 'crm_venda';
    ```
 
-2. **Analisar query slow log:**
+2. **Atualizar PostgreSQL statistics:**
    ```bash
-   heroku pg:diagnose
-   ```
-
-3. **Atualizar PostgreSQL statistics:**
-   ```bash
-   heroku pg:psql
+   railway connect Postgres
    ANALYZE;
    ```
 
