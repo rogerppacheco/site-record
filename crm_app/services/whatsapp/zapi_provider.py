@@ -44,8 +44,13 @@ class ZapiProvider(WhatsAppProvider):
 
         try:
             timeout_val = 60 if "send-document" in url else (15 if method == "GET" else 30)
-            if method == "GET":
+            method_u = (method or "POST").upper()
+            if method_u == "GET":
                 response = requests.get(url, headers=self._get_headers(), timeout=timeout_val)
+            elif method_u == "PUT":
+                response = requests.put(
+                    url, json=payload, headers=self._get_headers(), timeout=timeout_val
+                )
             else:
                 response = requests.post(
                     url, json=payload, headers=self._get_headers(), timeout=timeout_val
@@ -64,6 +69,21 @@ class ZapiProvider(WhatsAppProvider):
         except requests.exceptions.RequestException as exc:
             logger.error("[Z-API] Request Exception: %s", exc)
             return None
+
+    def configurar_webhook_delivery(self, callback_url: str) -> bool:
+        """Configura receivedAndDelivery / On-send (DeliveryCallback) na instância."""
+        url = f"{self.base_url}/update-webhook-delivery"
+        resp = self._send_request(url, {"value": callback_url}, method="PUT")
+        ok = bool(isinstance(resp, dict) and resp.get("value") is True)
+        if ok:
+            logger.info("[Z-API] Webhook delivery configurado: %s", callback_url)
+        else:
+            logger.error("[Z-API] Falha ao configurar webhook delivery: %s", resp)
+        return ok
+
+    def obter_dados_instancia(self) -> Optional[Dict[str, Any]]:
+        data = self._send_request(f"{self.base_url}/me", method="GET")
+        return data if isinstance(data, dict) else None
 
     def verificar_numero_existe(self, telefone: str) -> Optional[bool]:
         telefone_limpo = formatar_telefone_br(telefone)

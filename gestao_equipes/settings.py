@@ -547,6 +547,9 @@ WHATSAPP_WEBHOOK_ASYNC = config(
     default=True,
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
+# "Enviar resumo": espera DeliveryCallback (entrega real) após messageId da API
+WHATSAPP_DELIVERY_WAIT_SECONDS = config('WHATSAPP_DELIVERY_WAIT_SECONDS', default=25, cast=float)
+WHATSAPP_DELIVERY_CACHE_TTL = config('WHATSAPP_DELIVERY_CACHE_TTL', default=180, cast=int)
 # Webhook dedicado: web enfileira; serviço webhook consome (fila PostgreSQL, sem Redis)
 WHATSAPP_USE_DEDICATED_WORKER = config(
     'WHATSAPP_USE_DEDICATED_WORKER',

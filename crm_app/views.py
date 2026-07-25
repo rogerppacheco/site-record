@@ -167,6 +167,14 @@ class WebhookWhatsAppView(APIView):
         from crm_app.whatsapp_webhook_normalizer import normalizar_webhook
         data = normalizar_webhook(data)
 
+        # DeliveryCallback: sync no web (não fila async) — confirma entrega real do envio.
+        tipo_evento = str((data or {}).get('type') or '').strip().lower()
+        if tipo_evento == 'deliverycallback' and isinstance(data, dict):
+            from crm_app.services.whatsapp.delivery_tracker import processar_delivery_callback
+
+            resultado_delivery = processar_delivery_callback(data)
+            return Response(resultado_delivery, status=200)
+
         if getattr(settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
             from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_webhook
             rapido = avaliar_fastpath_webhook(data)
@@ -2176,20 +2184,66 @@ class VendaViewSet(viewsets.ModelViewSet):
                 )
 
             message_id = None
+            zaap_id = None
             if isinstance(resp_envio, dict):
-                message_id = (
-                    resp_envio.get("messageId")
-                    or resp_envio.get("zaapId")
-                    or resp_envio.get("id")
-                )
+                message_id = resp_envio.get("messageId") or resp_envio.get("id")
+                zaap_id = resp_envio.get("zaapId")
             logger.info(
-                "[Resumo WhatsApp] Enviado venda=%s destino=%s messageId=%s",
+                "[Resumo WhatsApp] Aceito pela API venda=%s destino=%s messageId=%s zaapId=%s — aguardando DeliveryCallback",
+                venda.id,
+                telefone_fmt,
+                message_id,
+                zaap_id,
+            )
+
+            from crm_app.services.whatsapp.delivery_tracker import aguardar_entrega
+
+            entregue, detalhe_entrega = aguardar_entrega(message_id, zaap_id)
+            if not entregue:
+                erro_cb = None
+                if isinstance(detalhe_entrega, dict):
+                    erro_cb = detalhe_entrega.get("error") or detalhe_entrega.get("error_code")
+                if erro_cb:
+                    logger.error(
+                        "[Resumo WhatsApp] Entrega rejeitada venda=%s destino=%s erro=%s",
+                        venda.id,
+                        telefone_fmt,
+                        erro_cb,
+                    )
+                    return Response(
+                        {
+                            "detail": (
+                                "O WhatsApp rejeitou a entrega da mensagem. "
+                                f"Motivo: {erro_cb}. Destino: {telefone_fmt or telefone}."
+                            )
+                        },
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+                logger.error(
+                    "[Resumo WhatsApp] Sem confirmação de entrega venda=%s destino=%s messageId=%s",
+                    venda.id,
+                    telefone_fmt,
+                    message_id,
+                )
+                return Response(
+                    {
+                        "detail": (
+                            "A API aceitou o envio, mas a entrega no WhatsApp não foi confirmada a tempo. "
+                            "O cliente pode não ter recebido — tente novamente mais tarde. "
+                            f"Destino: {telefone_fmt or telefone}."
+                        )
+                    },
+                    status=status.HTTP_504_GATEWAY_TIMEOUT,
+                )
+
+            logger.info(
+                "[Resumo WhatsApp] Entrega confirmada venda=%s destino=%s messageId=%s",
                 venda.id,
                 telefone_fmt,
                 message_id,
             )
 
-            # Pendência só após confirmação real do provider (messageId/zaapId).
+            # Pendência só após DeliveryCallback sem error.
             celular_limpo = "".join(filter(str.isdigit, str(telefone)))
             if celular_limpo.startswith("55") and len(celular_limpo) > 12:
                 celular_limpo = celular_limpo[2:]
