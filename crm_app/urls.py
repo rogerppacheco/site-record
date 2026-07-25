@@ -51,6 +51,7 @@ from .views import (
     FormaPagamentoListCreateView, FormaPagamentoDetailView,
     StatusCRMListCreateView, StatusCRMDetailView,
     MotivoPendenciaListCreateView, MotivoPendenciaDetailView,
+    StatusAgendamentoListCreateView, StatusAgendamentoDetailView,
     RegraComissaoListCreateView, RegraComissaoDetailView,
     RegraComissaoFaixaListCreateView, RegraComissaoFaixaDetailView,
     RegraComissaoFaixaExportarView, RegraComissaoFaixaImportarView,
@@ -278,6 +279,8 @@ urlpatterns = [
     
     path('motivos-pendencia/', MotivoPendenciaListCreateView.as_view(), name='motivo-list'),
     path('motivos-pendencia/<int:pk>/', MotivoPendenciaDetailView.as_view(), name='motivo-detail'),
+    path('status-agendamento/', StatusAgendamentoListCreateView.as_view(), name='status-agendamento-list'),
+    path('status-agendamento/<int:pk>/', StatusAgendamentoDetailView.as_view(), name='status-agendamento-detail'),
 
     path('regras-comissao/', RegraComissaoListCreateView.as_view(), name='regra-list'),
     path('regras-comissao/<int:pk>/', RegraComissaoDetailView.as_view(), name='regra-detail'),

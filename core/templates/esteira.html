@@ -1476,6 +1476,29 @@ min-width: 100%;
         </div>
     </div>
 
+    <div class="modal fade" id="modal-status-agendamento" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content border-primary">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Status do agendamento</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="status-agendamento-venda-id">
+                    <div class="mb-2 small text-muted">Pedido <strong id="status-agendamento-venda-label">#</strong></div>
+                    <label class="form-label fw-bold" for="status-agendamento-select">Status</label>
+                    <select class="form-select" id="status-agendamento-select">
+                        <option value="">Sem status</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarStatusAgendamentoEsteira()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-instalacao" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog">
             <div class="modal-content border-success">
@@ -1968,6 +1991,7 @@ min-width: 100%;
         let filtroTipoPendenciaAtual = '';
         let filtroMotivoPendenciaAtual = '';
         let _motivosPendenciaCache = [];
+        let _statusAgendamentoCache = [];
         let _motivosPendenciaNaEsteira = [];
         let _semMotivoPendentesNaEsteira = 0;
         /** Página menor: com 200, abas como Todos (~182) ficavam em 1 página e a seta › parecia “quebrada”. */
@@ -2035,6 +2059,9 @@ min-width: 100%;
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
+        const modalStatusAgendamento = document.getElementById('modal-status-agendamento')
+            ? new bootstrap.Modal(document.getElementById('modal-status-agendamento'))
+            : null;
         const modalEnviarLembrete = document.getElementById('modal-enviar-lembrete') ? new bootstrap.Modal(document.getElementById('modal-enviar-lembrete')) : null;
         const modalMarcarAdiantSabado = document.getElementById('modal-marcar-adiant-sabado') ? new bootstrap.Modal(document.getElementById('modal-marcar-adiant-sabado')) : null;
         const modalAdiantSabadoLote = document.getElementById('modal-adiant-sabado-lote') ? new bootstrap.Modal(document.getElementById('modal-adiant-sabado-lote')) : null;
@@ -3262,18 +3289,92 @@ min-width: 100%;
 
         async function obterAuxiliaresEsteira() {
             if (_cacheAuxEsteira) return _cacheAuxEsteira;
-            const [statusRes, motivosRes, usuariosRes] = await Promise.all([
+            const [statusRes, motivosRes, usuariosRes, statusAgendRes] = await Promise.all([
                 apiFetch('/crm/status/?tipo=Esteira'),
                 apiFetch('/crm/motivos-pendencia/?page_size=1000'),
                 apiFetch('/usuarios/?page_size=1000&is_active=true'),
+                apiFetch('/crm/status-agendamento/?ativo=1'),
             ]);
+            const statusAgendamento = Array.isArray(statusAgendRes)
+                ? statusAgendRes
+                : (statusAgendRes && statusAgendRes.results ? statusAgendRes.results : []);
+            _statusAgendamentoCache = statusAgendamento.slice().sort((a, b) =>
+                (a.ordem ?? 0) - (b.ordem ?? 0) || String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' })
+            );
             _cacheAuxEsteira = {
                 status: Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []),
                 motivos: Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []),
                 usuarios: Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []),
+                statusAgendamento: _statusAgendamentoCache,
             };
             return _cacheAuxEsteira;
         }
+
+        function montarCelulaOsComStatusAgendamento(v) {
+            const osAtual = v.ordem_servico || '-';
+            const statusId = v.status_agendamento
+                ? (typeof v.status_agendamento === 'object' ? v.status_agendamento.id : v.status_agendamento)
+                : null;
+            const statusNome = (v.status_agendamento_nome
+                || (v.status_agendamento && typeof v.status_agendamento === 'object' ? v.status_agendamento.nome : '')
+                || '').trim();
+            const statusCor = (v.status_agendamento_cor
+                || (v.status_agendamento && typeof v.status_agendamento === 'object' ? v.status_agendamento.cor : '')
+                || '#6c757d');
+            const label = statusNome
+                ? `<span class="esteira-status-agendamento-label small fw-semibold" style="color:${statusCor};">${statusNome}</span>`
+                : `<span class="esteira-status-agendamento-label small text-muted">Sem status</span>`;
+            const statusIdJs = statusId != null ? String(statusId) : '';
+            const btn = `<button type="button" class="btn btn-icon btn-icon-sm btn-icon-primary" onclick="abrirEditarStatusAgendamento(${v.id}, '${statusIdJs}')" title="Editar status do agendamento" aria-label="Editar status do agendamento #${v.id}"><i class="bi bi-pencil-square" aria-hidden="true"></i></button>`;
+            return `<div class="d-flex flex-column gap-1">
+                <span class="text-break d-inline-block w-100">${osAtual}</span>
+                <div class="d-flex align-items-center gap-1 flex-wrap">${label}${btn}</div>
+            </div>`;
+        }
+
+        window.abrirEditarStatusAgendamento = async function(vendaId, statusAtualId) {
+            if (!modalStatusAgendamento) return;
+            try {
+                const res = await apiFetch('/crm/status-agendamento/?ativo=1');
+                const lista = Array.isArray(res) ? res : (res && res.results ? res.results : []);
+                _statusAgendamentoCache = lista.slice().sort((a, b) =>
+                    (a.ordem ?? 0) - (b.ordem ?? 0) || String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' })
+                );
+                const sel = document.getElementById('status-agendamento-select');
+                if (!sel) return;
+                sel.innerHTML = '<option value="">Sem status</option>';
+                _statusAgendamentoCache.forEach(s => {
+                    const selected = String(s.id) === String(statusAtualId || '') ? 'selected' : '';
+                    sel.innerHTML += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
+                });
+                // Mantém o valor atual mesmo se estiver inativo / fora do cache
+                if (statusAtualId && !Array.from(sel.options).some(o => o.value === String(statusAtualId))) {
+                    sel.innerHTML += `<option value="${statusAtualId}" selected>Status atual (#${statusAtualId})</option>`;
+                }
+                document.getElementById('status-agendamento-venda-id').value = vendaId;
+                document.getElementById('status-agendamento-venda-label').textContent = `#${vendaId}`;
+                modalStatusAgendamento.show();
+            } catch (e) {
+                alert('Erro ao carregar status de agendamento: ' + (e.message || e));
+            }
+        };
+
+        window.salvarStatusAgendamentoEsteira = async function() {
+            const vendaId = document.getElementById('status-agendamento-venda-id').value;
+            const raw = document.getElementById('status-agendamento-select').value;
+            const statusAgendamento = raw ? parseInt(raw, 10) : null;
+            if (!vendaId) return;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ status_agendamento: statusAgendamento }),
+                });
+                if (modalStatusAgendamento) modalStatusAgendamento.hide();
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao salvar status do agendamento: ' + (e.message || e));
+            }
+        };
 
         async function carregarContadoresEsteira() {
             try {
@@ -3904,7 +4005,7 @@ min-width: 100%;
                             <td data-esteira-col="acoes" class="esteira-col-acoes esteira-col-sticky-2 text-md-start" data-label="Ações">
                                 ${gridAcoes}
                             </td>
-                            <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)"><span class="text-break d-inline-block w-100">${osAtual}</span></td>
+                            <td data-esteira-col="os" class="esteira-col-os" data-label="Ordem de serviço (O.S.)">${montarCelulaOsComStatusAgendamento(v)}</td>
                             <td data-esteira-col="tipo_pendencia" class="esteira-col-tipo-pendencia small esteira-col-oculta" data-label="Tipo de pendência" hidden>${tipoPendenciaHtml}</td>
                             <td data-esteira-col="motivo" class="esteira-col-motivo" data-label="Pendência">
                                 <div class="esteira-pendencia-cell">

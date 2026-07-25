@@ -3,7 +3,7 @@ from rest_framework import serializers
 from django.db import transaction
 import re
 from .models import (
-    Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
+    Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia, StatusAgendamento,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
@@ -205,6 +205,26 @@ class MotivoPendenciaSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Já existe um motivo de pendência cadastrado com este nome.")
         return value
 
+
+class StatusAgendamentoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StatusAgendamento
+        fields = '__all__'
+
+    def validate_nome(self, value: str) -> str:
+        nome = (value or '').strip()
+        if not nome:
+            raise serializers.ValidationError('Informe o nome do status.')
+        qs = StatusAgendamento.objects.filter(nome__iexact=nome)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Já existe um status de agendamento com este nome.'
+            )
+        return nome
+
+
 class RegraComissaoSerializer(serializers.ModelSerializer):
     consultor_nome = serializers.CharField(source='consultor.get_full_name', read_only=True)
     plano_nome = serializers.CharField(source='plano.nome', read_only=True)
@@ -319,6 +339,16 @@ class VendaSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True,
     )
+    status_agendamento_nome = serializers.CharField(
+        source='status_agendamento.nome',
+        read_only=True,
+        allow_null=True,
+    )
+    status_agendamento_cor = serializers.CharField(
+        source='status_agendamento.cor',
+        read_only=True,
+        allow_null=True,
+    )
     
     # Auditoria
     nome_editor = serializers.SerializerMethodField()
@@ -343,6 +373,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'status_esteira', 'status_esteira_nome',
             'status_comissionamento', 'status_comissionamento_nome',
             'motivo_pendencia', 'motivo_pendencia_nome', 'motivo_pendencia_tipo',
+            'status_agendamento', 'status_agendamento_nome', 'status_agendamento_cor',
             'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
             'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
             'complemento', 'bairro', 'cidade', 'estado',             'data_abertura', 'ordem_servico', 'data_agendamento',
@@ -447,6 +478,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
     status_esteira = StatusCRMSerializer(read_only=True)
     status_comissionamento = StatusCRMSerializer(read_only=True)
     motivo_pendencia = MotivoPendenciaSerializer(read_only=True)
+    status_agendamento = StatusAgendamentoSerializer(read_only=True)
     
     # Campos Achatados para compatibilidade
     cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', read_only=True)
@@ -464,7 +496,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
             'classificacao_mei', 'classificacao_mei_descricao',
             'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira',
-            'status_comissionamento', 'motivo_pendencia',
+            'status_comissionamento', 'motivo_pendencia', 'status_agendamento',
             'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
@@ -602,6 +634,11 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
     status_esteira = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Esteira'), required=False, allow_null=True)
     status_comissionamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Comissionamento'), required=False, allow_null=True)
     motivo_pendencia = serializers.PrimaryKeyRelatedField(queryset=MotivoPendencia.objects.all().order_by('nome'), required=False, allow_null=True)
+    status_agendamento = serializers.PrimaryKeyRelatedField(
+        queryset=StatusAgendamento.objects.all().order_by('ordem', 'nome'),
+        required=False,
+        allow_null=True,
+    )
     # ------------------------------------------------------------------------------------
 
     class Meta:

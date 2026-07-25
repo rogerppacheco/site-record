@@ -647,7 +647,7 @@ from .utils import (
 
 # Modelos do App
 from .models import (
-    Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
+    Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia, StatusAgendamento,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao, PagamentoComissaoItem,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
@@ -665,7 +665,7 @@ from .antecipar_instalacao_utils import mensagem_resposta_gc_para_vendedor
 # Serializers do App
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
-    StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
+    StatusCRMSerializer, MotivoPendenciaSerializer, StatusAgendamentoSerializer, RegraComissaoSerializer,
     RegraComissaoFaixaSerializer, ConfigComissaoVendedorSerializer,
     VendaSerializer, VendaListSerializer, VendaResumoAuditoriaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
@@ -838,6 +838,31 @@ class MotivoPendenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = MotivoPendenciaSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'motivopendencia'
+
+
+class StatusAgendamentoListCreateView(generics.ListCreateAPIView):
+    queryset = StatusAgendamento.objects.all().order_by('ordem', 'nome')
+    serializer_class = StatusAgendamentoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ativo = self.request.query_params.get('ativo')
+        if ativo is not None:
+            ativo_norm = str(ativo).strip().lower()
+            if ativo_norm in ('1', 'true', 'sim', 'yes'):
+                qs = qs.filter(ativo=True)
+            elif ativo_norm in ('0', 'false', 'nao', 'não', 'no'):
+                qs = qs.filter(ativo=False)
+        return qs
+
+
+class StatusAgendamentoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = StatusAgendamento.objects.all().order_by('ordem', 'nome')
+    serializer_class = StatusAgendamentoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
 
 class RegraComissaoListCreateView(generics.ListCreateAPIView):
     queryset = RegraComissao.objects.all()
@@ -1689,7 +1714,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         queryset = Venda.objects.filter(ativo=True).select_related(
             'vendedor', 'vendedor__perfil', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
-            'motivo_pendencia', 'auditor_atual', 'editado_por'
+            'motivo_pendencia', 'status_agendamento', 'auditor_atual', 'editado_por'
         )
 
         if self.action in ('list', 'pendentes_auditoria'):

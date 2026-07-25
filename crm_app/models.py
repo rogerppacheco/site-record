@@ -121,6 +121,28 @@ class MotivoPendencia(models.Model):
         verbose_name_plural = "Motivos de Pendência"
         ordering = ['nome']
 
+
+class StatusAgendamento(models.Model):
+    """Catálogo editável do substatus do agendamento (abaixo da O.S. na Esteira).
+
+    Independente de StatusCRM (pipeline: AGENDADO, INSTALADA…): descreve o
+    andamento do agendamento no dia (ex.: Atribuído, Em Execução).
+    """
+    nome = models.CharField(max_length=100, unique=True)
+    ativo = models.BooleanField(default=True, db_index=True)
+    ordem = models.PositiveSmallIntegerField(default=0)
+    cor = models.CharField(max_length=7, default='#6c757d')
+
+    def __str__(self) -> str:
+        return self.nome
+
+    class Meta:
+        db_table = 'crm_status_agendamento'
+        verbose_name = "Status do Agendamento"
+        verbose_name_plural = "Status do Agendamento"
+        ordering = ['ordem', 'nome']
+
+
 class RegraComissao(models.Model):
     TIPO_VENDA_CHOICES = [('PAP', 'PAP'), ('TELAG', 'TELAG')]
     TIPO_CLIENTE_CHOICES = [('CPF', 'CPF'), ('CNPJ', 'CNPJ')]
@@ -250,6 +272,16 @@ class Venda(models.Model):
         help_text="Indica se a comissão desta venda foi antecipada (informação administrativa).",
     )
     motivo_pendencia = models.ForeignKey(MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_pendentes', db_index=True)
+    status_agendamento = models.ForeignKey(
+        StatusAgendamento,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vendas',
+        db_index=True,
+        verbose_name="Status do agendamento",
+        help_text="Substatus do agendamento (ex.: Atribuído, Em Execução). Exibido abaixo da O.S. na Esteira.",
+    )
 
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
     data_pagamento_comissao = models.DateField(null=True, blank=True, verbose_name="Data Pagamento Comissão")
