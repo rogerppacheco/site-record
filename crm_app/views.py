@@ -167,13 +167,18 @@ class WebhookWhatsAppView(APIView):
         from crm_app.whatsapp_webhook_normalizer import normalizar_webhook
         data = normalizar_webhook(data)
 
-        # DeliveryCallback: sync no web (não fila async) — confirma entrega real do envio.
+        # Callbacks de entrega/status: sync no web (não fila async).
         tipo_evento = str((data or {}).get('type') or '').strip().lower()
         if tipo_evento == 'deliverycallback' and isinstance(data, dict):
             from crm_app.services.whatsapp.delivery_tracker import processar_delivery_callback
 
-            resultado_delivery = processar_delivery_callback(data)
-            return Response(resultado_delivery, status=200)
+            return Response(processar_delivery_callback(data), status=200)
+        if tipo_evento == 'messagestatuscallback' and isinstance(data, dict):
+            from crm_app.services.whatsapp.delivery_tracker import (
+                processar_message_status_callback,
+            )
+
+            return Response(processar_message_status_callback(data), status=200)
 
         if getattr(settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
             from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_webhook

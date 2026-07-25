@@ -28,11 +28,10 @@ async function apiJson(apiBase, token, path, options = {}) {
   return data;
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const handle = async () => {
-    if (message?.type === "PING") {
-      return { ok: true, version: "1.0.0" };
-    }
+async function handleMessage(message) {
+  if (message?.type === "PING") {
+    return { ok: true, version: "1.0.1", id: chrome.runtime.id };
+  }
 
     if (message?.type === "INCLUSAO_START") {
       const { demandaId, apiBase, accessToken } = message;
@@ -136,11 +135,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true };
     }
 
-    return { ok: false, error: "Tipo de mensagem desconhecido" };
-  };
+  return { ok: false, error: "Tipo de mensagem desconhecido" };
+}
 
-  handle()
-    .then((result) => sendResponse(result))
-    .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
-  return true;
-});
+function attachListener(api) {
+  api.addListener((message, _sender, sendResponse) => {
+    handleMessage(message)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
+    return true;
+  });
+}
+
+attachListener(chrome.runtime.onMessage);
+if (chrome.runtime.onMessageExternal) {
+  attachListener(chrome.runtime.onMessageExternal);
+}

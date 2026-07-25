@@ -20,6 +20,7 @@ docs/heroku_env.txt
 .playwright_state.json
 .playwright_google_form_state.json
 .playwright_google_profile/
+chrome_extension_inclusao_forms/.dev_private_key.pem
 .tmp_google_form_state.b64
 scripts/_teste_inclusao_foto.jpg
 
@@ -40,3 +41,7 @@ site-record.git/
 
 # Sessões PAP (cookies/JWT do Playwright — nunca versionar)
 pap_sessions/*.json
+
+# Perfil tempor�rio Chrome/CDP (nunca versionar)
+.chrome_cdp_tmp/
+

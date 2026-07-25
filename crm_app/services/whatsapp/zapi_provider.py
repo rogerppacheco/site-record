@@ -85,29 +85,81 @@ class ZapiProvider(WhatsAppProvider):
         data = self._send_request(f"{self.base_url}/me", method="GET")
         return data if isinstance(data, dict) else None
 
-    def verificar_numero_existe(self, telefone: str) -> Optional[bool]:
+    def _normalizar_phone_exists_payload(self, data: Any) -> Optional[Dict[str, Any]]:
+        """Z-API pode devolver objeto único ou lista [{exists, phone, lid}]."""
+        if isinstance(data, list) and data:
+            first = data[0]
+            return first if isinstance(first, dict) else None
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def consultar_phone_exists(self, telefone: str) -> Optional[Dict[str, Any]]:
+        """Consulta phone-exists e devolve o payload canônico (exists/phone/lid)."""
         telefone_limpo = formatar_telefone_br(telefone)
         if not self.instance_id or not self.token:
-            return True
+            return {"exists": True, "phone": telefone_limpo, "lid": None}
 
         url = f"{self.base_url}/phone-exists/{telefone_limpo}"
         data = self._send_request(url, method="GET")
-        if isinstance(data, dict):
-            if data.get("error") or data.get("statusCode", 200) != 200:
-                logger.warning(
-                    "[Z-API] Erro ao verificar número %s: %s",
-                    telefone_limpo,
-                    data.get("message", data.get("error")),
+        info = self._normalizar_phone_exists_payload(data)
+        if not info:
+            return None
+        if info.get("error") or info.get("statusCode", 200) != 200:
+            logger.warning(
+                "[Z-API] Erro ao verificar número %s: %s",
+                telefone_limpo,
+                info.get("message", info.get("error")),
+            )
+            return None
+        return info
+
+    def resolver_destino_envio(self, telefone: str) -> str:
+        """
+        Destino real do WhatsApp.
+
+        No Brasil o CRM guarda o 9º dígito, mas o JID interno frequentemente
+        vem sem ele (ex.: 5531988832369 → 553188832369). Enviar no formato
+        errado gera messageId fantasma sem aparecer no WhatsApp Web.
+        """
+        bruto = destino_zapi(telefone)
+        if not bruto:
+            return ""
+        if "-group" in bruto or ("-" in bruto and bruto.replace("-", "").isdigit()):
+            return bruto
+
+        info = self.consultar_phone_exists(telefone)
+        if not info or info.get("exists") is False:
+            return bruto
+
+        phone_wa = "".join(filter(str.isdigit, str(info.get("phone") or "")))
+        lid = str(info.get("lid") or "").strip()
+        if phone_wa:
+            if phone_wa != "".join(filter(str.isdigit, bruto)):
+                logger.info(
+                    "[Z-API] Destino canônico %s → %s (lid=%s)",
+                    bruto,
+                    phone_wa,
+                    lid or "-",
                 )
-                return None
-            return bool(data.get("exists", False))
-        return True
+            return phone_wa
+        if lid:
+            return lid if "@lid" in lid else f"{lid}@lid"
+        return bruto
+
+    def verificar_numero_existe(self, telefone: str) -> Optional[bool]:
+        if not self.instance_id or not self.token:
+            return True
+        info = self.consultar_phone_exists(telefone)
+        if info is None:
+            return None
+        return bool(info.get("exists", False))
 
     def enviar_mensagem_texto_raw(
         self, telefone: str, mensagem: str
     ) -> Tuple[bool, Any]:
         url = f"{self.base_url}/send-text"
-        telefone_limpo = destino_zapi(telefone)
+        telefone_limpo = self.resolver_destino_envio(telefone)
         payload = {"phone": telefone_limpo, "message": mensagem}
         resp = self._send_request(url, payload)
         if self.resposta_indica_sucesso(resp):
@@ -143,7 +195,7 @@ class ZapiProvider(WhatsAppProvider):
         if not button_actions:
             return False, None
         url = f"{self.base_url}/send-button-actions"
-        telefone_limpo = destino_zapi(telefone)
+        telefone_limpo = self.resolver_destino_envio(telefone)
         payload: Dict[str, Any] = {
             "phone": telefone_limpo,
             "message": (mensagem or "").strip(),
@@ -185,7 +237,7 @@ class ZapiProvider(WhatsAppProvider):
                 }
             )
         url = f"{self.base_url}/send-option-list"
-        telefone_limpo = destino_zapi(telefone)
+        telefone_limpo = self.resolver_destino_envio(telefone)
         payload: Dict[str, Any] = {
             "phone": telefone_limpo,
             "message": (mensagem or "").strip(),
@@ -208,7 +260,7 @@ class ZapiProvider(WhatsAppProvider):
         self, telefone: str, img_b64: str, caption: str = ""
     ) -> Optional[Dict[str, Any]]:
         url = f"{self.base_url}/send-image"
-        telefone_limpo = destino_zapi(telefone)
+        telefone_limpo = self.resolver_destino_envio(telefone)
         if "base64," not in img_b64:
             img_b64 = "data:image/png;base64," + img_b64
         payload = {"phone": telefone_limpo, "image": img_b64, "caption": caption or ""}
@@ -230,7 +282,7 @@ class ZapiProvider(WhatsAppProvider):
     ) -> bool:
         extensao = nome_arquivo.split(".")[-1].lower() if "." in nome_arquivo else "pdf"
         url = f"{self.base_url}/send-document/{extensao}"
-        telefone_limpo = formatar_telefone_br(telefone)
+        telefone_limpo = self.resolver_destino_envio(telefone)
         payload: Dict[str, Any] = {
             "phone": telefone_limpo,
             "document": pdf_url,
@@ -252,7 +304,7 @@ class ZapiProvider(WhatsAppProvider):
     ) -> bool:
         extensao = nome_arquivo.split(".")[-1].lower() if "." in nome_arquivo else "pdf"
         url = f"{self.base_url}/send-document/{extensao}"
-        telefone_limpo = formatar_telefone_br(telefone)
+        telefone_limpo = self.resolver_destino_envio(telefone)
 
         if base64_data.startswith("data:") and "base64," in base64_data:
             base64_data = base64_data.split("base64,", 1)[1]
