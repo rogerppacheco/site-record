@@ -7868,7 +7868,28 @@ def processar_webhook_whatsapp(data, request=None):
         material_enviado = _enviar_material_record_apoia_da_sessao(caption=caption)
         if not material_enviado and caption:
             try:
-                whatsapp_service.enviar_mensagem_texto(telefone_formatado, caption)
+                ok_envio, resp_envio = whatsapp_service.enviar_mensagem_texto(
+                    telefone_formatado, caption
+                )
+                if not ok_envio:
+                    logger.error(
+                        "[Webhook] Falha ao enviar resposta para %s: %s",
+                        telefone_formatado,
+                        resp_envio,
+                    )
+                else:
+                    message_id = None
+                    if isinstance(resp_envio, dict):
+                        message_id = (
+                            resp_envio.get("messageId")
+                            or resp_envio.get("zaapId")
+                            or resp_envio.get("id")
+                        )
+                    logger.info(
+                        "[Webhook] Resposta enviada para %s messageId=%s",
+                        telefone_formatado,
+                        message_id,
+                    )
             except Exception as e:
                 logger.exception(f"[Webhook] Erro ao enviar mensagem ao usuário: {e}")
         return {'status': 'ok', 'mensagem': resposta_texto or 'Processado com sucesso'}

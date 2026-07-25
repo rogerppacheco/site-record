@@ -90,9 +90,27 @@ class ZapiProvider(WhatsAppProvider):
         telefone_limpo = destino_zapi(telefone)
         payload = {"phone": telefone_limpo, "message": mensagem}
         resp = self._send_request(url, payload)
-        if resp:
+        if self.resposta_indica_sucesso(resp):
+            message_id = (
+                (resp or {}).get("messageId")
+                or (resp or {}).get("zaapId")
+                or (resp or {}).get("id")
+            )
+            logger.info(
+                "[Z-API] Texto enviado para %s messageId=%s",
+                telefone_limpo,
+                message_id,
+            )
             return True, resp
-        return False, "Erro ao enviar - resposta vazia"
+        erro = resp
+        if isinstance(resp, dict):
+            erro = resp.get("message") or resp.get("error") or resp
+        logger.error(
+            "[Z-API] Falha ao enviar texto para %s: %s",
+            telefone_limpo,
+            erro,
+        )
+        return False, erro if erro is not None else "Erro ao enviar - resposta vazia"
 
     def enviar_mensagem_com_botoes_reply(
         self,

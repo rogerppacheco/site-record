@@ -2114,6 +2114,8 @@ class VendaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='enviar-resumo-plano-whatsapp', permission_classes=[permissions.IsAuthenticated])
     def enviar_resumo_plano_whatsapp(self, request, pk=None):
         """Envia o resumo do plano (mesmo formato do fluxo VENDER) para o celular 1 do cadastro da venda (cliente)."""
+        from crm_app.services.whatsapp.phone_utils import formatar_telefone_br
+
         venda = self.get_object()
         telefone = venda.telefone1
         if not telefone or not str(telefone).strip():
@@ -2128,10 +2130,66 @@ class VendaViewSet(viewsets.ModelViewSet):
             resumo = montar_resumo_plano_para_whatsapp(venda)
             if not resumo:
                 return Response({"detail": "Não foi possível montar o resumo da venda."}, status=status.HTTP_400_BAD_REQUEST)
+
             svc = WhatsAppService()
-            svc.enviar_mensagem_texto(telefone, resumo)
-            # Registrar pendência de confirmação do cliente (resumo enviado da auditoria)
-            # para o webhook não responder "usuário não ativo" e gerar protocolo ao confirmar
+            telefone_fmt = formatar_telefone_br(telefone)
+
+            existe = svc.verificar_numero_existe(telefone)
+            if existe is False:
+                logger.warning(
+                    "[Resumo WhatsApp] Número sem WhatsApp venda=%s destino=%s",
+                    venda.id,
+                    telefone_fmt,
+                )
+                return Response(
+                    {
+                        "detail": (
+                            f"O número {telefone} não possui WhatsApp (ou está incorreto). "
+                            "Corrija o Celular 1 na aba Contato e tente novamente."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if existe is None:
+                logger.warning(
+                    "[Resumo WhatsApp] Não foi possível verificar phone-exists venda=%s destino=%s; tentando envio.",
+                    venda.id,
+                    telefone_fmt,
+                )
+
+            ok_envio, resp_envio = svc.enviar_mensagem_texto(telefone, resumo)
+            if not ok_envio:
+                logger.error(
+                    "[Resumo WhatsApp] Falha no envio venda=%s destino=%s resp=%s",
+                    venda.id,
+                    telefone_fmt,
+                    resp_envio,
+                )
+                return Response(
+                    {
+                        "detail": (
+                            "Falha ao enviar no WhatsApp. Verifique o número e a conexão da API. "
+                            f"Destino: {telefone_fmt or telefone}."
+                        )
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            message_id = None
+            if isinstance(resp_envio, dict):
+                message_id = (
+                    resp_envio.get("messageId")
+                    or resp_envio.get("zaapId")
+                    or resp_envio.get("id")
+                )
+            logger.info(
+                "[Resumo WhatsApp] Enviado venda=%s destino=%s messageId=%s",
+                venda.id,
+                telefone_fmt,
+                message_id,
+            )
+
+            # Pendência só após confirmação real do provider (messageId/zaapId).
             celular_limpo = "".join(filter(str.isdigit, str(telefone)))
             if celular_limpo.startswith("55") and len(celular_limpo) > 12:
                 celular_limpo = celular_limpo[2:]
