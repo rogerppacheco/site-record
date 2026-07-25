@@ -886,6 +886,11 @@ min-width: 100%;
                                     <i class="bi bi-exclamation-diamond"></i> Pend. indevidas
                                 </button>
                             </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="abrirModalExportAcionamentosAjudaGc('esteira')" title="Exportar pedidos de ajuda enviados ao GC">
+                                    <i class="bi bi-life-preserver"></i> Acionamentos ajuda GC
+                                </button>
+                            </li>
                             <li id="li-config-esteira-wpp" style="display: none;">
                                 <button type="button" id="btn-config-esteira-wpp" class="dropdown-item" onclick="abrirModalConfigEsteira()" title="WhatsApp BackOffice">
                                     <i class="bi bi-gear"></i> WPP BackOffice
@@ -1715,6 +1720,7 @@ min-width: 100%;
     </div>
 
 {% include "partials/pedido_ajuda_gc_modal.html" %}
+{% include "partials/pedido_ajuda_gc_export_modal.html" %}
 
 {% endblock %}
 

@@ -14,7 +14,43 @@
    Auditoria — estilos theme-aware (Record PAP Design System v17)
    ========================================================================== */
 .auditoria-shell { max-width: 1600px; width: 100%; }
-.auditoria-page-title { font-size: 1.35rem; margin: 0; color: var(--text-primary); line-height: 1.2; }
+.auditoria-page-title { font-size: 1.05rem; margin: 0; color: var(--text-primary); line-height: 1.2; font-weight: 700; }
+.auditoria-chrome-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    margin-bottom: 0.35rem;
+}
+.auditoria-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    min-width: 0;
+}
+.auditoria-toolbar-row .auditoria-filtro-pesquisa {
+    flex: 1 1 12rem;
+    min-width: 10rem;
+    max-width: 22rem;
+}
+.auditoria-toolbar-row #filtro-status-tratamento {
+    width: auto;
+    min-width: 9.5rem;
+    max-width: 13rem;
+}
+#painel-lista.auditoria-lista-tools {
+    display: contents;
+}
+#painel-lista.auditoria-lista-tools.is-hidden {
+    display: none !important;
+}
+.auditoria-aba-ativa-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+#aba-principal-auditoria { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .auditoria-kpi-card {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border-color) !important;
@@ -354,34 +390,12 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         .container.compact-container { max-width: 1200px; padding: 0; }
         .tab-pane { padding: 0; }
 
-        /* Banner "Próximo TT da vez" — barra fina de 1 linha */
-        #proximo-tt-banner {
-            display: none;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.35rem 0.65rem;
-            flex-shrink: 0;
-            margin-bottom: 0.5rem !important;
-            padding: 0.35rem 0.65rem;
-            border-radius: 8px;
-            border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
-            border-left: 3px solid var(--accent-primary);
-            background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-card));
-            font-size: 0.85rem;
-            line-height: 1.3;
-        }
-        #proximo-tt-banner .tt-matricula {
-            font-size: 0.95rem;
-            font-weight: 800;
+        /* Chip TT no toolbar (substitui banner de linha inteira) */
+        #proximo-tt-dropdown-wrap { display: none; }
+        #proximo-tt-dropdown-wrap .dropdown-menu { min-width: 16rem; }
+        #proximo-tt-dropdown-wrap .tt-matricula {
             font-family: ui-monospace, monospace;
-            color: var(--text-primary);
-        }
-        #proximo-tt-banner .auditoria-tt-acoes {
-            display: inline-flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 0.35rem;
-            margin-left: auto;
+            font-weight: 800;
         }
 
         /* Cards e linhas mais próximas */
@@ -733,79 +747,111 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
 </div>
 <main class="area-interna-section auditoria-page auditoria-modo-lista">
         <div class="card-modern system-container auditoria-shell">
-            <div class="d-flex justify-content-between align-items-center flex-wrap header-controls">
-                <div>
-                    <h1 class="auditoria-page-title">Auditoria de Vendas</h1>
-                    <p class="text-muted mb-0 d-none d-md-block">Validação de dados e qualidade (Script Oficial).</p>
-                </div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <div class="btn-group btn-group-sm" role="group" id="aba-principal-auditoria">
+            <div class="auditoria-chrome-compact">
+                <div class="auditoria-toolbar-row">
+                    <h1 class="auditoria-page-title">Auditoria</h1>
+                    <span class="badge text-bg-secondary auditoria-aba-ativa-badge" id="auditoria-aba-ativa-label">Lista</span>
+
+                    <!-- Radios ocultos: mantêm a lógica JS atual das abas -->
+                    <div id="aba-principal-auditoria" aria-hidden="true">
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-lista" value="lista" checked>
-                        <label class="btn btn-outline-primary" for="aba-lista"><i class="bi bi-list-ul me-1"></i> Lista</label>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-inclusao" value="inclusao">
-                        <label class="btn btn-outline-primary" for="aba-inclusao"><i class="bi bi-geo-alt me-1"></i> Inclusão</label>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-resumo" value="resumo">
-                        <label class="btn btn-outline-primary" for="aba-resumo"><i class="bi bi-bar-chart me-1"></i> Resumo</label>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-historico-ligacoes" value="historico_ligacoes">
-                        <label class="btn btn-outline-primary" for="aba-historico-ligacoes"><i class="bi bi-telephone me-1"></i> Histórico ligações</label>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-relatorio-sem-slot" onclick="abrirModalRelatorioSemSlot()" title="Exportar registros em que a agenda do PAP não atendeu o cliente">
-                        <i class="bi bi-file-earmark-spreadsheet"></i> <span class="d-none d-lg-inline">Relatório Sem SLOT</span>
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary" id="btn-atualizar-lista" onclick="carregarVendasPendentes(); carregarProximoTTBanner();" title="Atualizar lista e próximo TT">
-                        <i class="bi bi-arrow-clockwise"></i> <span class="d-none d-sm-inline">Atualizar</span>
-                    </button>
-                </div>
-            </div>
 
-            <!-- Próximo TT da vez: barra compacta (some após marcar uso do dia) -->
-            <div id="proximo-tt-banner" role="status" aria-live="polite" title="Use esta matrícula ao atribuir o vendedor na venda">
-                <i class="bi bi-person-badge-fill text-primary" aria-hidden="true"></i>
-                <strong>Próximo TT:</strong>
-                <span class="tt-matricula" id="proximo-tt-matricula">—</span>
-                <span class="text-muted" id="proximo-tt-dias"></span>
-                <div class="auditoria-tt-acoes">
-                    <button type="button" class="btn btn-success btn-sm py-0 px-2" id="btn-proximo-tt-deu-certo" title="Marque se conseguiu atribuir venda a este TT hoje">
-                        <i class="bi bi-check-lg"></i> Deu certo
-                    </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" id="btn-proximo-tt-nao-deu" title="Marque se não foi possível ter venda para este TT hoje">
-                        <i class="bi bi-x-lg"></i> Não deu
-                    </button>
-                    <a href="/controle-tts/" class="btn btn-outline-primary btn-sm py-0 px-2" target="_blank" title="Abrir Controle de TT's">Controle</a>
-                </div>
-            </div>
-
-            <!-- Filtros: pesquisa + período sempre visíveis; Status sob "Filtros" -->
-            <div class="card card-modern auditoria-filtros-bar" id="painel-lista">
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <div class="input-group input-group-sm auditoria-filtro-pesquisa flex-grow-1">
-                        <input type="text" class="form-control" id="filtro-pesquisa" placeholder="Pesquisar CPF, nome ou consultor..." aria-label="Pesquisar CPF, nome ou consultor">
-                        <button class="btn btn-primary" type="button" onclick="aplicarFiltrosAuditoria()" title="Pesquisar">
-                            <i class="bi bi-search"></i>
-                        </button>
-                    </div>
-                    <div class="btn-group btn-group-sm" role="group" id="abas-data-auditoria" aria-label="Período">
-                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-todos" value="todos" checked>
-                        <label class="btn btn-outline-secondary" for="aba-data-todos">Todos</label>
-                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-hoje" value="hoje">
-                        <label class="btn btn-outline-secondary" for="aba-data-hoje">Hoje</label>
-                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-ontem" value="ontem">
-                        <label class="btn btn-outline-secondary" for="aba-data-ontem">Ontem</label>
-                        <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-7dias" value="7dias">
-                        <label class="btn btn-outline-secondary" for="aba-data-7dias">7 dias</label>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-toggle-filtros-auditoria" aria-expanded="false" aria-controls="auditoria-filtros-avancados" title="Mostrar ou ocultar filtros avançados">
-                        <i class="bi bi-funnel"></i> Filtros
-                    </button>
-                </div>
-                <div id="auditoria-filtros-avancados" class="auditoria-filtros-avancados" hidden>
-                    <div class="d-flex flex-wrap align-items-end gap-2">
-                        <div>
-                            <label class="form-label small fw-bold text-muted mb-1" for="filtro-status-tratamento">Status Tratamento</label>
-                            <select class="form-select form-select-sm" id="filtro-status-tratamento" style="min-width: 200px;" title="Ao selecionar, a lista é atualizada automaticamente">
-                                <option value="">Todos</option>
-                            </select>
+                    <div id="painel-lista" class="auditoria-lista-tools">
+                        <div class="input-group input-group-sm auditoria-filtro-pesquisa">
+                            <input type="text" class="form-control" id="filtro-pesquisa" placeholder="CPF, nome ou consultor…" aria-label="Pesquisar">
+                            <button class="btn btn-primary" type="button" onclick="aplicarFiltrosAuditoria()" title="Pesquisar">
+                                <i class="bi bi-search"></i>
+                            </button>
                         </div>
+                        <div class="btn-group btn-group-sm" role="group" id="abas-data-auditoria" aria-label="Período">
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-todos" value="todos" checked>
+                            <label class="btn btn-outline-secondary" for="aba-data-todos">Todos</label>
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-hoje" value="hoje">
+                            <label class="btn btn-outline-secondary" for="aba-data-hoje">Hoje</label>
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-ontem" value="ontem">
+                            <label class="btn btn-outline-secondary" for="aba-data-ontem">Ontem</label>
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-7dias" value="7dias">
+                            <label class="btn btn-outline-secondary" for="aba-data-7dias">7d</label>
+                        </div>
+                        <select class="form-select form-select-sm" id="filtro-status-tratamento" title="Status tratamento — atualiza a lista ao mudar">
+                            <option value="">Status: Todos</option>
+                        </select>
+                    </div>
+
+                    <div class="dropdown" id="proximo-tt-dropdown-wrap">
+                        <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Próximo TT da fila">
+                            <i class="bi bi-person-badge"></i> TT <span class="tt-matricula" id="proximo-tt-matricula">—</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">Próximo TT da vez</h6></li>
+                            <li><span class="dropdown-item-text small text-muted" id="proximo-tt-dias"></span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button type="button" class="dropdown-item text-success" id="btn-proximo-tt-deu-certo">
+                                    <i class="bi bi-check-lg"></i> Deu certo
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item text-danger" id="btn-proximo-tt-nao-deu">
+                                    <i class="bi bi-x-lg"></i> Não deu
+                                </button>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="/controle-tts/" target="_blank" rel="noopener">
+                                    <i class="bi bi-box-arrow-up-right"></i> Abrir Controle de TTs
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="dropdown ms-auto">
+                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Opções">
+                            <i class="bi bi-three-dots-vertical"></i><span class="d-none d-md-inline ms-1">Opções</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="menu-opcoes-auditoria">
+                            <li><h6 class="dropdown-header">Navegação</h6></li>
+                            <li>
+                                <button type="button" class="dropdown-item auditoria-nav-item d-flex align-items-center" data-aba="lista" onclick="selecionarAbaAuditoria('lista')">
+                                    <i class="bi bi-list-ul me-2"></i> Lista <i class="bi bi-check2 ms-auto auditoria-nav-check d-none"></i>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item auditoria-nav-item d-flex align-items-center" data-aba="inclusao" onclick="selecionarAbaAuditoria('inclusao')">
+                                    <i class="bi bi-geo-alt me-2"></i> Inclusão <i class="bi bi-check2 ms-auto auditoria-nav-check d-none"></i>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item auditoria-nav-item d-flex align-items-center" data-aba="resumo" onclick="selecionarAbaAuditoria('resumo')">
+                                    <i class="bi bi-bar-chart me-2"></i> Resumo <i class="bi bi-check2 ms-auto auditoria-nav-check d-none"></i>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item auditoria-nav-item d-flex align-items-center" data-aba="historico_ligacoes" onclick="selecionarAbaAuditoria('historico_ligacoes')">
+                                    <i class="bi bi-telephone me-2"></i> Histórico ligações <i class="bi bi-check2 ms-auto auditoria-nav-check d-none"></i>
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="abrirModalRelatorioSemSlot()" title="Exportar Sem SLOT">
+                                    <i class="bi bi-file-earmark-spreadsheet"></i> Relatório Sem SLOT
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="abrirModalExportAcionamentosAjudaGc('auditoria')" title="Exportar pedidos de ajuda ao GC">
+                                    <i class="bi bi-life-preserver"></i> Acionamentos ajuda GC
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button type="button" class="dropdown-item" id="btn-atualizar-lista" onclick="carregarVendasPendentes(); carregarProximoTTBanner();">
+                                    <i class="bi bi-arrow-clockwise"></i> Atualizar lista
+                                </button>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -1540,6 +1586,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
     </div>
 
 {% include "partials/pedido_ajuda_gc_modal.html" %}
+{% include "partials/pedido_ajuda_gc_export_modal.html" %}
 
 {% endblock %}
 
@@ -1638,38 +1685,47 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             return primeiro + '-' + resto;
         }
 
-        /** Carrega o banner "Próximo TT da vez" (primeiro da fila do Controle de TTs) para destacar na auditoria. */
+        /** Carrega o chip "Próximo TT da vez" no toolbar (dropdown compacto). */
         let proximoTTMatriculaAtual = null;
-        const LS_FILTROS_AVANCADOS_AUDITORIA = 'auditoria_filtros_avancados_abertos';
+        const AUDITORIA_ABA_LABELS = {
+            lista: 'Lista',
+            inclusao: 'Inclusão',
+            resumo: 'Resumo',
+            historico_ligacoes: 'Histórico ligações',
+        };
 
-        function aplicarEstadoFiltrosAvancadosAuditoria(aberto) {
-            const painel = document.getElementById('auditoria-filtros-avancados');
-            const btn = document.getElementById('btn-toggle-filtros-auditoria');
-            if (!painel || !btn) return;
-            painel.hidden = !aberto;
-            btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
-            btn.classList.toggle('active', aberto);
-            btn.classList.toggle('btn-outline-secondary', !aberto);
-            btn.classList.toggle('btn-secondary', aberto);
-        }
-
-        function initFiltrosAvancadosAuditoria() {
-            const preferencia = localStorage.getItem(LS_FILTROS_AVANCADOS_AUDITORIA);
-            // Recolhido por padrão; só abre se o auditor salvou preferência explícita
-            aplicarEstadoFiltrosAvancadosAuditoria(preferencia === '1');
-            $('#btn-toggle-filtros-auditoria').on('click', function() {
-                const painel = document.getElementById('auditoria-filtros-avancados');
-                const aberto = !!(painel && painel.hidden);
-                aplicarEstadoFiltrosAvancadosAuditoria(aberto);
-                localStorage.setItem(LS_FILTROS_AVANCADOS_AUDITORIA, aberto ? '1' : '0');
+        function atualizarIndicadoresAbaAuditoria(valor) {
+            const label = document.getElementById('auditoria-aba-ativa-label');
+            if (label) label.textContent = AUDITORIA_ABA_LABELS[valor] || valor;
+            document.querySelectorAll('.auditoria-nav-item').forEach(function (btn) {
+                const ativo = btn.getAttribute('data-aba') === valor;
+                const check = btn.querySelector('.auditoria-nav-check');
+                if (check) check.classList.toggle('d-none', !ativo);
+                btn.classList.toggle('active', ativo);
             });
         }
 
+        window.selecionarAbaAuditoria = function (valor) {
+            const map = {
+                lista: 'aba-lista',
+                inclusao: 'aba-inclusao',
+                resumo: 'aba-resumo',
+                historico_ligacoes: 'aba-historico-ligacoes',
+            };
+            const id = map[valor];
+            const radio = id ? document.getElementById(id) : null;
+            if (!radio) return;
+            radio.checked = true;
+            $(radio).trigger('change');
+        };
+
         async function carregarProximoTTBanner() {
-            const banner = document.getElementById('proximo-tt-banner');
+            const wrap = document.getElementById('proximo-tt-dropdown-wrap');
             const matEl = document.getElementById('proximo-tt-matricula');
             const diasEl = document.getElementById('proximo-tt-dias');
-            if (!banner || !matEl || !diasEl) return;
+            if (!wrap || !matEl || !diasEl) return;
+            const aba = document.querySelector('input[name="aba-principal"]:checked');
+            const listVisible = !aba || aba.value === 'lista';
             try {
                 const data = await apiFetch(`${API_AUX}/controle-tts/proximo/`);
                 if (data && data.proximo) {
@@ -1677,32 +1733,32 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                     matEl.textContent = proximoTTMatriculaAtual || '—';
                     const dias = data.proximo.dias_sem_vender;
                     if (dias !== null && dias !== undefined) {
-                        diasEl.textContent = '(' + dias + ' dias sem vender)';
+                        diasEl.textContent = dias + ' dias sem vender';
                     } else {
-                        diasEl.textContent = '(sem venda válida registrada)';
+                        diasEl.textContent = 'Sem venda válida registrada';
                     }
-                    banner.style.display = 'flex';
+                    wrap.style.display = listVisible ? '' : 'none';
                 } else {
                     proximoTTMatriculaAtual = null;
-                    banner.style.display = 'none';
+                    wrap.style.display = 'none';
                 }
             } catch (_) {
                 proximoTTMatriculaAtual = null;
-                banner.style.display = 'none';
+                wrap.style.display = 'none';
             }
         }
 
-        /** Marca o resultado do uso do "próximo TT" e esconde o banner (feedback de tarefa concluída). */
+        /** Marca o resultado do uso do "próximo TT" e esconde o chip. */
         async function marcarProximoTTResultado(tipo) {
             if (!proximoTTMatriculaAtual) return;
             const hoje = new Date();
             const dataStr = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
             const body = { matricula_vendedor: proximoTTMatriculaAtual, data: dataStr, tipo: tipo };
-            const banner = document.getElementById('proximo-tt-banner');
+            const wrap = document.getElementById('proximo-tt-dropdown-wrap');
             try {
                 await apiFetch(`${API_AUX}/controle-tts/tratado/`, { method: 'POST', body: JSON.stringify(body) });
                 proximoTTMatriculaAtual = null;
-                if (banner) banner.style.display = 'none';
+                if (wrap) wrap.style.display = 'none';
             } catch (e) {
                 alert('Erro ao marcar: ' + (e.message || 'tente novamente.'));
             }
@@ -1713,7 +1769,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         } else $(document).ready(function() {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
             carregarProximoTTBanner();
-            initFiltrosAvancadosAuditoria();
+            atualizarIndicadoresAbaAuditoria('lista');
             ['#agenda-os', '#repro-os'].forEach(function(sel) {
                 $(sel).on('input blur', function() {
                     this.value = aplicarMascaraOs(this.value);
@@ -1796,21 +1852,22 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 const inclusaoVisible = (valor === 'inclusao');
                 const resumoVisible = (valor === 'resumo');
                 const historicoVisible = (valor === 'historico_ligacoes');
+                atualizarIndicadoresAbaAuditoria(valor);
                 document.querySelector('.auditoria-page')?.classList.toggle('auditoria-modo-lista', listVisible);
-                $('#painel-lista').toggle(listVisible);
+                const painelLista = document.getElementById('painel-lista');
+                if (painelLista) painelLista.classList.toggle('is-hidden', !listVisible);
                 const tabelaLista = document.getElementById('painel-lista-tabela');
                 if (tabelaLista) {
                     // Limpa inline style ao mostrar para o CSS flex (scroll da tabela) voltar a valer
                     tabelaLista.style.display = listVisible ? '' : 'none';
                 }
-                const ttBanner = document.getElementById('proximo-tt-banner');
-                if (ttBanner) {
-                    ttBanner.style.display = (listVisible && proximoTTMatriculaAtual) ? 'flex' : 'none';
+                const ttWrap = document.getElementById('proximo-tt-dropdown-wrap');
+                if (ttWrap) {
+                    ttWrap.style.display = (listVisible && proximoTTMatriculaAtual) ? '' : 'none';
                 }
                 $('#painel-inclusao').toggle(inclusaoVisible);
                 $('#painel-resumo').toggle(resumoVisible);
                 $('#painel-historico-ligacoes').toggle(historicoVisible);
-                $('#btn-atualizar-lista').toggle(listVisible);
                 if (inclusaoVisible) {
                     atualizarStatusExtensaoInclusao();
                     carregarDemandasInclusao();
@@ -2355,7 +2412,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 });
                 const statusList = Array.from(statusMap.entries()).map(([id, nome]) => ({ id, nome })).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
                 const selStatus = $('#filtro-status-tratamento');
-                selStatus.off('change').empty().append('<option value="">Todos</option>');
+                selStatus.off('change').empty().append('<option value="">Status: Todos</option>');
                 statusList.forEach(s => selStatus.append(`<option value="${s.id}">${s.nome}</option>`));
                 if (currentStatusVal && statusList.some(s => String(s.id) === String(currentStatusVal))) selStatus.val(currentStatusVal);
                 else selStatus.val('');

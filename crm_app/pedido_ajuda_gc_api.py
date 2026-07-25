@@ -20,6 +20,149 @@ from crm_app.services.pedido_ajuda_gc_service import (
 )
 
 
+class PedidoAjudaGcExportarView(APIView):
+    """GET: exporta acionamentos (pedidos de ajuda GC) em Excel. Query: data_inicio, data_fim, origem."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from datetime import datetime, time
+        from io import BytesIO
+
+        import openpyxl
+        from django.http import HttpResponse
+        from django.utils import timezone
+        from django.utils.dateparse import parse_date
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        di_raw = (request.query_params.get('data_inicio') or '').strip()
+        df_raw = (request.query_params.get('data_fim') or '').strip()
+        origem = (request.query_params.get('origem') or '').strip().lower()
+
+        di = parse_date(di_raw) if di_raw else None
+        df = parse_date(df_raw) if df_raw else None
+        if not di or not df:
+            return Response(
+                {'detail': 'Informe data_inicio e data_fim (YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if df < di:
+            return Response(
+                {'detail': 'data_fim deve ser maior ou igual a data_inicio.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tz = timezone.get_current_timezone()
+        inicio = timezone.make_aware(datetime.combine(di, time.min), tz)
+        fim = timezone.make_aware(datetime.combine(df, time.max), tz)
+
+        qs = (
+            PedidoAjudaGc.objects.select_related('usuario', 'venda', 'venda__cliente')
+            .filter(criado_em__gte=inicio, criado_em__lte=fim)
+            .order_by('-criado_em')
+        )
+        if origem in (PedidoAjudaGc.ORIGEM_AUDITORIA, PedidoAjudaGc.ORIGEM_ESTEIRA):
+            qs = qs.filter(origem=origem)
+
+        limite = 5000
+        lista = list(qs[:limite])
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Acionamentos'
+        headers = [
+            'Data/hora',
+            'Origem',
+            'Tipo',
+            'Solicitante',
+            'Nome GC',
+            'E-mail GC',
+            'WhatsApp GC',
+            'PDV',
+            'Login BO',
+            'Login vendedor',
+            'CPF/CNPJ',
+            'Nº pedido (O.S)',
+            'Contato',
+            'Etapa do erro',
+            'Cenário reportado',
+            'Nº registro atendimento',
+            'Enviado e-mail',
+            'Enviado WhatsApp',
+            'Erros',
+            'ID venda',
+            'Mensagem enviada',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill(start_color='4E73DF', end_color='4E73DF', fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+        tipo_labels = dict(PedidoAjudaGc.TIPO_CHOICES)
+        origem_labels = dict(PedidoAjudaGc.ORIGEM_CHOICES)
+        for p in lista:
+            criado = timezone.localtime(p.criado_em).strftime('%d/%m/%Y %H:%M') if p.criado_em else ''
+            solicitante = ''
+            if p.usuario:
+                solicitante = (
+                    p.usuario.get_full_name() or p.usuario.username or ''
+                ).strip()
+            erros = ''
+            if isinstance(p.erros, list):
+                erros = '; '.join(str(x) for x in p.erros if x)
+            elif p.erros:
+                erros = str(p.erros)
+            ws.append([
+                criado,
+                origem_labels.get(p.origem, p.origem),
+                tipo_labels.get(p.tipo, p.tipo),
+                solicitante,
+                p.nome_gc or '',
+                p.email_gc or '',
+                p.telefone_gc or '',
+                p.pdv or '',
+                p.login_bo or '',
+                p.login_vendedor or '',
+                p.cpf_cnpj_cliente or '',
+                p.numero_pedido or '',
+                p.contato or '',
+                p.etapa_erro or '',
+                p.detalhe_cenario or '',
+                p.numero_registro or '',
+                'Sim' if p.enviado_email else 'Não',
+                'Sim' if p.enviado_whatsapp else 'Não',
+                erros,
+                p.venda_id or '',
+                p.mensagem_enviada or '',
+            ])
+
+        for col_idx in range(1, len(headers) + 1):
+            letter = get_column_letter(col_idx)
+            if letter in ('O', 'U'):
+                ws.column_dimensions[letter].width = 42
+            elif letter in ('E', 'N', 'D'):
+                ws.column_dimensions[letter].width = 28
+            else:
+                ws.column_dimensions[letter].width = 16
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+            for cell in row:
+                cell.alignment = Alignment(vertical='top', wrap_text=True)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        stamp = timezone.localtime(timezone.now()).strftime('%Y%m%d_%H%M')
+        origem_sufixo = f'_{origem}' if origem else ''
+        nome = f'acionamentos_ajuda_gc{origem_sufixo}_{di.isoformat()}_{df.isoformat()}_{stamp}.xlsx'
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        resp['Content-Disposition'] = f'attachment; filename="{nome}"'
+        return resp
+
+
 class EtapaErroAjudaGcListCreateView(generics.ListCreateAPIView):
     queryset = EtapaErroAjudaGc.objects.all().order_by('contexto', 'ordem', 'nome')
     serializer_class = EtapaErroAjudaGcSerializer

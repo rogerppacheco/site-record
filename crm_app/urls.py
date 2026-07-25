@@ -32,6 +32,7 @@ from .pedido_ajuda_gc_api import (
     EtapaErroAjudaGcDetailView,
     PedidoAjudaGcContextoView,
     PedidoAjudaGcEnviarView,
+    PedidoAjudaGcExportarView,
 )
 from .views import (
     listar_screenshots_debug,
@@ -291,6 +292,7 @@ urlpatterns = [
     path('etapas-erro-ajuda-gc/<int:pk>/', EtapaErroAjudaGcDetailView.as_view(), name='etapas-erro-ajuda-gc-detail'),
     path('pedido-ajuda-gc/contexto/', PedidoAjudaGcContextoView.as_view(), name='pedido-ajuda-gc-contexto'),
     path('pedido-ajuda-gc/enviar/', PedidoAjudaGcEnviarView.as_view(), name='pedido-ajuda-gc-enviar'),
+    path('pedido-ajuda-gc/exportar/', PedidoAjudaGcExportarView.as_view(), name='pedido-ajuda-gc-exportar'),
 
     path('regras-comissao/', RegraComissaoListCreateView.as_view(), name='regra-list'),
     path('regras-comissao/<int:pk>/', RegraComissaoDetailView.as_view(), name='regra-detail'),
