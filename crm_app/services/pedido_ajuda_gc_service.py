@@ -82,7 +82,7 @@ def protocolo_registro_auditoria(venda: Optional[Venda]) -> str:
 
 
 def montar_mensagem_abrir_chamado_ti(dados: dict[str, Any]) -> str:
-    """Máscara padrão para pedir ao GC abertura de chamado com TI."""
+    """Máscara padrão para pedir ao GC abertura de chamado com TI (formato WhatsApp)."""
     linhas = [
         '*PEDIDO DE AJUDA — ABRIR CHAMADO COM TI*',
         '',
@@ -100,6 +100,67 @@ def montar_mensagem_abrir_chamado_ti(dados: dict[str, Any]) -> str:
         '*Importante!* É obrigatório anexar as evidências contendo data e hora do erro.',
     ]
     return '\n'.join(linhas)
+
+
+def montar_assunto_email_abrir_chamado_ti(
+    etapa_erro: str,
+    numero_pedido: str,
+    numero_registro: str,
+    *,
+    ordem_servico: str = '',
+    venda_id: Optional[int] = None,
+) -> str:
+    """
+    Assunto: {ETAPA}_PEDIDO:{OS|protocolo}.
+    Prefere O.S.; se não houver, usa o número do registro do atendimento.
+    """
+    import re
+
+    etapa = re.sub(r'\s+', ' ', (etapa_erro or 'PEDIDO DE AJUDA').strip()).upper()
+    os_real = (ordem_servico or '').strip()
+    pedido = (numero_pedido or '').strip()
+    registro = (numero_registro or '').strip()
+    id_interno = str(venda_id) if venda_id is not None else ''
+
+    if os_real:
+        ref = os_real
+    elif pedido and pedido != id_interno:
+        ref = pedido
+    elif registro:
+        ref = registro
+    elif pedido:
+        ref = pedido
+    else:
+        ref = 'SEM_REFERENCIA'
+    return f'{etapa}_PEDIDO:{ref}'
+
+
+def mensagem_whatsapp_para_email_texto(mensagem: str) -> str:
+    """Texto plano do e-mail: remove * do WhatsApp e preserva quebras (CRLF p/ Outlook)."""
+    linhas = [(ln or '').replace('*', '') for ln in (mensagem or '').split('\n')]
+    return '\r\n'.join(linhas)
+
+
+def mensagem_whatsapp_para_email_html(mensagem: str) -> str:
+    """HTML do e-mail com as mesmas quebras de linha do WhatsApp (rótulos em negrito)."""
+    import html
+    import re
+
+    partes: list[str] = []
+    for ln in (mensagem or '').split('\n'):
+        if ln == '':
+            partes.append('<br>')
+            continue
+        escapado = html.escape(ln)
+        escapado = re.sub(r'\*(.+?)\*', r'<strong>\1</strong>', escapado)
+        partes.append(escapado)
+    corpo = '<br>\n'.join(partes)
+    return (
+        '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;'
+        'line-height:1.45;color:#111;">'
+        f'{corpo}'
+        '</div>'
+    )
 
 
 def _validar_evidencia(uploaded) -> tuple[Optional[bytes], Optional[str], Optional[str], Optional[str]]:
@@ -130,6 +191,7 @@ def enviar_email_gc(
     evidencia_bytes: Optional[bytes] = None,
     evidencia_nome: Optional[str] = None,
     evidencia_ct: Optional[str] = None,
+    corpo_html: Optional[str] = None,
 ) -> tuple[bool, str]:
     destino = (destino or '').strip()
     if not destino:
@@ -146,6 +208,8 @@ def enviar_email_gc(
             from_email=from_email,
             to=[destino],
         )
+        if corpo_html:
+            msg.attach_alternative(corpo_html, 'text/html')
         if evidencia_bytes and evidencia_nome:
             ct = evidencia_ct or 'application/octet-stream'
             if ct.startswith('image/'):
@@ -291,10 +355,19 @@ def processar_pedido_abrir_chamado_ti(
         pedido.evidencia.save(ev_nome or 'evidencia', ContentFile(ev_bytes), save=False)
 
     erros: list[str] = []
+    ordem_servico = (venda.ordem_servico or '').strip() if venda else ''
+    assunto = montar_assunto_email_abrir_chamado_ti(
+        etapa_erro,
+        numero_pedido,
+        numero_registro,
+        ordem_servico=ordem_servico,
+        venda_id=venda.id if venda else None,
+    )
     ok_email, err_email = enviar_email_gc(
         email_gc,
-        assunto=f'[Record PAP] Pedido de ajuda TI — {cpf_cnpj or numero_pedido or "sem pedido"}',
-        corpo_texto=mensagem.replace('*', ''),
+        assunto=assunto,
+        corpo_texto=mensagem_whatsapp_para_email_texto(mensagem),
+        corpo_html=mensagem_whatsapp_para_email_html(mensagem),
         evidencia_bytes=ev_bytes,
         evidencia_nome=ev_nome,
         evidencia_ct=ev_ct,
