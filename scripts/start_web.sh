@@ -4,7 +4,12 @@ set -e
 WORKERS="${GUNICORN_WORKERS:-2}"
 THREADS="${GUNICORN_THREADS:-2}"
 
-# Railway usa Dockerfile (não executa Procfile release) — garante tabela de cache.
+# Railway usa Dockerfile (não executa Procfile release) — migrações + cache.
+if [ -f /app/scripts/migrate_unpooled.sh ]; then
+  sh /app/scripts/migrate_unpooled.sh --noinput
+else
+  python manage.py migrate --noinput
+fi
 python manage.py createcachetable 2>/dev/null || true
 
 # Fallback se imagem antiga não tiver staticfiles (deploy de emergência)
