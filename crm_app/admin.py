@@ -8,6 +8,7 @@ from .models import (
     CepLocalidade,
     FunilVendaWppTentativa, FunilVendaWppEvento,
     HistoricoAtendimentoIACliente,
+    SessaoTratamento, RelatorioTratamentoConfig,
 )
 
 
@@ -364,3 +365,43 @@ class HistoricoAtendimentoIAClienteAdmin(admin.ModelAdmin):
     raw_id_fields = ('venda',)
     date_hierarchy = 'criado_em'
     ordering = ('-criado_em',)
+
+
+@admin.register(SessaoTratamento)
+class SessaoTratamentoAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'venda',
+        'usuario',
+        'modulo',
+        'iniciado_em',
+        'finalizado_em',
+        'duracao_segundos',
+        'motivo_fim',
+        'status_resultado',
+    )
+    list_filter = ('modulo', 'motivo_fim', 'iniciado_em')
+    search_fields = (
+        'venda__id',
+        'venda__ordem_servico',
+        'usuario__username',
+        'usuario__first_name',
+    )
+    raw_id_fields = ('venda', 'usuario')
+    date_hierarchy = 'iniciado_em'
+    ordering = ('-iniciado_em',)
+
+
+@admin.register(RelatorioTratamentoConfig)
+class RelatorioTratamentoConfigAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'ativo',
+        'destino_telefone',
+        'horario_envio',
+        'incluir_auditoria',
+        'incluir_esteira',
+        'limite_outlier_minutos',
+        'timeout_ociosidade_minutos',
+        'atualizado_em',
+    )

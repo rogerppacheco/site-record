@@ -2507,8 +2507,20 @@ class VendaViewSet(viewsets.ModelViewSet):
             return Response({"detail": f"Esta venda já está sendo auditada por {venda.auditor_atual}."}, status=status.HTTP_409_CONFLICT)
         venda.auditor_atual = usuario
         venda.save()
+
+        sessao_id = None
+        try:
+            from crm_app.models import SessaoTratamento
+            from crm_app.services import tempo_tratamento_service as tt_svc
+            sessao = tt_svc.iniciar_sessao(venda, usuario, SessaoTratamento.MODULO_AUDITORIA)
+            sessao_id = sessao.id
+        except Exception:
+            logger.exception("Erro ao iniciar sessão de tratamento (auditoria)")
+
         serializer = self.get_serializer(venda)
-        return Response(serializer.data)
+        dados = dict(serializer.data)
+        dados['sessao_tratamento_id'] = sessao_id
+        return Response(dados)
 
     @action(detail=True, methods=['post'], url_path='liberar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def liberar_auditoria(self, request, pk=None):
@@ -2519,6 +2531,16 @@ class VendaViewSet(viewsets.ModelViewSet):
              return Response({"detail": "Você não tem permissão para liberar uma venda travada por outro auditor."}, status=status.HTTP_403_FORBIDDEN)
         venda.auditor_atual = None
         venda.save()
+
+        try:
+            from crm_app.models import SessaoTratamento
+            from crm_app.services import tempo_tratamento_service as tt_svc
+            tt_svc.encerrar_sessoes_venda(
+                venda.id, SessaoTratamento.MODULO_AUDITORIA, SessaoTratamento.MOTIVO_LIBERADO,
+            )
+        except Exception:
+            logger.exception("Erro ao encerrar sessão de tratamento (liberar auditoria)")
+
         return Response({"detail": "Venda liberada com sucesso."})
 
     @action(detail=False, methods=['get'], url_path='verificar-os-cadastrada', permission_classes=[permissions.IsAuthenticated])
@@ -2705,6 +2727,22 @@ class VendaViewSet(viewsets.ModelViewSet):
                 nm_st = status_obj.nome.upper()
                 STATUS_SUCESSO = ['AUDITADA', 'CADASTRADA', 'APROVADA', 'INSTALADA', 'AGENDADO', 'CONCLUIDA', 'CONCLUÍDA']
                 eh_repro = not any(s in nm_st for s in STATUS_SUCESSO)
+
+                try:
+                    from crm_app.models import SessaoTratamento
+                    from crm_app.services import tempo_tratamento_service as tt_svc
+                    if eh_repro:
+                        motivo_sessao = SessaoTratamento.MOTIVO_REPROVADO
+                    elif 'CADASTRADA' in nm_st:
+                        motivo_sessao = SessaoTratamento.MOTIVO_CADASTRADO
+                    else:
+                        motivo_sessao = SessaoTratamento.MOTIVO_APROVADO
+                    tt_svc.encerrar_sessoes_venda(
+                        venda.id, SessaoTratamento.MODULO_AUDITORIA,
+                        motivo_sessao, status_resultado=status_obj.nome,
+                    )
+                except Exception:
+                    logger.exception("Erro ao encerrar sessão de tratamento (finalizar auditoria)")
                 
                 if eh_repro and venda.vendedor and venda.vendedor.tel_whatsapp:
                     try:
@@ -2837,6 +2875,19 @@ class VendaViewSet(viewsets.ModelViewSet):
             )
         except Exception:
             logger.exception('Erro ao registrar eventos da esteira (manual)')
+
+        try:
+            from crm_app.models import SessaoTratamento
+            from crm_app.services import tempo_tratamento_service as tt_svc
+            status_resultado = (
+                venda_atualizada.status_esteira.nome if venda_atualizada.status_esteira else ''
+            )
+            tt_svc.encerrar_sessoes(
+                venda_atualizada.id, self.request.user, SessaoTratamento.MODULO_ESTEIRA,
+                SessaoTratamento.MOTIVO_SALVO, status_resultado=status_resultado,
+            )
+        except Exception:
+            logger.exception('Erro ao encerrar sessão de tratamento (esteira)')
 
         alteracoes = {}
         if venda_antes.status_esteira != venda_atualizada.status_esteira:

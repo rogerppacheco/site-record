@@ -757,6 +757,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-lista" value="lista" checked>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-inclusao" value="inclusao">
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-resumo" value="resumo">
+                        <input type="radio" class="btn-check" name="aba-principal" id="aba-tempo-tratamento" value="tempo_tratamento">
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-historico-ligacoes" value="historico_ligacoes">
                     </div>
 
@@ -827,6 +828,11 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                             <li>
                                 <button type="button" class="dropdown-item auditoria-nav-item d-flex align-items-center" data-aba="resumo" onclick="selecionarAbaAuditoria('resumo')">
                                     <i class="bi bi-bar-chart me-2"></i> Resumo <i class="bi bi-check2 ms-auto auditoria-nav-check d-none"></i>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item auditoria-nav-item d-flex align-items-center" data-aba="tempo_tratamento" onclick="selecionarAbaAuditoria('tempo_tratamento')">
+                                    <i class="bi bi-stopwatch me-2"></i> Tempo tratamento <i class="bi bi-check2 ms-auto auditoria-nav-check d-none"></i>
                                 </button>
                             </li>
                             <li>
@@ -933,6 +939,77 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Painel Tempo de tratamento (métricas do dia) -->
+            <div id="painel-tempo-tratamento" style="display: none;">
+                <div class="card card-modern mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <h5 class="card-title mb-0"><i class="bi bi-stopwatch me-2"></i>Tempo de tratamento — Auditoria</h5>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <input type="date" id="tt-data" class="form-control form-control-sm" style="width: auto;">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="tt-btn-atualizar"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                                <button type="button" class="btn btn-sm btn-success" id="tt-btn-enviar-zap" style="display: none;" title="Enviar relatório WhatsApp à diretoria">
+                                    <i class="bi bi-whatsapp"></i> Enviar WPP
+                                </button>
+                            </div>
+                        </div>
+                        <p id="tt-status" class="small text-muted mb-2"></p>
+                        <div id="tt-loading" class="text-center text-muted py-2" style="display: none;"><span class="spinner-border spinner-border-sm me-2"></span>Carregando…</div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-6 col-md-3">
+                                <div class="card card-modern auditoria-kpi-card h-100"><div class="card-body text-center py-3">
+                                    <div class="text-muted small text-uppercase fw-bold mb-1">Tratadas</div>
+                                    <div class="fs-3 fw-bold" id="tt-kpi-qtd">—</div>
+                                </div></div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="card card-modern auditoria-kpi-card h-100"><div class="card-body text-center py-3">
+                                    <div class="text-muted small text-uppercase fw-bold mb-1">Média</div>
+                                    <div class="fs-3 fw-bold text-primary" id="tt-kpi-media">—</div>
+                                </div></div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="card card-modern auditoria-kpi-card h-100"><div class="card-body text-center py-3">
+                                    <div class="text-muted small text-uppercase fw-bold mb-1">Mediana</div>
+                                    <div class="fs-3 fw-bold text-success" id="tt-kpi-mediana">—</div>
+                                </div></div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="card card-modern auditoria-kpi-card h-100"><div class="card-body text-center py-3">
+                                    <div class="text-muted small text-uppercase fw-bold mb-1">Outliers</div>
+                                    <div class="fs-3 fw-bold text-warning" id="tt-kpi-outliers">—</div>
+                                </div></div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-12 col-lg-6">
+                                <div class="border rounded p-2 bg-white" style="height: 260px;"><canvas id="tt-chart-qtd"></canvas></div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <div class="border rounded p-2 bg-white" style="height: 260px;"><canvas id="tt-chart-media"></canvas></div>
+                            </div>
+                        </div>
+                        <h6 class="fw-bold text-muted mb-2"><i class="bi bi-people me-1"></i> Por pessoa</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Usuário</th>
+                                        <th class="text-center">Qtd</th>
+                                        <th class="text-center">Média</th>
+                                        <th class="text-center">Mediana</th>
+                                        <th class="text-center">Máximo</th>
+                                        <th class="text-center">Outliers</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tt-tbody"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1594,6 +1671,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
 <script src="{% static 'rest_framework/js/jquery-3.7.1.min.js' %}"></script>
 <script src="{% static 'js/auth.js' %}?v=8.0"></script>
 <script src="{% static 'js/menu.js' %}?v=8.0"></script>
+<script src="{% static 'js/painel_tempo_tratamento.js' %}?v=1.0"></script>
 <script>
         const API_BASE = '/api/crm/vendas';
         const API_AUX = '/api/crm';
@@ -1613,6 +1691,9 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         const modalAprovacao = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalLigacoesAuditoria = new bootstrap.Modal(document.getElementById('modal-ligacoes-auditoria'));
+        document.getElementById('modalAuditoria').addEventListener('hidden.bs.modal', () => {
+            try { TratamentoTempo.encerrar('ABANDONO'); } catch (e) {}
+        });
         let auditoriaVoiceConfig = { voice_provider: 'sonax', sonax_ramais: [] };
         let opcoesLigacaoCarregadas = false;
 
@@ -1670,6 +1751,62 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             } catch (e) { throw e; }
         }
 
+        // =========================================================================
+        // TEMPO DE TRATAMENTO (heartbeat) — mede quanto tempo o auditor fica na venda.
+        // O relógio é do servidor; aqui só mantemos a sessão viva e a encerramos ao sair.
+        // =========================================================================
+        const TratamentoTempo = {
+            timer: null,
+            vendaId: null,
+            modulo: 'AUDITORIA',
+            async abrirSessao(vendaId, modulo = 'AUDITORIA') {
+                try {
+                    await apiFetch(`${API_AUX}/tratamento/iniciar/`, {
+                        method: 'POST',
+                        body: JSON.stringify({ venda_id: vendaId, modulo }),
+                    });
+                } catch (e) { /* silencioso: métrica não deve travar o fluxo */ }
+                this.monitorar(vendaId, modulo);
+            },
+            monitorar(vendaId, modulo = 'AUDITORIA') {
+                this.parar();
+                this.vendaId = vendaId;
+                this.modulo = modulo;
+                this.ping();
+                this.timer = setInterval(() => this.ping(), 45000);
+            },
+            ping() {
+                if (!this.vendaId) return;
+                apiFetch(`${API_AUX}/tratamento/ping/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ venda_id: this.vendaId, modulo: this.modulo }),
+                }).catch(() => {});
+            },
+            parar() {
+                if (this.timer) { clearInterval(this.timer); this.timer = null; }
+                this.vendaId = null;
+            },
+            encerrar(motivo = 'ABANDONO') {
+                const vid = this.vendaId;
+                const mod = this.modulo;
+                this.parar();
+                if (!vid) return;
+                const token = localStorage.getItem('accessToken');
+                try {
+                    fetch(`${API_AUX}/tratamento/encerrar/`, {
+                        method: 'POST',
+                        keepalive: true,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                        },
+                        body: JSON.stringify({ venda_id: vid, modulo: mod, motivo }),
+                    });
+                } catch (e) { /* best-effort */ }
+            },
+        };
+        window.addEventListener('beforeunload', () => TratamentoTempo.encerrar('ABANDONO'));
+
         function aplicarMascaraOs(valor) {
             let v = String(valor || '').replace(/[^\d-]/g, '');
             const semHifen = v.replace(/-/g, '');
@@ -1691,6 +1828,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             lista: 'Lista',
             inclusao: 'Inclusão',
             resumo: 'Resumo',
+            tempo_tratamento: 'Tempo tratamento',
             historico_ligacoes: 'Histórico ligações',
         };
 
@@ -1710,6 +1848,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 lista: 'aba-lista',
                 inclusao: 'aba-inclusao',
                 resumo: 'aba-resumo',
+                tempo_tratamento: 'aba-tempo-tratamento',
                 historico_ligacoes: 'aba-historico-ligacoes',
             };
             const id = map[valor];
@@ -1770,6 +1909,24 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
             carregarProximoTTBanner();
             atualizarIndicadoresAbaAuditoria('lista');
+            (function initPainelTempoAuditoria() {
+                let podeZap = false;
+                try {
+                    const tok = jwt_decode(localStorage.getItem('accessToken') || '');
+                    const role = tok.user_role || tok.perfil || '';
+                    podeZap = ['Diretoria', 'Admin', 'Supervisor'].includes(role);
+                } catch (e) {}
+                if (window.PainelTempoTratamento) {
+                    PainelTempoTratamento.init({
+                        modulo: 'AUDITORIA',
+                        canSendZap: podeZap,
+                        fetchJson: function (path) { return apiFetch(API_AUX + path); },
+                        postJson: function (path, body) {
+                            return apiFetch(API_AUX + path, { method: 'POST', body: JSON.stringify(body || {}) });
+                        },
+                    });
+                }
+            })();
             ['#agenda-os', '#repro-os'].forEach(function(sel) {
                 $(sel).on('input blur', function() {
                     this.value = aplicarMascaraOs(this.value);
@@ -1851,6 +2008,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 const listVisible = (valor === 'lista');
                 const inclusaoVisible = (valor === 'inclusao');
                 const resumoVisible = (valor === 'resumo');
+                const tempoVisible = (valor === 'tempo_tratamento');
                 const historicoVisible = (valor === 'historico_ligacoes');
                 atualizarIndicadoresAbaAuditoria(valor);
                 document.querySelector('.auditoria-page')?.classList.toggle('auditoria-modo-lista', listVisible);
@@ -1867,12 +2025,14 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 }
                 $('#painel-inclusao').toggle(inclusaoVisible);
                 $('#painel-resumo').toggle(resumoVisible);
+                $('#painel-tempo-tratamento').toggle(tempoVisible);
                 $('#painel-historico-ligacoes').toggle(historicoVisible);
                 if (inclusaoVisible) {
                     atualizarStatusExtensaoInclusao();
                     carregarDemandasInclusao();
                 }
                 if (resumoVisible) carregarResumoAuditoria();
+                if (tempoVisible && window.PainelTempoTratamento) PainelTempoTratamento.carregar();
                 if (historicoVisible) {
                     garantirPeriodoPadraoHistoricoLigacoes();
                     preencherFiltrosStatusHistoricoLigacoes();
@@ -2535,12 +2695,12 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         // FUNÇÕES DE AÇÃO (USANDO API FETCH)
         // =========================================================================
         function tentarAuditoria(id) { if(!confirm(`Iniciar auditoria da Venda #${id}?`)) return; alocarVenda(id); }
-        function retomarAuditoria(id) { carregarDadosNoScript(id); }
+        function retomarAuditoria(id) { TratamentoTempo.abrirSessao(id, 'AUDITORIA'); carregarDadosNoScript(id); }
         
         function alocarVenda(id) { 
             $('#loadingOverlay').show(); 
             apiFetch(`${API_BASE}/${id}/alocar-auditoria/`, { method: 'POST' })
-            .then(() => carregarDadosNoScript(id))
+            .then(() => { TratamentoTempo.monitorar(id, 'AUDITORIA'); return carregarDadosNoScript(id); })
             .catch(err => { 
                 $('#loadingOverlay').hide(); 
                 alert('Erro ao alocar venda (talvez já esteja em uso).'); 

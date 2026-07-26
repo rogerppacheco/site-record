@@ -4148,3 +4148,113 @@ class WhatsAppTelefoneSemIa(models.Model):
 
         self.telefone = normalizar_telefone_blocklist(self.telefone)
         super().save(*args, **kwargs)
+
+
+class SessaoTratamento(models.Model):
+    """Cronômetro server-side do tempo que um usuário gasta tratando uma venda.
+
+    Uma venda pode ter várias sessões (alocar → liberar → retomar), por isso o
+    tempo é medido por sessão e não por um único campo na ``Venda``. O relógio é
+    sempre do servidor (``timezone.now``) para não depender do frontend.
+    """
+
+    MODULO_AUDITORIA = 'AUDITORIA'
+    MODULO_ESTEIRA = 'ESTEIRA'
+    MODULO_CHOICES = (
+        (MODULO_AUDITORIA, 'Auditoria'),
+        (MODULO_ESTEIRA, 'Esteira'),
+    )
+
+    # Motivos de encerramento. Os "produtivos" indicam que houve uma decisão.
+    MOTIVO_APROVADO = 'APROVADO'
+    MOTIVO_CADASTRADO = 'CADASTRADO'
+    MOTIVO_REPROVADO = 'REPROVADO'
+    MOTIVO_SALVO = 'SALVO'
+    MOTIVO_LIBERADO = 'LIBERADO'
+    MOTIVO_ABANDONO = 'ABANDONO'
+    MOTIVO_TIMEOUT = 'TIMEOUT'
+    MOTIVO_CHOICES = (
+        (MOTIVO_APROVADO, 'Aprovado/Auditado'),
+        (MOTIVO_CADASTRADO, 'Cadastrado'),
+        (MOTIVO_REPROVADO, 'Reprovado/Pendenciado'),
+        (MOTIVO_SALVO, 'Salvo (esteira)'),
+        (MOTIVO_LIBERADO, 'Liberado sem decisão'),
+        (MOTIVO_ABANDONO, 'Abandono (saiu da tela)'),
+        (MOTIVO_TIMEOUT, 'Timeout (ociosidade)'),
+    )
+
+    # Motivos que representam trabalho efetivamente concluído (para produtividade).
+    MOTIVOS_PRODUTIVOS = (MOTIVO_APROVADO, MOTIVO_CADASTRADO, MOTIVO_REPROVADO, MOTIVO_SALVO)
+
+    venda = models.ForeignKey(
+        Venda, on_delete=models.CASCADE, related_name='sessoes_tratamento', db_index=True,
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sessoes_tratamento', db_index=True,
+    )
+    modulo = models.CharField(max_length=16, choices=MODULO_CHOICES, db_index=True)
+    iniciado_em = models.DateTimeField(db_index=True)
+    ultimo_ping = models.DateTimeField()
+    finalizado_em = models.DateTimeField(null=True, blank=True, db_index=True)
+    duracao_segundos = models.PositiveIntegerField(null=True, blank=True)
+    motivo_fim = models.CharField(max_length=16, choices=MOTIVO_CHOICES, blank=True, default='')
+    status_resultado = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Nome do status aplicado ao encerrar (ex.: CADASTRADA, REPROVADA).',
+    )
+
+    class Meta:
+        db_table = 'crm_sessao_tratamento'
+        verbose_name = 'Sessão de tratamento'
+        verbose_name_plural = 'Sessões de tratamento'
+        ordering = ['-iniciado_em']
+        indexes = [
+            models.Index(fields=['modulo', 'iniciado_em']),
+            models.Index(fields=['usuario', 'iniciado_em']),
+            models.Index(fields=['finalizado_em']),
+            models.Index(fields=['venda', 'modulo', 'finalizado_em']),
+        ]
+
+    def __str__(self) -> str:
+        return f'Sessão #{self.pk} venda #{self.venda_id} {self.modulo} ({self.usuario_id})'
+
+    @property
+    def esta_aberta(self) -> bool:
+        return self.finalizado_em is None
+
+
+class RelatorioTratamentoConfig(models.Model):
+    """Configuração (singleton) do relatório diário de tempo de tratamento via WhatsApp."""
+
+    ativo = models.BooleanField(default=False, verbose_name='Relatório diário ativo')
+    destino_telefone = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Destino (telefone ou ID de grupo)',
+        help_text='Telefone da diretoria (com DDD) ou ID de grupo WhatsApp (ex.: 12036...@g.us).',
+    )
+    horario_envio = models.TimeField(
+        null=True, blank=True, verbose_name='Horário de envio (HH:MM)',
+        help_text='Horário no fim do dia para disparar o relatório (seg-sex).',
+    )
+    incluir_auditoria = models.BooleanField(default=True)
+    incluir_esteira = models.BooleanField(default=True)
+    limite_outlier_minutos = models.PositiveIntegerField(
+        default=15,
+        help_text='Sessões acima deste tempo são destacadas como fora do padrão no relatório.',
+    )
+    timeout_ociosidade_minutos = models.PositiveIntegerField(
+        default=10,
+        help_text='Sem heartbeat por este tempo, a sessão é encerrada como TIMEOUT.',
+    )
+    controle_disparos = models.JSONField(default=dict, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_relatorio_tratamento_config'
+        verbose_name = 'Config. relatório de tratamento'
+        verbose_name_plural = 'Config. relatório de tratamento'
+
+    def __str__(self) -> str:
+        estado = 'ativo' if self.ativo else 'inativo'
+        return f'Relatório tempo de tratamento ({estado})'

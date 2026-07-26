@@ -339,7 +339,8 @@
         #painel-busca-agendados,
         #painel-busca-vendas-totais,
         #painel-gestao-aproveitamento,
-        #painel-churn-tratamento { flex-shrink: 0; }
+        #painel-churn-tratamento,
+        #painel-tempo-tratamento { flex-shrink: 0; }
         .esteira-page-main.esteira-modo-lista #esteira-area-tabela {
             flex: 1 1 0;
             min-height: 0;
@@ -817,6 +818,7 @@ min-width: 100%;
                     <li class="nav-item" id="tab-vendas-totais-item"><a class="nav-link" href="#" data-tab="VENDAS_TOTAIS" onclick="filtrarStatus('VENDAS_TOTAIS', this)">Vendas Totais</a></li>
                     <li class="nav-item" id="tab-gestao-aproveitamento-item"><a class="nav-link" href="#" data-tab="GESTAO_APROVEITAMENTO" onclick="filtrarStatus('GESTAO_APROVEITAMENTO', this)">Gestão</a></li>
                     <li class="nav-item" id="tab-churn-tratamento-item"><a class="nav-link" href="#" data-tab="CHURN_TRATAMENTO" onclick="filtrarStatus('CHURN_TRATAMENTO', this)">Churn</a></li>
+                    <li class="nav-item" id="tab-tempo-tratamento-item"><a class="nav-link" href="#" data-tab="TEMPO_TRATAMENTO" onclick="filtrarStatus('TEMPO_TRATAMENTO', this)" title="Tempo de tratamento na esteira"><i class="bi bi-stopwatch"></i> Tempo</a></li>
                 </ul>
                 <div id="esteira-paginacao" class="esteira-pag-chrome" style="display: none;" title="Paginação da lista">
                     <button type="button" class="btn btn-sm btn-outline-secondary esteira-pag-btn" id="btn-esteira-pag-anterior" onclick="mudarPaginaEsteira(-1)" aria-label="Página anterior">‹</button>
@@ -1266,6 +1268,74 @@ min-width: 100%;
                             </div>
                         </div>
                         <p class="gestao-aprov-nota mt-3 mb-0" id="churn-trat-nota"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="painel-tempo-tratamento" class="mb-3" style="display: none;">
+                <div class="border rounded bg-white p-2 p-md-3 shadow-sm">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h5 class="mb-0 fw-bold"><i class="bi bi-stopwatch me-2"></i>Tempo de tratamento — Esteira</h5>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <input type="date" id="tt-data" class="form-control form-control-sm" style="width: auto;">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="tt-btn-atualizar"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                            <button type="button" class="btn btn-sm btn-success" id="tt-btn-enviar-zap" style="display: none;" title="Enviar relatório WhatsApp à diretoria">
+                                <i class="bi bi-whatsapp"></i> Enviar WPP
+                            </button>
+                        </div>
+                    </div>
+                    <p id="tt-status" class="small text-muted mb-2"></p>
+                    <div id="tt-loading" class="text-center text-muted py-2" style="display: none;"><span class="spinner-border spinner-border-sm me-2"></span>Carregando…</div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded text-center p-2 h-100 bg-light">
+                                <div class="text-muted small text-uppercase fw-bold">Tratadas</div>
+                                <div class="fs-3 fw-bold" id="tt-kpi-qtd">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded text-center p-2 h-100 bg-light">
+                                <div class="text-muted small text-uppercase fw-bold">Média</div>
+                                <div class="fs-3 fw-bold text-primary" id="tt-kpi-media">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded text-center p-2 h-100 bg-light">
+                                <div class="text-muted small text-uppercase fw-bold">Mediana</div>
+                                <div class="fs-3 fw-bold text-success" id="tt-kpi-mediana">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded text-center p-2 h-100 bg-light">
+                                <div class="text-muted small text-uppercase fw-bold">Outliers</div>
+                                <div class="fs-3 fw-bold text-warning" id="tt-kpi-outliers">—</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-12 col-lg-6">
+                            <div class="border rounded p-2" style="height: 260px;"><canvas id="tt-chart-qtd"></canvas></div>
+                        </div>
+                        <div class="col-12 col-lg-6">
+                            <div class="border rounded p-2" style="height: 260px;"><canvas id="tt-chart-media"></canvas></div>
+                        </div>
+                    </div>
+                    <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-people me-1"></i> Por pessoa</h6>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Usuário</th>
+                                    <th class="text-center">Qtd</th>
+                                    <th class="text-center">Média</th>
+                                    <th class="text-center">Mediana</th>
+                                    <th class="text-center">Máximo</th>
+                                    <th class="text-center">Outliers</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tt-tbody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1728,6 +1798,7 @@ min-width: 100%;
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <script src="{% static 'js/auth.js' %}?v=7.0"></script>
 <script src="{% static 'js/menu.js' %}?v=7.0"></script>
+<script src="{% static 'js/painel_tempo_tratamento.js' %}?v=1.0"></script>
 <script>
         const apiUrl = ''; 
         function getVal(id) { const el = document.getElementById(id); if (!el) return null; return el.value === "" ? null : el.value; }
@@ -1748,6 +1819,59 @@ min-width: 100%;
                 return await response.json();
             } catch (e) { throw e; }
         }
+
+        // =========================================================================
+        // TEMPO DE TRATAMENTO (heartbeat) — mede o tempo do BO tratando a venda na esteira.
+        // O relógio é do servidor; o salvamento encerra a sessão como SALVO no backend.
+        // =========================================================================
+        const TratamentoTempo = {
+            timer: null,
+            vendaId: null,
+            modulo: 'ESTEIRA',
+            async abrirSessao(vendaId, modulo = 'ESTEIRA') {
+                try {
+                    await apiFetch(`/crm/tratamento/iniciar/`, {
+                        method: 'POST',
+                        body: JSON.stringify({ venda_id: vendaId, modulo }),
+                    });
+                } catch (e) { /* silencioso: métrica não deve travar o fluxo */ }
+                this.vendaId = vendaId;
+                this.modulo = modulo;
+                if (this.timer) clearInterval(this.timer);
+                this.ping();
+                this.timer = setInterval(() => this.ping(), 45000);
+            },
+            ping() {
+                if (!this.vendaId) return;
+                apiFetch(`/crm/tratamento/ping/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ venda_id: this.vendaId, modulo: this.modulo }),
+                }).catch(() => {});
+            },
+            parar() {
+                if (this.timer) { clearInterval(this.timer); this.timer = null; }
+                this.vendaId = null;
+            },
+            encerrar(motivo = 'ABANDONO') {
+                const vid = this.vendaId;
+                const mod = this.modulo;
+                this.parar();
+                if (!vid) return;
+                const token = localStorage.getItem('accessToken');
+                try {
+                    fetch(`${apiUrl}/api/crm/tratamento/encerrar/`, {
+                        method: 'POST',
+                        keepalive: true,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                        },
+                        body: JSON.stringify({ venda_id: vid, modulo: mod, motivo }),
+                    });
+                } catch (e) { /* best-effort */ }
+            },
+        };
+        window.addEventListener('beforeunload', () => TratamentoTempo.encerrar('ABANDONO'));
 
         /** Busca todas as páginas da listagem de vendas (esteira), agregando results até não haver next. */
         async function buscarTodasPaginasEsteira(endpoint) {
@@ -1777,7 +1901,7 @@ min-width: 100%;
         const podeAcessarVendasTotais = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const podeAcessarGestaoAproveitamento = podeAcessarVendasTotais;
         const podeAcessarChurnTratamento = podeAcessarVendasTotais;
-        const totalAbasFixas = podeAcessarVendasTotais ? 7 : 4;
+        const totalAbasFixas = podeAcessarVendasTotais ? 8 : 5;
         let churnTratamentoPagina = 1;
         let churnTratamentoSubaba = 'lista';
         let churnTratamentoUltimoTotalPaginas = 1;
@@ -2073,6 +2197,9 @@ min-width: 100%;
             setTimeout(removerFoco, 15000);
         }
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
+        document.getElementById('modal-editar-venda').addEventListener('hidden.bs.modal', () => {
+            try { TratamentoTempo.encerrar('ABANDONO'); } catch (e) {}
+        });
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
@@ -2085,10 +2212,21 @@ min-width: 100%;
         
         document.addEventListener('DOMContentLoaded', () => {
             sincronizarVisaoGestaoAproveitamento(false);
+            sincronizarVisaoTempoTratamento(false);
             atualizarModoViewportEsteira(filtroAtual || 'TODOS');
             initFiltrosAvancadosEsteira();
             const btnLoteSab = document.getElementById('btn-adiant-sabado-lote');
             if (btnLoteSab && podeMarcarAdiantSabado) setEsteiraMenuItemVisivel('li-adiant-sabado-lote', true);
+            if (window.PainelTempoTratamento) {
+                PainelTempoTratamento.init({
+                    modulo: 'ESTEIRA',
+                    canSendZap: ['Diretoria', 'Admin', 'Supervisor'].includes(userProfile),
+                    fetchJson: function (path) { return apiFetch('/crm' + path); },
+                    postJson: function (path, body) {
+                        return apiFetch('/crm' + path, { method: 'POST', body: JSON.stringify(body || {}) });
+                    },
+                });
+            }
             carregarContadoresEsteira().finally(() => carregarVendas());
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
@@ -2404,7 +2542,7 @@ min-width: 100%;
         function atualizarModoViewportEsteira(status) {
             const main = document.querySelector('.esteira-page-main');
             if (!main) return;
-            const paginaLivre = status === 'GESTAO_APROVEITAMENTO' || status === 'CHURN_TRATAMENTO';
+            const paginaLivre = status === 'GESTAO_APROVEITAMENTO' || status === 'CHURN_TRATAMENTO' || status === 'TEMPO_TRATAMENTO';
             main.classList.toggle('esteira-modo-lista', !paginaLivre);
             if (typeof aplicarVisibilidadeColunasEsteira === 'function') aplicarVisibilidadeColunasEsteira();
         }
@@ -2499,7 +2637,7 @@ min-width: 100%;
         }
 
         function filtrosColunasSuportadosNaAbaAtual() {
-            if (filtroAtual === 'GESTAO_APROVEITAMENTO') return false;
+            if (filtroAtual === 'GESTAO_APROVEITAMENTO' || filtroAtual === 'CHURN_TRATAMENTO' || filtroAtual === 'TEMPO_TRATAMENTO') return false;
             if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') return true;
             if (filtroAtual === 'TODOS' || filtroAtual === 'PENDEN') return true;
             return /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual);
@@ -3242,7 +3380,7 @@ min-width: 100%;
         }
 
         function usaPaginacaoServerEsteira() {
-            return !['INSTALADAS', 'VENDAS_TOTAIS', 'GESTAO_APROVEITAMENTO', 'CHURN_TRATAMENTO'].includes(filtroAtual);
+            return !['INSTALADAS', 'VENDAS_TOTAIS', 'GESTAO_APROVEITAMENTO', 'CHURN_TRATAMENTO', 'TEMPO_TRATAMENTO'].includes(filtroAtual);
         }
 
         function ehAbaDataEsteira(status) {
@@ -3526,7 +3664,7 @@ min-width: 100%;
         }
 
         async function carregarVendas(silent = false) {
-            if (filtroAtual === 'GESTAO_APROVEITAMENTO') return;
+            if (filtroAtual === 'GESTAO_APROVEITAMENTO' || filtroAtual === 'CHURN_TRATAMENTO' || filtroAtual === 'TEMPO_TRATAMENTO') return;
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = (document.getElementById('filtro-busca').value || '').trim();
             const carregarInstaladas = (filtroAtual === 'INSTALADAS');
@@ -4481,9 +4619,11 @@ min-width: 100%;
         function sincronizarVisaoGestaoAproveitamento(visivel) {
             const painel = document.getElementById('painel-gestao-aproveitamento');
             const areaTabela = document.getElementById('esteira-area-tabela');
+            const painelTempo = document.getElementById('painel-tempo-tratamento');
             if (painel) painel.style.display = visivel ? 'block' : 'none';
             // '' deixa o CSS flex (modo lista) voltar a valer
             if (areaTabela) areaTabela.style.display = visivel ? 'none' : '';
+            if (painelTempo && visivel) painelTempo.style.display = 'none';
         }
 
         async function popularFiltroGestaoAproveitamento() {
@@ -4642,9 +4782,22 @@ min-width: 100%;
             const painel = document.getElementById('painel-churn-tratamento');
             const areaTabela = document.getElementById('esteira-area-tabela');
             const painelGestao = document.getElementById('painel-gestao-aproveitamento');
+            const painelTempo = document.getElementById('painel-tempo-tratamento');
             if (painel) painel.style.display = visivel ? 'block' : 'none';
             if (areaTabela) areaTabela.style.display = visivel ? 'none' : '';
             if (painelGestao && visivel) painelGestao.style.display = 'none';
+            if (painelTempo && visivel) painelTempo.style.display = 'none';
+        }
+
+        function sincronizarVisaoTempoTratamento(visivel) {
+            const painel = document.getElementById('painel-tempo-tratamento');
+            const areaTabela = document.getElementById('esteira-area-tabela');
+            const painelGestao = document.getElementById('painel-gestao-aproveitamento');
+            const painelChurn = document.getElementById('painel-churn-tratamento');
+            if (painel) painel.style.display = visivel ? 'block' : 'none';
+            if (areaTabela) areaTabela.style.display = visivel ? 'none' : '';
+            if (painelGestao && visivel) painelGestao.style.display = 'none';
+            if (painelChurn && visivel) painelChurn.style.display = 'none';
         }
 
         async function popularFiltroChurnTratamento() {
@@ -4823,6 +4976,7 @@ min-width: 100%;
             if (status === 'INSTALADAS') {
                 sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
+                sincronizarVisaoTempoTratamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
@@ -4844,6 +4998,7 @@ min-width: 100%;
             if (status === 'AGENDADO') {
                 sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
+                sincronizarVisaoTempoTratamento(false);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(true);
@@ -4861,6 +5016,7 @@ min-width: 100%;
             if (status === 'VENDAS_TOTAIS') {
                 sincronizarVisaoChurnTratamento(false);
                 sincronizarVisaoGestaoAproveitamento(false);
+                sincronizarVisaoTempoTratamento(false);
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
@@ -4882,6 +5038,7 @@ min-width: 100%;
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarVisaoChurnTratamento(false);
+                sincronizarVisaoTempoTratamento(false);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
                 atualizarFiltroTipoPendenciaEsteira(false);
@@ -4899,6 +5056,7 @@ min-width: 100%;
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
                 if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 sincronizarVisaoGestaoAproveitamento(false);
+                sincronizarVisaoTempoTratamento(false);
                 sincronizarToolbarEFiltrosColunas();
                 atualizarFiltroTurnoEsteira(false);
                 atualizarFiltroTipoPendenciaEsteira(false);
@@ -4913,9 +5071,27 @@ min-width: 100%;
                 carregarChurnTratamento();
                 return;
             }
+            if (status === 'TEMPO_TRATAMENTO') {
+                if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
+                if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
+                sincronizarVisaoGestaoAproveitamento(false);
+                sincronizarVisaoChurnTratamento(false);
+                sincronizarToolbarEFiltrosColunas();
+                atualizarFiltroTurnoEsteira(false);
+                atualizarFiltroTipoPendenciaEsteira(false);
+                document.getElementById('painel-busca-instaladas').style.display = 'none';
+                document.getElementById('painel-busca-agendados').style.display = 'none';
+                document.getElementById('painel-busca-vendas-totais').style.display = 'none';
+                limparAbasDeDataEsteira();
+                aplicarEstadoFiltrosAvancadosEsteira(false, false);
+                sincronizarVisaoTempoTratamento(true);
+                if (window.PainelTempoTratamento) PainelTempoTratamento.carregar();
+                return;
+            }
             // TODOS, PENDEN ou aba de data (YYYY-MM-DD)
             sincronizarVisaoChurnTratamento(false);
             sincronizarVisaoGestaoAproveitamento(false);
+            sincronizarVisaoTempoTratamento(false);
             sincronizarToolbarEFiltrosColunas();
             document.getElementById('painel-busca-instaladas').style.display = 'none';
             document.getElementById('painel-busca-agendados').style.display = 'none';
@@ -5166,6 +5342,7 @@ min-width: 100%;
                     document.getElementById('campos-datas-agendamento').style.display = 'block';
                 }
                 modalEditar.show();
+                TratamentoTempo.abrirSessao(id, 'ESTEIRA');
             } catch(e) { alert('Erro ao abrir edição.'); }
         }
 

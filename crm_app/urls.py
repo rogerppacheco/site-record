@@ -216,6 +216,13 @@ from .esteira_sync_status_pap_api import (
     SyncStatusEsteiraIniciarView,
     SyncStatusEsteiraStatusView,
 )
+from .tempo_tratamento_api import (
+    encerrar_sessao_view,
+    enviar_relatorio_tratamento_view,
+    iniciar_sessao_view,
+    ping_sessao_view,
+    relatorio_tratamento_view,
+)
 
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
@@ -497,6 +504,13 @@ urlpatterns = [
         DemandaInclusaoErroView.as_view(),
         name='auditoria-inclusao-erro',
     ),
+
+    # --- Tempo de tratamento (auditoria e esteira) ---
+    path('tratamento/iniciar/', iniciar_sessao_view, name='tratamento-iniciar'),
+    path('tratamento/ping/', ping_sessao_view, name='tratamento-ping'),
+    path('tratamento/encerrar/', encerrar_sessao_view, name='tratamento-encerrar'),
+    path('tratamento/relatorio/', relatorio_tratamento_view, name='tratamento-relatorio'),
+    path('tratamento/enviar-relatorio/', enviar_relatorio_tratamento_view, name='tratamento-enviar-relatorio'),
 
     # --- Esteira: config e pendência indevida ---
     path('esteira/config/', ConfigEsteiraVendasView.as_view(), name='esteira-vendas-config'),

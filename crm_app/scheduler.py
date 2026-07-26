@@ -140,6 +140,27 @@ def processar_relatorio_esteira_gc_agendado():
         logger.error("Traceback: %s", traceback.format_exc())
 
 
+def processar_relatorio_tratamento_agendado():
+    try:
+        from crm_app.services.relatorio_tratamento_service import processar_envio_relatorio
+        processar_envio_relatorio()
+    except Exception as e:
+        logger.error("❌ Erro no relatório de tempo de tratamento: %s", e)
+        import traceback
+        logger.error("Traceback: %s", traceback.format_exc())
+
+
+def encerrar_sessoes_tratamento_ociosas():
+    """Fecha sessões de tratamento sem heartbeat (abandono/queda de conexão)."""
+    try:
+        from crm_app.services.relatorio_tratamento_service import get_config
+        from crm_app.services.tempo_tratamento_service import encerrar_sessoes_ociosas
+        timeout = int(getattr(get_config(), 'timeout_ociosidade_minutos', 10) or 10)
+        encerrar_sessoes_ociosas(timeout)
+    except Exception as e:
+        logger.error("❌ Erro ao encerrar sessões de tratamento ociosas: %s", e)
+
+
 def _registrar_jobs(scheduler):
     scheduler.add_job(
         _wrap_scheduler_job(buscar_faturas_automatico),
@@ -170,6 +191,22 @@ def _registrar_jobs(scheduler):
         trigger=IntervalTrigger(minutes=5),
         id='processar_fila_boas_vindas',
         name='Processar fila de boas-vindas (a cada 5 min)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(processar_relatorio_tratamento_agendado),
+        trigger=IntervalTrigger(minutes=1),
+        id='processar_relatorio_tratamento',
+        name='Relatório tempo de tratamento ao WhatsApp (a cada minuto)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(encerrar_sessoes_tratamento_ociosas),
+        trigger=IntervalTrigger(minutes=3),
+        id='encerrar_sessoes_tratamento_ociosas',
+        name='Encerrar sessões de tratamento ociosas (a cada 3 min)',
         replace_existing=True,
         max_instances=1,
     )
