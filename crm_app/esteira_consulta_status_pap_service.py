@@ -384,7 +384,7 @@ def _processar_um_pedido(venda, *, sessao: _SessaoPapUsuarioHolder) -> dict:
             return
         item = alteracoes[0]
         wpp = False
-        if item.get('alterou'):
+        if item.get('alterou') and item.get('notificar_whatsapp', False):
             wpp = _enviar_whatsapp_vendedor(v)
         pos_pap['resultado'] = {
             **base,

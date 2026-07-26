@@ -2291,6 +2291,7 @@ min-width: 100%;
 
         let syncStatusPapPollTimer = null;
         let syncStatusPapUltimoProcessados = null;
+        let syncStatusPapEstavaRodando = false;
 
         function abaPermiteConsultaStatusPap() {
             const a = String(filtroAtual || '');
@@ -2372,6 +2373,8 @@ min-width: 100%;
             try {
                 await apiFetch('/crm/esteira/consulta-status-pap/cancelar/', { method: 'POST' });
                 alert('Consulta cancelada. Sessão PAP encerrada.');
+                syncStatusPapEstavaRodando = true;
+                if (typeof carregarVendas === 'function') carregarVendas(true);
                 pollSyncStatusPap();
             } catch (e) {
                 alert(e.message || 'Não foi possível cancelar.');
@@ -2383,6 +2386,7 @@ min-width: 100%;
             try {
                 const data = await apiFetch('/crm/esteira/consulta-status-pap/status/');
                 if (data.em_andamento) {
+                    syncStatusPapEstavaRodando = true;
                     atualizarBadgeSyncStatusPap(data);
                     const proc = data.processados || 0;
                     // Atualiza a grade a cada pedido processado (matrícula/hora e status ao vivo)
@@ -2391,14 +2395,15 @@ min-width: 100%;
                         if (typeof carregarVendas === 'function') carregarVendas(true);
                     }
                     clearTimeout(syncStatusPapPollTimer);
-                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 4000);
+                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 3000);
                     return;
                 }
-                const tinhaProgresso = syncStatusPapUltimoProcessados != null;
+                const acabouDeTerminar = syncStatusPapEstavaRodando;
+                syncStatusPapEstavaRodando = false;
                 syncStatusPapUltimoProcessados = null;
                 atualizarBadgeSyncStatusPap(null);
-                if (data.ultima && (data.ultima.status === 'concluido' || data.ultima.status === 'interrompido' || data.ultima.status === 'erro')) {
-                    if (data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
+                if (acabouDeTerminar) {
+                    if (data.ultima && data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
                         const badge = document.getElementById('sync-status-pap-badge');
                         if (badge) {
                             badge.style.display = 'inline-block';
@@ -2407,9 +2412,9 @@ min-width: 100%;
                             setTimeout(() => { badge.style.display = 'none'; }, 15000);
                         }
                     }
-                    if (tinhaProgresso || (data.ultima.atualizados > 0) || (data.ultima.erros > 0)) {
-                        carregarVendas(true);
-                    }
+                    // Ao concluir/cancelar: recarrega a lista para TT/data/hora e status
+                    if (typeof carregarVendas === 'function') carregarVendas(true);
+                    if (typeof carregarContadoresEsteira === 'function') carregarContadoresEsteira();
                 }
             } catch (e) {
                 console.warn('Consulta PAP status:', e);
@@ -2443,6 +2448,7 @@ min-width: 100%;
                 });
                 const total = data && data.total_pedidos != null ? data.total_pedidos : '?';
                 syncStatusPapUltimoProcessados = -1;
+                syncStatusPapEstavaRodando = true;
                 alert(`Consulta iniciada (${total} pedido(s)). Acompanhe o badge — a lista atualiza a cada pedido.`);
                 pollSyncStatusPap();
             } catch (e) {

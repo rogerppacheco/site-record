@@ -550,7 +550,9 @@ def _processar_um_pedido(
         venda_atual = Venda.objects.select_related(
             'cliente', 'vendedor', 'status_esteira', 'motivo_pendencia'
         ).get(pk=venda.id)
-        wpp = _enviar_whatsapp_vendedor(venda_atual)
+        wpp = False
+        if item.get('alterou') and item.get('notificar_whatsapp', True):
+            wpp = _enviar_whatsapp_vendedor(venda_atual)
         pos_pap['resultado'] = {
             **base,
             **item,

@@ -817,6 +817,21 @@ def _venda_sync_pap_alterou(antes, depois):
     )
 
 
+def _venda_sync_pap_alterou_para_whatsapp(antes, depois) -> bool:
+    """
+    Só notifica o vendedor quando muda o que importa na esteira comercial:
+    status, pendência, data/turno ou instalação.
+    Mudança só de status_agendamento (Atribuído/Em Execução…) não gera WhatsApp.
+    """
+    return (
+        antes["status_esteira_id"] != depois["status_esteira_id"]
+        or antes["motivo_pendencia_id"] != depois["motivo_pendencia_id"]
+        or antes["data_agendamento"] != depois["data_agendamento"]
+        or antes["periodo_agendamento"] != (depois["periodo_agendamento"] or "")
+        or antes["data_instalacao"] != depois["data_instalacao"]
+    )
+
+
 def _texto_status_agendamento_pap_e_conclusao(texto: str) -> bool:
     """Textos de conclusão/sucesso no detalhe ou lista PAP → Concluído com sucesso."""
     sa = _normalizar_texto_status_pap(texto)
@@ -1075,6 +1090,7 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
             item = {
                 "venda_id": venda.id,
                 "alterou": True,
+                "notificar_whatsapp": _venda_sync_pap_alterou_para_whatsapp(antes, depois),
                 "status_anterior": status_anterior,
                 "status_novo": depois["status_esteira_nome"],
                 "os": os_raw,
