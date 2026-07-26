@@ -818,11 +818,22 @@ def _venda_sync_pap_alterou(antes, depois):
 
 
 def _texto_status_agendamento_pap_e_conclusao(texto: str) -> bool:
-    """Textos de conclusão/sucesso no detalhe PAP não entram no catálogo StatusAgendamento."""
+    """Textos de conclusão/sucesso no detalhe ou lista PAP → Concluído com sucesso."""
     sa = _normalizar_texto_status_pap(texto)
     return bool(sa) and (
-        "conclui" in sa or "concluido" in sa or "sucesso" in sa or "instalad" in sa
+        "conclui" in sa or "concluido" in sa or "sucesso" in sa
     )
+
+
+def obter_status_agendamento_concluido():
+    """Garante o catálogo 'Concluído com sucesso' (criado na migration 0177)."""
+    from crm_app.models import StatusAgendamento
+
+    st, _ = StatusAgendamento.objects.get_or_create(
+        nome="Concluído com sucesso",
+        defaults={"ordem": 50, "cor": "#198754", "ativo": True},
+    )
+    return st
 
 
 def resolver_status_agendamento_por_texto_pap(texto_pap: str):
@@ -830,8 +841,8 @@ def resolver_status_agendamento_por_texto_pap(texto_pap: str):
     Mapeia o texto do detalhe PAP para StatusAgendamento do CRM.
 
     Retorna (status|None, texto_nao_mapeado|None).
-    - Match encontrado → (StatusAgendamento, None)
-    - Texto vazio / conclusão → (None, None) — sem alerta
+    - Match / conclusão → (StatusAgendamento, None)
+    - Texto vazio → (None, None)
     - Texto sem match no catálogo → (None, texto_original) — dispara alerta
     """
     from crm_app.models import StatusAgendamento
@@ -840,7 +851,7 @@ def resolver_status_agendamento_por_texto_pap(texto_pap: str):
     if not raw:
         return None, None
     if _texto_status_agendamento_pap_e_conclusao(raw):
-        return None, None
+        return obter_status_agendamento_concluido(), None
 
     alvo = _normalizar_texto_status_pap(raw)
     for st in StatusAgendamento.objects.filter(ativo=True).only("id", "nome"):
@@ -905,13 +916,25 @@ def aplicar_status_agendamento_pap_na_venda(venda, texto_pap: str) -> dict:
     return out
 
 
-def registrar_auditoria_consulta_status_pap(venda, *, matricula: str) -> None:
-    """Grava matrícula e horário da consulta na venda (coluna Status Atual)."""
+def registrar_auditoria_consulta_status_pap(
+    venda,
+    *,
+    matricula: str,
+    erro: str = "",
+) -> None:
+    """Grava matrícula, horário e eventual erro da consulta (coluna Status Atual)."""
     from django.utils import timezone
 
     venda.pap_status_consultado_em = timezone.now()
     venda.pap_status_consultado_matricula = (matricula or "").strip()[:50]
-    venda.save(update_fields=["pap_status_consultado_em", "pap_status_consultado_matricula"])
+    venda.pap_status_consulta_erro = (erro or "").strip()[:255]
+    venda.save(
+        update_fields=[
+            "pap_status_consultado_em",
+            "pap_status_consultado_matricula",
+            "pap_status_consulta_erro",
+        ]
+    )
 
 
 
@@ -1066,6 +1089,11 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                 dt = extrair_data_instalacao_texto_pap(d.get("agendamento"), d.get("status_agendamento"))
                 venda.status_esteira = status_inst
                 venda.motivo_pendencia = None
+                # Instalada no PAP ⇒ status do agendamento = Concluído com sucesso
+                st_concluido = obter_status_agendamento_concluido()
+                if venda.status_agendamento_id != st_concluido.id:
+                    venda.status_agendamento = st_concluido
+                sa_nao_mapeado = None
                 if dt:
                     venda.data_instalacao = dt
                 venda.save()

@@ -296,6 +296,13 @@ class Venda(models.Model):
         verbose_name="Consulta PAP (matrícula)",
         help_text="Matrícula PAP usada na última consulta de status na Esteira.",
     )
+    pap_status_consulta_erro = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        verbose_name="Consulta PAP (erro)",
+        help_text="Último erro da consulta STATUS PAP na Esteira (vazio = sucesso).",
+    )
 
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
     data_pagamento_comissao = models.DateField(null=True, blank=True, verbose_name="Data Pagamento Comissão")

@@ -355,16 +355,20 @@ def _processar_um_pedido(venda, *, sessao: _SessaoPapUsuarioHolder) -> dict:
     if len(cpf) not in (11, 14):
         return {**base, 'ignorado_sem_cpf': True}
 
+    def _auditar(erro: str = ''):
+        v = Venda.objects.get(pk=venda.id)
+        registrar_auditoria_consulta_status_pap(
+            v, matricula=sessao.matricula, erro=erro
+        )
+
     sucesso, msg, detalhes = sessao.consultar(venda)
     if not sucesso:
-        return {**base, 'erro': msg or 'falha_pap'}
+        err = (msg or 'falha_pap')[:255]
+        _run_django_sync(lambda: _auditar(err))
+        return {**base, 'erro': err}
 
     if msg == 'no_results' or not detalhes:
-        def _so_auditoria_vazia():
-            v = Venda.objects.get(pk=venda.id)
-            registrar_auditoria_consulta_status_pap(v, matricula=sessao.matricula)
-
-        _run_django_sync(_so_auditoria_vazia)
+        _run_django_sync(lambda: _auditar(''))
         return {**base, 'sem_alteracao': True, 'detalhe': 'sem_resultado_pap'}
 
     pos_pap: dict = {}
@@ -374,7 +378,7 @@ def _processar_um_pedido(venda, *, sessao: _SessaoPapUsuarioHolder) -> dict:
         v = Venda.objects.select_related(
             'cliente', 'vendedor', 'status_esteira', 'motivo_pendencia', 'status_agendamento'
         ).get(pk=venda.id)
-        registrar_auditoria_consulta_status_pap(v, matricula=sessao.matricula)
+        registrar_auditoria_consulta_status_pap(v, matricula=sessao.matricula, erro='')
         if not alteracoes:
             pos_pap['resultado'] = {**base, 'sem_alteracao': True}
             return
@@ -532,10 +536,22 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
             except Exception as e:
                 logger.exception('[CONSULTA ESTEIRA] Falha inesperada venda #%s', venda.id)
                 sessao.fechar()
+                err_txt = str(e)[:255]
+                try:
+                    from crm_app.models import Venda as VendaModel
+                    from crm_app.utils import registrar_auditoria_consulta_status_pap as _reg_aud
+
+                    def _aud_err():
+                        v = VendaModel.objects.get(pk=venda.id)
+                        _reg_aud(v, matricula=sessao.matricula, erro=err_txt)
+
+                    _run_django_sync(_aud_err)
+                except Exception:
+                    pass
                 resultado = {
                     'venda_id': venda.id,
                     'os': venda.ordem_servico,
-                    'erro': str(e)[:300],
+                    'erro': err_txt,
                 }
 
             if resultado.get('ignorado_sem_cpf'):

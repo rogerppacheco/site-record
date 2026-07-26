@@ -206,6 +206,10 @@
             text-overflow: ellipsis;
             max-width: 12rem;
         }
+        .esteira-status-consulta-meta.is-erro {
+            color: #dc3545;
+            white-space: normal;
+        }
         .esteira-acoes-grid.btn-icon-grid {
             grid-template-rows: none;
             grid-auto-rows: var(--btn-icon-size-sm);
@@ -2286,6 +2290,7 @@ min-width: 100%;
         });
 
         let syncStatusPapPollTimer = null;
+        let syncStatusPapUltimoProcessados = null;
 
         function abaPermiteConsultaStatusPap() {
             const a = String(filtroAtual || '');
@@ -2379,20 +2384,32 @@ min-width: 100%;
                 const data = await apiFetch('/crm/esteira/consulta-status-pap/status/');
                 if (data.em_andamento) {
                     atualizarBadgeSyncStatusPap(data);
+                    const proc = data.processados || 0;
+                    // Atualiza a grade a cada pedido processado (matrícula/hora e status ao vivo)
+                    if (syncStatusPapUltimoProcessados !== proc) {
+                        syncStatusPapUltimoProcessados = proc;
+                        if (typeof carregarVendas === 'function') carregarVendas(true);
+                    }
                     clearTimeout(syncStatusPapPollTimer);
-                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 5000);
+                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 4000);
                     return;
                 }
+                const tinhaProgresso = syncStatusPapUltimoProcessados != null;
+                syncStatusPapUltimoProcessados = null;
                 atualizarBadgeSyncStatusPap(null);
-                if (data.ultima && data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
-                    const badge = document.getElementById('sync-status-pap-badge');
-                    if (badge) {
-                        badge.style.display = 'inline-block';
-                        badge.className = 'badge bg-success ms-1';
-                        badge.textContent = `+${data.ultima.atualizados}`;
-                        setTimeout(() => { badge.style.display = 'none'; }, 15000);
+                if (data.ultima && (data.ultima.status === 'concluido' || data.ultima.status === 'interrompido' || data.ultima.status === 'erro')) {
+                    if (data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
+                        const badge = document.getElementById('sync-status-pap-badge');
+                        if (badge) {
+                            badge.style.display = 'inline-block';
+                            badge.className = 'badge bg-success ms-1';
+                            badge.textContent = `+${data.ultima.atualizados}`;
+                            setTimeout(() => { badge.style.display = 'none'; }, 15000);
+                        }
                     }
-                    carregarVendas(true);
+                    if (tinhaProgresso || (data.ultima.atualizados > 0) || (data.ultima.erros > 0)) {
+                        carregarVendas(true);
+                    }
                 }
             } catch (e) {
                 console.warn('Consulta PAP status:', e);
@@ -2425,7 +2442,8 @@ min-width: 100%;
                     body: JSON.stringify(filtros),
                 });
                 const total = data && data.total_pedidos != null ? data.total_pedidos : '?';
-                alert(`Consulta iniciada (${total} pedido(s)). Acompanhe o badge ao lado do botão.`);
+                syncStatusPapUltimoProcessados = -1;
+                alert(`Consulta iniciada (${total} pedido(s)). Acompanhe o badge — a lista atualiza a cada pedido.`);
                 pollSyncStatusPap();
             } catch (e) {
                 let msg = e.message || 'Não foi possível iniciar a consulta.';
@@ -4141,6 +4159,7 @@ min-width: 100%;
 
                     let metaConsultaPap = '';
                     const matConsulta = (v.pap_status_consultado_matricula || '').trim();
+                    const erroConsulta = (v.pap_status_consulta_erro || '').trim();
                     if (matConsulta && v.pap_status_consultado_em) {
                         let dtConsulta = '';
                         try {
@@ -4154,8 +4173,14 @@ min-width: 100%;
                             }
                         } catch (_) { /* ignore */ }
                         if (dtConsulta) {
-                            const titleCons = `Consultado no PAP por matrícula ${matConsulta} em ${dtConsulta}`;
-                            metaConsultaPap = `<span class="esteira-status-consulta-meta" title="${titleCons.replace(/"/g, '&quot;')}">${matConsulta} · ${dtConsulta}</span>`;
+                            const linhaMeta = erroConsulta
+                                ? `⚠ ${matConsulta} · ${dtConsulta}`
+                                : `${matConsulta} · ${dtConsulta}`;
+                            const titleCons = erroConsulta
+                                ? `Erro na consulta PAP (${matConsulta} em ${dtConsulta}): ${erroConsulta}`
+                                : `Consultado no PAP por matrícula ${matConsulta} em ${dtConsulta}`;
+                            const clsErro = erroConsulta ? ' is-erro' : '';
+                            metaConsultaPap = `<span class="esteira-status-consulta-meta${clsErro}" title="${String(titleCons).replace(/"/g, '&quot;')}">${linhaMeta}</span>`;
                         }
                     }
 
