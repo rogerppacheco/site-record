@@ -210,6 +210,11 @@
             color: #dc3545;
             white-space: normal;
         }
+        tr.esteira-row-venda.consulta-pap-atual {
+            outline: 2px solid #0d6efd;
+            outline-offset: -2px;
+            background: rgba(13, 110, 253, 0.08);
+        }
         .esteira-acoes-grid.btn-icon-grid {
             grid-template-rows: none;
             grid-auto-rows: var(--btn-icon-size-sm);
@@ -2307,14 +2312,12 @@ min-width: 100%;
                 tipo_pendencia: '',
                 motivo_pendencia: '',
             };
-            if (/^\d{4}-\d{2}-\d{2}$/.test(filtros.aba) && filtroTurnoAtual) {
-                filtros.periodo_agendamento = filtroTurnoAtual;
-            }
-            if (
-                (filtros.aba === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtros.aba))
-                && filtroStatusAgendamentoAtual
-            ) {
-                filtros.status_agendamento = String(filtroStatusAgendamentoAtual);
+            // Turno e status do agendamento: aba Agendados ou data específica
+            if (filtros.aba === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtros.aba)) {
+                if (filtroTurnoAtual) filtros.periodo_agendamento = filtroTurnoAtual;
+                if (filtroStatusAgendamentoAtual) {
+                    filtros.status_agendamento = String(filtroStatusAgendamentoAtual);
+                }
             }
             if (
                 (filtros.aba === 'PENDEN' || filtros.aba === 'TODOS')
@@ -2331,16 +2334,18 @@ min-width: 100%;
             return filtros;
         }
 
-        function rotuloAbaConsultaStatusPap() {
-            const a = String(filtroAtual || '');
-            if (a === 'TODOS') return 'Todos';
-            if (a === 'AGENDADO') return 'Agendados';
-            if (a === 'PENDEN') return 'Pendentes';
-            if (/^\d{4}-\d{2}-\d{2}$/.test(a)) {
-                const p = a.split('-');
-                return `Agendados ${p[2]}/${p[1]}/${p[0]}`;
+        function rotuloFiltrosConsultaStatusPap(filtros) {
+            const partes = [rotuloAbaConsultaStatusPap()];
+            if (filtros.periodo_agendamento === 'MANHA') partes.push('Manhã');
+            if (filtros.periodo_agendamento === 'TARDE') partes.push('Tarde');
+            if (filtros.status_agendamento) {
+                const sel = document.getElementById('filtro-status-agendamento');
+                const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+                partes.push(opt && opt.textContent ? opt.textContent.trim() : `status #${filtros.status_agendamento}`);
             }
-            return a;
+            if (filtros.tipo_pendencia) partes.push(filtros.tipo_pendencia);
+            if (filtros.busca) partes.push(`busca:${filtros.busca}`);
+            return partes.join(' · ');
         }
 
         function atualizarBadgeSyncStatusPap(info) {
@@ -2352,6 +2357,9 @@ min-width: 100%;
                 badge.style.display = 'none';
                 btn.disabled = !abaPermiteConsultaStatusPap();
                 if (btnCancel) btnCancel.style.display = 'none';
+                document.querySelectorAll('.esteira-row-venda.consulta-pap-atual').forEach(el => {
+                    el.classList.remove('consulta-pap-atual');
+                });
                 return;
             }
             badge.style.display = 'inline-block';
@@ -2359,12 +2367,79 @@ min-width: 100%;
             badge.className = stale ? 'badge bg-warning text-dark ms-1' : 'badge bg-primary ms-1';
             const proc = info.processados || 0;
             const total = info.total_pedidos || 0;
-            badge.textContent = `${proc}/${total || '?'}`;
+            const att = info.atualizados || 0;
+            const errs = info.erros || 0;
+            const prog = info.progresso || {};
+            const osAtual = (prog.atual_os || '').trim();
+            let txt = `${proc}/${total || '?'}`;
+            if (att) txt += ` +${att}`;
+            if (errs) txt += ` ⚠${errs}`;
+            if (osAtual) txt += ` · ${osAtual}`;
+            badge.textContent = txt;
+            const fase = prog.atual_fase === 'consultando' ? 'consultando' : (prog.atual_fase || 'em andamento');
             badge.title = stale
                 ? `Sem progresso há ${info.minutos_sem_progresso} min — pode estar travado. Use Cancelar.`
-                : `Consulta PAP em andamento (${proc} de ${total || '?'} pedidos)`;
+                : `Consulta PAP ${fase}${osAtual ? ` O.S. ${osAtual}` : ''} (${proc}/${total || '?'}, +${att} CRM, ${errs} erro(s))`;
             btn.disabled = true;
             if (btnCancel) btnCancel.style.display = 'inline-flex';
+
+            // Destaque da linha em tratamento
+            document.querySelectorAll('.esteira-row-venda.consulta-pap-atual').forEach(el => {
+                el.classList.remove('consulta-pap-atual');
+            });
+            if (prog.atual_venda_id) {
+                const row = document.querySelector(`.esteira-row-venda[data-venda-id="${prog.atual_venda_id}"]`);
+                if (row) {
+                    row.classList.add('consulta-pap-atual');
+                    try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* ignore */ }
+                }
+            }
+        }
+
+        function aplicarProgressoConsultaPapNaGrade(info) {
+            if (!info) return;
+            const prog = info.progresso || {};
+            const ultimos = Array.isArray(prog.ultimos) ? prog.ultimos : [];
+            const agora = new Date();
+            const dd = String(agora.getDate()).padStart(2, '0');
+            const mm = String(agora.getMonth() + 1).padStart(2, '0');
+            const hh = String(agora.getHours()).padStart(2, '0');
+            const mi = String(agora.getMinutes()).padStart(2, '0');
+            const dtFallback = `${dd}/${mm} ${hh}:${mi}`;
+
+            ultimos.forEach(item => {
+                if (!item || !item.venda_id) return;
+                const row = document.querySelector(`.esteira-row-venda[data-venda-id="${item.venda_id}"]`);
+                if (!row) return;
+                const cell = row.querySelector('[data-esteira-col="status"] .esteira-status-cell');
+                if (!cell) return;
+                let meta = cell.querySelector('.esteira-status-consulta-meta');
+                if (!meta) {
+                    meta = document.createElement('span');
+                    meta.className = 'esteira-status-consulta-meta';
+                    cell.appendChild(meta);
+                }
+                const mat = (prog.matricula || '').trim() || 'PAP';
+                const em = item.em || dtFallback;
+                const isErro = item.situacao === 'erro';
+                meta.classList.toggle('is-erro', isErro);
+                meta.textContent = isErro ? `⚠ ${mat} · ${em}` : `${mat} · ${em}`;
+                meta.title = isErro
+                    ? (`Erro O.S. ${item.os || ''}: ${item.erro || ''}`.trim())
+                    : (`Consultado O.S. ${item.os || ''} (${item.situacao || 'ok'}) por ${mat} às ${em}`);
+            });
+        }
+
+        function rotuloAbaConsultaStatusPap() {
+            const a = String(filtroAtual || '');
+            if (a === 'TODOS') return 'Todos';
+            if (a === 'AGENDADO') return 'Agendados';
+            if (a === 'PENDEN') return 'Pendentes';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(a)) {
+                const p = a.split('-');
+                return `Agendados ${p[2]}/${p[1]}/${p[0]}`;
+            }
+            return a;
         }
 
         async function cancelarConsultaStatusPap() {
@@ -2388,14 +2463,23 @@ min-width: 100%;
                 if (data.em_andamento) {
                     syncStatusPapEstavaRodando = true;
                     atualizarBadgeSyncStatusPap(data);
+                    aplicarProgressoConsultaPapNaGrade(data);
                     const proc = data.processados || 0;
-                    // Atualiza a grade a cada pedido processado (matrícula/hora e status ao vivo)
-                    if (syncStatusPapUltimoProcessados !== proc) {
-                        syncStatusPapUltimoProcessados = proc;
-                        if (typeof carregarVendas === 'function') carregarVendas(true);
+                    const atualId = (data.progresso && data.progresso.atual_venda_id) || null;
+                    // Recarrega quando avança pedido OU quando a O.S. atual muda (destaque na grade)
+                    const chave = `${proc}:${atualId || ''}`;
+                    if (syncStatusPapUltimoProcessados !== chave) {
+                        const mudouProc = String(syncStatusPapUltimoProcessados || '').split(':')[0] !== String(proc);
+                        syncStatusPapUltimoProcessados = chave;
+                        if (mudouProc && typeof carregarVendas === 'function') {
+                            carregarVendas(true).then(() => {
+                                atualizarBadgeSyncStatusPap(data);
+                                aplicarProgressoConsultaPapNaGrade(data);
+                            }).catch(() => {});
+                        }
                     }
                     clearTimeout(syncStatusPapPollTimer);
-                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 3000);
+                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 2500);
                     return;
                 }
                 const acabouDeTerminar = syncStatusPapEstavaRodando;
@@ -2403,16 +2487,18 @@ min-width: 100%;
                 syncStatusPapUltimoProcessados = null;
                 atualizarBadgeSyncStatusPap(null);
                 if (acabouDeTerminar) {
-                    if (data.ultima && data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
+                    const u = data.ultima || {};
+                    if (u.status === 'concluido') {
                         const badge = document.getElementById('sync-status-pap-badge');
                         if (badge) {
                             badge.style.display = 'inline-block';
                             badge.className = 'badge bg-success ms-1';
-                            badge.textContent = `+${data.ultima.atualizados}`;
-                            setTimeout(() => { badge.style.display = 'none'; }, 15000);
+                            badge.textContent = `✓ ${u.processados || 0}/${u.total_pedidos || 0}`
+                                + (u.atualizados ? ` +${u.atualizados}` : '')
+                                + (u.erros ? ` ⚠${u.erros}` : '');
+                            setTimeout(() => { badge.style.display = 'none'; }, 20000);
                         }
                     }
-                    // Ao concluir/cancelar: recarrega a lista para TT/data/hora e status
                     if (typeof carregarVendas === 'function') carregarVendas(true);
                     if (typeof carregarContadoresEsteira === 'function') carregarContadoresEsteira();
                 }
@@ -2429,27 +2515,38 @@ min-width: 100%;
                 alert('Consulta PAP disponível apenas em Todos, Agendados, Pendentes ou em uma data específica.');
                 return;
             }
-            const rotulo = rotuloAbaConsultaStatusPap();
+            const filtros = montarFiltrosConsultaStatusPap();
+            const rotulo = rotuloFiltrosConsultaStatusPap(filtros);
+            // ETA ~47s/pedido (medido no lote de 72)
+            const etaHint = 'Ritmo ~5–6 O.S./min (≈ 45–50s por pedido).';
             if (!confirm(
-                `Consultar status no PAP dos pedidos da aba "${rotulo}"?\n\n`
-                + '• Usa a matrícula PAP vinculada ao SEU usuário no CRM Record.\n'
-                + '• Deslogue do PAP em outros lugares (portal/app) antes de continuar — sessão duplicada pode bloquear o login.\n'
-                + '• Ritmo aproximado: 5 a 6 O.S. por minuto, com pausas aleatórias.\n'
-                + '• Cancelar encerra a consulta e desloga a sessão PAP.\n\n'
-                + 'Atualiza: status da esteira, pendência, data/turno, status do agendamento e data de instalação (quando concluído).'
+                `Consultar STATUS no PAP?\n\n`
+                + `Escopo: ${rotulo}\n`
+                + `(mesma ordem da tabela — começa pelo 1º da lista)\n\n`
+                + '• Usa a matrícula PAP do SEU usuário no CRM Record.\n'
+                + '• Deslogue do PAP em outros lugares antes de continuar.\n'
+                + `• ${etaHint}\n`
+                + '• Cancelar encerra e desloga a sessão PAP.\n\n'
+                + 'Atualiza: esteira, pendência, data/turno, status do agendamento e instalação (quando concluído).'
             )) return;
             const btn = document.getElementById('btn-sync-status-pap');
             if (btn) btn.disabled = true;
             try {
-                const filtros = montarFiltrosConsultaStatusPap();
                 const data = await apiFetch('/crm/esteira/consulta-status-pap/iniciar/', {
                     method: 'POST',
                     body: JSON.stringify(filtros),
                 });
                 const total = data && data.total_pedidos != null ? data.total_pedidos : '?';
+                const etaMin = (typeof total === 'number')
+                    ? Math.max(1, Math.ceil((total * 47) / 60))
+                    : '?';
                 syncStatusPapUltimoProcessados = -1;
                 syncStatusPapEstavaRodando = true;
-                alert(`Consulta iniciada (${total} pedido(s)). Acompanhe o badge — a lista atualiza a cada pedido.`);
+                alert(
+                    `Consulta iniciada: ${total} pedido(s) · escopo "${rotulo}".\n`
+                    + `Tempo estimado ≈ ${etaMin} min.\n`
+                    + 'A lista e o badge atualizam a cada O.S.'
+                );
                 pollSyncStatusPap();
             } catch (e) {
                 let msg = e.message || 'Não foi possível iniciar a consulta.';
@@ -3676,12 +3773,16 @@ min-width: 100%;
             params.set('page', String(esteiraPaginaAtual));
             params.set('_t', String(timestamp));
             if (busca) params.set('search', busca);
-            if (filtroAtual === 'PENDEN') params.set('status', 'PENDEN');
-            else if (filtroAtual === 'AGENDADO') params.set('status', 'AGENDADO');
-            else if (/^\d{4}-\d{2}-\d{2}$/.test(filtroAtual)) {
+            if (filtroAtual === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual)) {
+                if (filtroTurnoAtual) params.set('periodo_agendamento', filtroTurnoAtual);
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(filtroAtual)) {
                 params.set('status', 'AGENDADO');
                 params.set('data_agendamento_dia', filtroAtual);
-                if (filtroTurnoAtual) params.set('periodo_agendamento', filtroTurnoAtual);
+            } else if (filtroAtual === 'AGENDADO') {
+                params.set('status', 'AGENDADO');
+            } else if (filtroAtual === 'PENDEN') {
+                params.set('status', 'PENDEN');
             }
             if (
                 (filtroAtual === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual))

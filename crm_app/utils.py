@@ -1206,12 +1206,19 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
             if periodo:
                 venda.periodo_agendamento = periodo
             venda.save()
-            logger.info(
-                "[STATUS SYNC] OS %s: AGENDADO via PAP (Status: %s, %s).",
-                os_raw,
-                status_pap[:40],
-                agendamento_txt[:60],
-            )
+            depois_ag = _snapshot_venda_sync_pap(venda)
+            if _venda_sync_pap_alterou(antes, depois_ag):
+                logger.info(
+                    "[STATUS SYNC] OS %s: AGENDADO via PAP (Status: %s, %s).",
+                    os_raw,
+                    status_pap[:40],
+                    agendamento_txt[:60],
+                )
+            else:
+                logger.info(
+                    "[STATUS SYNC] OS %s: consultado PAP (AGENDADO, sem alteração CRM).",
+                    os_raw,
+                )
             _registrar_alteracao_se_houve()
         elif pap_detalhe_tem_agendamento_com_data(agendamento_txt) and not pap_status_indica_em_aprovisionamento(
             status_pap

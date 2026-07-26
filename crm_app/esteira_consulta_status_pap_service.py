@@ -86,7 +86,12 @@ def _aba_permitida(aba: str) -> bool:
 
 
 def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
-    """Monta queryset alinhado à aba/filtros da Esteira (AGENDADO/PENDENCIADA com O.S.)."""
+    """
+    Queryset alinhado à aba/filtros da Esteira (o que o usuário vê).
+
+    Ordem = mesma da tabela (`-data_criacao`): o 1º da tela é o 1º consultado.
+    Respeita data, turno, status do agendamento, tipo/motivo de pendência e busca.
+    """
     from crm_app.models import Venda
 
     aba = (filtros.get('aba') or 'TODOS').strip()
@@ -118,11 +123,16 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
         qs = qs.filter(status_esteira__nome__iexact='AGENDADO')
     elif re.match(r'^\d{4}-\d{2}-\d{2}$', aba):
         qs = qs.filter(status_esteira__nome__iexact='AGENDADO', data_agendamento=aba)
-        if turno in ('MANHA', 'TARDE'):
-            qs = qs.filter(periodo_agendamento=turno)
     elif aba_u != 'TODOS':
         qs = qs.none()
 
+    # Turno: aba Agendados ou data específica
+    if turno in ('MANHA', 'TARDE') and (
+        aba_u == 'AGENDADO' or re.match(r'^\d{4}-\d{2}-\d{2}$', aba)
+    ):
+        qs = qs.filter(periodo_agendamento=turno)
+
+    # Status do agendamento: Agendados ou data
     if status_ag and (aba_u == 'AGENDADO' or re.match(r'^\d{4}-\d{2}-\d{2}$', aba)):
         sa_u = status_ag.upper()
         if sa_u in ('SEM', 'NULL', 'NONE', '0'):
@@ -162,7 +172,8 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
             )
         qs = qs.filter(filters)
 
-    return qs.order_by('data_agendamento', 'data_criacao')
+    # Mesma ordem da listagem da Esteira (1º da tabela = 1º consultado)
+    return qs.order_by('-data_criacao', '-id')
 
 
 def _cpf_cnpj_venda(venda) -> str:
@@ -171,6 +182,98 @@ def _cpf_cnpj_venda(venda) -> str:
     if not venda.cliente or not venda.cliente.cpf_cnpj:
         return ''
     return limpar_texto(venda.cliente.cpf_cnpj)
+
+
+def _resumo_resultado_item(resultado: dict) -> dict:
+    """Item compacto para o front (últimos processados)."""
+    err = (resultado.get('erro') or '').strip()
+    if resultado.get('ignorado_sem_cpf'):
+        situacao = 'ignorado'
+    elif err:
+        situacao = 'erro'
+    elif resultado.get('alterou'):
+        situacao = 'atualizado'
+    else:
+        situacao = 'ok'
+    return {
+        'venda_id': resultado.get('venda_id'),
+        'os': (resultado.get('os') or '').strip(),
+        'situacao': situacao,
+        'erro': err[:120] if err else '',
+        'status_novo': (resultado.get('status_novo') or '')[:40],
+        'em': timezone.localtime().strftime('%H:%M'),
+    }
+
+
+def _montar_relatorio_json(
+    *,
+    filtros: dict,
+    detalhes: List[dict],
+    atual_venda_id: Optional[int] = None,
+    atual_os: str = '',
+    atual_fase: str = '',
+    matricula: str = '',
+) -> dict:
+    ultimos = [
+        _resumo_resultado_item(d)
+        for d in detalhes
+        if d and not d.get('aguardando_retry')
+    ][-8:]
+    return {
+        'filtros': filtros,
+        'detalhes': detalhes[-200:],
+        'atual_venda_id': atual_venda_id,
+        'atual_os': (atual_os or '').strip(),
+        'atual_fase': atual_fase or '',
+        'ultimos': ultimos,
+        'matricula': (matricula or '').strip()[:50],
+    }
+
+
+def _telefones_usuario(usuario) -> List[str]:
+    out = []
+    for attr in ('tel_whatsapp', 'tel_whatsapp_2', 'tel_whatsapp_3'):
+        raw = (getattr(usuario, attr, None) or '').strip()
+        dig = re.sub(r'\D', '', raw)
+        if len(dig) >= 10:
+            out.append(dig)
+    return list(dict.fromkeys(out))
+
+
+def _enviar_relatorio_operador(execucao, detalhes: List[dict]) -> None:
+    """Resumo da consulta da aba para o usuário que iniciou (se tiver WhatsApp)."""
+    from crm_app.whatsapp_service import WhatsAppService
+
+    usuario = execucao.iniciado_por
+    if not usuario:
+        return
+    tels = _telefones_usuario(usuario)
+    if not tels:
+        return
+    aba = ((execucao.relatorio_json or {}).get('filtros') or {}).get('aba') or '?'
+    linhas = [
+        f'📋 *Consulta STATUS Esteira* #{execucao.id}',
+        f'Aba/filtro: `{aba}`',
+        f'Processados: {execucao.processados}/{execucao.total_pedidos}',
+        f'Atualizados CRM: {execucao.atualizados}',
+        f'Sem alteração: {execucao.sem_alteracao}',
+        f'Erros: {execucao.erros}',
+    ]
+    errs = [d for d in detalhes if d.get('erro')]
+    if errs:
+        linhas.append('')
+        linhas.append('*Erros:*')
+        for item in errs[:8]:
+            linhas.append(
+                f"• OS {item.get('os', '?')}: {str(item.get('erro') or '')[:80]}"
+            )
+    texto = '\n'.join(linhas)
+    svc = WhatsAppService()
+    for tel in tels:
+        try:
+            svc.enviar_mensagem_texto(tel, texto, variar=False)
+        except Exception as e:
+            logger.debug('[CONSULTA ESTEIRA] Falha relatório operador %s: %s', tel, e)
 
 
 def _pausa_interruptivel(execucao_id: int) -> bool:
@@ -503,7 +606,7 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
         execucao,
         status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO,
         total_pedidos=len(vendas),
-        relatorio_json={'filtros': filtros, 'detalhes': []},
+        relatorio_json=_montar_relatorio_json(filtros=filtros, detalhes=[], matricula=sessao.matricula),
     )
     logger.info(
         '[CONSULTA ESTEIRA] Início #%s (aba=%s) — %s pedidos, matrícula=%s.',
@@ -531,6 +634,24 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
             primeira = False
 
             venda = fila.pop(0)
+            os_atual = (venda.ordem_servico or '').strip()
+            _atualizar_execucao(
+                execucao,
+                processados=processados,
+                atualizados=atualizados,
+                sem_alteracao=sem_alteracao,
+                erros=erros,
+                ignorados_sem_cpf=ignorados,
+                relatorio_json=_montar_relatorio_json(
+                    filtros=filtros,
+                    detalhes=detalhes,
+                    atual_venda_id=venda.id,
+                    atual_os=os_atual,
+                    atual_fase='consultando',
+                    matricula=sessao.matricula,
+                ),
+            )
+
             try:
                 resultado = _processar_um_pedido(venda, sessao=sessao)
             except Exception as e:
@@ -550,7 +671,7 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
                     pass
                 resultado = {
                     'venda_id': venda.id,
-                    'os': venda.ordem_servico,
+                    'os': os_atual,
                     'erro': err_txt,
                 }
 
@@ -570,7 +691,14 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
                         erros=erros,
                         ignorados_sem_cpf=ignorados,
                         mensagem_erro=(resultado.get('erro') or '')[:2000],
-                        relatorio_json={'filtros': filtros, 'detalhes': detalhes[-200:]},
+                        relatorio_json=_montar_relatorio_json(
+                            filtros=filtros,
+                            detalhes=detalhes,
+                            atual_venda_id=venda.id,
+                            atual_os=os_atual,
+                            atual_fase='erro_sessao',
+                            matricula=sessao.matricula,
+                        ),
                     )
                     logger.warning(
                         '[CONSULTA ESTEIRA] Parando lote por sessão/login inválido: %s',
@@ -592,7 +720,14 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
                 sem_alteracao=sem_alteracao,
                 erros=erros,
                 ignorados_sem_cpf=ignorados,
-                relatorio_json={'filtros': filtros, 'detalhes': detalhes[-200:]},
+                relatorio_json=_montar_relatorio_json(
+                    filtros=filtros,
+                    detalhes=detalhes,
+                    atual_venda_id=None,
+                    atual_os='',
+                    atual_fase='entre_pedidos' if fila else 'finalizando',
+                    matricula=sessao.matricula,
+                ),
             )
     finally:
         sessao.fechar()
@@ -614,7 +749,12 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
         sem_alteracao=sem_alteracao,
         erros=erros,
         ignorados_sem_cpf=ignorados,
-        relatorio_json={'filtros': filtros, 'detalhes': detalhes},
+        relatorio_json=_montar_relatorio_json(
+            filtros=filtros,
+            detalhes=detalhes,
+            atual_fase='concluido' if status_final == SyncStatusEsteiraExecucao.STATUS_CONCLUIDO else status_final,
+            matricula=sessao.matricula,
+        ),
     )
     logger.info(
         '[CONSULTA ESTEIRA] Fim #%s (%s). proc=%s att=%s err=%s',
@@ -624,6 +764,14 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
         atualizados,
         erros,
     )
+    try:
+        execucao.refresh_from_db()
+    except Exception:
+        pass
+    try:
+        _run_django_sync(lambda: _enviar_relatorio_operador(execucao, detalhes), timeout_seconds=120)
+    except Exception as e:
+        logger.debug('[CONSULTA ESTEIRA] Relatório operador falhou: %s', e)
 
 
 def cancelar_consulta_aba(execucao_id: int, *, usuario=None) -> Tuple[bool, str]:

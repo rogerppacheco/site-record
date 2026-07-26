@@ -105,7 +105,7 @@ class ConsultaStatusEsteiraStatusView(APIView):
 
         em_andamento = execucao_em_andamento()
         if em_andamento:
-            return Response(_serializar_execucao(em_andamento, em_andamento=True))
+            return Response(_serializar_consulta_execucao(em_andamento, em_andamento=True))
 
         ultima = (
             SyncStatusEsteiraExecucao.objects.filter(
@@ -119,6 +119,22 @@ class ConsultaStatusEsteiraStatusView(APIView):
         return Response(
             {
                 'em_andamento': False,
-                'ultima': _serializar_execucao(ultima, em_andamento=False),
+                'ultima': _serializar_consulta_execucao(ultima, em_andamento=False),
             }
         )
+
+
+def _serializar_consulta_execucao(execucao, *, em_andamento: bool) -> dict:
+    from crm_app.esteira_sync_status_pap_api import _serializar_execucao
+
+    data = _serializar_execucao(execucao, em_andamento=em_andamento)
+    rj = execucao.relatorio_json or {}
+    data['progresso'] = {
+        'atual_venda_id': rj.get('atual_venda_id'),
+        'atual_os': rj.get('atual_os') or '',
+        'atual_fase': rj.get('atual_fase') or '',
+        'ultimos': rj.get('ultimos') or [],
+        'filtros': rj.get('filtros') or {},
+        'matricula': rj.get('matricula') or '',
+    }
+    return data
