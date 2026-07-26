@@ -216,6 +216,11 @@ from .esteira_sync_status_pap_api import (
     SyncStatusEsteiraIniciarView,
     SyncStatusEsteiraStatusView,
 )
+from .esteira_consulta_status_pap_api import (
+    ConsultaStatusEsteiraCancelarView,
+    ConsultaStatusEsteiraIniciarView,
+    ConsultaStatusEsteiraStatusView,
+)
 from .tempo_tratamento_api import (
     encerrar_sessao_view,
     enviar_relatorio_tratamento_view,
@@ -389,6 +394,9 @@ urlpatterns = [
     path('esteira/sync-status-pap/iniciar/', SyncStatusEsteiraIniciarView.as_view(), name='esteira-sync-status-pap-iniciar'),
     path('esteira/sync-status-pap/cancelar/', SyncStatusEsteiraCancelarView.as_view(), name='esteira-sync-status-pap-cancelar'),
     path('esteira/sync-status-pap/status/', SyncStatusEsteiraStatusView.as_view(), name='esteira-sync-status-pap-status'),
+    path('esteira/consulta-status-pap/iniciar/', ConsultaStatusEsteiraIniciarView.as_view(), name='esteira-consulta-status-pap-iniciar'),
+    path('esteira/consulta-status-pap/cancelar/', ConsultaStatusEsteiraCancelarView.as_view(), name='esteira-consulta-status-pap-cancelar'),
+    path('esteira/consulta-status-pap/status/', ConsultaStatusEsteiraStatusView.as_view(), name='esteira-consulta-status-pap-status'),
     path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
     path('esteira/churn-tratamento/', EsteiraChurnTratamentoView.as_view(), name='esteira-churn-tratamento'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),

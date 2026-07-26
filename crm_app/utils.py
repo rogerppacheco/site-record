@@ -799,6 +799,7 @@ def _snapshot_venda_sync_pap(venda):
         "status_esteira_id": venda.status_esteira_id,
         "status_esteira_nome": (venda.status_esteira.nome if venda.status_esteira else "") or "",
         "motivo_pendencia_id": venda.motivo_pendencia_id,
+        "status_agendamento_id": venda.status_agendamento_id,
         "data_agendamento": venda.data_agendamento,
         "periodo_agendamento": venda.periodo_agendamento or "",
         "data_instalacao": venda.data_instalacao,
@@ -809,10 +810,109 @@ def _venda_sync_pap_alterou(antes, depois):
     return (
         antes["status_esteira_id"] != depois["status_esteira_id"]
         or antes["motivo_pendencia_id"] != depois["motivo_pendencia_id"]
+        or antes.get("status_agendamento_id") != depois.get("status_agendamento_id")
         or antes["data_agendamento"] != depois["data_agendamento"]
         or antes["periodo_agendamento"] != (depois["periodo_agendamento"] or "")
         or antes["data_instalacao"] != depois["data_instalacao"]
     )
+
+
+def _texto_status_agendamento_pap_e_conclusao(texto: str) -> bool:
+    """Textos de conclusão/sucesso no detalhe PAP não entram no catálogo StatusAgendamento."""
+    sa = _normalizar_texto_status_pap(texto)
+    return bool(sa) and (
+        "conclui" in sa or "concluido" in sa or "sucesso" in sa or "instalad" in sa
+    )
+
+
+def resolver_status_agendamento_por_texto_pap(texto_pap: str):
+    """
+    Mapeia o texto do detalhe PAP para StatusAgendamento do CRM.
+
+    Retorna (status|None, texto_nao_mapeado|None).
+    - Match encontrado → (StatusAgendamento, None)
+    - Texto vazio / conclusão → (None, None) — sem alerta
+    - Texto sem match no catálogo → (None, texto_original) — dispara alerta
+    """
+    from crm_app.models import StatusAgendamento
+
+    raw = (texto_pap or "").strip()
+    if not raw:
+        return None, None
+    if _texto_status_agendamento_pap_e_conclusao(raw):
+        return None, None
+
+    alvo = _normalizar_texto_status_pap(raw)
+    for st in StatusAgendamento.objects.filter(ativo=True).only("id", "nome"):
+        if _normalizar_texto_status_pap(st.nome) == alvo:
+            return st, None
+    # Match parcial (PAP às vezes acrescenta sufixo)
+    for st in StatusAgendamento.objects.filter(ativo=True).only("id", "nome"):
+        nome_n = _normalizar_texto_status_pap(st.nome)
+        if nome_n and (nome_n in alvo or alvo in nome_n):
+            return st, None
+    return None, raw
+
+
+def alertar_status_agendamento_pap_nao_mapeado(
+    *,
+    texto_pap: str,
+    venda_id: int | None = None,
+    os_num: str = "",
+) -> bool:
+    """Avisa o número operacional para cadastrar status do agendamento faltante no CRM."""
+    import re
+
+    from django.conf import settings
+
+    from crm_app.whatsapp_service import WhatsAppService
+
+    tel = re.sub(
+        r"\D",
+        "",
+        str(getattr(settings, "CONSULTA_ESTEIRA_TELEFONE_ALERTA_STATUS", "21979630377") or ""),
+    )
+    if len(tel) < 10:
+        return False
+    os_txt = (os_num or "").strip() or "?"
+    venda_txt = f"#{venda_id}" if venda_id else "?"
+    msg = (
+        "⚠️ *Status de agendamento não mapeado no CRM Record*\n\n"
+        f"*Texto no PAP:* {texto_pap}\n"
+        f"*Venda:* {venda_txt}\n"
+        f"*O.S.:* {os_txt}\n\n"
+        "Inclua este status em Governança → Status do Agendamento "
+        "para que a consulta PAP atualize o CRM."
+    )
+    try:
+        ok, _ = WhatsAppService().enviar_mensagem_texto(tel, msg, variar=False)
+        return bool(ok)
+    except Exception:
+        return False
+
+
+def aplicar_status_agendamento_pap_na_venda(venda, texto_pap: str) -> dict:
+    """
+    Atualiza status_agendamento da venda a partir do texto PAP.
+    Não salva a venda — o caller faz save.
+    Retorna dict: alterou, nao_mapeado, texto.
+    """
+    st, nao_mapeado = resolver_status_agendamento_por_texto_pap(texto_pap)
+    out = {"alterou": False, "nao_mapeado": nao_mapeado, "texto": (texto_pap or "").strip()}
+    if st and venda.status_agendamento_id != st.id:
+        venda.status_agendamento = st
+        out["alterou"] = True
+    return out
+
+
+def registrar_auditoria_consulta_status_pap(venda, *, matricula: str) -> None:
+    """Grava matrícula e horário da consulta na venda (coluna Status Atual)."""
+    from django.utils import timezone
+
+    venda.pap_status_consultado_em = timezone.now()
+    venda.pap_status_consultado_matricula = (matricula or "").strip()[:50]
+    venda.save(update_fields=["pap_status_consultado_em", "pap_status_consultado_matricula"])
+
 
 
 def montar_mensagem_whatsapp_esteira_vendedor(venda, *, prefixo_atualizacao=False):
@@ -886,9 +986,12 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
       (limpa data_agendamento e periodo_agendamento)
     - Status lista = Em Aprovisionamento + Agendamento com data/turno no detalhe → AGENDADO
       (inclusive se CRM estava PENDENCIADA; limpa motivo_pendencia)
+    - Status do agendamento (detalhe PAP) → FK StatusAgendamento quando mapeado;
+      se não mapeado, mantém o atual e dispara alerta WhatsApp operacional
     Se o código de pendência não existir no CRM, não altera motivo/esteira.
 
-    Retorna lista de dicts: venda_id, alterou, status_anterior, status_novo, os.
+    Retorna lista de dicts: venda_id, alterou, status_anterior, status_novo, os,
+    status_agendamento_nao_mapeado (opcional).
     """
     import logging
     import re
@@ -936,6 +1039,26 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
 
         antes = _snapshot_venda_sync_pap(venda)
         status_anterior = antes["status_esteira_nome"]
+        sa_info = aplicar_status_agendamento_pap_na_venda(venda, d.get("status_agendamento"))
+        sa_nao_mapeado = sa_info.get("nao_mapeado")
+        salvou = False
+
+        def _registrar_alteracao_se_houve():
+            nonlocal salvou
+            salvou = True
+            depois = _snapshot_venda_sync_pap(venda)
+            if not _venda_sync_pap_alterou(antes, depois):
+                return
+            item = {
+                "venda_id": venda.id,
+                "alterou": True,
+                "status_anterior": status_anterior,
+                "status_novo": depois["status_esteira_nome"],
+                "os": os_raw,
+            }
+            if sa_nao_mapeado:
+                item["status_agendamento_nao_mapeado"] = sa_nao_mapeado
+            alteracoes.append(item)
 
         if status_inst and pap_status_indica_concluido(d.get("status"), d.get("status_agendamento")):
             st_u = esteira_nome.upper()
@@ -951,23 +1074,20 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                     os_raw,
                     esteira_nome,
                 )
-                depois = _snapshot_venda_sync_pap(venda)
-                if _venda_sync_pap_alterou(antes, depois):
-                    alteracoes.append(
-                        {
-                            "venda_id": venda.id,
-                            "alterou": True,
-                            "status_anterior": status_anterior,
-                            "status_novo": depois["status_esteira_nome"],
-                            "os": os_raw,
-                        }
-                    )
+                _registrar_alteracao_se_houve()
             else:
                 logger.info(
                     "[STATUS SYNC] OS %s: PAP concluído, mas esteira '%s' não é AGENDADO/PENDENCIADA — não altera.",
                     os_raw,
                     esteira_nome,
                 )
+            if sa_nao_mapeado:
+                alertar_status_agendamento_pap_nao_mapeado(
+                    texto_pap=sa_nao_mapeado, venda_id=venda.id, os_num=os_raw
+                )
+            elif not salvou and sa_info.get("alterou"):
+                venda.save()
+                _registrar_alteracao_se_houve()
             continue
 
         pendencia_txt = (d.get("pendencia") or "").strip()
@@ -988,16 +1108,10 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                 motivo.nome,
                 status_pap[:60],
             )
-            depois = _snapshot_venda_sync_pap(venda)
-            if _venda_sync_pap_alterou(antes, depois):
-                alteracoes.append(
-                    {
-                        "venda_id": venda.id,
-                        "alterou": True,
-                        "status_anterior": status_anterior,
-                        "status_novo": depois["status_esteira_nome"],
-                        "os": os_raw,
-                    }
+            _registrar_alteracao_se_houve()
+            if sa_nao_mapeado:
+                alertar_status_agendamento_pap_nao_mapeado(
+                    texto_pap=sa_nao_mapeado, venda_id=venda.id, os_num=os_raw
                 )
             continue
 
@@ -1018,6 +1132,13 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                 pendencia_txt[:80],
                 codigo or "?",
             )
+            if sa_info.get("alterou"):
+                venda.save()
+                _registrar_alteracao_se_houve()
+            if sa_nao_mapeado:
+                alertar_status_agendamento_pap_nao_mapeado(
+                    texto_pap=sa_nao_mapeado, venda_id=venda.id, os_num=os_raw
+                )
             continue
 
         if not pendencia_txt:
@@ -1047,17 +1168,7 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                 status_pap[:40],
                 agendamento_txt[:60],
             )
-            depois = _snapshot_venda_sync_pap(venda)
-            if _venda_sync_pap_alterou(antes, depois):
-                alteracoes.append(
-                    {
-                        "venda_id": venda.id,
-                        "alterou": True,
-                        "status_anterior": status_anterior,
-                        "status_novo": depois["status_esteira_nome"],
-                        "os": os_raw,
-                    }
-                )
+            _registrar_alteracao_se_houve()
         elif pap_detalhe_tem_agendamento_com_data(agendamento_txt) and not pap_status_indica_em_aprovisionamento(
             status_pap
         ):
@@ -1068,6 +1179,25 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                 agendamento_txt[:50],
                 status_pap[:60],
             )
+
+        if not salvou and sa_info.get("alterou"):
+            venda.save()
+            _registrar_alteracao_se_houve()
+        if sa_nao_mapeado:
+            alertar_status_agendamento_pap_nao_mapeado(
+                texto_pap=sa_nao_mapeado, venda_id=venda.id, os_num=os_raw
+            )
+            if not any(a.get("venda_id") == venda.id for a in alteracoes):
+                alteracoes.append(
+                    {
+                        "venda_id": venda.id,
+                        "alterou": False,
+                        "status_anterior": status_anterior,
+                        "status_novo": status_anterior,
+                        "os": os_raw,
+                        "status_agendamento_nao_mapeado": sa_nao_mapeado,
+                    }
+                )
 
     return alteracoes
 

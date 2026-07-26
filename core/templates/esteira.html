@@ -179,6 +179,13 @@
         }
         .esteira-status-cell {
             display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.15rem;
+            min-width: 0;
+        }
+        .esteira-status-cell-main {
+            display: flex;
             flex-direction: row;
             flex-wrap: nowrap;
             align-items: center;
@@ -189,6 +196,15 @@
             flex: 1 1 auto;
             min-width: 0;
             max-width: 11rem;
+        }
+        .esteira-status-consulta-meta {
+            font-size: 0.65rem;
+            line-height: 1.2;
+            color: var(--text-secondary, #6c757d);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 12rem;
         }
         .esteira-acoes-grid.btn-icon-grid {
             grid-template-rows: none;
@@ -831,10 +847,10 @@ min-width: 100%;
                         <span class="input-group-text bg-white py-0 px-2"><i class="bi bi-search"></i></span>
                         <input type="text" id="filtro-busca" class="form-control form-control-sm py-0" placeholder="CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()" title="Buscar por CPF ou número da O.S.">
                     </div>
-                    <button type="button" id="btn-sync-status-pap" class="btn btn-sm btn-outline-primary" style="display: none;" onclick="iniciarSyncStatusPap()" title="Consultar PAP e atualizar pedidos AGENDADO/PENDENCIADA">
+                    <button type="button" id="btn-sync-status-pap" class="btn btn-sm btn-outline-primary" style="display: none;" onclick="iniciarConsultaStatusPap()" title="Consultar PAP na aba atual (sua matrícula)">
                         <i class="bi bi-cloud-arrow-down"></i>
                     </button>
-                    <button type="button" id="btn-cancel-sync-status-pap" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="cancelarSyncStatusPap()" title="Cancelar sincronização">
+                    <button type="button" id="btn-cancel-sync-status-pap" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="cancelarConsultaStatusPap()" title="Cancelar consulta e deslogar do PAP">
                         <i class="bi bi-x-circle"></i>
                     </button>
                     <span id="sync-status-pap-badge" class="badge bg-secondary" style="display: none; font-size: 0.65rem;"></span>
@@ -2271,6 +2287,56 @@ min-width: 100%;
 
         let syncStatusPapPollTimer = null;
 
+        function abaPermiteConsultaStatusPap() {
+            const a = String(filtroAtual || '');
+            return a === 'TODOS' || a === 'AGENDADO' || a === 'PENDEN' || /^\d{4}-\d{2}-\d{2}$/.test(a);
+        }
+
+        function montarFiltrosConsultaStatusPap() {
+            const filtros = {
+                aba: String(filtroAtual || 'TODOS'),
+                busca: (document.getElementById('filtro-busca')?.value || '').trim(),
+                periodo_agendamento: '',
+                status_agendamento: '',
+                tipo_pendencia: '',
+                motivo_pendencia: '',
+            };
+            if (/^\d{4}-\d{2}-\d{2}$/.test(filtros.aba) && filtroTurnoAtual) {
+                filtros.periodo_agendamento = filtroTurnoAtual;
+            }
+            if (
+                (filtros.aba === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtros.aba))
+                && filtroStatusAgendamentoAtual
+            ) {
+                filtros.status_agendamento = String(filtroStatusAgendamentoAtual);
+            }
+            if (
+                (filtros.aba === 'PENDEN' || filtros.aba === 'TODOS')
+                && (filtroTipoPendenciaAtual === 'CLIENTE' || filtroTipoPendenciaAtual === 'TECNICA')
+            ) {
+                filtros.tipo_pendencia = filtroTipoPendenciaAtual;
+            }
+            if (
+                (filtros.aba === 'PENDEN' || filtros.aba === 'TODOS')
+                && filtroMotivoPendenciaAtual
+            ) {
+                filtros.motivo_pendencia = String(filtroMotivoPendenciaAtual);
+            }
+            return filtros;
+        }
+
+        function rotuloAbaConsultaStatusPap() {
+            const a = String(filtroAtual || '');
+            if (a === 'TODOS') return 'Todos';
+            if (a === 'AGENDADO') return 'Agendados';
+            if (a === 'PENDEN') return 'Pendentes';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(a)) {
+                const p = a.split('-');
+                return `Agendados ${p[2]}/${p[1]}/${p[0]}`;
+            }
+            return a;
+        }
+
         function atualizarBadgeSyncStatusPap(info) {
             const badge = document.getElementById('sync-status-pap-badge');
             const btn = document.getElementById('btn-sync-status-pap');
@@ -2278,7 +2344,7 @@ min-width: 100%;
             if (!badge || !btn) return;
             if (!info || !info.em_andamento) {
                 badge.style.display = 'none';
-                btn.disabled = false;
+                btn.disabled = !abaPermiteConsultaStatusPap();
                 if (btnCancel) btnCancel.style.display = 'none';
                 return;
             }
@@ -2289,19 +2355,18 @@ min-width: 100%;
             const total = info.total_pedidos || 0;
             badge.textContent = `${proc}/${total || '?'}`;
             badge.title = stale
-                ? `Sem progresso há ${info.minutos_sem_progresso} min — pode estar travado (deploy?). Use Cancelar sync.`
-                : `Sincronização PAP em andamento (${proc} finalizados de ${total || '?'} pedidos)`;
+                ? `Sem progresso há ${info.minutos_sem_progresso} min — pode estar travado. Use Cancelar.`
+                : `Consulta PAP em andamento (${proc} de ${total || '?'} pedidos)`;
             btn.disabled = true;
             if (btnCancel) btnCancel.style.display = 'inline-flex';
         }
 
-        async function cancelarSyncStatusPap() {
+        async function cancelarConsultaStatusPap() {
             if (!podeConfigEsteiraBackoffice) return;
-            if (!confirm('Cancelar a sincronização PAP em andamento?')) return;
+            if (!confirm('Cancelar a consulta PAP e deslogar a sessão no portal?')) return;
             try {
-                // Sem body: fetch com body:{} vira "[object Object]" e o DRF retorna JSON parse error.
-                await apiFetch('/crm/esteira/sync-status-pap/cancelar/', { method: 'POST' });
-                alert('Sincronização cancelada.');
+                await apiFetch('/crm/esteira/consulta-status-pap/cancelar/', { method: 'POST' });
+                alert('Consulta cancelada. Sessão PAP encerrada.');
                 pollSyncStatusPap();
             } catch (e) {
                 alert(e.message || 'Não foi possível cancelar.');
@@ -2311,47 +2376,71 @@ min-width: 100%;
         async function pollSyncStatusPap() {
             if (!podeConfigEsteiraBackoffice) return;
             try {
-                const data = await apiFetch('/crm/esteira/sync-status-pap/status/');
+                const data = await apiFetch('/crm/esteira/consulta-status-pap/status/');
                 if (data.em_andamento) {
                     atualizarBadgeSyncStatusPap(data);
-                } else {
-                    atualizarBadgeSyncStatusPap(null);
-                    if (data.ultima && data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
-                        const badge = document.getElementById('sync-status-pap-badge');
-                        if (badge) {
-                            badge.style.display = 'inline-block';
-                            badge.className = 'badge bg-success ms-1';
-                            badge.textContent = `+${data.ultima.atualizados}`;
-                            setTimeout(() => { badge.style.display = 'none'; }, 15000);
-                        }
+                    clearTimeout(syncStatusPapPollTimer);
+                    syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 5000);
+                    return;
+                }
+                atualizarBadgeSyncStatusPap(null);
+                if (data.ultima && data.ultima.status === 'concluido' && data.ultima.atualizados > 0) {
+                    const badge = document.getElementById('sync-status-pap-badge');
+                    if (badge) {
+                        badge.style.display = 'inline-block';
+                        badge.className = 'badge bg-success ms-1';
+                        badge.textContent = `+${data.ultima.atualizados}`;
+                        setTimeout(() => { badge.style.display = 'none'; }, 15000);
                     }
+                    carregarVendas(true);
                 }
             } catch (e) {
-                console.warn('Sync PAP status:', e);
+                console.warn('Consulta PAP status:', e);
             }
             clearTimeout(syncStatusPapPollTimer);
             syncStatusPapPollTimer = setTimeout(pollSyncStatusPap, 30000);
         }
 
-        async function iniciarSyncStatusPap() {
+        async function iniciarConsultaStatusPap() {
             if (!podeConfigEsteiraBackoffice) return;
+            if (!abaPermiteConsultaStatusPap()) {
+                alert('Consulta PAP disponível apenas em Todos, Agendados, Pendentes ou em uma data específica.');
+                return;
+            }
+            const rotulo = rotuloAbaConsultaStatusPap();
             if (!confirm(
-                'Iniciar sincronização PAP dos pedidos AGENDADO/PENDENCIADA?\n\n'
-                + 'O processo consulta o PAP pedido a pedido, com pausas aleatórias para evitar bloqueio de login.\n'
-                + 'Vendedores recebem WhatsApp apenas quando houver alteração.\n\n'
-                + 'Se já houver um processo em andamento, não será possível iniciar outro.'
+                `Consultar status no PAP dos pedidos da aba "${rotulo}"?\n\n`
+                + '• Usa a matrícula PAP vinculada ao SEU usuário no CRM Record.\n'
+                + '• Deslogue do PAP em outros lugares (portal/app) antes de continuar — sessão duplicada pode bloquear o login.\n'
+                + '• Ritmo aproximado: 5 a 6 O.S. por minuto, com pausas aleatórias.\n'
+                + '• Cancelar encerra a consulta e desloga a sessão PAP.\n\n'
+                + 'Atualiza: status da esteira, pendência, data/turno, status do agendamento e data de instalação (quando concluído).'
             )) return;
             const btn = document.getElementById('btn-sync-status-pap');
             if (btn) btn.disabled = true;
             try {
-                await apiFetch('/crm/esteira/sync-status-pap/iniciar/', { method: 'POST' });
-                alert('Sincronização iniciada. Acompanhe o progresso no badge ao lado do botão.');
+                const filtros = montarFiltrosConsultaStatusPap();
+                const data = await apiFetch('/crm/esteira/consulta-status-pap/iniciar/', {
+                    method: 'POST',
+                    body: JSON.stringify(filtros),
+                });
+                const total = data && data.total_pedidos != null ? data.total_pedidos : '?';
+                alert(`Consulta iniciada (${total} pedido(s)). Acompanhe o badge ao lado do botão.`);
                 pollSyncStatusPap();
             } catch (e) {
-                alert(e.message || 'Não foi possível iniciar a sincronização.');
+                let msg = e.message || 'Não foi possível iniciar a consulta.';
+                try {
+                    const j = JSON.parse(msg);
+                    if (j && j.detail) msg = j.detail;
+                } catch (_) { /* texto puro */ }
+                alert(msg);
                 if (btn) btn.disabled = false;
             }
         }
+
+        // Compat: nomes antigos apontam para o fluxo novo
+        async function cancelarSyncStatusPap() { return cancelarConsultaStatusPap(); }
+        async function iniciarSyncStatusPap() { return iniciarConsultaStatusPap(); }
 
         async function abrirModalConfigEsteira() {
             if (!podeConfigEsteiraBackoffice || !modalConfigEsteira) return;
@@ -4050,6 +4139,26 @@ min-width: 100%;
                         ? `<button type="button" class="btn btn-icon btn-icon-sm btn-icon-primary" onclick="editarStatusExistente(${v.id}, '${nomeStatusJs}', '${statusIdJs}')" title="Editar dados" aria-label="Editar dados do status #${v.id}"><i class="bi bi-pencil-square" aria-hidden="true"></i></button>`
                         : '';
 
+                    let metaConsultaPap = '';
+                    const matConsulta = (v.pap_status_consultado_matricula || '').trim();
+                    if (matConsulta && v.pap_status_consultado_em) {
+                        let dtConsulta = '';
+                        try {
+                            const dCons = new Date(v.pap_status_consultado_em);
+                            if (!Number.isNaN(dCons.getTime())) {
+                                const dd = String(dCons.getDate()).padStart(2, '0');
+                                const mm = String(dCons.getMonth() + 1).padStart(2, '0');
+                                const hh = String(dCons.getHours()).padStart(2, '0');
+                                const mi = String(dCons.getMinutes()).padStart(2, '0');
+                                dtConsulta = `${dd}/${mm} ${hh}:${mi}`;
+                            }
+                        } catch (_) { /* ignore */ }
+                        if (dtConsulta) {
+                            const titleCons = `Consultado no PAP por matrícula ${matConsulta} em ${dtConsulta}`;
+                            metaConsultaPap = `<span class="esteira-status-consulta-meta" title="${titleCons.replace(/"/g, '&quot;')}">${matConsulta} · ${dtConsulta}</span>`;
+                        }
+                    }
+
                     let confCliente = '-';
                     if (v.cliente_confirmou_lembrete_instalacao === true) {
                         confCliente = '<span class="badge bg-success" title="' + (v.cliente_resposta_lembrete_instalacao || '').replace(/"/g, '&quot;').substring(0, 200) + '">Sim</span>';
@@ -4194,7 +4303,8 @@ min-width: 100%;
                                 <div class="fw-bold">${nomeCliente}</div>
                                 <div class="small text-muted text-break">${docCliente}</div>
                             </td>
-                            <td data-esteira-col="status" data-label="Status"><div class="esteira-status-cell">${selectStatus}${btnEditarStatus}</div></td>
+                            <td data-esteira-col="status" data-label="Status"><div class="esteira-status-cell"><div class="esteira-status-cell-main">${selectStatus}${btnEditarStatus}</div>${metaConsultaPap}</div></td>
+
                             <td data-esteira-col="vendedor" data-label="Vendedor">${nomeVendedor}</td>
                             <td data-esteira-col="adiant_cnpj" data-label="Adiant. CNPJ">${celulaAdiantCnpj}</td>
                             <td data-esteira-col="adiant_comissao" data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
@@ -4966,6 +5076,13 @@ min-width: 100%;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             document.querySelectorAll('#abas-esteira-datas .nav-link').forEach(l => l.classList.remove('active'));
             if (element) element.classList.add('active');
+            const btnConsultaPap = document.getElementById('btn-sync-status-pap');
+            if (btnConsultaPap && podeConfigEsteiraBackoffice) {
+                btnConsultaPap.disabled = !abaPermiteConsultaStatusPap();
+                btnConsultaPap.title = abaPermiteConsultaStatusPap()
+                    ? 'Consultar PAP na aba atual (sua matrícula)'
+                    : 'Consulta PAP só em Todos / Agendados / Pendentes / data';
+            }
 
             function restaurarAbasDeDataEsteira() {
                 if (esteiraContadores && esteiraContadores.datas) {

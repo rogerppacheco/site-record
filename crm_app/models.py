@@ -282,6 +282,20 @@ class Venda(models.Model):
         verbose_name="Status do agendamento",
         help_text="Substatus do agendamento (ex.: Atribuído, Em Execução). Exibido abaixo da O.S. na Esteira.",
     )
+    pap_status_consultado_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Consulta PAP (data/hora)",
+        help_text="Última consulta de status no PAP (Esteira). Exibido na coluna Status Atual.",
+    )
+    pap_status_consultado_matricula = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        verbose_name="Consulta PAP (matrícula)",
+        help_text="Matrícula PAP usada na última consulta de status na Esteira.",
+    )
 
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
     data_pagamento_comissao = models.DateField(null=True, blank=True, verbose_name="Data Pagamento Comissão")
@@ -2378,9 +2392,11 @@ class SyncStatusEsteiraExecucao(models.Model):
 
     MODO_AUTOMATICO = 'automatico'
     MODO_MANUAL = 'manual'
+    MODO_CONSULTA_ABA = 'consulta_aba'
     MODOS = (
         (MODO_AUTOMATICO, 'Automático'),
         (MODO_MANUAL, 'Manual'),
+        (MODO_CONSULTA_ABA, 'Consulta da aba'),
     )
 
     STATUS_PENDENTE = 'pendente'

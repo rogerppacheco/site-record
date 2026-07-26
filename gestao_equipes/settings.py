@@ -475,6 +475,13 @@ SYNC_ESTEIRA_INTERVALO_LONGO_MAX_SEG = config('SYNC_ESTEIRA_INTERVALO_LONGO_MAX_
 # Quantas consultas STATUS reutilizam o mesmo browser antes de reciclar (evita N logins V.tal).
 SYNC_ESTEIRA_MAX_CONSULTAS_POR_SESSAO = config('SYNC_ESTEIRA_MAX_CONSULTAS_POR_SESSAO', default=20, cast=int)
 
+# Consulta STATUS PAP da aba (login do usuário na Esteira) — ~5–6 O.S./min
+CONSULTA_ESTEIRA_INTERVALO_MIN_SEG = config('CONSULTA_ESTEIRA_INTERVALO_MIN_SEG', default=8, cast=int)
+CONSULTA_ESTEIRA_INTERVALO_MAX_SEG = config('CONSULTA_ESTEIRA_INTERVALO_MAX_SEG', default=15, cast=int)
+CONSULTA_ESTEIRA_TELEFONE_ALERTA_STATUS = config(
+    'CONSULTA_ESTEIRA_TELEFONE_ALERTA_STATUS', default='21979630377'
+)
+
 # Lembretes WhatsApp para supervisores concluírem presença (10h, 11h) e falta automática às 12h
 PRESENCA_LEMBRETES_ATIVOS = config(
     'PRESENCA_LEMBRETES_ATIVOS', default=True, cast=lambda v: str(v).lower() in ('true', '1', 'yes')
