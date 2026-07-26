@@ -671,7 +671,16 @@ def resolver_motivo_pendencia_por_texto_pap(pendencia_texto):
 
 
 def extrair_periodo_agendamento_texto_pap(agendamento_texto):
-    """Ex.: '02/06/2026 - Tarde' → 'TARDE' ou 'MANHA'."""
+    """Extrai MANHA/TARDE do texto de Agendamento do PAP.
+
+    Formatos comuns:
+    - ``02/06/2026 - Tarde`` / ``… - Manhã``
+    - ``31/07/2026 - 08:00 às 12:00`` (manhã)
+    - ``31/07/2026 - 13:00 às 18:00`` (tarde)
+    - ``08h às 12h``, ``10h-12h``, ``13h às 15h`` (2 ou 4 faixas)
+    """
+    import re
+
     if not agendamento_texto:
         return None
     t = (agendamento_texto or "").lower()
@@ -679,6 +688,19 @@ def extrair_periodo_agendamento_texto_pap(agendamento_texto):
         return "TARDE"
     if "manh" in t:
         return "MANHA"
+
+    # Faixa horária: início < 13h = manhã; 13h+ = tarde
+    m = re.search(
+        r"(\d{1,2})\s*(?::|h)\s*\d{0,2}\s*(?:às|as|-|–|—)\s*(\d{1,2})",
+        t,
+        re.IGNORECASE,
+    )
+    if m:
+        hora_inicio = int(m.group(1))
+        if 0 <= hora_inicio < 13:
+            return "MANHA"
+        if hora_inicio <= 23:
+            return "TARDE"
     return None
 
 
@@ -1198,21 +1220,30 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
             and pap_detalhe_tem_agendamento_com_data(agendamento_txt)
         ):
             dt_ag = extrair_data_instalacao_texto_pap(agendamento_txt)
-            periodo = extrair_periodo_agendamento_texto_pap(agendamento_txt)
+            periodo = extrair_periodo_agendamento_texto_pap(agendamento_txt) or (
+                extrair_periodo_agendamento_texto_pap(d.get("status_agendamento"))
+            )
             venda.status_esteira = status_agendado
             venda.motivo_pendencia = None
             if dt_ag:
                 venda.data_agendamento = dt_ag
             if periodo:
                 venda.periodo_agendamento = periodo
+            elif not venda.periodo_agendamento:
+                logger.warning(
+                    "[STATUS SYNC] OS %s: AGENDADO sem turno reconhecido no texto PAP (%s).",
+                    os_raw,
+                    agendamento_txt[:80],
+                )
             venda.save()
             depois_ag = _snapshot_venda_sync_pap(venda)
             if _venda_sync_pap_alterou(antes, depois_ag):
                 logger.info(
-                    "[STATUS SYNC] OS %s: AGENDADO via PAP (Status: %s, %s).",
+                    "[STATUS SYNC] OS %s: AGENDADO via PAP (Status: %s, %s → turno=%s).",
                     os_raw,
                     status_pap[:40],
                     agendamento_txt[:60],
+                    periodo or venda.periodo_agendamento or "?",
                 )
             else:
                 logger.info(
