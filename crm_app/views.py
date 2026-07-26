@@ -2349,6 +2349,82 @@ class VendaViewSet(viewsets.ModelViewSet):
         ]
         sem_motivo_pendentes = pendentes_qs.filter(motivo_pendencia__isnull=True).count()
 
+        # Status de agendamento presentes nos AGENDADO (filtro por aba/data)
+        agendados_qs = qs.filter(status_esteira__nome__icontains='AGENDADO')
+        status_ag_rows = (
+            agendados_qs.filter(status_agendamento__isnull=False)
+            .values(
+                'data_agendamento',
+                'status_agendamento_id',
+                'status_agendamento__nome',
+                'status_agendamento__ordem',
+                'status_agendamento__cor',
+            )
+            .annotate(count=Count('id'))
+            .order_by('status_agendamento__ordem', 'status_agendamento__nome')
+        )
+        status_agendamento_agendados_map: dict[int, dict] = {}
+        status_agendamento_por_data: dict[str, dict[int, dict]] = {}
+        for row in status_ag_rows:
+            sid = row['status_agendamento_id']
+            if not sid:
+                continue
+            item = {
+                'id': sid,
+                'nome': row['status_agendamento__nome'],
+                'ordem': row['status_agendamento__ordem'] or 0,
+                'cor': row['status_agendamento__cor'] or '#6c757d',
+                'count': row['count'],
+            }
+            prev = status_agendamento_agendados_map.get(sid)
+            if prev:
+                prev['count'] += row['count']
+            else:
+                status_agendamento_agendados_map[sid] = dict(item)
+
+            data_ag = row['data_agendamento']
+            if data_ag:
+                key = data_ag.isoformat()
+                bucket = status_agendamento_por_data.setdefault(key, {})
+                prev_d = bucket.get(sid)
+                if prev_d:
+                    prev_d['count'] += row['count']
+                else:
+                    bucket[sid] = dict(item)
+
+        def _ordenar_status_ag(items: list[dict]) -> list[dict]:
+            return sorted(
+                items,
+                key=lambda m: (
+                    m.get('ordem') or 0,
+                    str(m.get('nome') or '').lower(),
+                ),
+            )
+
+        status_agendamento_agendados = _ordenar_status_ag(
+            list(status_agendamento_agendados_map.values())
+        )
+        status_agendamento_por_data_out = {
+            dia: _ordenar_status_ag(list(mapa.values()))
+            for dia, mapa in status_agendamento_por_data.items()
+        }
+        sem_status_agendamento_agendados = agendados_qs.filter(
+            status_agendamento__isnull=True
+        ).count()
+        sem_status_rows = (
+            agendados_qs.filter(
+                status_agendamento__isnull=True,
+                data_agendamento__isnull=False,
+            )
+            .values('data_agendamento')
+            .annotate(count=Count('id'))
+        )
+        sem_status_agendamento_por_data = {
+            row['data_agendamento'].isoformat(): row['count']
+            for row in sem_status_rows
+            if row['data_agendamento']
+        }
+
         return Response({
             'todos': total_todos,
             'pendentes': total_pendentes,
@@ -2356,6 +2432,10 @@ class VendaViewSet(viewsets.ModelViewSet):
             'datas': datas,
             'motivos_pendentes': motivos_pendentes,
             'sem_motivo_pendentes': sem_motivo_pendentes,
+            'status_agendamento_agendados': status_agendamento_agendados,
+            'status_agendamento_por_data': status_agendamento_por_data_out,
+            'sem_status_agendamento_agendados': sem_status_agendamento_agendados,
+            'sem_status_agendamento_por_data': sem_status_agendamento_por_data,
         })
 
     @action(detail=False, methods=['get'])

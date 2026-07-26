@@ -952,7 +952,7 @@ min-width: 100%;
                         </div>
                         <div id="filtro-status-agendamento-wrap" class="esteira-filtro-inline">
                             <label class="text-muted fw-bold small" for="filtro-status-agendamento">Status agend.:</label>
-                            <select id="filtro-status-agendamento" class="form-select form-select-sm" onchange="filtrarStatusAgendamento(this.value)" title="Filtrar pelo status do agendamento" style="min-width: 9rem; max-width: 14rem;">
+                            <select id="filtro-status-agendamento" class="form-select form-select-sm" onchange="filtrarStatusAgendamento(this.value)" title="Somente status que existem na aba/tabela selecionada" style="min-width: 9rem; max-width: 14rem;">
                                 <option value="">Todos</option>
                             </select>
                         </div>
@@ -2160,6 +2160,11 @@ min-width: 100%;
         let _statusAgendamentoCache = [];
         let _motivosPendenciaNaEsteira = [];
         let _semMotivoPendentesNaEsteira = 0;
+        /** Status de agendamento presentes nos AGENDADO (não o cadastro inteiro). */
+        let _statusAgendamentoNaEsteira = [];
+        let _statusAgendamentoPorData = {};
+        let _semStatusAgendamentoAgendados = 0;
+        let _semStatusAgendamentoPorData = {};
         /** Página menor: com 200, abas como Todos (~182) ficavam em 1 página e a seta › parecia “quebrada”. */
         const ESTEIRA_PAGE_SIZE = 50;
         let esteiraPaginaAtual = 1;
@@ -2169,7 +2174,14 @@ min-width: 100%;
         let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
-        const FC_COLUMN_IDS = ['fc-id', 'fc-data-venda', 'fc-os', 'fc-tipo-pendencia', 'fc-motivo', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor', 'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-conf', 'fc-resp'];
+        const FC_COLUMN_IDS = [
+            'fc-id', 'fc-data-venda', 'fc-os', 'fc-tipo-pendencia', 'fc-motivo',
+            'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
+            'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado',
+            'fc-plano', 'fc-status', 'fc-conf',
+            'fc-posso-antecip', 'fc-posso-reagendar',
+            'fc-resp',
+        ];
         let tempVendaId = null;
         let tempStatusId = null;
         const ESTEIRA_FOCO_POS_KEY = 'esteira_foco_pos_atualizacao';
@@ -2961,6 +2973,12 @@ min-width: 100%;
             return String(valor || '').toLowerCase().includes(filtro);
         }
 
+        /** Selects de coluna (Sim/Não/Aguardando): igualdade exata, não substring. */
+        function correspondeFiltroSelectColuna(valor, filtro) {
+            if (!filtro) return true;
+            return String(valor || '').toLowerCase() === String(filtro).toLowerCase();
+        }
+
         function validarPeriodoInstaladas() {
             const ini = (document.getElementById('filtro-data-inicio-instaladas')?.value || '').trim();
             const fim = (document.getElementById('filtro-data-fim-instaladas')?.value || '').trim();
@@ -3741,6 +3759,7 @@ min-width: 100%;
                     body: JSON.stringify({ status_agendamento: statusAgendamento }),
                 });
                 if (modalStatusAgendamento) modalStatusAgendamento.hide();
+                carregarContadoresEsteira();
                 carregarVendas(true);
             } catch (e) {
                 alert('Erro ao salvar status do agendamento: ' + (e.message || e));
@@ -3758,6 +3777,7 @@ min-width: 100%;
                     datas: data.datas || {},
                 });
                 atualizarMotivosPendenciaNaEsteira(data);
+                atualizarStatusAgendamentoNaEsteira(data);
                 if (deveExibirAbasDeDataEsteira()) {
                     gerarAbasDeData([], data.datas || {});
                 }
@@ -4387,8 +4407,8 @@ min-width: 100%;
                             incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
                             incluiTexto(tipoPendenciaTexto, getFiltroColuna('fc-tipo-pendencia')) &&
                             incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
-                            incluiTexto(possoAntecipTexto, getFiltroColuna('fc-posso-antecip')) &&
-                            incluiTexto(possoReagendarTexto, getFiltroColuna('fc-posso-reagendar')) &&
+                            correspondeFiltroSelectColuna(possoAntecipTexto, getFiltroColuna('fc-posso-antecip')) &&
+                            correspondeFiltroSelectColuna(possoReagendarTexto, getFiltroColuna('fc-posso-reagendar')) &&
                             incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
                         if (carregarAgendados) {
                             if (filtroAgendadosAplicado.vendedor_id && String(v.vendedor || '') !== String(filtroAgendadosAplicado.vendedor_id)) return;
@@ -4549,34 +4569,68 @@ min-width: 100%;
             return String(idAtual || '') === String(raw);
         }
 
+        function atualizarStatusAgendamentoNaEsteira(data) {
+            const lista = Array.isArray(data && data.status_agendamento_agendados)
+                ? data.status_agendamento_agendados
+                : [];
+            _statusAgendamentoNaEsteira = lista
+                .filter(s => s && s.id != null)
+                .map(s => ({
+                    id: s.id,
+                    nome: s.nome || `(Cód: ${s.id})`,
+                    ordem: s.ordem ?? 0,
+                    cor: s.cor || '#6c757d',
+                    count: s.count || 0,
+                }));
+            _statusAgendamentoPorData = (data && data.status_agendamento_por_data) || {};
+            _semStatusAgendamentoAgendados = Number(data && data.sem_status_agendamento_agendados) || 0;
+            _semStatusAgendamentoPorData = (data && data.sem_status_agendamento_por_data) || {};
+            popularSelectFiltroStatusAgendamento();
+        }
+
+        function obterOpcoesStatusAgendamentoFiltroAba() {
+            // Aba de data: só status presentes naquele dia; aba AGENDADO: todos os que existem em AGENDADO.
+            if (/^\d{4}-\d{2}-\d{2}$/.test(filtroAtual)) {
+                const porDia = _statusAgendamentoPorData[filtroAtual];
+                return Array.isArray(porDia) ? porDia : [];
+            }
+            return _statusAgendamentoNaEsteira || [];
+        }
+
+        function obterQtdSemStatusAgendamentoFiltroAba() {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(filtroAtual)) {
+                return Number(_semStatusAgendamentoPorData[filtroAtual]) || 0;
+            }
+            return Number(_semStatusAgendamentoAgendados) || 0;
+        }
+
         function popularSelectFiltroStatusAgendamento() {
             const select = document.getElementById('filtro-status-agendamento');
             if (!select) return;
             const valorAtual = filtroStatusAgendamentoAtual || '';
-            const opts = ['<option value="">Todos</option>', '<option value="SEM">Sem status</option>'];
-            (_statusAgendamentoCache || []).forEach(s => {
-                opts.push(`<option value="${s.id}">${s.nome}</option>`);
-            });
-            select.innerHTML = opts.join('');
-            select.value = valorAtual;
-            if (valorAtual && select.value !== String(valorAtual)) {
-                select.value = '';
-                filtroStatusAgendamentoAtual = '';
-            }
-        }
-
-        async function garantirCacheStatusAgendamentoFiltro() {
-            if (_statusAgendamentoCache && _statusAgendamentoCache.length) return;
-            try {
-                const res = await apiFetch('/crm/status-agendamento/?ativo=1');
-                const lista = Array.isArray(res) ? res : (res && res.results ? res.results : []);
-                _statusAgendamentoCache = lista.slice().sort((a, b) =>
+            const opcoes = obterOpcoesStatusAgendamentoFiltroAba()
+                .slice()
+                .sort((a, b) =>
                     (a.ordem ?? 0) - (b.ordem ?? 0)
                     || String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' })
                 );
-            } catch (e) {
-                console.warn('Falha ao carregar status de agendamento para filtro', e);
-                _statusAgendamentoCache = _statusAgendamentoCache || [];
+            const semStatus = obterQtdSemStatusAgendamentoFiltroAba();
+            let html = '<option value="">Todos</option>';
+            if (semStatus > 0) {
+                html += `<option value="SEM">Sem status (${semStatus})</option>`;
+            }
+            opcoes.forEach(s => {
+                const qtd = s.count ? ` (${s.count})` : '';
+                html += `<option value="${s.id}">${s.nome}${qtd}</option>`;
+            });
+            select.innerHTML = html;
+            const aindaValido = [...select.options].some(o => o.value === String(valorAtual));
+            if (aindaValido) {
+                select.value = String(valorAtual);
+                filtroStatusAgendamentoAtual = String(valorAtual);
+            } else {
+                select.value = '';
+                filtroStatusAgendamentoAtual = '';
             }
         }
 
@@ -4612,7 +4666,11 @@ min-width: 100%;
             }
 
             if (exibirStatus) {
-                garantirCacheStatusAgendamentoFiltro().then(popularSelectFiltroStatusAgendamento);
+                if (esteiraContadores) {
+                    popularSelectFiltroStatusAgendamento();
+                } else {
+                    carregarContadoresEsteira();
+                }
             }
         }
 
