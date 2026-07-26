@@ -2315,6 +2315,36 @@ min-width: 100%;
             return a === 'TODOS' || a === 'AGENDADO' || a === 'PENDEN' || /^\d{4}-\d{2}-\d{2}$/.test(a);
         }
 
+        function montarFiltrosColunasEsteira() {
+            /** Espelha os filtros da linha de colunas (fc-*) para a consulta PAP. */
+            const mapa = {
+                'fc-id': 'id',
+                'fc-data-venda': 'data_venda',
+                'fc-os': 'os',
+                'fc-tipo-pendencia': 'tipo_pendencia_col',
+                'fc-motivo': 'motivo',
+                'fc-data-agendada': 'data_agendada',
+                'fc-turno': 'turno',
+                'fc-cliente': 'cliente',
+                'fc-vendedor': 'vendedor',
+                'fc-adiant-cnpj': 'adiant_cnpj',
+                'fc-adiant-comissao': 'adiant_comissao',
+                'fc-adiant-sabado': 'adiant_sabado',
+                'fc-plano': 'plano',
+                'fc-status': 'status',
+                'fc-conf': 'conf_cliente',
+                'fc-posso-antecip': 'posso_antecip',
+                'fc-posso-reagendar': 'posso_reagendar',
+                'fc-resp': 'resp',
+            };
+            const colunas = {};
+            Object.keys(mapa).forEach((elId) => {
+                const val = getFiltroColuna(elId);
+                if (val) colunas[mapa[elId]] = val;
+            });
+            return colunas;
+        }
+
         function montarFiltrosConsultaStatusPap() {
             const filtros = {
                 aba: String(filtroAtual || 'TODOS'),
@@ -2323,6 +2353,7 @@ min-width: 100%;
                 status_agendamento: '',
                 tipo_pendencia: '',
                 motivo_pendencia: '',
+                colunas: montarFiltrosColunasEsteira(),
             };
             // Turno e status do agendamento: aba Agendados ou data específica
             if (filtros.aba === 'AGENDADO' || /^\d{4}-\d{2}-\d{2}$/.test(filtros.aba)) {
@@ -2356,7 +2387,38 @@ min-width: 100%;
                 partes.push(opt && opt.textContent ? opt.textContent.trim() : `status #${filtros.status_agendamento}`);
             }
             if (filtros.tipo_pendencia) partes.push(filtros.tipo_pendencia);
+            if (filtros.motivo_pendencia) {
+                const selM = document.getElementById('filtro-motivo-pendencia');
+                const optM = selM && selM.selectedOptions && selM.selectedOptions[0];
+                partes.push(optM && optM.textContent ? optM.textContent.trim() : `motivo #${filtros.motivo_pendencia}`);
+            }
             if (filtros.busca) partes.push(`busca:${filtros.busca}`);
+            const col = filtros.colunas || {};
+            const rotulosCol = {
+                id: 'ID',
+                data_venda: 'Dt.venda',
+                os: 'O.S.',
+                tipo_pendencia_col: 'Tipo pend.',
+                motivo: 'Motivo',
+                data_agendada: 'Dt.agend.',
+                turno: 'Turno',
+                cliente: 'Cliente',
+                vendedor: 'Vendedor',
+                adiant_cnpj: 'Adiant.CNPJ',
+                adiant_comissao: 'Adiant.comissão',
+                adiant_sabado: 'Adiant.sábado',
+                plano: 'Plano',
+                status: 'Status',
+                conf_cliente: 'Conf.cliente',
+                posso_antecip: 'Posso antecipar',
+                posso_reagendar: 'Posso reagendar',
+                resp: 'Resp.',
+            };
+            Object.keys(col).forEach((k) => {
+                if (!col[k]) return;
+                const label = rotulosCol[k] || k;
+                partes.push(`${label}=${col[k]}`);
+            });
             return partes.join(' · ');
         }
 
@@ -2534,7 +2596,7 @@ min-width: 100%;
             if (!confirm(
                 `Consultar STATUS no PAP?\n\n`
                 + `Escopo: ${rotulo}\n`
-                + `(mesma ordem da tabela — começa pelo 1º da lista)\n\n`
+                + `(mesma ordem e filtros da tabela — começa pelo 1º da lista)\n\n`
                 + '• Usa a matrícula PAP do SEU usuário no CRM Record.\n'
                 + '• Deslogue do PAP em outros lugares antes de continuar.\n'
                 + `• ${etaHint}\n`

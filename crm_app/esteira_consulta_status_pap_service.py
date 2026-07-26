@@ -90,7 +90,8 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
     Queryset alinhado à aba/filtros da Esteira (o que o usuário vê).
 
     Ordem = mesma da tabela (`-data_criacao`): o 1º da tela é o 1º consultado.
-    Respeita data, turno, status do agendamento, tipo/motivo de pendência e busca.
+    Respeita data, turno, status do agendamento, tipo/motivo de pendência, busca
+    e filtros de coluna (Posso reagendar?, Posso antecipar?, O.S., vendedor, etc.).
     """
     from crm_app.models import Venda
 
@@ -100,6 +101,7 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
     status_ag = (filtros.get('status_agendamento') or '').strip()
     tipo_pend = (filtros.get('tipo_pendencia') or '').strip().upper()
     motivo_pend = (filtros.get('motivo_pendencia') or '').strip()
+    colunas = filtros.get('colunas') if isinstance(filtros.get('colunas'), dict) else {}
 
     qs = (
         Venda.objects.filter(
@@ -113,7 +115,15 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
         )
         .exclude(ordem_servico__isnull=True)
         .exclude(ordem_servico='')
-        .select_related('cliente', 'vendedor', 'status_esteira', 'motivo_pendencia', 'status_agendamento')
+        .select_related(
+            'cliente',
+            'vendedor',
+            'status_esteira',
+            'motivo_pendencia',
+            'status_agendamento',
+            'plano',
+            'editado_por',
+        )
     )
 
     aba_u = aba.upper()
@@ -172,8 +182,200 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
             )
         qs = qs.filter(filters)
 
+    qs = _aplicar_filtros_colunas_esteira(qs, colunas)
+
     # Mesma ordem da listagem da Esteira (1º da tabela = 1º consultado)
     return qs.order_by('-data_criacao', '-id')
+
+
+def _aplicar_filtros_colunas_esteira(qs, colunas: Dict[str, Any]):
+    """Aplica filtros da linha de colunas da Esteira (mesmo critério visual da tabela)."""
+    from django.db.models import CharField, F, Func, Value
+    from django.db.models.functions import Cast, Coalesce, Length
+
+    if not colunas:
+        return qs
+
+    class ToChar(Func):
+        function = 'to_char'
+        output_field = CharField()
+
+    class RegexpReplace(Func):
+        function = 'regexp_replace'
+        arity = 4
+        output_field = CharField()
+
+    def _txt(key: str) -> str:
+        return str(colunas.get(key) or '').strip()
+
+    def _len_digitos_doc():
+        return Length(
+            RegexpReplace(
+                Coalesce(F('cliente__cpf_cnpj'), Value('')),
+                Value(r'[^0-9]'),
+                Value(''),
+                Value('g'),
+            )
+        )
+
+    id_f = _txt('id')
+    if id_f:
+        qs = qs.annotate(_id_txt=Cast('id', CharField())).filter(_id_txt__icontains=id_f)
+
+    data_venda = _txt('data_venda')
+    if data_venda:
+        m_iso = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', data_venda)
+        m_br = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', data_venda)
+        if m_iso:
+            qs = qs.filter(data_criacao__date=data_venda)
+        elif m_br:
+            d, m, y = m_br.groups()
+            qs = qs.filter(data_criacao__date=f'{y}-{int(m):02d}-{int(d):02d}')
+        else:
+            qs = qs.annotate(
+                _fmt_data_criacao=ToChar(F('data_criacao'), Value('DD/MM/YYYY'))
+            ).filter(_fmt_data_criacao__icontains=data_venda)
+
+    os_f = _txt('os')
+    if os_f:
+        qs = qs.filter(ordem_servico__icontains=os_f)
+
+    tipo_col = _txt('tipo_pendencia_col')
+    if tipo_col:
+        qs = qs.filter(motivo_pendencia__tipo_pendencia__icontains=tipo_col)
+
+    motivo_f = _txt('motivo')
+    if motivo_f:
+        qs = qs.filter(motivo_pendencia__nome__icontains=motivo_f)
+
+    data_ag = _txt('data_agendada')
+    if data_ag:
+        m_iso = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', data_ag)
+        m_br = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', data_ag)
+        if m_iso:
+            qs = qs.filter(data_agendamento=data_ag)
+        elif m_br:
+            d, m, y = m_br.groups()
+            qs = qs.filter(data_agendamento=f'{y}-{int(m):02d}-{int(d):02d}')
+        else:
+            qs = qs.annotate(
+                _fmt_data_agendamento=ToChar(F('data_agendamento'), Value('DD/MM/YYYY'))
+            ).filter(_fmt_data_agendamento__icontains=data_ag)
+
+    turno_f = _txt('turno')
+    if turno_f:
+        t = turno_f.lower().replace('ã', 'a').replace('á', 'a')
+        if 'manh' in t:
+            qs = qs.filter(periodo_agendamento='MANHA')
+        elif 'tard' in t:
+            qs = qs.filter(periodo_agendamento='TARDE')
+        else:
+            qs = qs.filter(periodo_agendamento__icontains=turno_f)
+
+    cliente_f = _txt('cliente')
+    if cliente_f:
+        digitos = re.sub(r'\D', '', cliente_f)
+        q_cli = (
+            Q(cliente__nome_razao_social__icontains=cliente_f)
+            | Q(cliente__cpf_cnpj__icontains=cliente_f)
+        )
+        if digitos:
+            q_cli |= Q(cliente__cpf_cnpj__icontains=digitos)
+        qs = qs.filter(q_cli)
+
+    vendedor_f = _txt('vendedor')
+    if vendedor_f:
+        qs = qs.filter(
+            Q(vendedor__first_name__icontains=vendedor_f)
+            | Q(vendedor__last_name__icontains=vendedor_f)
+            | Q(vendedor__username__icontains=vendedor_f)
+        )
+
+    ad_cnpj = _txt('adiant_cnpj').lower()
+    if ad_cnpj == 'realizado':
+        qs = qs.filter(flag_adiant_cnpj=True)
+    elif ad_cnpj == 'pendente':
+        qs = (
+            qs.filter(flag_adiant_cnpj=False)
+            .exclude(classificacao_mei='MEI')
+            .annotate(_doc_digits=_len_digitos_doc())
+            .filter(_doc_digits=14)
+        )
+    elif ad_cnpj in ('nao elegivel', 'não elegivel', 'nao_elegivel'):
+        qs = (
+            qs.filter(flag_adiant_cnpj=False)
+            .annotate(_doc_digits=_len_digitos_doc())
+            .filter(Q(classificacao_mei='MEI') | ~Q(_doc_digits=14))
+        )
+
+    ad_com = _txt('adiant_comissao').lower()
+    if ad_com == 'sim':
+        qs = qs.filter(antecipacao_comissao=True)
+    elif ad_com in ('nao', 'não'):
+        qs = qs.filter(antecipacao_comissao=False)
+
+    ad_sab = _txt('adiant_sabado').lower()
+    if ad_sab == 'marcado':
+        qs = qs.filter(adiantamento_sabado_marcado=True)
+    elif ad_sab in ('nao', 'não'):
+        qs = qs.filter(adiantamento_sabado_marcado=False)
+    elif ad_sab == 'quitado':
+        qs = qs.filter(
+            adiantamento_sabado_marcado=True,
+            adiantamento_sabado_quitado_em__isnull=False,
+        )
+
+    plano_f = _txt('plano')
+    if plano_f:
+        qs = qs.filter(plano__nome__icontains=plano_f)
+
+    status_f = _txt('status')
+    if status_f:
+        qs = qs.filter(status_esteira__nome__icontains=status_f)
+
+    conf_f = _txt('conf_cliente').lower()
+    if conf_f == 'sim':
+        qs = qs.filter(cliente_confirmou_lembrete_instalacao=True)
+    elif conf_f in ('nao', 'não'):
+        qs = qs.filter(cliente_confirmou_lembrete_instalacao=False)
+    elif conf_f in ('-', 'sem'):
+        qs = qs.filter(cliente_confirmou_lembrete_instalacao__isnull=True)
+
+    # Posso antecipar? (select: sim / nao / aguardando)
+    posso_ant = _txt('posso_antecip').lower()
+    if posso_ant == 'sim':
+        qs = qs.filter(vendedor_pode_antecipar=True)
+    elif posso_ant in ('nao', 'não'):
+        qs = qs.filter(vendedor_pode_antecipar=False)
+    elif posso_ant == 'aguardando':
+        qs = qs.filter(
+            data_solicitacao_posso_antecipar__isnull=False,
+            data_resposta_posso_antecipar__isnull=True,
+            vendedor_pode_antecipar__isnull=True,
+        )
+
+    # Posso reagendar? (select: sim / nao / aguardando)
+    posso_reag = _txt('posso_reagendar').lower()
+    if posso_reag == 'sim':
+        qs = qs.filter(consultor_pode_reagendar=True)
+    elif posso_reag in ('nao', 'não'):
+        qs = qs.filter(consultor_pode_reagendar=False)
+    elif posso_reag == 'aguardando':
+        qs = qs.filter(
+            data_solicitacao_reagendar_consultor__isnull=False,
+            data_resposta_reagendar_consultor__isnull=True,
+            consultor_pode_reagendar__isnull=True,
+        )
+
+    resp_f = _txt('resp')
+    if resp_f:
+        qs = qs.filter(
+            Q(editado_por__first_name__icontains=resp_f)
+            | Q(editado_por__last_name__icontains=resp_f)
+            | Q(editado_por__username__icontains=resp_f)
+        )
+
+    return qs
 
 
 def _cpf_cnpj_venda(venda) -> str:

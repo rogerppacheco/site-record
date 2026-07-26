@@ -34,6 +34,12 @@ class ConsultaStatusEsteiraIniciarView(APIView):
             return Response({'detail': 'Acesso negado.'}, status=status.HTTP_403_FORBIDDEN)
 
         data = request.data if isinstance(request.data, dict) else {}
+        colunas_raw = data.get('colunas') if isinstance(data.get('colunas'), dict) else {}
+        colunas = {
+            str(k): str(v or '').strip()
+            for k, v in colunas_raw.items()
+            if str(v or '').strip()
+        }
         filtros = {
             'aba': (data.get('aba') or '').strip(),
             'busca': (data.get('busca') or '').strip(),
@@ -41,6 +47,7 @@ class ConsultaStatusEsteiraIniciarView(APIView):
             'status_agendamento': (data.get('status_agendamento') or '').strip(),
             'tipo_pendencia': (data.get('tipo_pendencia') or '').strip(),
             'motivo_pendencia': (data.get('motivo_pendencia') or '').strip(),
+            'colunas': colunas,
         }
 
         from crm_app.esteira_consulta_status_pap_service import criar_e_iniciar_consulta_aba
