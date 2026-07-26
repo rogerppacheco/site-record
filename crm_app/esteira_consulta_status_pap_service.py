@@ -288,7 +288,11 @@ class _SessaoPapUsuarioHolder:
             return False, 'sem_cpf', []
 
         os_num = (venda.ordem_servico or '').strip()
-        os_prioridade = obter_os_prioridade_crm_por_cpf(cpf)
+        # Após a 1ª consulta Playwright o thread fica "async"; ORM só em thread limpa.
+        os_prioridade = _run_django_sync(
+            lambda: obter_os_prioridade_crm_por_cpf(cpf),
+            timeout_seconds=60,
+        )
 
         ok_sessao, msg_sessao = self._garantir_sessao()
         if not ok_sessao:
