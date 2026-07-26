@@ -2494,13 +2494,15 @@ min-width: 100%;
                     cell.appendChild(meta);
                 }
                 const mat = (prog.matricula || '').trim() || 'PAP';
-                const em = item.em || dtFallback;
+                // Aceita "HH:MM" legado do progresso e completa com data do dia.
+                let em = (item.em || '').trim() || dtFallback;
+                if (/^\d{1,2}:\d{2}$/.test(em)) em = `${dd}/${mm} ${em}`;
                 const isErro = item.situacao === 'erro';
                 meta.classList.toggle('is-erro', isErro);
                 meta.textContent = isErro ? `⚠ ${mat} · ${em}` : `${mat} · ${em}`;
                 meta.title = isErro
                     ? (`Erro O.S. ${item.os || ''}: ${item.erro || ''}`.trim())
-                    : (`Consultado O.S. ${item.os || ''} (${item.situacao || 'ok'}) por ${mat} às ${em}`);
+                    : (`Consultado O.S. ${item.os || ''} (${item.situacao || 'ok'}) por ${mat} em ${em}`);
             });
         }
 

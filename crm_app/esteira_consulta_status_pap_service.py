@@ -403,7 +403,8 @@ def _resumo_resultado_item(resultado: dict) -> dict:
         'situacao': situacao,
         'erro': err[:120] if err else '',
         'status_novo': (resultado.get('status_novo') or '')[:40],
-        'em': timezone.localtime().strftime('%H:%M'),
+        # Mesmo formato da célula na grade (dd/mm HH:MM), para o progresso ao vivo não perder a data.
+        'em': timezone.localtime().strftime('%d/%m %H:%M'),
     }
 
 
