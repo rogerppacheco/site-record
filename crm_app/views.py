@@ -12134,8 +12134,14 @@ from .models import SafraM10, ContratoM10, FaturaM10
 
 
 def page_bonus_m10(request):
-    """View para renderizar a página HTML"""
-    return render(request, 'bonus_m10.html')
+    """Legado: redireciona para o módulo Qualidade."""
+    from django.shortcuts import redirect
+    return redirect('page_qualidade', permanent=False)
+
+
+def page_qualidade(request):
+    """Módulo Qualidade — FPD (1ª fatura) + bônus M-10 numa visão unificada."""
+    return render(request, 'qualidade.html')
 
 
 def page_boas_vindas(request):
@@ -12571,7 +12577,7 @@ class PopularSafraM10View(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria', 'Qualidade']):
             return Response({'error': 'Sem permissão'}, status=403)
 
         mes_referencia = request.data.get('mes_referencia')  # Formato: '2025-07'
@@ -12723,7 +12729,7 @@ class ImportarFPDView(APIView):
     parser_classes = (MultiPartParser, FormParser)
     
     def post(self, request):
-        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria', 'Qualidade']):
             return Response({'error': 'Sem permissão'}, status=403)
 
         arquivo = request.FILES.get('file')
@@ -12917,6 +12923,22 @@ class ImportarFPDView(APIView):
                                 contrato = contratos_dict[variacao]
                                 break
                         if contrato:
+                            # Enriquece CPF/nome a partir da venda quando o FPD só traz O.S.
+                            if contrato.venda_id:
+                                venda_fk = contrato.venda
+                                if venda_fk and venda_fk.cliente_id:
+                                    cli = venda_fk.cliente
+                                    if cli and cli.cpf_cnpj and not (contrato.cpf_cliente or '').strip():
+                                        contrato.cpf_cliente = cli.cpf_cnpj
+                                    if cli and cli.nome_razao_social:
+                                        contrato.cliente_nome = cli.nome_razao_social
+                                    if getattr(contrato, 'orfao', False) and (contrato.cpf_cliente or '').strip():
+                                        contrato.orfao = False
+                                    contrato.save(update_fields=[
+                                        'cpf_cliente', 'cliente_nome', 'orfao', 'atualizado_em'
+                                    ] if hasattr(contrato, 'orfao') else [
+                                        'cpf_cliente', 'cliente_nome', 'atualizado_em'
+                                    ])
                             
                             # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
                             nr_contrato = str(row.get('id_contrato', '')).strip()
@@ -13035,26 +13057,21 @@ class ImportarFPDView(APIView):
                                 registros_importacoes_fpd += 1
                             
                             valor_total += vl_fatura_float
-                        else:  # Contrato não encontrado
-                            # Se não encontrou contrato M10, salva mesmo assim sem vínculo
-                            # O usuário pode fazer matching depois
-                            
-                            # Extrai dados FPD mesmo sem contrato
-                            # Já vêm como STRING do pandas, preservando zeros
+                        else:  # Contrato não encontrado → cria órfão Qualidade (double-check FPD)
+                            from crm_app.services.qualidade_service import criar_contrato_orfao_fpd
+
                             id_contrato = str(row.get('id_contrato', '')).strip()
+                            if id_contrato == 'nan':
+                                id_contrato = ''
                             dt_venc = row.get('dt_venc_orig')
                             dt_pgto = row.get('dt_pagamento')
                             status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
                             nr_fatura = str(row.get('nr_fatura', '')).strip()
                             vl_fatura = row.get('vl_fatura', 0)
                             nr_dias_atraso = row.get('nr_dias_atraso', 0)
-                            
-                            # Normalizar status usando mapeamento padronizado
                             status = normalizar_status_fpd(status_str)
 
-                            # Extrair e converter datas - Excel armazena como números serial
                             if pd.notna(dt_venc):
-                                # Se for número, converter de serial Excel
                                 if isinstance(dt_venc, (int, float)):
                                     dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
                                 else:
@@ -13063,7 +13080,6 @@ class ImportarFPDView(APIView):
                                 dt_venc_date = timezone.now().date()
 
                             if pd.notna(dt_pgto):
-                                # Se for número, converter de serial Excel
                                 if isinstance(dt_pgto, (int, float)):
                                     dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
                                 else:
@@ -13071,28 +13087,75 @@ class ImportarFPDView(APIView):
                             else:
                                 dt_pgto_date = None
 
-                            # Converte valores
                             vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
-                        
-                            # Preparar ImportacaoFPD sem contrato para bulk
-                            # Buscar por nr_ordem (atualizar se existir, criar se não existir)
+
+                            try:
+                                contrato_orfao = criar_contrato_orfao_fpd(
+                                    ordem_servico=nr_ordem,
+                                    id_contrato=id_contrato or None,
+                                    dt_vencimento=dt_venc_date,
+                                    valor_fatura=vl_fatura_float,
+                                    status_fatura=status_str,
+                                )
+                                # Indexa para não recriar na mesma importação
+                                for variacao in [
+                                    nr_ordem,
+                                    nr_ordem.zfill(8),
+                                    nr_ordem.lstrip('0') or '0',
+                                    f'OS-{nr_ordem}',
+                                ]:
+                                    contratos_dict[variacao] = contrato_orfao
+                                faturas_por_contrato.setdefault(contrato_orfao.id, {})
+                                fatura_existente = faturas_por_contrato[contrato_orfao.id].get(1)
+                                if fatura_existente:
+                                    fatura_existente.numero_fatura_operadora = nr_fatura
+                                    fatura_existente.valor = vl_fatura_float
+                                    fatura_existente.data_vencimento = dt_venc_date
+                                    fatura_existente.data_pagamento = dt_pgto_date
+                                    fatura_existente.dias_atraso = nr_dias_atraso_int
+                                    fatura_existente.status = status
+                                    fatura_existente.id_contrato_fpd = id_contrato
+                                    fatura_existente.dt_pagamento_fpd = dt_pgto_date
+                                    fatura_existente.ds_status_fatura_fpd = status_str
+                                    fatura_existente.data_importacao_fpd = data_importacao_agora
+                                    faturas_para_atualizar.append(fatura_existente)
+                                else:
+                                    nova_f = FaturaM10(
+                                        contrato=contrato_orfao,
+                                        numero_fatura=1,
+                                        numero_fatura_operadora=nr_fatura,
+                                        valor=vl_fatura_float,
+                                        data_vencimento=dt_venc_date,
+                                        data_pagamento=dt_pgto_date,
+                                        dias_atraso=nr_dias_atraso_int,
+                                        status=status,
+                                        id_contrato_fpd=id_contrato,
+                                        dt_pagamento_fpd=dt_pgto_date,
+                                        ds_status_fatura_fpd=status_str,
+                                        data_importacao_fpd=data_importacao_agora,
+                                    )
+                                    faturas_para_criar.append(nova_f)
+                                    faturas_por_contrato[contrato_orfao.id][1] = nova_f
+                                contratos_afetados_ids.add(contrato_orfao.id)
+                                vinculo_contrato = contrato_orfao
+                            except Exception as e_orf:
+                                logger.warning('Falha ao criar órfão FPD OS=%s: %s', nr_ordem, e_orf)
+                                vinculo_contrato = None
+
                             importacao_sem_contrato = importacoes_dict.get(nr_ordem)
-                            
                             if importacao_sem_contrato:
-                                # Atualizar registro existente com novos dados da planilha
                                 importacao_sem_contrato.id_contrato = id_contrato
-                                importacao_sem_contrato.nr_fatura = nr_fatura  # Atualiza também o nr_fatura
+                                importacao_sem_contrato.nr_fatura = nr_fatura
                                 importacao_sem_contrato.dt_venc_orig = dt_venc_date
                                 importacao_sem_contrato.dt_pagamento = dt_pgto_date
                                 importacao_sem_contrato.nr_dias_atraso = nr_dias_atraso_int
                                 importacao_sem_contrato.ds_status_fatura = status_str
                                 importacao_sem_contrato.vl_fatura = vl_fatura_float
-                                importacao_sem_contrato.contrato_m10 = None
+                                importacao_sem_contrato.contrato_m10 = vinculo_contrato
                                 importacoes_para_atualizar.append(importacao_sem_contrato)
                                 registros_nao_encontrados += 1
                             else:
-                                # Criar novo registro
                                 importacoes_para_criar.append(ImportacaoFPD(
                                     nr_ordem=nr_ordem,
                                     nr_fatura=nr_fatura,
@@ -13102,13 +13165,14 @@ class ImportarFPDView(APIView):
                                     nr_dias_atraso=nr_dias_atraso_int,
                                     ds_status_fatura=status_str,
                                     vl_fatura=vl_fatura_float,
-                                    contrato_m10=None
+                                    contrato_m10=vinculo_contrato,
                                 ))
                                 registros_importacoes_fpd += 1
-                            
+                                registros_nao_encontrados += 1
+
                             valor_total += vl_fatura_float
                             if len(os_nao_encontradas) < 20:
-                                os_nao_encontradas.append(f"{nr_ordem} (sem contrato)")
+                                os_nao_encontradas.append(f"{nr_ordem} (órfão criado)" if vinculo_contrato else f"{nr_ordem} (sem contrato)")
                             continue
                     
                     except Exception as e:
@@ -14357,6 +14421,7 @@ class ExportarM10View(APIView):
             cell.alignment = Alignment(horizontal="center")
 
         # Dados
+        safra_param = request.GET.get('safra')
         contratos = (
             ContratoM10.objects.all()
             .select_related('vendedor')
@@ -14365,6 +14430,13 @@ class ExportarM10View(APIView):
                 faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
             )
         )
+        if safra_param:
+            data_inicio, data_fim = _safra_to_data_range(safra_param)
+            if data_inicio is not None and data_fim is not None:
+                contratos = contratos.filter(
+                    data_instalacao__gte=data_inicio,
+                    data_instalacao__lt=data_fim,
+                )
         for c in contratos:
             total_faturas = c.total_faturas
             faturas_pagas = c.faturas_pagas

@@ -1,0 +1,854 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Qualidade - Record PAP{% endblock %}
+
+{% block extra_css %}
+<style>
+.qualidade-page .system-container-full { max-width: 100% !important; }
+.qualidade-page h1 { font-size: 1.6rem; margin: 0; }
+.qualidade-lente .btn { min-width: 160px; }
+.qualidade-cards {
+    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px;
+}
+.qualidade-card-mes {
+    min-width: 140px; border: 1px solid var(--border-color); border-radius: 12px;
+    padding: 12px 14px; background: var(--bg-card); cursor: pointer; flex-shrink: 0;
+}
+.qualidade-card-mes.active {
+    border-color: var(--accent-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 30%, transparent);
+}
+.qualidade-card-mes .mes-label { font-weight: 700; font-size: 0.95rem; }
+.qualidade-card-mes .mes-meta { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi-item {
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px;
+}
+.kpi-item .kpi-val { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+.kpi-item .kpi-lbl { font-size: 0.8rem; color: var(--text-secondary); }
+.table-qualidade th, .table-qualidade td { font-size: 0.85rem; vertical-align: middle; white-space: nowrap; }
+.row-orfao { opacity: 0.75; }
+.badge-orfao { background: #6c757d; }
+.acoes-btns .btn { padding: 2px 8px; font-size: 0.75rem; }
+.link-faturas { cursor: pointer; color: var(--accent-color); text-decoration: underline; font-weight: 600; }
+.faturas-table input, .faturas-table select { font-size: 0.8rem; min-width: 0; }
+.faturas-table .col-num { width: 40px; }
+.faturas-table .col-status { width: 130px; }
+.faturas-table .col-date { width: 130px; }
+.faturas-table .col-valor { width: 140px; min-width: 140px; }
+.faturas-table .col-valor input { width: 100%; min-width: 120px; }
+.faturas-table .col-promessa { width: 130px; min-width: 130px; }
+.faturas-pix { font-size: 0.75rem; }
+#modalFaturas .modal-dialog { max-width: 1200px; }
+</style>
+{% endblock %}
+
+{% block header_nav %}
+    <li><a href="/area-interna/">Voltar</a></li>
+    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+{% endblock %}
+
+{% block content %}
+<main class="area-interna-section qualidade-page">
+    <div class="system-container system-container-full card-modern">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <h1><i class="bi bi-shield-check text-primary"></i> Qualidade</h1>
+                <p class="text-muted mb-0">1ª fatura (FPD) e acompanhamento das 10 faturas / bônus — numa visão só</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="/importar-fpd/" class="btn btn-outline-primary btn-sm"><i class="bi bi-upload"></i> Importar FPD</a>
+                <a href="/importacoes/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-cloud-upload"></i> Churn / Importações</a>
+                <button class="btn btn-outline-secondary btn-sm" onclick="sincronizarFaltantes()"><i class="bi bi-arrow-repeat"></i> Sincronizar faltantes</button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="buscarNio()"><i class="bi bi-search"></i> Buscar Nio</button>
+                <button class="btn btn-success btn-sm" onclick="exportarDados()"><i class="bi bi-download"></i> Exportar</button>
+                <button class="btn btn-outline-dark btn-sm" onclick="carregarOrfaos()"><i class="bi bi-exclamation-diamond"></i> Órfãos</button>
+            </div>
+        </div>
+
+        <div class="qualidade-lente btn-group mb-3" role="group" aria-label="Lente">
+            <button type="button" class="btn btn-primary" id="btn-lente-vencimento" onclick="setLente('vencimento')">
+                Vencimento 1ª fatura
+            </button>
+            <button type="button" class="btn btn-outline-primary" id="btn-lente-instalacao" onclick="setLente('instalacao')">
+                Instalação (bônus)
+            </button>
+        </div>
+
+        <div id="periodos-cards" class="qualidade-cards" aria-label="Meses"></div>
+
+        <div class="kpi-grid" id="kpi-grid">
+            <div class="kpi-item"><div class="kpi-val" id="kpi-1">—</div><div class="kpi-lbl" id="kpi-1-lbl">Total</div></div>
+            <div class="kpi-item"><div class="kpi-val" id="kpi-2">—</div><div class="kpi-lbl" id="kpi-2-lbl">—</div></div>
+            <div class="kpi-item"><div class="kpi-val" id="kpi-3">—</div><div class="kpi-lbl" id="kpi-3-lbl">—</div></div>
+            <div class="kpi-item"><div class="kpi-val" id="kpi-4">—</div><div class="kpi-lbl" id="kpi-4-lbl">—</div></div>
+            <div class="kpi-item" id="kpi-bonus-wrap" style="display:none">
+                <div class="kpi-val" id="kpi-5">—</div><div class="kpi-lbl">R$ bônus</div>
+            </div>
+        </div>
+
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <input type="search" id="filtro-q" class="form-control form-control-sm" placeholder="Buscar O.S., cliente, CPF..." onkeydown="if(event.key==='Enter')carregarDashboard()">
+            </div>
+            <div class="col-md-2">
+                <select id="filtro-status" class="form-select form-select-sm" onchange="carregarDashboard()">
+                    <option value="">Status contrato</option>
+                    <option value="ATIVO">Ativo</option>
+                    <option value="CANCELADO">Cancelado</option>
+                    <option value="DOWNGRADE">Downgrade</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select id="filtro-elegivel" class="form-select form-select-sm" onchange="carregarDashboard()">
+                    <option value="">Elegibilidade</option>
+                    <option value="true">Elegível</option>
+                    <option value="false">Não elegível</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary btn-sm w-100" onclick="carregarDashboard()">Filtrar</button>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover table-qualidade">
+                <thead>
+                    <tr>
+                        <th>O.S.</th>
+                        <th>Cliente</th>
+                        <th>Vendedor</th>
+                        <th>Status</th>
+                        <th>1ª fatura</th>
+                        <th>Pagas</th>
+                        <th>Elegível</th>
+                        <th id="th-bonus">R$</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-contratos">
+                    <tr><td colspan="9" class="text-center text-muted py-4">Selecione um mês</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted" id="paginacao-info"></small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" id="btn-prev" onclick="mudarPagina(-1)">Anterior</button>
+                <button class="btn btn-outline-secondary" id="btn-next" onclick="mudarPagina(1)">Próxima</button>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- Modal contato / envio -->
+<div class="modal fade" id="modalEnvio" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalEnvioTitulo">Enviar cobrança</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="envio-contrato-id">
+                <input type="hidden" id="envio-fatura-id">
+                <input type="hidden" id="envio-canal">
+                <div class="mb-3" id="wrap-telefone">
+                    <label class="form-label">WhatsApp</label>
+                    <input type="text" class="form-control" id="envio-telefone" placeholder="DDD + número">
+                    <div class="form-text">Se informar agora, atualizamos o cadastro do cliente/venda.</div>
+                </div>
+                <div class="mb-3" id="wrap-email">
+                    <label class="form-label">E-mail</label>
+                    <input type="email" class="form-control" id="envio-email" placeholder="cliente@email.com">
+                </div>
+                <div class="alert alert-warning d-none" id="envio-alerta-orfao">
+                    Contrato órfão ou sem CPF — vincule/preencha o CPF antes de cobrar.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="confirmarEnvio()">Enviar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal órfãos -->
+<div class="modal fade" id="modalOrfaos" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Órfãos FPD (sem CPF / vínculo)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead><tr><th>O.S.</th><th>Contrato</th><th>Cliente</th><th>CPF</th><th>Obs.</th></tr></thead>
+                        <tbody id="tbody-orfaos"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 10 faturas -->
+<div class="modal fade" id="modalFaturas" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0">Faturas do pedido</h5>
+                    <small class="text-muted" id="faturas-subtitulo"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="faturas-contrato-id">
+                <div class="d-flex flex-wrap gap-3 mb-3">
+                    <span>Status contrato: <strong id="faturas-status-contrato">—</strong></span>
+                    <span>Pagas: <strong id="faturas-resumo-pagas">—</strong></span>
+                    <span>Elegível: <strong id="faturas-elegivel">—</strong></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered faturas-table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="col-num">#</th>
+                                <th class="col-status">Status</th>
+                                <th class="col-date">Vencimento</th>
+                                <th class="col-promessa">Promessa pgto</th>
+                                <th class="col-date">Pagamento</th>
+                                <th class="col-valor">Valor</th>
+                                <th>PIX / Barras</th>
+                                <th style="width:160px">PDF / Nio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-faturas"></tbody>
+                    </table>
+                </div>
+                <div class="text-muted small">Altere e clique em Salvar. Marcar como Pago preenche a data de pagamento com hoje se estiver vazia.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" class="btn btn-primary" id="btn-salvar-faturas" onclick="salvarFaturas()">Salvar faturas</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal opções Nio -->
+<div class="modal fade" id="modalNioOpcoes" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0">Opções encontradas na Nio</h5>
+                    <small class="text-muted" id="nio-subtitulo"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info py-2 small mb-3">
+                    Aceite a opção que bater com o <strong>mês da fatura</strong>. As recomendadas aparecem em destaque.
+                </div>
+                <div id="nio-opcoes-lista"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Recusar / Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+<script src="{% static 'js/auth.js' %}?v=7.0"></script>
+<script>
+(function () {
+    const API = window.API_BASE_URL || window.location.origin;
+    let lente = 'vencimento';
+    let mesAtual = '';
+    let page = 1;
+    let totalPages = 1;
+    let podeVerBonus = false;
+    let modalEnvio = null;
+    let modalOrfaos = null;
+    let modalFaturas = null;
+    let modalNio = null;
+    let statusChoicesFatura = [];
+    let nioBuscaContexto = null;
+
+    function authHeaders() {
+        const token = localStorage.getItem('accessToken');
+        return {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+        };
+    }
+
+    function setLente(nova) {
+        lente = nova;
+        page = 1;
+        mesAtual = ''; // força o 1º período tratável da nova lente
+        document.getElementById('btn-lente-vencimento').className =
+            'btn ' + (lente === 'vencimento' ? 'btn-primary' : 'btn-outline-primary');
+        document.getElementById('btn-lente-instalacao').className =
+            'btn ' + (lente === 'instalacao' ? 'btn-primary' : 'btn-outline-primary');
+        carregarPeriodos();
+    }
+    window.setLente = setLente;
+
+    async function carregarPeriodos() {
+        const wrap = document.getElementById('periodos-cards');
+        wrap.innerHTML = '<div class="text-muted small p-2">Carregando meses…</div>';
+        try {
+            const r = await fetch(`${API}/api/qualidade/periodos/?lente=${encodeURIComponent(lente)}`, {
+                headers: authHeaders(),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao carregar períodos');
+            const periodos = data.periodos || [];
+            if (!periodos.length) {
+                wrap.innerHTML = '<div class="text-muted small p-2">Nenhum período encontrado</div>';
+                mesAtual = '';
+                return;
+            }
+            if (!mesAtual || !periodos.some(p => p.mes === mesAtual)) {
+                mesAtual = periodos[0].mes;
+            }
+            wrap.innerHTML = periodos.map(p => {
+                const meta = lente === 'vencimento'
+                    ? `${p.total || 0} · ${p.abertas || 0} abertas`
+                    : `${p.total || 0} · ${p.elegiveis || 0} elegíveis`;
+                return `<div class="qualidade-card-mes ${p.mes === mesAtual ? 'active' : ''}" data-mes="${p.mes}" onclick="selecionarMes('${p.mes}')">
+                    <div class="mes-label">${p.label}</div>
+                    <div class="mes-meta">${meta}</div>
+                </div>`;
+            }).join('');
+            carregarDashboard();
+        } catch (e) {
+            wrap.innerHTML = `<div class="text-danger small p-2">${e.message}</div>`;
+        }
+    }
+    window.selecionarMes = function (mes) {
+        mesAtual = mes;
+        page = 1;
+        document.querySelectorAll('.qualidade-card-mes').forEach(el => {
+            el.classList.toggle('active', el.dataset.mes === mes);
+        });
+        carregarDashboard();
+    };
+
+    async function carregarDashboard() {
+        if (!mesAtual) return;
+        const q = document.getElementById('filtro-q').value.trim();
+        const st = document.getElementById('filtro-status').value;
+        const el = document.getElementById('filtro-elegivel').value;
+        const params = new URLSearchParams({ lente, mes: mesAtual, page: String(page), page_size: '100' });
+        if (q) params.set('q', q);
+        if (st) params.set('status', st);
+        if (el) params.set('elegivel', el);
+
+        const tbody = document.getElementById('tbody-contratos');
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Carregando…</td></tr>';
+        try {
+            const r = await fetch(`${API}/api/qualidade/dashboard/?${params}`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha no dashboard');
+            podeVerBonus = !!data.pode_ver_valor_bonus;
+            renderKpis(data.kpis || {});
+            document.getElementById('th-bonus').style.display = podeVerBonus ? '' : 'none';
+            document.getElementById('kpi-bonus-wrap').style.display = podeVerBonus ? '' : 'none';
+
+            const rows = data.contratos || [];
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Nenhum contrato neste período</td></tr>';
+            } else {
+                tbody.innerHTML = rows.map(c => {
+                    const bonusCell = podeVerBonus
+                        ? `<td>${c.elegivel ? ('R$ ' + Number(c.valor_bonus || 0).toFixed(2)) : '—'}</td>`
+                        : '';
+                    const orfaoBadge = c.orfao ? ' <span class="badge badge-orfao">órfão</span>' : '';
+                    const disabled = c.pode_tratar ? '' : 'disabled title="Precisa CPF/vínculo"';
+                    return `<tr class="${c.orfao ? 'row-orfao' : ''}">
+                        <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
+                        <td>${escapeHtml(c.cliente_nome || '-')}</td>
+                        <td>${escapeHtml(c.vendedor_nome || '-')}</td>
+                        <td>${escapeHtml(c.status_contrato || '-')}</td>
+                        <td>${escapeHtml(c.status_fatura1_display || c.status_fatura1 || '-')}</td>
+                        <td><span class="link-faturas" onclick="abrirFaturas(${c.id})" title="Abrir faturas">${c.faturas_pagas || 0}/${c.total_faturas || 0}</span></td>
+                        <td>${c.elegivel ? 'Sim' : 'Não'}</td>
+                        ${bonusCell}
+                        <td class="acoes-btns">
+                            <button class="btn btn-outline-secondary" title="Faturas" onclick="abrirFaturas(${c.id})"><i class="bi bi-receipt"></i></button>
+                            <button class="btn btn-success" ${disabled} onclick='abrirEnvio(${c.id}, ${c.fatura_envio_id || 'null'}, "whatsapp", ${JSON.stringify(c.telefone || '')}, ${JSON.stringify(c.email || '')}, ${c.pode_tratar})'><i class="bi bi-whatsapp"></i></button>
+                            <button class="btn btn-outline-primary" ${disabled} onclick='abrirEnvio(${c.id}, ${c.fatura_envio_id || 'null'}, "email", ${JSON.stringify(c.telefone || '')}, ${JSON.stringify(c.email || '')}, ${c.pode_tratar})'><i class="bi bi-envelope"></i></button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+            totalPages = data.total_pages || 1;
+            page = data.page || 1;
+            document.getElementById('paginacao-info').textContent =
+                `Página ${page} de ${totalPages || 1} · ${data.total || 0} contratos`;
+            document.getElementById('btn-prev').disabled = page <= 1;
+            document.getElementById('btn-next').disabled = page >= totalPages;
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="9" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
+        }
+    }
+    window.carregarDashboard = carregarDashboard;
+
+    function renderKpis(k) {
+        if (lente === 'vencimento') {
+            setKpi(1, k.geradas ?? k.total, '1ª geradas');
+            setKpi(2, k.pagas, '1ª pagas');
+            setKpi(3, k.abertas, '1ª em aberto');
+            setKpi(4, (k.taxa_fpd != null ? k.taxa_fpd + '%' : '—'), 'Taxa em aberto');
+            setKpi(5, formatMoney(k.valor_total), 'R$ bônus');
+        } else {
+            setKpi(1, k.instalados ?? k.total, 'Instalados');
+            setKpi(2, k.ativos, 'Ativos');
+            setKpi(3, k.elegiveis, 'Elegíveis');
+            setKpi(4, (k.taxa_permanencia != null ? k.taxa_permanencia + '%' : '—'), 'Permanência');
+            setKpi(5, formatMoney(k.valor_total), 'R$ bônus');
+        }
+    }
+    function setKpi(n, val, lbl) {
+        document.getElementById('kpi-' + n).textContent = val != null ? val : '—';
+        const lblEl = document.getElementById('kpi-' + n + '-lbl');
+        if (lblEl) lblEl.textContent = lbl;
+    }
+    function formatMoney(v) {
+        if (v == null) return '—';
+        return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    }
+
+    window.mudarPagina = function (delta) {
+        const nova = page + delta;
+        if (nova < 1 || nova > totalPages) return;
+        page = nova;
+        carregarDashboard();
+    };
+
+    window.abrirEnvio = function (contratoId, faturaId, canal, telefone, email, podeTratar) {
+        document.getElementById('envio-contrato-id').value = contratoId;
+        document.getElementById('envio-fatura-id').value = faturaId || '';
+        document.getElementById('envio-canal').value = canal;
+        document.getElementById('envio-telefone').value = telefone || '';
+        document.getElementById('envio-email').value = email || '';
+        document.getElementById('modalEnvioTitulo').textContent =
+            canal === 'whatsapp' ? 'Enviar WhatsApp' : 'Enviar e-mail';
+        document.getElementById('wrap-telefone').style.display = canal === 'whatsapp' ? '' : 'none';
+        document.getElementById('wrap-email').style.display = canal === 'email' ? '' : 'none';
+        document.getElementById('envio-alerta-orfao').classList.toggle('d-none', !!podeTratar);
+        modalEnvio.show();
+    };
+
+    window.confirmarEnvio = async function () {
+        const contratoId = document.getElementById('envio-contrato-id').value;
+        const faturaId = document.getElementById('envio-fatura-id').value;
+        const canal = document.getElementById('envio-canal').value;
+        const body = { canal };
+        if (faturaId) body.fatura_id = Number(faturaId);
+        const tel = document.getElementById('envio-telefone').value.trim();
+        const em = document.getElementById('envio-email').value.trim();
+        if (tel) body.telefone = tel;
+        if (em) body.email = em;
+        try {
+            if (tel || em) {
+                await fetch(`${API}/api/qualidade/contratos/${contratoId}/contato/`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ telefone: tel || undefined, email: em || undefined }),
+                });
+            }
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/enviar/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify(body),
+            });
+            const data = await r.json();
+            if (!r.ok || data.ok === false) throw new Error(data.error || data.mensagem || 'Falha no envio');
+            alert(data.mensagem || 'Enviado com sucesso');
+            modalEnvio.hide();
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+
+    window.sincronizarFaltantes = async function () {
+        const mes = mesAtual || prompt('Mês (YYYY-MM) para sincronizar faltantes:');
+        if (!mes) return;
+        if (!confirm(`Sincronizar vendas instaladas faltantes em ${mes}?`)) return;
+        try {
+            const r = await fetch(`${API}/api/qualidade/sincronizar-faltantes/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ mes }),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha');
+            alert(`Criados: ${data.contratos_criados || 0} · Já existiam: ${data.contratos_duplicados || 0}`);
+            carregarPeriodos();
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+
+    window.buscarNio = async function () {
+        if (!mesAtual) { alert('Selecione um mês'); return; }
+        if (!confirm(`Buscar faturas Nio da safra/período ${mesAtual}?`)) return;
+        try {
+            const r = await fetch(`${API}/api/bonus-m10/buscar-faturas-safra/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ safra: mesAtual }),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || data.message || 'Falha na busca Nio');
+            alert(data.message || data.mensagem || 'Busca iniciada');
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+
+    window.exportarDados = async function () {
+        const params = new URLSearchParams();
+        if (mesAtual) params.set('safra', mesAtual);
+        try {
+            const r = await fetch(`${API}/api/bonus-m10/exportar/?${params}`, { headers: authHeaders() });
+            if (!r.ok) throw new Error('Falha ao exportar');
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `qualidade_${mesAtual || 'todos'}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert(e.message || 'Erro ao exportar');
+        }
+    };
+
+    window.carregarOrfaos = async function () {
+        const tbody = document.getElementById('tbody-orfaos');
+        tbody.innerHTML = '<tr><td colspan="5">Carregando…</td></tr>';
+        try {
+            const r = await fetch(`${API}/api/qualidade/orfaos/`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha');
+            const rows = data.contratos || [];
+            tbody.innerHTML = rows.length
+                ? rows.map(c => `<tr>
+                    <td>${escapeHtml(c.ordem_servico)}</td>
+                    <td>${escapeHtml(c.numero_contrato)}</td>
+                    <td>${escapeHtml(c.cliente_nome)}</td>
+                    <td>${escapeHtml(c.cpf_cliente || '—')}</td>
+                    <td>${escapeHtml(c.observacao || '')}</td>
+                </tr>`).join('')
+                : '<tr><td colspan="5" class="text-muted">Nenhum órfão</td></tr>';
+            modalOrfaos.show();
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+
+    function optionsStatus(selected) {
+        const opts = statusChoicesFatura.length
+            ? statusChoicesFatura
+            : [
+                { value: 'PAGO', label: 'Pago' },
+                { value: 'NAO_PAGO', label: 'Não Pago' },
+                { value: 'AGUARDANDO', label: 'Aguardando' },
+                { value: 'ATRASADO', label: 'Atrasado' },
+                { value: 'OUTROS', label: 'Outros' },
+            ];
+        return opts.map(o =>
+            `<option value="${o.value}" ${o.value === selected ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
+        ).join('');
+    }
+
+    function renderFaturasTabela(data) {
+        document.getElementById('faturas-contrato-id').value = data.id;
+        document.getElementById('faturas-subtitulo').textContent =
+            `O.S. ${data.ordem_servico || '-'} · ${data.cliente_nome || ''} · ${data.vendedor_nome || ''}`;
+        document.getElementById('faturas-status-contrato').textContent = data.status_contrato || '—';
+        document.getElementById('faturas-resumo-pagas').textContent =
+            `${data.faturas_pagas || 0}/${data.total_faturas || 0}`;
+        document.getElementById('faturas-elegivel').textContent = data.elegivel ? 'Sim' : 'Não';
+        if (data.status_choices && data.status_choices.length) {
+            statusChoicesFatura = data.status_choices;
+        }
+        const tbody = document.getElementById('tbody-faturas');
+        const rows = data.faturas || [];
+        tbody.innerHTML = rows.map(f => {
+            const pdfBtns = f.tem_pdf
+                ? `<button type="button" class="btn btn-sm btn-outline-success" onclick="downloadPdfFatura(${f.id})" title="Download"><i class="bi bi-download"></i></button>`
+                : '';
+            return `<tr data-fatura-id="${f.id}" data-numero-fatura="${f.numero_fatura}">
+                <td class="text-center fw-bold">${f.numero_fatura}</td>
+                <td><select class="form-select form-select-sm fat-status">${optionsStatus(f.status)}</select></td>
+                <td><input type="date" class="form-control form-control-sm fat-venc" value="${f.data_vencimento || ''}"></td>
+                <td><input type="date" class="form-control form-control-sm fat-promessa" value="${f.data_promessa_pagamento || ''}"></td>
+                <td><input type="date" class="form-control form-control-sm fat-pagto" value="${f.data_pagamento || ''}"></td>
+                <td><input type="text" inputmode="decimal" class="form-control form-control-sm fat-valor" value="${formatValorInput(f.valor)}"></td>
+                <td>
+                    <input type="text" class="form-control form-control-sm fat-pix mb-1" placeholder="PIX copia e cola" value="${escapeAttr(f.codigo_pix || '')}">
+                    <input type="text" class="form-control form-control-sm fat-barras faturas-pix" placeholder="Código de barras" value="${escapeAttr(f.codigo_barras || '')}">
+                </td>
+                <td class="acoes-btns">
+                    <button type="button" class="btn btn-sm btn-outline-primary" title="Buscar na Nio" onclick="buscarNioFatura(${f.numero_fatura}, ${f.id})"><i class="bi bi-cloud-download"></i></button>
+                    ${pdfBtns}
+                    <label class="btn btn-sm btn-outline-secondary mb-0" title="Upload PDF">
+                        <i class="bi bi-upload"></i>
+                        <input type="file" accept="application/pdf" hidden onchange="uploadPdfFatura(${f.id}, this)">
+                    </label>
+                </td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="8" class="text-muted text-center">Sem faturas</td></tr>';
+    }
+
+    function formatValorInput(v) {
+        if (v == null || v === '') return '';
+        const n = Number(v);
+        if (Number.isNaN(n)) return String(v);
+        return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    window.abrirFaturas = async function (contratoId) {
+        const tbody = document.getElementById('tbody-faturas');
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">Carregando…</td></tr>';
+        modalFaturas.show();
+        try {
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/faturas/`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao carregar faturas');
+            renderFaturasTabela(data);
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-danger">${escapeHtml(e.message)}</td></tr>`;
+        }
+    };
+
+    window.salvarFaturas = async function () {
+        const contratoId = document.getElementById('faturas-contrato-id').value;
+        if (!contratoId) return;
+        const faturas = [];
+        document.querySelectorAll('#tbody-faturas tr[data-fatura-id]').forEach(tr => {
+            const valorRaw = (tr.querySelector('.fat-valor').value || '').trim();
+            faturas.push({
+                id: Number(tr.dataset.faturaId),
+                status: tr.querySelector('.fat-status').value,
+                data_vencimento: tr.querySelector('.fat-venc').value || '',
+                data_promessa_pagamento: tr.querySelector('.fat-promessa').value || '',
+                data_pagamento: tr.querySelector('.fat-pagto').value || '',
+                valor: valorRaw.replace(/\./g, '').replace(',', '.'),
+                codigo_pix: tr.querySelector('.fat-pix').value,
+                codigo_barras: tr.querySelector('.fat-barras').value,
+            });
+        });
+        const btn = document.getElementById('btn-salvar-faturas');
+        btn.disabled = true;
+        try {
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/faturas/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ faturas }),
+            });
+            const data = await r.json();
+            if (!r.ok || data.ok === false) throw new Error(data.error || 'Falha ao salvar');
+            if (data.detalhe) renderFaturasTabela(data.detalhe);
+            if (data.erros && data.erros.length) {
+                alert('Salvo com avisos:\n' + data.erros.join('\n'));
+            }
+            carregarDashboard();
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    window.downloadPdfFatura = async function (faturaId) {
+        try {
+            const r = await fetch(`${API}/api/qualidade/faturas/${faturaId}/pdf/`, {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') },
+                redirect: 'follow',
+            });
+            if (!r.ok) {
+                const data = await r.json().catch(() => ({}));
+                throw new Error(data.error || 'PDF indisponível');
+            }
+            const ct = r.headers.get('content-type') || '';
+            if (ct.includes('application/json')) {
+                const data = await r.json();
+                throw new Error(data.error || 'PDF indisponível');
+            }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fatura_${faturaId}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+
+    window.uploadPdfFatura = async function (faturaId, input) {
+        if (!input.files || !input.files[0]) return;
+        const fd = new FormData();
+        fd.append('file', input.files[0]);
+        try {
+            const token = localStorage.getItem('accessToken');
+            const r = await fetch(`${API}/api/qualidade/faturas/${faturaId}/upload-pdf/`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: fd,
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha no upload');
+            const contratoId = document.getElementById('faturas-contrato-id').value;
+            if (contratoId) abrirFaturas(Number(contratoId));
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            input.value = '';
+        }
+    };
+
+    async function parseJsonResponse(r) {
+        const raw = await r.text();
+        const ct = (r.headers.get('content-type') || '').toLowerCase();
+        if (!raw) return {};
+        if (ct.includes('application/json') || raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                throw new Error('Resposta JSON inválida do servidor.');
+            }
+        }
+        // HTML (404/500/login) — mensagem útil em vez do Unexpected token
+        const trecho = raw.replace(/\s+/g, ' ').slice(0, 180);
+        throw new Error(
+            `A API retornou HTML (HTTP ${r.status}) em vez de JSON. ` +
+            `Reinicie o servidor Django se acabou de atualizar as rotas. ` +
+            `Detalhe: ${trecho}`
+        );
+    }
+
+    window.buscarNioFatura = async function (numeroFatura, faturaId) {
+        const contratoId = document.getElementById('faturas-contrato-id').value;
+        if (!contratoId) return;
+        const lista = document.getElementById('nio-opcoes-lista');
+        lista.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-hourglass-split"></i> Buscando na Nio…</div>';
+        document.getElementById('nio-subtitulo').textContent = `Fatura #${numeroFatura}`;
+        modalNio.show();
+        try {
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/buscar-nio/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ numero_fatura: numeroFatura }),
+            });
+            const data = await parseJsonResponse(r);
+            if (!r.ok) throw new Error(data.error || data.detail || `Falha na busca Nio (HTTP ${r.status})`);
+            nioBuscaContexto = data;
+            document.getElementById('nio-subtitulo').textContent =
+                `Fatura #${numeroFatura} · mês alvo ${data.mes_alvo || '—'} · venc. local ${data.vencimento_local_display || '—'}`;
+
+            if (data.sem_dividas || !(data.opcoes || []).length) {
+                lista.innerHTML = `<div class="alert alert-warning">${escapeHtml(data.mensagem || 'Nenhuma opção encontrada na Nio.')}</div>`;
+                return;
+            }
+            lista.innerHTML = data.opcoes.map((o, i) => {
+                const badge = o.recomendado
+                    ? '<span class="badge bg-success">Recomendada</span>'
+                    : (o.match_mes ? '<span class="badge bg-primary">Mês ok</span>' : '<span class="badge bg-secondary">Outro mês</span>');
+                const border = o.recomendado ? 'border-success' : '';
+                const valorFmt = o.valor != null
+                    ? Number(o.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                    : '—';
+                return `<div class="card mb-2 ${border}">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                            <div>
+                                ${badge}
+                                <div class="mt-1"><strong>${valorFmt}</strong> · Venc. ${escapeHtml(o.data_vencimento_display || '—')}</div>
+                                <div class="small text-muted">Mês ref.: ${escapeHtml(o.mes_referencia || '—')}
+                                    ${o.diff_dias_vencimento != null ? ` · Δ ${o.diff_dias_vencimento} dia(s)` : ''}
+                                    ${o.status_nio ? ` · ${escapeHtml(o.status_nio)}` : ''}
+                                </div>
+                                <div class="small text-truncate" style="max-width:420px" title="${escapeAttr(o.codigo_pix || '')}">
+                                    PIX: ${escapeHtml((o.codigo_pix || '—').slice(0, 48))}${(o.codigo_pix || '').length > 48 ? '…' : ''}
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-success" onclick="aceitarOpcaoNio(${i})">
+                                <i class="bi bi-check2"></i> Aceitar e vincular
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            lista.innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message)}</div>`;
+        }
+    };
+
+    window.aceitarOpcaoNio = async function (idx) {
+        if (!nioBuscaContexto || !nioBuscaContexto.opcoes || !nioBuscaContexto.opcoes[idx]) return;
+        const opcao = nioBuscaContexto.opcoes[idx];
+        const contratoId = nioBuscaContexto.contrato_id;
+        const faturaId = nioBuscaContexto.fatura_id;
+        if (!confirm(`Vincular à fatura #${nioBuscaContexto.numero_fatura}?\n\nValor: ${opcao.valor}\nVencimento: ${opcao.data_vencimento_display}\nMês: ${opcao.mes_referencia || '—'}`)) {
+            return;
+        }
+        try {
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/aplicar-nio/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    fatura_id: faturaId,
+                    opcao,
+                    token: nioBuscaContexto.token || '',
+                    api_base: nioBuscaContexto.api_base || '',
+                    session_id: nioBuscaContexto.session_id || '',
+                    cpf: nioBuscaContexto.cpf || '',
+                }),
+            });
+            const data = await r.json();
+            if (!r.ok || data.ok === false) throw new Error(data.error || 'Falha ao vincular');
+            modalNio.hide();
+            if (data.detalhe) renderFaturasTabela(data.detalhe);
+            carregarDashboard();
+            alert('Dados da Nio vinculados. PDF buscado quando disponível.');
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function escapeAttr(s) {
+        return escapeHtml(s).replace(/'/g, '&#39;');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const token = localStorage.getItem('accessToken');
+        if (!token) { window.location.href = '/'; return; }
+        modalEnvio = new bootstrap.Modal(document.getElementById('modalEnvio'));
+        modalOrfaos = new bootstrap.Modal(document.getElementById('modalOrfaos'));
+        modalFaturas = new bootstrap.Modal(document.getElementById('modalFaturas'));
+        modalNio = new bootstrap.Modal(document.getElementById('modalNioOpcoes'));
+        carregarPeriodos();
+    });
+})();
+</script>
+{% endblock %}

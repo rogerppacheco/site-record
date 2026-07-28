@@ -22,6 +22,7 @@ from crm_app.views import (
     page_cdoi_novo,
     prevenda_publica_landing,
     page_bonus_m10,
+    page_qualidade,
     page_boas_vindas,
     page_validacao_fpd,
     page_validacao_churn,
@@ -55,6 +56,19 @@ from crm_app.views import (
     FaturaM10DetailView,
     BuscarFaturaNioView,
     BuscarFaturasSafraView,
+)
+from crm_app.qualidade_api import (
+    QualidadePeriodosView,
+    QualidadeDashboardView,
+    QualidadeSincronizarFaltantesView,
+    QualidadeOrfaosView,
+    QualidadeAtualizarContatoView,
+    QualidadeEnviarCobrancaView,
+    QualidadeContratoFaturasView,
+    QualidadeFaturaPdfView,
+    QualidadeFaturaUploadPdfView,
+    QualidadeBuscarNioOpcoesView,
+    QualidadeAplicarNioOpcaoView,
 )
 
 # --- CONFIGURAÇÃO DO ROUTER PARA REGRAS DE AUTOMAÇÃO ---
@@ -176,6 +190,20 @@ urlpatterns = [
     path('api/bonus-m10/faturas/<int:pk>/', FaturaM10DetailView.as_view(), name='api-faturas-m10-detail'),
     path('api/bonus-m10/buscar-fatura-nio/', BuscarFaturaNioView.as_view(), name='api-buscar-fatura-nio'),
     path('api/bonus-m10/buscar-faturas-safra/', BuscarFaturasSafraView.as_view(), name='api-buscar-faturas-safra'),
+
+    # Módulo Qualidade (UI unificada FPD + bônus)
+    path('qualidade/', page_qualidade, name='page_qualidade'),
+    path('api/qualidade/periodos/', QualidadePeriodosView.as_view(), name='api-qualidade-periodos'),
+    path('api/qualidade/dashboard/', QualidadeDashboardView.as_view(), name='api-qualidade-dashboard'),
+    path('api/qualidade/sincronizar-faltantes/', QualidadeSincronizarFaltantesView.as_view(), name='api-qualidade-sync'),
+    path('api/qualidade/orfaos/', QualidadeOrfaosView.as_view(), name='api-qualidade-orfaos'),
+    path('api/qualidade/contratos/<int:pk>/contato/', QualidadeAtualizarContatoView.as_view(), name='api-qualidade-contato'),
+    path('api/qualidade/contratos/<int:pk>/enviar/', QualidadeEnviarCobrancaView.as_view(), name='api-qualidade-enviar'),
+    path('api/qualidade/contratos/<int:pk>/faturas/', QualidadeContratoFaturasView.as_view(), name='api-qualidade-faturas'),
+    path('api/qualidade/faturas/<int:pk>/pdf/', QualidadeFaturaPdfView.as_view(), name='api-qualidade-fatura-pdf'),
+    path('api/qualidade/faturas/<int:pk>/upload-pdf/', QualidadeFaturaUploadPdfView.as_view(), name='api-qualidade-fatura-upload-pdf'),
+    path('api/qualidade/contratos/<int:pk>/buscar-nio/', QualidadeBuscarNioOpcoesView.as_view(), name='api-qualidade-buscar-nio'),
+    path('api/qualidade/contratos/<int:pk>/aplicar-nio/', QualidadeAplicarNioOpcaoView.as_view(), name='api-qualidade-aplicar-nio'),
 ]
 
 if settings.DEBUG:

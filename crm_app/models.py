@@ -2613,6 +2613,12 @@ class ContratoM10(models.Model):
     motivo_cancelamento = models.CharField(max_length=255, blank=True, null=True)
     elegivel_bonus = models.BooleanField(default=False, help_text="10 faturas pagas + sem downgrade + ativo")
     data_ultima_sincronizacao_fpd = models.DateTimeField(null=True, blank=True, help_text="Última sincronização com FPD")
+    # Órfão: veio do FPD sem vínculo com pedido/venda; cobrança bloqueada até ter CPF
+    orfao = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Contrato criado só pelo FPD, sem venda/CPF — aguarda vínculo para tratar",
+    )
     observacao = models.TextField(blank=True, null=True)
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -2747,6 +2753,11 @@ class FaturaM10(models.Model):
     data_vencimento = models.DateField()
     data_disponibilidade = models.DateField(null=True, blank=True, help_text="Data em que a fatura estará disponível no Nio")
     data_pagamento = models.DateField(null=True, blank=True)
+    data_promessa_pagamento = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Data em que o cliente prometeu pagar (tratamento Qualidade)",
+    )
     dias_atraso = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NAO_PAGO')
     # Campos mapeados diretamente do arquivo FPD
@@ -2779,6 +2790,48 @@ class FaturaM10(models.Model):
 
     def __str__(self):
         return f"Fatura {self.numero_fatura} - {self.contrato.numero_contrato} - {self.status}"
+
+
+class HistoricoEnvioQualidade(models.Model):
+    """Log de envios de cobrança (WhatsApp/e-mail) do módulo Qualidade."""
+    CANAL_CHOICES = [
+        ('WHATSAPP', 'WhatsApp'),
+        ('EMAIL', 'E-mail'),
+    ]
+
+    contrato = models.ForeignKey(
+        ContratoM10,
+        on_delete=models.CASCADE,
+        related_name='historico_envios_qualidade',
+    )
+    fatura = models.ForeignKey(
+        FaturaM10,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historico_envios_qualidade',
+    )
+    canal = models.CharField(max_length=20, choices=CANAL_CHOICES)
+    destinatario = models.CharField(max_length=255)
+    mensagem = models.TextField(blank=True, default='')
+    enviado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='envios_qualidade',
+    )
+    sucesso = models.BooleanField(default=True)
+    erro = models.TextField(null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Histórico de Envio Qualidade"
+        verbose_name_plural = "Históricos de Envio Qualidade"
+        ordering = ['-criado_em']
+
+    def __str__(self) -> str:
+        return f"{self.canal} → {self.destinatario} ({self.criado_em:%d/%m/%Y %H:%M})"
 
 
 class HistoricoBuscaFatura(models.Model):
