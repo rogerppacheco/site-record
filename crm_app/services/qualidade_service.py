@@ -18,7 +18,7 @@ from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from crm_app.models import Cliente, ContratoM10, FaturaM10, SafraM10, Venda
+from crm_app.models import Cliente, ContratoM10, FaturaM10, SafraM10, StatusCRM, Venda
 from crm_app.utils import is_member
 from crm_app.whatsapp_service import WhatsAppService
 
@@ -300,6 +300,13 @@ def _aplicar_filtros_contratos(
         else:
             queryset = queryset.filter(orfao=bool(orfao))
 
+    status_tratamento_id = filtros.get('status_tratamento_id') or filtros.get('status_tratamento')
+    if status_tratamento_id not in (None, ''):
+        if str(status_tratamento_id).lower() in ('null', 'vazio', 'sem'):
+            queryset = queryset.filter(status_tratamento__isnull=True)
+        elif str(status_tratamento_id).isdigit():
+            queryset = queryset.filter(status_tratamento_id=int(status_tratamento_id))
+
     status_fatura1 = filtros.get('status_fatura1')
     if status_fatura1:
         queryset = queryset.filter(
@@ -321,6 +328,46 @@ def _aplicar_filtros_contratos(
         queryset = queryset.filter(filtros_busca)
 
     return queryset
+
+
+def _q_fatura1_atrasada(hoje: date) -> Q:
+    """1ª fatura em débito vencido (atrasado ou não pago com vencimento passado)."""
+    return Q(faturas__numero_fatura=1) & (
+        Q(faturas__status='ATRASADO')
+        | (
+            Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO', 'OUTROS'])
+            & Q(faturas__data_vencimento__lt=hoje)
+        )
+    )
+
+
+def _q_fatura1_em_aberto(hoje: date) -> Q:
+    """1ª fatura em aberto ainda no prazo (não paga e vencimento >= hoje)."""
+    return (
+        Q(faturas__numero_fatura=1)
+        & Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO', 'OUTROS'])
+        & Q(faturas__data_vencimento__gte=hoje)
+    )
+
+
+def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet[ContratoM10]:
+    """Filas de tratamento: atrasados (débito) x em aberto (no prazo)."""
+    hoje = timezone.localdate()
+    if fila == 'atrasados':
+        return queryset.filter(_q_fatura1_atrasada(hoje)).distinct()
+    if fila in ('abertos', 'em_aberto'):
+        return queryset.filter(_q_fatura1_em_aberto(hoje)).distinct()
+    return queryset
+
+
+def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, int]:
+    """Contagens das filas sem aplicar o filtro de fila atual."""
+    hoje = timezone.localdate()
+    return {
+        'atrasados': queryset.filter(_q_fatura1_atrasada(hoje)).distinct().count(),
+        'abertos': queryset.filter(_q_fatura1_em_aberto(hoje)).distinct().count(),
+        'todos': queryset.count(),
+    }
 
 
 def _fatura_envio_id(contrato: ContratoM10, faturas_por_contrato: dict[int, list[FaturaM10]]) -> Optional[int]:
@@ -345,6 +392,50 @@ def _vendedor_nome(contrato: ContratoM10) -> str:
         return nick
     nome = f'{contrato.vendedor.first_name or ""} {contrato.vendedor.last_name or ""}'.strip()
     return nome or '-'
+
+
+def listar_status_tratamento_qualidade() -> list[dict[str, Any]]:
+    """Opções cadastradas em Cadastros Gerais (StatusCRM tipo Qualidade)."""
+    return list(
+        StatusCRM.objects.filter(tipo='Qualidade')
+        .order_by('nome')
+        .values('id', 'nome', 'cor', 'estado')
+    )
+
+
+def atualizar_status_tratamento_contrato(
+    contrato_id: int,
+    status_id: Optional[int],
+) -> dict[str, Any]:
+    """Atualiza o status de tratamento do BO no ContratoM10."""
+    contrato = ContratoM10.objects.filter(pk=contrato_id).first()
+    if not contrato:
+        raise ValueError('Contrato não encontrado')
+
+    if status_id in (None, '', 0, '0', 'null'):
+        contrato.status_tratamento = None
+        contrato.save(update_fields=['status_tratamento', 'atualizado_em'])
+        return {
+            'ok': True,
+            'contrato_id': contrato.id,
+            'status_tratamento_id': None,
+            'status_tratamento_nome': None,
+            'status_tratamento_cor': None,
+        }
+
+    status_obj = StatusCRM.objects.filter(pk=int(status_id), tipo='Qualidade').first()
+    if not status_obj:
+        raise ValueError('Status de Qualidade inválido. Cadastre em Cadastros Gerais → Status (tipo Qualidade).')
+
+    contrato.status_tratamento = status_obj
+    contrato.save(update_fields=['status_tratamento', 'atualizado_em'])
+    return {
+        'ok': True,
+        'contrato_id': contrato.id,
+        'status_tratamento_id': status_obj.id,
+        'status_tratamento_nome': status_obj.nome,
+        'status_tratamento_cor': status_obj.cor,
+    }
 
 
 def dashboard_qualidade(
@@ -380,13 +471,18 @@ def dashboard_qualidade(
 
     queryset = (
         _aplicar_filtros_contratos(queryset, filtros)
-        .select_related('vendedor', 'venda', 'venda__cliente')
+        .select_related('vendedor', 'venda', 'venda__cliente', 'status_tratamento')
         .annotate(
             total_faturas=Count('faturas', distinct=True),
             faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
         )
         .order_by('-data_instalacao', 'id')
     )
+
+    filas = contagens_filas_tratamento(queryset)
+    fila = (filtros.get('fila') or 'todos').strip().lower()
+    if fila and fila != 'todos':
+        queryset = _aplicar_filtro_fila(queryset, fila)
 
     contratos_list = list(queryset)
     for c in contratos_list:
@@ -445,7 +541,7 @@ def dashboard_qualidade(
     except (TypeError, ValueError):
         page = 1
     try:
-        page_size = max(1, min(200, int(filtros.get('page_size', 100) or 100)))
+        page_size = max(1, min(250, int(filtros.get('page_size', 100) or 100)))
     except (TypeError, ValueError):
         page_size = 100
     start = (page - 1) * page_size
@@ -468,6 +564,8 @@ def dashboard_qualidade(
         else:
             valor_bonus = VALOR_BONUS_M10 if is_elegivel else 0
 
+        data_venc_f1 = f1.data_vencimento.isoformat() if f1 and f1.data_vencimento else None
+        st = getattr(c, 'status_tratamento', None)
         contratos_data.append({
             'id': c.id,
             'ordem_servico': c.ordem_servico or '-',
@@ -476,6 +574,10 @@ def dashboard_qualidade(
             'status_contrato': c.status_contrato,
             'status_fatura1': status_fatura1,
             'status_fatura1_display': status_fatura1_display,
+            'data_vencimento_f1': data_venc_f1,
+            'status_tratamento_id': st.id if st else None,
+            'status_tratamento_nome': st.nome if st else None,
+            'status_tratamento_cor': st.cor if st else None,
             'faturas_pagas': c.faturas_pagas,
             'total_faturas': c.total_faturas,
             'elegivel': is_elegivel,
@@ -492,6 +594,9 @@ def dashboard_qualidade(
         'mes': mes,
         'label': _label_mes(mes),
         'kpis': kpis,
+        'filas': filas,
+        'fila': fila if fila else 'todos',
+        'status_tratamento_opcoes': listar_status_tratamento_qualidade(),
         'contratos': contratos_data,
         'page': page,
         'page_size': page_size,

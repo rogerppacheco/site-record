@@ -65,6 +65,9 @@ class QualidadeDashboardView(APIView):
             'page': request.GET.get('page', 1),
             'page_size': request.GET.get('page_size', 100),
             'orfao': request.GET.get('orfao'),
+            'status_fatura1': request.GET.get('status_fatura1'),
+            'fila': request.GET.get('fila', 'todos'),
+            'status_tratamento_id': request.GET.get('status_tratamento_id') or request.GET.get('status_tratamento'),
         }
         try:
             data = qs.dashboard_qualidade(lente, mes, request.user, filtros)
@@ -375,4 +378,48 @@ class QualidadeAplicarNioOpcaoView(APIView):
             return Response({'error': str(e)}, status=400)
         except Exception as e:
             logger.exception('Erro ao aplicar opção Nio Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+
+class QualidadeStatusTratamentoView(APIView):
+    """GET lista opções | PATCH/POST atualiza status do contrato.
+
+    GET  /api/qualidade/status-tratamento/
+    POST /api/qualidade/contratos/<id>/status-tratamento/  body: { status_id }
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        return Response({'status': qs.listar_status_tratamento_qualidade()})
+
+
+class QualidadeAtualizarStatusTratamentoView(APIView):
+    """POST/PATCH /api/qualidade/contratos/<id>/status-tratamento/  body: { status_id|null }"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk: int):
+        return self._atualizar(request, pk)
+
+    def patch(self, request, pk: int):
+        return self._atualizar(request, pk)
+
+    def _atualizar(self, request, pk: int):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria', 'Qualidade']):
+            return Response({'error': 'Sem permissão para alterar status de tratamento'}, status=403)
+        status_id = request.data.get('status_id', request.data.get('status_tratamento_id'))
+        try:
+            resultado = qs.atualizar_status_tratamento_contrato(pk, status_id)
+            return Response(resultado)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        except Exception as e:
+            logger.exception('Erro ao atualizar status tratamento Qualidade')
             return Response({'error': str(e)}, status=500)

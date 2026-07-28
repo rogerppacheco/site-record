@@ -5,31 +5,152 @@
 
 {% block extra_css %}
 <style>
-.qualidade-page .system-container-full { max-width: 100% !important; }
-.qualidade-page h1 { font-size: 1.6rem; margin: 0; }
-.qualidade-lente .btn { min-width: 160px; }
+.qualidade-page {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem clamp(0.45rem, 1.2vw, 0.85rem) !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+}
+.qualidade-page .qualidade-shell {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0 !important;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.45rem 0.55rem !important;
+    border-radius: 12px;
+}
+.qualidade-page .qualidade-shell.card-modern:hover {
+    transform: none;
+    box-shadow: none;
+}
+.qualidade-page h1 { font-size: 1.05rem; margin: 0; }
+.qualidade-page .q-sub { font-size: 0.78rem; color: var(--text-secondary); margin: 0; }
+.qualidade-lente .btn { min-width: 0; padding: 0.2rem 0.5rem; font-size: 0.74rem; }
 .qualidade-cards {
-    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px;
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px;
 }
 .qualidade-card-mes {
-    min-width: 140px; border: 1px solid var(--border-color); border-radius: 12px;
-    padding: 12px 14px; background: var(--bg-card); cursor: pointer; flex-shrink: 0;
+    min-width: 118px; border: 1px solid var(--border-color); border-radius: 10px;
+    padding: 8px 10px; background: var(--bg-card); cursor: pointer; flex-shrink: 0;
 }
 .qualidade-card-mes.active {
     border-color: var(--accent-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 30%, transparent);
 }
-.qualidade-card-mes .mes-label { font-weight: 700; font-size: 0.95rem; }
-.qualidade-card-mes .mes-meta { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.qualidade-card-mes .mes-label { font-weight: 700; font-size: 0.85rem; }
+.qualidade-card-mes .mes-meta { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .kpi-item {
-    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px;
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px;
 }
-.kpi-item .kpi-val { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
-.kpi-item .kpi-lbl { font-size: 0.8rem; color: var(--text-secondary); }
-.table-qualidade th, .table-qualidade td { font-size: 0.85rem; vertical-align: middle; white-space: nowrap; }
+.kpi-item .kpi-val { font-size: 1.35rem; font-weight: 700; line-height: 1.15; }
+.kpi-item .kpi-lbl { font-size: 0.72rem; color: var(--text-secondary); }
+.qualidade-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+    margin-bottom: 0.25rem;
+    min-width: 0;
+}
+.qualidade-tabs { border-bottom: none !important; }
+.qualidade-tabs .nav-link {
+    font-size: 0.8rem; font-weight: 600; padding: 0.22rem 0.55rem;
+    border-radius: 7px !important; border: 1px solid transparent !important;
+}
+.qualidade-tabs .nav-link.active {
+    background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+    border-color: var(--accent-color) !important;
+}
+.qualidade-tabs .nav-link .badge { font-size: 0.62rem; vertical-align: middle; }
+.qualidade-toolbar-acoes { margin-left: auto; }
+.qualidade-toolbar-acoes .btn { font-size: 0.72rem; padding: 0.18rem 0.4rem; }
+.qualidade-chrome { flex-shrink: 0; }
+.qualidade-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.4rem;
+    padding: 0.15rem 0 0.3rem;
+    min-width: 0;
+}
+.qualidade-toolbar .q-busca { width: 10.5rem; max-width: 100%; flex: 0 1 10.5rem; }
+.qualidade-toolbar .q-sel-mes { width: auto; min-width: 7.2rem; max-width: 9rem; }
+.qualidade-toolbar .q-sel-status,
+.qualidade-toolbar .q-sel-elegivel { width: auto; min-width: 6.2rem; max-width: 8rem; }
+.table-qualidade .q-status-trat {
+    min-width: 8.5rem;
+    max-width: 11rem;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.3rem;
+}
+.qualidade-filas .btn { font-size: 0.72rem; padding: 0.18rem 0.5rem; }
+.qualidade-filas .btn .badge {
+    font-size: 0.62rem; margin-left: 2px;
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    color: inherit;
+}
+.qualidade-filas .btn-check:checked + .btn .badge { background: rgba(255,255,255,.25); color: #fff; }
+.qualidade-kpi-mini { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; }
+.qualidade-page.modo-tratamento .qualidade-shell { padding: 0.3rem 0.4rem !important; }
+.qualidade-page.modo-tratamento .qualidade-lente { margin-bottom: 0.2rem !important; }
+.qualidade-page.modo-tratamento .q-titulo-bloco { display: none; }
+.qualidade-area-tabela {
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+    min-width: 0;
+}
+.qualidade-table-wrap {
+    flex: 1 1 auto;
+    min-height: 220px;
+    max-height: 60vh;
+    overflow: auto !important;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    -webkit-overflow-scrolling: touch;
+    background: var(--bg-card);
+}
+.qualidade-paginacao { flex-shrink: 0; }
+.table-qualidade {
+    margin-bottom: 0;
+    width: 100%;
+    border-collapse: separate !important;
+    border-spacing: 0;
+}
+.table-qualidade th, .table-qualidade td {
+    font-size: 0.78rem;
+    vertical-align: middle;
+    white-space: nowrap;
+    padding: 0.32rem 0.5rem !important;
+}
+.table-qualidade thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background-color: var(--bg-secondary, #1a2332) !important;
+    background-image: none !important;
+    box-shadow: 0 1px 0 var(--border-color);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+}
+.table-qualidade .col-cliente {
+    white-space: normal;
+    max-width: 14rem;
+    line-height: 1.2;
+}
 .row-orfao { opacity: 0.75; }
-.badge-orfao { background: #6c757d; }
-.acoes-btns .btn { padding: 2px 8px; font-size: 0.75rem; }
+.badge-orfao { background: #6c757d; font-size: 0.65rem; }
+.badge-atrasado { background: #dc3545; font-size: 0.65rem; }
+.badge-aberto { background: #fd7e14; font-size: 0.65rem; }
+.acoes-btns .btn { padding: 1px 6px; font-size: 0.72rem; }
 .link-faturas { cursor: pointer; color: var(--accent-color); text-decoration: underline; font-weight: 600; }
 .faturas-table input, .faturas-table select { font-size: 0.8rem; min-width: 0; }
 .faturas-table .col-num { width: 40px; }
@@ -40,6 +161,48 @@
 .faturas-table .col-promessa { width: 130px; min-width: 130px; }
 .faturas-pix { font-size: 0.75rem; }
 #modalFaturas .modal-dialog { max-width: 1200px; }
+
+.qualidade-page.modo-tratamento {
+    height: calc(100vh - 100px);
+    height: calc(100dvh - 100px);
+    max-height: calc(100vh - 100px);
+    max-height: calc(100dvh - 100px);
+    overflow: hidden !important;
+    padding: 0.25rem clamp(0.35rem, 1vw, 0.55rem) !important;
+}
+.qualidade-page.modo-tratamento .qualidade-shell {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.qualidade-page.modo-tratamento .q-painel-only { display: none !important; }
+.qualidade-page.modo-tratamento .qualidade-area-tabela {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+}
+.qualidade-page.modo-tratamento .qualidade-table-wrap {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    border-radius: 8px 8px 0 0;
+}
+.qualidade-page.modo-tratamento .qualidade-paginacao {
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-card);
+}
+@media (max-width: 768px) {
+    .qualidade-page.modo-tratamento {
+        height: calc(100vh - 90px);
+        height: calc(100dvh - 90px);
+        max-height: calc(100dvh - 90px);
+    }
+}
 </style>
 {% endblock %}
 
@@ -49,35 +212,48 @@
 {% endblock %}
 
 {% block content %}
-<main class="area-interna-section qualidade-page">
-    <div class="system-container system-container-full card-modern">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
-            <div>
+<main class="area-interna-section qualidade-page" id="qualidade-page">
+    <div class="system-container system-container-full card-modern qualidade-shell">
+        <div class="qualidade-chrome">
+        <div class="qualidade-topbar">
+            <div class="qualidade-brand q-titulo-bloco">
                 <h1><i class="bi bi-shield-check text-primary"></i> Qualidade</h1>
-                <p class="text-muted mb-0">1ª fatura (FPD) e acompanhamento das 10 faturas / bônus — numa visão só</p>
             </div>
-            <div class="d-flex flex-wrap gap-2">
-                <a href="/importar-fpd/" class="btn btn-outline-primary btn-sm"><i class="bi bi-upload"></i> Importar FPD</a>
-                <a href="/importacoes/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-cloud-upload"></i> Churn / Importações</a>
-                <button class="btn btn-outline-secondary btn-sm" onclick="sincronizarFaltantes()"><i class="bi bi-arrow-repeat"></i> Sincronizar faltantes</button>
-                <button class="btn btn-outline-secondary btn-sm" onclick="buscarNio()"><i class="bi bi-search"></i> Buscar Nio</button>
-                <button class="btn btn-success btn-sm" onclick="exportarDados()"><i class="bi bi-download"></i> Exportar</button>
-                <button class="btn btn-outline-dark btn-sm" onclick="carregarOrfaos()"><i class="bi bi-exclamation-diamond"></i> Órfãos</button>
+            <ul class="nav nav-pills qualidade-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-painel" type="button" onclick="setAbaPrincipal('painel')">
+                        <i class="bi bi-speedometer2"></i> Painel
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="tab-tratamento" type="button" onclick="setAbaPrincipal('tratamento')">
+                        <i class="bi bi-headset"></i> Tratamento
+                        <span class="badge rounded-pill text-bg-danger" id="badge-tratar">0</span>
+                    </button>
+                </li>
+            </ul>
+            <div class="qualidade-lente btn-group" role="group" aria-label="Lente">
+                <button type="button" class="btn btn-primary" id="btn-lente-vencimento" onclick="setLente('vencimento')" title="Vencimento 1ª fatura">
+                    Venc. 1ª
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="btn-lente-instalacao" onclick="setLente('instalacao')" title="Instalação (bônus)">
+                    Instalação
+                </button>
+            </div>
+            <div class="d-flex flex-wrap gap-1 qualidade-toolbar-acoes">
+                <a href="/importar-fpd/" class="btn btn-outline-primary btn-sm" title="Importar FPD"><i class="bi bi-upload"></i></a>
+                <a href="/importacoes/" class="btn btn-outline-secondary btn-sm" title="Importações"><i class="bi bi-cloud-upload"></i></a>
+                <button class="btn btn-outline-secondary btn-sm" onclick="sincronizarFaltantes()" title="Sincronizar faltantes"><i class="bi bi-arrow-repeat"></i></button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="buscarNio()" title="Buscar Nio"><i class="bi bi-search"></i></button>
+                <button class="btn btn-success btn-sm" onclick="exportarDados()" title="Exportar"><i class="bi bi-download"></i></button>
+                <button class="btn btn-outline-dark btn-sm" onclick="carregarOrfaos()" title="Órfãos"><i class="bi bi-exclamation-diamond"></i></button>
             </div>
         </div>
+        <p class="q-sub q-painel-only mb-2">1ª fatura (FPD) e acompanhamento das 10 faturas / bônus</p>
 
-        <div class="qualidade-lente btn-group mb-3" role="group" aria-label="Lente">
-            <button type="button" class="btn btn-primary" id="btn-lente-vencimento" onclick="setLente('vencimento')">
-                Vencimento 1ª fatura
-            </button>
-            <button type="button" class="btn btn-outline-primary" id="btn-lente-instalacao" onclick="setLente('instalacao')">
-                Instalação (bônus)
-            </button>
-        </div>
+        <div id="periodos-cards" class="qualidade-cards q-painel-only" aria-label="Meses"></div>
 
-        <div id="periodos-cards" class="qualidade-cards" aria-label="Meses"></div>
-
-        <div class="kpi-grid" id="kpi-grid">
+        <div class="kpi-grid q-painel-only" id="kpi-grid">
             <div class="kpi-item"><div class="kpi-val" id="kpi-1">—</div><div class="kpi-lbl" id="kpi-1-lbl">Total</div></div>
             <div class="kpi-item"><div class="kpi-val" id="kpi-2">—</div><div class="kpi-lbl" id="kpi-2-lbl">—</div></div>
             <div class="kpi-item"><div class="kpi-val" id="kpi-3">—</div><div class="kpi-lbl" id="kpi-3-lbl">—</div></div>
@@ -87,55 +263,76 @@
             </div>
         </div>
 
-        <div class="row g-2 mb-3">
-            <div class="col-md-4">
-                <input type="search" id="filtro-q" class="form-control form-control-sm" placeholder="Buscar O.S., cliente, CPF..." onkeydown="if(event.key==='Enter')carregarDashboard()">
+        <div class="qualidade-toolbar" id="qualidade-toolbar">
+            <select id="sel-mes-tratamento" class="form-select form-select-sm q-sel-mes" title="Mês" onchange="selecionarMes(this.value)"></select>
+            <div class="qualidade-filas btn-group" role="group" aria-label="Fila de tratamento" id="filas-tratamento">
+                <input type="radio" class="btn-check" name="fila-trat" id="fila-atrasados" autocomplete="off" checked>
+                <label class="btn btn-outline-danger" for="fila-atrasados" onclick="setFila('atrasados')">
+                    Atrasados <span class="badge" id="cnt-atrasados">0</span>
+                </label>
+                <input type="radio" class="btn-check" name="fila-trat" id="fila-abertos" autocomplete="off">
+                <label class="btn btn-outline-warning" for="fila-abertos" onclick="setFila('abertos')">
+                    Em aberto <span class="badge" id="cnt-abertos">0</span>
+                </label>
+                <input type="radio" class="btn-check" name="fila-trat" id="fila-todos" autocomplete="off">
+                <label class="btn btn-outline-secondary" for="fila-todos" onclick="setFila('todos')">
+                    Todos <span class="badge" id="cnt-todos">0</span>
+                </label>
             </div>
-            <div class="col-md-2">
-                <select id="filtro-status" class="form-select form-select-sm" onchange="carregarDashboard()">
-                    <option value="">Status contrato</option>
-                    <option value="ATIVO">Ativo</option>
-                    <option value="CANCELADO">Cancelado</option>
-                    <option value="DOWNGRADE">Downgrade</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select id="filtro-elegivel" class="form-select form-select-sm" onchange="carregarDashboard()">
-                    <option value="">Elegibilidade</option>
-                    <option value="true">Elegível</option>
-                    <option value="false">Não elegível</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <button class="btn btn-primary btn-sm w-100" onclick="carregarDashboard()">Filtrar</button>
-            </div>
+            <select id="filtro-status-tratamento" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status tratamento">
+                <option value="">Status trat.</option>
+                <option value="sem">Sem status</option>
+            </select>
+            <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="O.S. / cliente / CPF" onkeydown="if(event.key==='Enter')carregarDashboard()">
+            <select id="filtro-status" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status contrato">
+                <option value="">Status</option>
+                <option value="ATIVO">Ativo</option>
+                <option value="CANCELADO">Cancelado</option>
+                <option value="DOWNGRADE">Downgrade</option>
+            </select>
+            <select id="filtro-elegivel" class="form-select form-select-sm q-sel-elegivel" onchange="carregarDashboard()" title="Elegibilidade">
+                <option value="">Elegível</option>
+                <option value="true">Sim</option>
+                <option value="false">Não</option>
+            </select>
+            <button class="btn btn-primary btn-sm" type="button" onclick="carregarDashboard()" title="Filtrar"><i class="bi bi-funnel"></i></button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="limparFiltrosQualidade()" title="Limpar filtros">
+                <i class="bi bi-x-circle"></i>
+            </button>
+            <span class="qualidade-kpi-mini" id="kpi-mini"></span>
         </div>
 
-        <div class="table-responsive">
-            <table class="table table-sm table-hover table-qualidade">
-                <thead>
-                    <tr>
-                        <th>O.S.</th>
-                        <th>Cliente</th>
-                        <th>Vendedor</th>
-                        <th>Status</th>
-                        <th>1ª fatura</th>
-                        <th>Pagas</th>
-                        <th>Elegível</th>
-                        <th id="th-bonus">R$</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="tbody-contratos">
-                    <tr><td colspan="9" class="text-center text-muted py-4">Selecione um mês</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
-            <small class="text-muted" id="paginacao-info"></small>
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" id="btn-prev" onclick="mudarPagina(-1)">Anterior</button>
-                <button class="btn btn-outline-secondary" id="btn-next" onclick="mudarPagina(1)">Próxima</button>
+        </div><!-- /.qualidade-chrome -->
+
+        <div class="qualidade-area-tabela">
+            <div class="qualidade-table-wrap">
+                <table class="table table-sm table-hover table-qualidade">
+                    <thead>
+                        <tr>
+                            <th>O.S.</th>
+                            <th>Cliente</th>
+                            <th>Vendedor</th>
+                            <th>Status</th>
+                            <th>1ª fatura</th>
+                            <th>Venc.</th>
+                            <th>Status trat.</th>
+                            <th>Pagas</th>
+                            <th>Elegível</th>
+                            <th id="th-bonus">R$</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-contratos">
+                        <tr><td colspan="11" class="text-center text-muted py-4">Selecione um mês</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-between align-items-center qualidade-paginacao">
+                <small class="text-muted" id="paginacao-info"></small>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary" id="btn-prev" onclick="mudarPagina(-1)">Anterior</button>
+                    <button class="btn btn-outline-secondary" id="btn-next" onclick="mudarPagina(1)">Próxima</button>
+                </div>
             </div>
         </div>
     </div>
@@ -275,6 +472,10 @@
     let page = 1;
     let totalPages = 1;
     let podeVerBonus = false;
+    let abaPrincipal = 'tratamento';
+    let fila = 'atrasados';
+    let periodosCache = [];
+    let statusTratamentoOpcoes = [];
     let modalEnvio = null;
     let modalOrfaos = null;
     let modalFaturas = null;
@@ -290,10 +491,67 @@
         };
     }
 
+    function filaEfetiva() {
+        return abaPrincipal === 'painel' ? 'todos' : fila;
+    }
+
+    function pageSizeEfetivo() {
+        return abaPrincipal === 'tratamento' ? '150' : '100';
+    }
+
+    function setAbaPrincipal(aba) {
+        abaPrincipal = aba;
+        const pageEl = document.getElementById('qualidade-page');
+        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento');
+        document.getElementById('tab-painel').classList.toggle('active', aba === 'painel');
+        document.getElementById('tab-tratamento').classList.toggle('active', aba === 'tratamento');
+
+        const toolbar = document.getElementById('qualidade-toolbar');
+        const filasEl = document.getElementById('filas-tratamento');
+        if (aba === 'tratamento') {
+            if (toolbar) toolbar.style.display = '';
+            if (filasEl) filasEl.style.display = '';
+        } else {
+            // No Painel, toolbar de fila/mês fica oculta — cards de mês bastam
+            if (toolbar) toolbar.style.display = 'none';
+        }
+        page = 1;
+        carregarDashboard();
+    }
+    window.setAbaPrincipal = setAbaPrincipal;
+
+    function setFila(nova) {
+        fila = nova;
+        page = 1;
+        document.getElementById('fila-atrasados').checked = nova === 'atrasados';
+        document.getElementById('fila-abertos').checked = nova === 'abertos';
+        document.getElementById('fila-todos').checked = nova === 'todos';
+        if (abaPrincipal !== 'tratamento') {
+            setAbaPrincipal('tratamento');
+            return;
+        }
+        carregarDashboard();
+    }
+    window.setFila = setFila;
+
+    window.limparFiltrosQualidade = function () {
+        document.getElementById('filtro-q').value = '';
+        document.getElementById('filtro-status').value = '';
+        document.getElementById('filtro-elegivel').value = '';
+        const stTrat = document.getElementById('filtro-status-tratamento');
+        if (stTrat) stTrat.value = '';
+        if (abaPrincipal === 'tratamento') {
+            fila = 'atrasados';
+            document.getElementById('fila-atrasados').checked = true;
+        }
+        page = 1;
+        carregarDashboard();
+    };
+
     function setLente(nova) {
         lente = nova;
         page = 1;
-        mesAtual = ''; // força o 1º período tratável da nova lente
+        mesAtual = '';
         document.getElementById('btn-lente-vencimento').className =
             'btn ' + (lente === 'vencimento' ? 'btn-primary' : 'btn-outline-primary');
         document.getElementById('btn-lente-instalacao').className =
@@ -301,6 +559,13 @@
         carregarPeriodos();
     }
     window.setLente = setLente;
+
+    function atualizarSelectMes() {
+        const sel = document.getElementById('sel-mes-tratamento');
+        sel.innerHTML = periodosCache.map(p =>
+            `<option value="${p.mes}" ${p.mes === mesAtual ? 'selected' : ''}>${escapeHtml(p.label)}</option>`
+        ).join('');
+    }
 
     async function carregarPeriodos() {
         const wrap = document.getElementById('periodos-cards');
@@ -311,16 +576,17 @@
             });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'Falha ao carregar períodos');
-            const periodos = data.periodos || [];
-            if (!periodos.length) {
+            periodosCache = data.periodos || [];
+            if (!periodosCache.length) {
                 wrap.innerHTML = '<div class="text-muted small p-2">Nenhum período encontrado</div>';
                 mesAtual = '';
+                atualizarSelectMes();
                 return;
             }
-            if (!mesAtual || !periodos.some(p => p.mes === mesAtual)) {
-                mesAtual = periodos[0].mes;
+            if (!mesAtual || !periodosCache.some(p => p.mes === mesAtual)) {
+                mesAtual = periodosCache[0].mes;
             }
-            wrap.innerHTML = periodos.map(p => {
+            wrap.innerHTML = periodosCache.map(p => {
                 const meta = lente === 'vencimento'
                     ? `${p.total || 0} · ${p.abertas || 0} abertas`
                     : `${p.total || 0} · ${p.elegiveis || 0} elegíveis`;
@@ -329,6 +595,7 @@
                     <div class="mes-meta">${meta}</div>
                 </div>`;
             }).join('');
+            atualizarSelectMes();
             carregarDashboard();
         } catch (e) {
             wrap.innerHTML = `<div class="text-danger small p-2">${e.message}</div>`;
@@ -340,7 +607,83 @@
         document.querySelectorAll('.qualidade-card-mes').forEach(el => {
             el.classList.toggle('active', el.dataset.mes === mes);
         });
+        atualizarSelectMes();
         carregarDashboard();
+    };
+
+    function atualizarContagensFilas(filas) {
+        const f = filas || {};
+        const atr = f.atrasados || 0;
+        const abe = f.abertos || 0;
+        const tod = f.todos || 0;
+        document.getElementById('cnt-atrasados').textContent = atr;
+        document.getElementById('cnt-abertos').textContent = abe;
+        document.getElementById('cnt-todos').textContent = tod;
+        document.getElementById('badge-tratar').textContent = atr + abe;
+    }
+
+    function formatDataBr(iso) {
+        if (!iso) return '—';
+        const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return escapeHtml(iso);
+        return `${m[3]}/${m[2]}/${m[1]}`;
+    }
+
+    function badgeFatura(status, display) {
+        const s = (status || '').toUpperCase();
+        if (s === 'ATRASADO') return `<span class="badge badge-atrasado">${escapeHtml(display || 'Atrasado')}</span>`;
+        if (s === 'PAGO') return `<span class="badge text-bg-success">${escapeHtml(display || 'Pago')}</span>`;
+        if (s === 'NAO_PAGO' || s === 'AGUARDANDO' || s === 'OUTROS') {
+            return `<span class="badge badge-aberto">${escapeHtml(display || s)}</span>`;
+        }
+        return escapeHtml(display || status || '-');
+    }
+
+    function popularFiltroStatusTratamento(opcoes) {
+        statusTratamentoOpcoes = opcoes || [];
+        const sel = document.getElementById('filtro-status-tratamento');
+        if (!sel) return;
+        const atual = sel.value;
+        const base = '<option value="">Status trat.</option><option value="sem">Sem status</option>';
+        sel.innerHTML = base + statusTratamentoOpcoes.map(o =>
+            `<option value="${o.id}">${escapeHtml(o.nome)}</option>`
+        ).join('');
+        if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
+    }
+
+    function optionsStatusTratamento(selectedId) {
+        const opts = ['<option value="">—</option>'].concat(
+            statusTratamentoOpcoes.map(o =>
+                `<option value="${o.id}" ${String(o.id) === String(selectedId || '') ? 'selected' : ''}>${escapeHtml(o.nome)}</option>`
+            )
+        );
+        return opts.join('');
+    }
+
+    window.atualizarStatusTratamento = async function (contratoId, selectEl) {
+        const statusId = selectEl.value || null;
+        const prev = selectEl.dataset.prev || '';
+        selectEl.disabled = true;
+        try {
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/status-tratamento/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ status_id: statusId ? Number(statusId) : null }),
+            });
+            const data = await r.json();
+            if (!r.ok || data.ok === false) throw new Error(data.error || 'Falha ao salvar status');
+            selectEl.dataset.prev = statusId || '';
+            if (data.status_tratamento_cor) {
+                selectEl.style.borderColor = data.status_tratamento_cor;
+            } else {
+                selectEl.style.borderColor = '';
+            }
+        } catch (e) {
+            selectEl.value = prev;
+            alert(e.message);
+        } finally {
+            selectEl.disabled = false;
+        }
     };
 
     async function carregarDashboard() {
@@ -348,25 +691,41 @@
         const q = document.getElementById('filtro-q').value.trim();
         const st = document.getElementById('filtro-status').value;
         const el = document.getElementById('filtro-elegivel').value;
-        const params = new URLSearchParams({ lente, mes: mesAtual, page: String(page), page_size: '100' });
+        const stTrat = (document.getElementById('filtro-status-tratamento') || {}).value || '';
+        const params = new URLSearchParams({
+            lente,
+            mes: mesAtual,
+            page: String(page),
+            page_size: pageSizeEfetivo(),
+            fila: filaEfetiva(),
+        });
         if (q) params.set('q', q);
         if (st) params.set('status', st);
         if (el) params.set('elegivel', el);
+        if (stTrat === 'sem') params.set('status_tratamento_id', 'sem');
+        else if (stTrat) params.set('status_tratamento_id', stTrat);
 
         const tbody = document.getElementById('tbody-contratos');
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Carregando…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Carregando…</td></tr>';
         try {
             const r = await fetch(`${API}/api/qualidade/dashboard/?${params}`, { headers: authHeaders() });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'Falha no dashboard');
             podeVerBonus = !!data.pode_ver_valor_bonus;
             renderKpis(data.kpis || {});
+            atualizarContagensFilas(data.filas);
+            popularFiltroStatusTratamento(data.status_tratamento_opcoes || []);
             document.getElementById('th-bonus').style.display = podeVerBonus ? '' : 'none';
             document.getElementById('kpi-bonus-wrap').style.display = podeVerBonus ? '' : 'none';
 
+            const k = data.kpis || {};
+            document.getElementById('kpi-mini').textContent = lente === 'vencimento'
+                ? `${k.abertas ?? 0} em aberto · ${k.pagas ?? 0} pagas`
+                : `${k.elegiveis ?? 0} elegíveis · ${k.ativos ?? 0} ativos`;
+
             const rows = data.contratos || [];
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Nenhum contrato neste período</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Nenhum contrato nesta fila</td></tr>';
             } else {
                 tbody.innerHTML = rows.map(c => {
                     const bonusCell = podeVerBonus
@@ -374,12 +733,20 @@
                         : '';
                     const orfaoBadge = c.orfao ? ' <span class="badge badge-orfao">órfão</span>' : '';
                     const disabled = c.pode_tratar ? '' : 'disabled title="Precisa CPF/vínculo"';
+                    const corBord = c.status_tratamento_cor ? `style="border-color:${escapeAttr(c.status_tratamento_cor)}"` : '';
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
-                        <td>${escapeHtml(c.cliente_nome || '-')}</td>
+                        <td class="col-cliente">${escapeHtml(c.cliente_nome || '-')}</td>
                         <td>${escapeHtml(c.vendedor_nome || '-')}</td>
                         <td>${escapeHtml(c.status_contrato || '-')}</td>
-                        <td>${escapeHtml(c.status_fatura1_display || c.status_fatura1 || '-')}</td>
+                        <td>${badgeFatura(c.status_fatura1, c.status_fatura1_display)}</td>
+                        <td>${formatDataBr(c.data_vencimento_f1)}</td>
+                        <td>
+                            <select class="form-select form-select-sm q-status-trat" data-prev="${c.status_tratamento_id || ''}" ${corBord}
+                                onchange="atualizarStatusTratamento(${c.id}, this)" title="Status tratamento">
+                                ${optionsStatusTratamento(c.status_tratamento_id)}
+                            </select>
+                        </td>
                         <td><span class="link-faturas" onclick="abrirFaturas(${c.id})" title="Abrir faturas">${c.faturas_pagas || 0}/${c.total_faturas || 0}</span></td>
                         <td>${c.elegivel ? 'Sim' : 'Não'}</td>
                         ${bonusCell}
@@ -398,7 +765,7 @@
             document.getElementById('btn-prev').disabled = page <= 1;
             document.getElementById('btn-next').disabled = page >= totalPages;
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="9" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="11" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
         }
     }
     window.carregarDashboard = carregarDashboard;
@@ -733,7 +1100,6 @@
                 throw new Error('Resposta JSON inválida do servidor.');
             }
         }
-        // HTML (404/500/login) — mensagem útil em vez do Unexpected token
         const trecho = raw.replace(/\s+/g, ' ').slice(0, 180);
         throw new Error(
             `A API retornou HTML (HTTP ${r.status}) em vez de JSON. ` +
@@ -847,6 +1213,9 @@
         modalOrfaos = new bootstrap.Modal(document.getElementById('modalOrfaos'));
         modalFaturas = new bootstrap.Modal(document.getElementById('modalFaturas'));
         modalNio = new bootstrap.Modal(document.getElementById('modalNioOpcoes'));
+        document.getElementById('qualidade-page').classList.add('modo-tratamento');
+        const tb = document.getElementById('qualidade-toolbar');
+        if (tb) tb.style.display = '';
         carregarPeriodos();
     });
 })();

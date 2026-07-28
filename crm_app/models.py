@@ -100,7 +100,15 @@ class FormaPagamento(models.Model):
 
 class StatusCRM(models.Model):
     nome = models.CharField(max_length=100)
-    tipo = models.CharField(max_length=50, choices=[('Tratamento', 'Tratamento'), ('Esteira', 'Esteira'), ('Comissionamento', 'Comissionamento')])
+    tipo = models.CharField(
+        max_length=50,
+        choices=[
+            ('Tratamento', 'Tratamento'),
+            ('Esteira', 'Esteira'),
+            ('Comissionamento', 'Comissionamento'),
+            ('Qualidade', 'Qualidade'),
+        ],
+    )
     estado = models.CharField(max_length=50, blank=True, null=True)
     cor = models.CharField(max_length=7, default="#FFFFFF")
 
@@ -2618,6 +2626,16 @@ class ContratoM10(models.Model):
         default=False,
         db_index=True,
         help_text="Contrato criado só pelo FPD, sem venda/CPF — aguarda vínculo para tratar",
+    )
+    status_tratamento = models.ForeignKey(
+        'StatusCRM',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contratos_m10_tratamento',
+        limit_choices_to={'tipo': 'Qualidade'},
+        db_index=True,
+        help_text="Status de tratamento do BO no módulo Qualidade (Cadastros Gerais → Status tipo Qualidade)",
     )
     observacao = models.TextField(blank=True, null=True)
     criado_em = models.DateTimeField(auto_now_add=True)
