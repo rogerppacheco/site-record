@@ -12885,6 +12885,45 @@ class ImportarFPDView(APIView):
             importacoes_para_atualizar = []
             # GAP 1+2: contratos que tiveram fatura 1 criada/atualizada (para atualizar ContratoM10 e elegibilidade)
             contratos_afetados_ids = set()
+            faturas_atualizar_ids: set[int] = set()
+
+            def _carregar_faturas_contrato(contrato_id: int) -> dict:
+                """Garante cache com faturas do banco (signal de órfão cria fatura 1 na hora)."""
+                cache = faturas_por_contrato.get(contrato_id)
+                if cache is None:
+                    cache = {
+                        f.numero_fatura: f
+                        for f in FaturaM10.objects.filter(contrato_id=contrato_id)
+                    }
+                    faturas_por_contrato[contrato_id] = cache
+                return cache
+
+            def _agendar_fatura1(contrato, campos: dict) -> None:
+                """Agenda create/update da fatura 1 sem duplicar (mesmo O.S ou signal)."""
+                cache = _carregar_faturas_contrato(contrato.id)
+                fatura = cache.get(1)
+                if fatura is None:
+                    fatura = FaturaM10.objects.filter(
+                        contrato_id=contrato.id, numero_fatura=1
+                    ).first()
+                    if fatura:
+                        cache[1] = fatura
+
+                if fatura is not None and getattr(fatura, 'pk', None):
+                    for chave, valor in campos.items():
+                        setattr(fatura, chave, valor)
+                    if fatura.pk not in faturas_atualizar_ids:
+                        faturas_para_atualizar.append(fatura)
+                        faturas_atualizar_ids.add(fatura.pk)
+                    cache[1] = fatura
+                elif fatura is not None:
+                    # Já enfileirada em faturas_para_criar (O.S repetida na planilha)
+                    for chave, valor in campos.items():
+                        setattr(fatura, chave, valor)
+                else:
+                    nova = FaturaM10(contrato=contrato, numero_fatura=1, **campos)
+                    faturas_para_criar.append(nova)
+                    cache[1] = nova
 
             with transaction.atomic():  # Garantir atomicidade
                 for idx, row in df.iterrows():
@@ -12988,42 +13027,23 @@ class ImportarFPDView(APIView):
                                     defaults={'total_instalados': 0, 'total_ativos': 0}
                                 )
 
-                            # Preparar fatura para bulk update/create
+                            # Preparar fatura 1 (update se já existe — inclusive via signal)
                             vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
-                        
-                            # Verificar se fatura já existe (lookup em memória via dicionário pré-carregado)
-                            fatura_existente = faturas_por_contrato.get(contrato.id, {}).get(1)
-                            
-                            if fatura_existente:
-                                fatura_existente.numero_fatura_operadora = nr_fatura
-                                fatura_existente.valor = vl_fatura_float
-                                fatura_existente.data_vencimento = dt_venc_date
-                                fatura_existente.data_pagamento = dt_pgto_date
-                                fatura_existente.dias_atraso = nr_dias_atraso_int
-                                fatura_existente.status = status
-                                fatura_existente.id_contrato_fpd = id_contrato
-                                fatura_existente.dt_pagamento_fpd = dt_pgto_date
-                                fatura_existente.ds_status_fatura_fpd = status_str
-                                fatura_existente.data_importacao_fpd = data_importacao_agora
-                                faturas_para_atualizar.append(fatura_existente)
-                                contratos_afetados_ids.add(contrato.id)
-                            else:
-                                faturas_para_criar.append(FaturaM10(
-                                    contrato=contrato,
-                                    numero_fatura=1,
-                                    numero_fatura_operadora=nr_fatura,
-                                    valor=vl_fatura_float,
-                                    data_vencimento=dt_venc_date,
-                                    data_pagamento=dt_pgto_date,
-                                    dias_atraso=nr_dias_atraso_int,
-                                    status=status,
-                                    id_contrato_fpd=id_contrato,
-                                    dt_pagamento_fpd=dt_pgto_date,
-                                    ds_status_fatura_fpd=status_str,
-                                    data_importacao_fpd=data_importacao_agora
-                                ))
-                                contratos_afetados_ids.add(contrato.id)
+
+                            _agendar_fatura1(contrato, {
+                                'numero_fatura_operadora': nr_fatura,
+                                'valor': vl_fatura_float,
+                                'data_vencimento': dt_venc_date,
+                                'data_pagamento': dt_pgto_date,
+                                'dias_atraso': nr_dias_atraso_int,
+                                'status': status,
+                                'id_contrato_fpd': id_contrato,
+                                'dt_pagamento_fpd': dt_pgto_date,
+                                'ds_status_fatura_fpd': status_str,
+                                'data_importacao_fpd': data_importacao_agora,
+                            })
+                            contratos_afetados_ids.add(contrato.id)
 
                             # Preparar ImportacaoFPD para bulk
                             # Buscar por nr_ordem (atualizar se existir, criar se não existir)
@@ -13106,37 +13126,23 @@ class ImportarFPDView(APIView):
                                     f'OS-{nr_ordem}',
                                 ]:
                                     contratos_dict[variacao] = contrato_orfao
-                                faturas_por_contrato.setdefault(contrato_orfao.id, {})
-                                fatura_existente = faturas_por_contrato[contrato_orfao.id].get(1)
-                                if fatura_existente:
-                                    fatura_existente.numero_fatura_operadora = nr_fatura
-                                    fatura_existente.valor = vl_fatura_float
-                                    fatura_existente.data_vencimento = dt_venc_date
-                                    fatura_existente.data_pagamento = dt_pgto_date
-                                    fatura_existente.dias_atraso = nr_dias_atraso_int
-                                    fatura_existente.status = status
-                                    fatura_existente.id_contrato_fpd = id_contrato
-                                    fatura_existente.dt_pagamento_fpd = dt_pgto_date
-                                    fatura_existente.ds_status_fatura_fpd = status_str
-                                    fatura_existente.data_importacao_fpd = data_importacao_agora
-                                    faturas_para_atualizar.append(fatura_existente)
-                                else:
-                                    nova_f = FaturaM10(
-                                        contrato=contrato_orfao,
-                                        numero_fatura=1,
-                                        numero_fatura_operadora=nr_fatura,
-                                        valor=vl_fatura_float,
-                                        data_vencimento=dt_venc_date,
-                                        data_pagamento=dt_pgto_date,
-                                        dias_atraso=nr_dias_atraso_int,
-                                        status=status,
-                                        id_contrato_fpd=id_contrato,
-                                        dt_pagamento_fpd=dt_pgto_date,
-                                        ds_status_fatura_fpd=status_str,
-                                        data_importacao_fpd=data_importacao_agora,
-                                    )
-                                    faturas_para_criar.append(nova_f)
-                                    faturas_por_contrato[contrato_orfao.id][1] = nova_f
+                                # Signal post_save já pode ter criado fatura 1 — recarrega do banco
+                                faturas_por_contrato[contrato_orfao.id] = {
+                                    f.numero_fatura: f
+                                    for f in FaturaM10.objects.filter(contrato_id=contrato_orfao.id)
+                                }
+                                _agendar_fatura1(contrato_orfao, {
+                                    'numero_fatura_operadora': nr_fatura,
+                                    'valor': vl_fatura_float,
+                                    'data_vencimento': dt_venc_date,
+                                    'data_pagamento': dt_pgto_date,
+                                    'dias_atraso': nr_dias_atraso_int,
+                                    'status': status,
+                                    'id_contrato_fpd': id_contrato,
+                                    'dt_pagamento_fpd': dt_pgto_date,
+                                    'ds_status_fatura_fpd': status_str,
+                                    'data_importacao_fpd': data_importacao_agora,
+                                })
                                 contratos_afetados_ids.add(contrato_orfao.id)
                                 vinculo_contrato = contrato_orfao
                             except Exception as e_orf:
@@ -13182,7 +13188,44 @@ class ImportarFPDView(APIView):
                 
                 # Executar bulk operations (reduz milhares de queries para dezenas)
                 if faturas_para_criar:
-                    FaturaM10.objects.bulk_create(faturas_para_criar, batch_size=500)
+                    # Última defesa: evita duplicate key se o mesmo (contrato, nº) entrou 2x
+                    vistas: dict[tuple, int] = {}
+                    faturas_dedup: list = []
+                    for fat in faturas_para_criar:
+                        cid = fat.contrato_id if fat.contrato_id is not None else (
+                            fat.contrato.id if fat.contrato is not None else None
+                        )
+                        chave = (cid, fat.numero_fatura)
+                        if chave in vistas:
+                            faturas_dedup[vistas[chave]] = fat
+                        else:
+                            vistas[chave] = len(faturas_dedup)
+                            faturas_dedup.append(fat)
+
+                    ids_contratos_criar = {c for c, _ in vistas.keys() if c is not None}
+                    ja_existem = {
+                        (cid, num): pk
+                        for cid, num, pk in FaturaM10.objects.filter(
+                            contrato_id__in=ids_contratos_criar,
+                            numero_fatura=1,
+                        ).values_list('contrato_id', 'numero_fatura', 'id')
+                    } if ids_contratos_criar else {}
+
+                    so_criar = []
+                    for fat in faturas_dedup:
+                        cid = fat.contrato_id if fat.contrato_id is not None else (
+                            fat.contrato.id if fat.contrato is not None else None
+                        )
+                        chave = (cid, fat.numero_fatura)
+                        if chave in ja_existem:
+                            fat.pk = ja_existem[chave]
+                            if fat.pk not in faturas_atualizar_ids:
+                                faturas_para_atualizar.append(fat)
+                                faturas_atualizar_ids.add(fat.pk)
+                        else:
+                            so_criar.append(fat)
+                    if so_criar:
+                        FaturaM10.objects.bulk_create(so_criar, batch_size=500)
                 if faturas_para_atualizar:
                     FaturaM10.objects.bulk_update(faturas_para_atualizar, [
                         'numero_fatura_operadora', 'valor', 'data_vencimento',
