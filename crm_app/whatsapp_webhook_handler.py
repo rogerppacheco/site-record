@@ -658,11 +658,17 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         obter_mensagem_fila_ocupado,
         atualizar_historico_consulta_pap_resultado,
     )
-    from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
     from crm_app.services.assertiva_localize_service import (
         AssertivaError,
         AssertivaLocalizeService,
         DadosCreditoAssertiva,
+    )
+    from crm_app.services.credito_pap_service import (
+        ORIGEM_PADRAO as ORIGEM_ENDERECO_PADRAO,
+        EnderecoCredito,
+        SeletorContatosCredito,
+        consultar_viabilidade_com_fallback,
+        montar_tentativas_endereco,
     )
     from crm_app.controle_tts_service import (
         obter_matricula_tt_para_credito_pap,
@@ -721,10 +727,15 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         status_execucao=AnaliseCreditoHistorico.STATUS_PENDENTE,
     )
 
+    # Preenchido durante a automação (endereço/contatos efetivamente usados) e
+    # gravado em qualquer desfecho, inclusive quando o PAP falha no meio.
+    registro_execucao: dict[str, Any] = {}
+
     def _atualizar_analise_historico(**campos: Any) -> None:
         """Persiste cada etapa sem perder a consulta se o PAP falhar depois."""
         from django.utils import timezone
 
+        campos = {**registro_execucao, **campos}
         campos["atualizado_em"] = timezone.now()
         AnaliseCreditoHistorico.objects.filter(
             pk=analise_historico.pk
@@ -1012,61 +1023,52 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             return
         logger.info("[CRÉDITO] Tempo: tela=%ss (acumulado=%ss)", tempos['tela'], round(time.time() - tempo_inicio, 1))
 
-        # Etapa 2: prioriza o endereço cadastral real retornado pela Assertiva.
+        # Etapa 2: endereço real da Assertiva primeiro; sem viabilidade, cai para
+        # o endereço padrão da automação (registrado no histórico da consulta).
         endereco_assertiva = dados_assertiva.endereco if dados_assertiva else None
-        cep = endereco_assertiva.cep if endereco_assertiva else CREDITO_CEP_FIXO
-        numero = (
-            endereco_assertiva.numero
-            if endereco_assertiva
-            else CREDITO_NUMERO_FIXO
-        )
-        ref = (
-            endereco_assertiva.referencia
-            if endereco_assertiva
-            else CREDITO_REFERENCIA_FIXA
+        tentativas_endereco = montar_tentativas_endereco(
+            endereco_assertiva,
+            endereco_padrao=EnderecoCredito(
+                cep=CREDITO_CEP_FIXO,
+                numero=CREDITO_NUMERO_FIXO,
+                referencia=CREDITO_REFERENCIA_FIXA,
+                logradouro=CREDITO_ENDERECO_ALVO,
+                origem=ORIGEM_ENDERECO_PADRAO,
+            ),
         )
         t0 = time.time()
-        sucesso, msg, extra = automacao.etapa2_viabilidade(cep, numero, ref)
-
-        # COMPLEMENTOS: sempre opção 1 (produção; o PAP não aceita mais só "Sem complemento").
-        if isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
-            sucesso, msg, extra = automacao.etapa2_credito_selecionar_complemento_e_avancar(cep, numero, 1)
-            if not sucesso:
-                msg = msg or "Não foi possível selecionar complemento e avançar."
-
+        resultado_endereco = consultar_viabilidade_com_fallback(
+            automacao,
+            tentativas_endereco,
+        )
+        sucesso = resultado_endereco.sucesso
+        msg = resultado_endereco.mensagem
+        endereco_usado = resultado_endereco.endereco
+        registro_execucao["endereco_utilizado"] = {
+            **(endereco_usado.como_dict() if endereco_usado else {}),
+            "viavel": sucesso,
+            "bloqueios": resultado_endereco.bloqueios,
+        }
         tempos['etapa2'] = round(time.time() - t0, 1)
         logger.info("[CRÉDITO] Tempo: etapa2=%ss (acumulado=%ss)", tempos['etapa2'], round(time.time() - tempo_inicio, 1))
 
         if not sucesso:
-            if isinstance(extra, dict) and extra.get('_codigo') == 'MULTIPLOS_ENDERECOS':
-                lista = extra.get('lista', [])
-                idx = 1
-                for item in lista:
-                    txt = (item.get('texto') or '').upper()
-                    endereco_alvo = (
-                        endereco_assertiva.logradouro
-                        if endereco_assertiva
-                        else CREDITO_ENDERECO_ALVO
-                    )
-                    if endereco_alvo.upper() in txt and numero in txt:
-                        idx = item.get('indice', 1)
-                        break
-                ok_sel, _ = automacao.etapa2_selecionar_endereco_instalacao(idx)
-                if ok_sel:
-                    sucesso, msg, extra = automacao.etapa2_preencher_referencia_e_continuar(cep, numero, ref)
-                    if isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
-                        sucesso, msg, extra = automacao.etapa2_credito_selecionar_complemento_e_avancar(cep, numero, 1)
-            if not sucesso:
-                automacao._fechar_sessao()
-                liberar_bo(bo_usuario.id, telefone)
-                _marcar_hist(False, msg)
-                prefixo = "" if (msg or "").lstrip().startswith("❌") else "❌ "
-                WhatsAppService().enviar_mensagem_texto(
-                    telefone,
-                    f"{prefixo}{msg}\n\nDigite *CRÉDITO* para tentar novamente.",
-                )
-                _resetar_sessao_credito(telefone)
-                return
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg)
+            prefixo = "" if (msg or "").lstrip().startswith("❌") else "❌ "
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"{prefixo}{msg}\n\nDigite *CRÉDITO* para tentar novamente.",
+            )
+            _resetar_sessao_credito(telefone)
+            return
+        if resultado_endereco.usou_fallback:
+            logger.warning(
+                "[CRÉDITO] Consulta seguiu com endereço padrão da automação "
+                "(bloqueios: %s).",
+                "; ".join(resultado_endereco.bloqueios) or "-",
+            )
 
         # Etapa 3: Documento (CPF/CNPJ)
         t0 = time.time()
@@ -1085,67 +1087,57 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             return
         logger.info("[CRÉDITO] Tempo: etapa3=%ss (acumulado=%ss)", tempos['etapa3'], round(time.time() - tempo_inicio, 1))
 
-        # Etapa 4: usa contatos reais da Assertiva quando a integração está ativa.
-        telefones_credito = list(dados_assertiva.telefones) if dados_assertiva else []
-        emails_credito = list(dados_assertiva.emails) if dados_assertiva else []
-        indice_telefone = 0
-        indice_email = 0
-        cel = (
-            telefones_credito[indice_telefone]
-            if telefones_credito
-            else gerar_celular_random()
+        # Etapa 4: contatos reais da Assertiva; quando o PAP recusa todos, o
+        # seletor volta para celular aleatório e e-mail validado do pool.
+        seletor_contatos = SeletorContatosCredito(
+            telefones=dados_assertiva.telefones if dados_assertiva else (),
+            emails=dados_assertiva.emails if dados_assertiva else (),
         )
-        cel_sec = (
-            telefones_credito[indice_telefone + 1]
-            if len(telefones_credito) > indice_telefone + 1
-            else (None if dados_assertiva else gerar_celular_random())
-        )
-        email = (
-            emails_credito[indice_email]
-            if emails_credito
-            else gerar_email_credito()
-        )
-        max_tentativas = 5
+        contato = seletor_contatos.atual()
+        max_tentativas = 6
         screenshot_credito_b64 = None
+        erro_contato = ""
         t0 = time.time()
         for tentativa in range(max_tentativas):
-            sucesso, msg, resultado_credito, screenshot_credito_b64 = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec, parar_no_modal_credito=True)
-            if sucesso:
+            sucesso, msg, resultado_credito, screenshot_credito_b64 = automacao.etapa4_contato(
+                contato.telefone,
+                contato.email,
+                celular_secundario=contato.telefone_secundario,
+                parar_no_modal_credito=True,
+            )
+            if sucesso or msg == "CREDITO_NEGADO":
                 break
-            if msg in ('TELEFONE_REJEITADO',):
-                indice_telefone += 1
-                if indice_telefone < len(telefones_credito):
-                    cel = telefones_credito[indice_telefone]
-                    cel_sec = (
-                        telefones_credito[indice_telefone + 1]
-                        if len(telefones_credito) > indice_telefone + 1
-                        else None
-                    )
-                elif dados_assertiva:
-                    break
-                else:
-                    cel = gerar_celular_random()
-                    cel_sec = gerar_celular_random()
+            if msg == 'TELEFONE_REJEITADO':
+                contato = seletor_contatos.proximo_telefone()
+                logger.info(
+                    "[CRÉDITO] Telefone recusado pelo PAP; nova origem=%s.",
+                    contato.origem_telefone,
+                )
                 continue
-            if msg in ('EMAIL_REJEITADO', 'EMAIL_INVALIDO',):
-                indice_email += 1
-                if indice_email < len(emails_credito):
-                    email = emails_credito[indice_email]
-                elif dados_assertiva:
-                    break
-                else:
-                    email = gerar_email_credito()
+            if msg in ('EMAIL_REJEITADO', 'EMAIL_INVALIDO'):
+                contato = seletor_contatos.proximo_email()
+                logger.info(
+                    "[CRÉDITO] E-mail recusado pelo PAP; nova origem=%s.",
+                    contato.origem_email,
+                )
                 continue
-            if msg == "CREDITO_NEGADO":
-                break
+            erro_contato = msg or "Falha na etapa de contato."
+            break
+        else:
+            erro_contato = (
+                "Não foi possível validar telefone/e-mail no PAP após "
+                f"{max_tentativas} tentativas."
+            )
+        registro_execucao["origem_contato"] = seletor_contatos.origem_contato
+        if erro_contato:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
-            _marcar_hist(False, msg)
-            if (msg or "").lstrip().startswith("❌"):
-                texto_erro = f"{msg}\n\nDigite *CRÉDITO* para tentar novamente."
+            _marcar_hist(False, erro_contato)
+            if erro_contato.lstrip().startswith("❌"):
+                texto_erro = f"{erro_contato}\n\nDigite *CRÉDITO* para tentar novamente."
             else:
                 texto_erro = (
-                    f"❌ Erro na análise: {msg}\n\n"
+                    f"❌ Erro na análise: {erro_contato}\n\n"
                     "Digite *CRÉDITO* para tentar novamente."
                 )
             WhatsAppService().enviar_mensagem_texto(telefone, texto_erro)
@@ -1185,6 +1177,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 resp = f"✅ *Crédito APROVADO!*\n\n{resultado_detalhe or 'Elegível para formas de pagamento disponíveis.'}"
             else:
                 resp = "❌ *Crédito NEGADO* para este CPF."
+            if resultado_endereco.usou_fallback:
+                resp += (
+                    "\n\n📍 _O endereço cadastral do cliente não tem viabilidade; "
+                    "a análise seguiu com o endereço padrão da automação._"
+                )
             resp += f"\n\n⏱ _{tempo_decorrido}s_"
             if screenshot_credito_b64:
                 try:

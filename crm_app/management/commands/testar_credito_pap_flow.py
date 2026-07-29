@@ -57,11 +57,17 @@ class Command(BaseCommand):
             pular_tt_credito_indisponivel,
             registrar_uso_tt_credito,
         )
-        from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
         from crm_app.services.assertiva_localize_service import (
             AssertivaError,
             AssertivaLocalizeService,
             DadosCreditoAssertiva,
+        )
+        from crm_app.services.credito_pap_service import (
+            ORIGEM_PADRAO,
+            EnderecoCredito,
+            SeletorContatosCredito,
+            consultar_viabilidade_com_fallback,
+            montar_tentativas_endereco,
         )
         from crm_app.services_pap_nio import PAPNioAutomation
         from crm_app.whatsapp_webhook_handler import (
@@ -258,47 +264,33 @@ class Command(BaseCommand):
             endereco_assertiva = (
                 dados_assertiva.endereco if dados_assertiva else None
             )
-            cep = endereco_assertiva.cep if endereco_assertiva else CREDITO_CEP_FIXO
-            numero = (
-                endereco_assertiva.numero
-                if endereco_assertiva
-                else CREDITO_NUMERO_FIXO
-            )
-            ref = (
-                endereco_assertiva.referencia
-                if endereco_assertiva
-                else CREDITO_REFERENCIA_FIXA
+            tentativas_endereco = montar_tentativas_endereco(
+                endereco_assertiva,
+                endereco_padrao=EnderecoCredito(
+                    cep=CREDITO_CEP_FIXO,
+                    numero=CREDITO_NUMERO_FIXO,
+                    referencia=CREDITO_REFERENCIA_FIXA,
+                    logradouro=CREDITO_ENDERECO_ALVO,
+                    origem=ORIGEM_PADRAO,
+                ),
             )
             t0 = time.time()
-            sucesso, msg, extra = pap.etapa2_viabilidade(cep, numero, ref)
-            if isinstance(extra, dict) and extra.get("_codigo") == "COMPLEMENTOS":
-                sucesso, msg, extra = pap.etapa2_credito_selecionar_complemento_e_avancar(cep, numero, 1)
-
-            if not sucesso and isinstance(extra, dict) and extra.get("_codigo") == "MULTIPLOS_ENDERECOS":
-                lista = extra.get("lista", [])
-                idx = 1
-                for item in lista:
-                    txt = (item.get("texto") or "").upper()
-                    endereco_alvo = (
-                        endereco_assertiva.logradouro
-                        if endereco_assertiva
-                        else CREDITO_ENDERECO_ALVO
-                    )
-                    if endereco_alvo.upper() in txt and numero in txt:
-                        idx = item.get("indice", 1)
-                        break
-                ok_sel, _ = pap.etapa2_selecionar_endereco_instalacao(idx)
-                if ok_sel:
-                    sucesso, msg, extra = pap.etapa2_preencher_referencia_e_continuar(cep, numero, ref)
-                    if isinstance(extra, dict) and extra.get("_codigo") == "COMPLEMENTOS":
-                        sucesso, msg, extra = pap.etapa2_credito_selecionar_complemento_e_avancar(
-                            cep, numero, 1
-                        )
+            resultado_endereco = consultar_viabilidade_com_fallback(
+                pap, tentativas_endereco
+            )
+            sucesso, msg = resultado_endereco.sucesso, resultado_endereco.mensagem
 
             _log_etapa("etapa2", t0)
             if not sucesso:
                 _print_erro(f"Etapa 2 falhou: {msg}")
                 return
+            if resultado_endereco.usou_fallback:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "  Endereço da Assertiva sem viabilidade; usando endereço padrão "
+                        f"({'; '.join(resultado_endereco.bloqueios)})"
+                    )
+                )
             self.stdout.write(self.style.SUCCESS(f"  Etapa 2 OK: {msg}"))
 
             t0 = time.time()
@@ -309,48 +301,27 @@ class Command(BaseCommand):
                 return
             self.stdout.write(self.style.SUCCESS(f"  Etapa 3 OK: {msg}"))
 
-            telefones = list(dados_assertiva.telefones) if dados_assertiva else []
-            emails = list(dados_assertiva.emails) if dados_assertiva else []
-            indice_telefone = 0
-            indice_email = 0
-            cel = telefones[0] if telefones else gerar_celular_random()
-            cel_sec = (
-                telefones[1]
-                if len(telefones) > 1
-                else (None if dados_assertiva else gerar_celular_random())
+            seletor_contatos = SeletorContatosCredito(
+                telefones=dados_assertiva.telefones if dados_assertiva else (),
+                emails=dados_assertiva.emails if dados_assertiva else (),
             )
-            email = emails[0] if emails else gerar_email_credito()
+            contato = seletor_contatos.atual()
             t0 = time.time()
             resultado_credito: Optional[str] = None
-            for tentativa in range(5):
+            for tentativa in range(6):
                 sucesso, msg, resultado_credito, _ = pap.etapa4_contato(
-                    cel, email, celular_secundario=cel_sec, parar_no_modal_credito=True
+                    contato.telefone,
+                    contato.email,
+                    celular_secundario=contato.telefone_secundario,
+                    parar_no_modal_credito=True,
                 )
-                if sucesso:
+                if sucesso or msg == "CREDITO_NEGADO":
                     break
-                if msg in ("TELEFONE_REJEITADO",):
-                    indice_telefone += 1
-                    if indice_telefone < len(telefones):
-                        cel = telefones[indice_telefone]
-                        cel_sec = (
-                            telefones[indice_telefone + 1]
-                            if len(telefones) > indice_telefone + 1
-                            else None
-                        )
-                    elif dados_assertiva:
-                        break
-                    else:
-                        cel = gerar_celular_random()
-                        cel_sec = gerar_celular_random()
+                if msg == "TELEFONE_REJEITADO":
+                    contato = seletor_contatos.proximo_telefone()
                     continue
                 if msg in ("EMAIL_REJEITADO", "EMAIL_INVALIDO"):
-                    indice_email += 1
-                    if indice_email < len(emails):
-                        email = emails[indice_email]
-                    elif dados_assertiva:
-                        break
-                    else:
-                        email = gerar_email_credito()
+                    contato = seletor_contatos.proximo_email()
                     continue
                 break
 
@@ -359,7 +330,12 @@ class Command(BaseCommand):
                 _print_erro(f"Etapa 4 falhou: {msg}")
                 return
 
-            self.stdout.write(self.style.SUCCESS(f"\nCREDITO OK: {resultado_credito or msg}"))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"\nCREDITO OK ({seletor_contatos.origem_contato}): "
+                    f"{resultado_credito or msg}"
+                )
+            )
             self.stdout.write(f"Tempos: {tempos} | total={round(time.time() - t_total, 1)}s")
 
         finally:

@@ -3947,6 +3947,43 @@ class PAPNioAutomation:
             logger.error(f"[PAP] etapa2_modal_indisponivel_clicar_voltar: {e}")
             return False, str(e)
     
+    def etapa2_preparar_nova_consulta_endereco(
+        self, codigo_bloqueio: str = ""
+    ) -> Tuple[bool, str]:
+        """
+        Fecha o modal que bloqueou o endereço e volta ao formulário de CEP.
+
+        Usado no crédito para reconsultar com o endereço padrão da automação
+        quando o endereço do cliente não tem viabilidade ou já tem posse.
+        """
+        if not self.page:
+            return False, "Página do PAP indisponível."
+        codigo = (codigo_bloqueio or "").upper()
+        acoes = (
+            [self.etapa2_modal_indisponivel_clicar_voltar,
+             self.etapa2_modal_posse_clicar_consultar_outro]
+            if codigo == "INDISPONIVEL_TECNICO"
+            else [self.etapa2_modal_posse_clicar_consultar_outro,
+                  self.etapa2_modal_indisponivel_clicar_voltar]
+        )
+        ultimo_erro = ""
+        for acao in acoes:
+            try:
+                acao()
+            except Exception as e:
+                ultimo_erro = str(e)
+                continue
+            if self._etapa2_formulario_cep_visivel():
+                return True, "Formulário de CEP pronto para nova consulta."
+        return False, ultimo_erro or "Formulário de CEP não reapareceu."
+
+    def _etapa2_formulario_cep_visivel(self) -> bool:
+        try:
+            campo = self.page.query_selector(SELETORES['etapa2']['cep'])
+            return bool(campo and campo.is_visible())
+        except Exception:
+            return False
+
     def _wait_etapa2_ms(self, rapido_ms: int, normal_ms: int) -> None:
         if self.page:
             self.page.wait_for_timeout(rapido_ms if self.optimize_for_credit else normal_ms)

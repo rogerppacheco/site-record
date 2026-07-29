@@ -1732,6 +1732,14 @@ class AnaliseCreditoHistorico(models.Model):
         (STATUS_SUCESSO, "Sucesso"),
         (STATUS_ERRO, "Erro"),
     )
+    ORIGEM_DADOS_ASSERTIVA = "assertiva"
+    ORIGEM_DADOS_ALEATORIO = "aleatorio"
+    ORIGEM_DADOS_MISTO = "misto"
+    ORIGEM_DADOS_CHOICES = (
+        (ORIGEM_DADOS_ASSERTIVA, "Assertiva"),
+        (ORIGEM_DADOS_ALEATORIO, "Aleatório"),
+        (ORIGEM_DADOS_MISTO, "Misto"),
+    )
 
     usuario = models.ForeignKey(
         Usuario,
@@ -1776,6 +1784,23 @@ class AnaliseCreditoHistorico(models.Model):
         blank=True,
         default="",
         help_text="Erro ocorrido ao consultar ou validar os dados da Assertiva.",
+    )
+    endereco_utilizado = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Endereço usado na viabilidade (origem assertiva/padrao) e "
+            "bloqueios encontrados nas tentativas anteriores."
+        ),
+    )
+    origem_contato = models.CharField(
+        max_length=20,
+        choices=ORIGEM_DADOS_CHOICES,
+        default=ORIGEM_DADOS_ASSERTIVA,
+        help_text=(
+            "Origem do telefone/e-mail aceitos pelo PAP: dados da Assertiva, "
+            "gerados aleatoriamente ou uma combinação dos dois."
+        ),
     )
     resultado_detalhe = models.CharField(
         max_length=200,
