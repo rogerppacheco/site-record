@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from unittest.mock import Mock
 
+import requests
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 
 from crm_app.services.assertiva_localize_service import (
     AssertivaConfigurationError,
+    AssertivaError,
     AssertivaLocalizeService,
 )
 
@@ -166,4 +169,18 @@ class AssertivaLocalizeServiceTests(SimpleTestCase):
         )
 
         with self.assertRaises(AssertivaConfigurationError):
+            servico.consultar_para_credito("12345678901")
+
+    def test_converte_timeout_em_erro_controlado(self) -> None:
+        session = FakeSession({"resposta": {}})
+        session.get = Mock(side_effect=requests.Timeout("tempo esgotado"))
+        servico, _ = self._criar_servico(
+            {"resposta": {}},
+            session=session,
+        )
+
+        with self.assertRaisesMessage(
+            AssertivaError,
+            "não respondeu dentro do tempo esperado",
+        ):
             servico.consultar_para_credito("12345678901")

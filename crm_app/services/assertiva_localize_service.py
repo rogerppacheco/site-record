@@ -106,7 +106,16 @@ class AssertivaLocalizeService:
         self._validar_configuracao()
 
         endpoint = "cpf" if len(documento_limpo) == 11 else "cnpj"
-        payload = self._consultar_documento(endpoint, documento_limpo)
+        try:
+            payload = self._consultar_documento(endpoint, documento_limpo)
+        except requests.RequestException as exc:
+            logger.warning(
+                "[ASSERTIVA] Falha de rede na consulta cadastral: %s",
+                exc,
+            )
+            raise AssertivaError(
+                "A Assertiva não respondeu dentro do tempo esperado."
+            ) from exc
         resposta = payload.get("resposta")
         if not isinstance(resposta, dict):
             raise AssertivaError(
