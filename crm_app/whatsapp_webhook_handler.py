@@ -13,6 +13,8 @@ import time
 import logging
 import threading
 from datetime import datetime
+from typing import Optional
+
 from django.conf import settings
 from django.utils import timezone
 
@@ -657,6 +659,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         atualizar_historico_consulta_pap_resultado,
     )
     from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
+    from crm_app.services.assertiva_localize_service import (
+        AssertivaError,
+        AssertivaLocalizeService,
+        DadosCreditoAssertiva,
+    )
     from crm_app.controle_tts_service import (
         obter_matricula_tt_para_credito_pap,
         pular_tt_credito_indisponivel,
@@ -706,6 +713,54 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         except Exception:
             pass
         return
+
+    dados_assertiva: Optional[DadosCreditoAssertiva] = None
+    if getattr(settings, "ASSERTIVA_CREDITO_ENABLED", False):
+        try:
+            dados_assertiva = AssertivaLocalizeService().consultar_para_credito(
+                documento_limpo
+            )
+            campos_ausentes: list[str] = []
+            if not dados_assertiva.telefone_principal:
+                campos_ausentes.append("telefone")
+            if not dados_assertiva.email_principal:
+                campos_ausentes.append("e-mail")
+            if not dados_assertiva.endereco:
+                campos_ausentes.append("endereço")
+            if campos_ausentes and getattr(
+                settings,
+                "ASSERTIVA_CREDITO_REQUIRED",
+                True,
+            ):
+                ausentes = ", ".join(campos_ausentes)
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone,
+                    (
+                        "❌ A Assertiva não retornou todos os dados necessários "
+                        f"para esta análise ({ausentes}). Nenhum dado aleatório "
+                        "foi enviado ao PAP."
+                    ),
+                )
+                _resetar_sessao_credito(telefone)
+                return
+            logger.info(
+                "[CRÉDITO] Assertiva consultada: telefones=%s, emails=%s, endereco=%s",
+                len(dados_assertiva.telefones),
+                len(dados_assertiva.emails),
+                bool(dados_assertiva.endereco),
+            )
+        except AssertivaError as exc:
+            logger.warning("[CRÉDITO] Consulta Assertiva indisponível: %s", exc)
+            if getattr(settings, "ASSERTIVA_CREDITO_REQUIRED", True):
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone,
+                    (
+                        f"❌ Não foi possível obter os dados do cliente na Assertiva: {exc} "
+                        "Nenhum dado aleatório foi enviado ao PAP. Tente novamente."
+                    ),
+                )
+                _resetar_sessao_credito(telefone)
+                return
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='credito')
     if not bo_usuario:
@@ -894,10 +949,19 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             return
         logger.info("[CRÉDITO] Tempo: tela=%ss (acumulado=%ss)", tempos['tela'], round(time.time() - tempo_inicio, 1))
 
-        # Etapa 2: viabilidade com endereço fixo
-        cep = CREDITO_CEP_FIXO
-        numero = CREDITO_NUMERO_FIXO
-        ref = CREDITO_REFERENCIA_FIXA
+        # Etapa 2: prioriza o endereço cadastral real retornado pela Assertiva.
+        endereco_assertiva = dados_assertiva.endereco if dados_assertiva else None
+        cep = endereco_assertiva.cep if endereco_assertiva else CREDITO_CEP_FIXO
+        numero = (
+            endereco_assertiva.numero
+            if endereco_assertiva
+            else CREDITO_NUMERO_FIXO
+        )
+        ref = (
+            endereco_assertiva.referencia
+            if endereco_assertiva
+            else CREDITO_REFERENCIA_FIXA
+        )
         t0 = time.time()
         sucesso, msg, extra = automacao.etapa2_viabilidade(cep, numero, ref)
 
@@ -916,7 +980,12 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 idx = 1
                 for item in lista:
                     txt = (item.get('texto') or '').upper()
-                    if CREDITO_ENDERECO_ALVO.upper() in txt and numero in txt:
+                    endereco_alvo = (
+                        endereco_assertiva.logradouro
+                        if endereco_assertiva
+                        else CREDITO_ENDERECO_ALVO
+                    )
+                    if endereco_alvo.upper() in txt and numero in txt:
                         idx = item.get('indice', 1)
                         break
                 ok_sel, _ = automacao.etapa2_selecionar_endereco_instalacao(idx)
@@ -928,7 +997,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 automacao._fechar_sessao()
                 liberar_bo(bo_usuario.id, telefone)
                 _marcar_hist(False, msg)
-                WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+                prefixo = "" if (msg or "").lstrip().startswith("❌") else "❌ "
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone,
+                    f"{prefixo}{msg}\n\nDigite *CRÉDITO* para tentar novamente.",
+                )
                 _resetar_sessao_credito(telefone)
                 return
 
@@ -940,15 +1013,35 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             _marcar_hist(False, msg)
-            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            prefixo = "" if (msg or "").lstrip().startswith("❌") else "❌ "
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"{prefixo}{msg}\n\nDigite *CRÉDITO* para tentar novamente.",
+            )
             _resetar_sessao_credito(telefone)
             return
         logger.info("[CRÉDITO] Tempo: etapa3=%ss (acumulado=%ss)", tempos['etapa3'], round(time.time() - tempo_inicio, 1))
 
-        # Etapa 4: contato com celular e email aleatórios (evita bloqueio por repetição/validação do site)
-        cel = gerar_celular_random()
-        cel_sec = gerar_celular_random()
-        email = gerar_email_credito()
+        # Etapa 4: usa contatos reais da Assertiva quando a integração está ativa.
+        telefones_credito = list(dados_assertiva.telefones) if dados_assertiva else []
+        emails_credito = list(dados_assertiva.emails) if dados_assertiva else []
+        indice_telefone = 0
+        indice_email = 0
+        cel = (
+            telefones_credito[indice_telefone]
+            if telefones_credito
+            else gerar_celular_random()
+        )
+        cel_sec = (
+            telefones_credito[indice_telefone + 1]
+            if len(telefones_credito) > indice_telefone + 1
+            else (None if dados_assertiva else gerar_celular_random())
+        )
+        email = (
+            emails_credito[indice_email]
+            if emails_credito
+            else gerar_email_credito()
+        )
         max_tentativas = 5
         screenshot_credito_b64 = None
         t0 = time.time()
@@ -957,18 +1050,42 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             if sucesso:
                 break
             if msg in ('TELEFONE_REJEITADO',):
-                cel = gerar_celular_random()
-                cel_sec = gerar_celular_random()
+                indice_telefone += 1
+                if indice_telefone < len(telefones_credito):
+                    cel = telefones_credito[indice_telefone]
+                    cel_sec = (
+                        telefones_credito[indice_telefone + 1]
+                        if len(telefones_credito) > indice_telefone + 1
+                        else None
+                    )
+                elif dados_assertiva:
+                    break
+                else:
+                    cel = gerar_celular_random()
+                    cel_sec = gerar_celular_random()
                 continue
             if msg in ('EMAIL_REJEITADO', 'EMAIL_INVALIDO',):
-                email = gerar_email_credito()
+                indice_email += 1
+                if indice_email < len(emails_credito):
+                    email = emails_credito[indice_email]
+                elif dados_assertiva:
+                    break
+                else:
+                    email = gerar_email_credito()
                 continue
             if msg == "CREDITO_NEGADO":
                 break
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             _marcar_hist(False, msg)
-            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro na análise: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            if (msg or "").lstrip().startswith("❌"):
+                texto_erro = f"{msg}\n\nDigite *CRÉDITO* para tentar novamente."
+            else:
+                texto_erro = (
+                    f"❌ Erro na análise: {msg}\n\n"
+                    "Digite *CRÉDITO* para tentar novamente."
+                )
+            WhatsAppService().enviar_mensagem_texto(telefone, texto_erro)
             _resetar_sessao_credito(telefone)
             return
         tempos['etapa4'] = round(time.time() - t0, 1)

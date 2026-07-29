@@ -58,6 +58,11 @@ class Command(BaseCommand):
             registrar_uso_tt_credito,
         )
         from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
+        from crm_app.services.assertiva_localize_service import (
+            AssertivaError,
+            AssertivaLocalizeService,
+            DadosCreditoAssertiva,
+        )
         from crm_app.services_pap_nio import PAPNioAutomation
         from crm_app.whatsapp_webhook_handler import (
             CREDITO_CEP_FIXO,
@@ -71,6 +76,38 @@ class Command(BaseCommand):
         if len(documento_limpo) not in (11, 14):
             self.stdout.write(self.style.ERROR("CPF/CNPJ inválido (11 ou 14 dígitos)"))
             return
+
+        dados_assertiva: Optional[DadosCreditoAssertiva] = None
+        if getattr(settings, "ASSERTIVA_CREDITO_ENABLED", False):
+            try:
+                dados_assertiva = AssertivaLocalizeService().consultar_para_credito(
+                    documento_limpo
+                )
+            except AssertivaError as exc:
+                self.stdout.write(
+                    self.style.ERROR(f"Consulta Assertiva falhou: {exc}")
+                )
+                return
+            ausentes: list[str] = []
+            if not dados_assertiva.telefone_principal:
+                ausentes.append("telefone")
+            if not dados_assertiva.email_principal:
+                ausentes.append("e-mail")
+            if not dados_assertiva.endereco:
+                ausentes.append("endereço")
+            if ausentes and getattr(settings, "ASSERTIVA_CREDITO_REQUIRED", True):
+                self.stdout.write(
+                    self.style.ERROR(
+                        "Assertiva não retornou: " + ", ".join(ausentes)
+                    )
+                )
+                return
+            self.stdout.write(
+                "Assertiva: "
+                f"{len(dados_assertiva.telefones)} telefone(s), "
+                f"{len(dados_assertiva.emails)} e-mail(s), "
+                f"endereço={'sim' if dados_assertiva.endereco else 'não'}"
+            )
 
         matricula_bo = options.get("matricula_bo")
         senha_bo = options.get("senha_bo")
@@ -130,11 +167,18 @@ class Command(BaseCommand):
                 )
             )
 
+        def _print_erro(texto: str) -> None:
+            self.stdout.write(
+                self.style.ERROR(
+                    (texto or "").replace("❌", "[ERRO]").replace("📍", "[END]")
+                )
+            )
+
         try:
             t0 = time.time()
             ok, msg = pap.iniciar_sessao()
             if not ok:
-                self.stdout.write(self.style.ERROR(f"Login falhou: {msg}"))
+                _print_erro(f"Login falhou: {msg}")
                 return
             _log_etapa("login", t0)
 
@@ -142,7 +186,7 @@ class Command(BaseCommand):
             t0 = time.time()
             ok_prep, msg_prep = pap._preparar_novo_pedido_etapa1()
             if not ok_prep:
-                self.stdout.write(self.style.ERROR(f"Preparar pedido: {msg_prep}"))
+                _print_erro(f"Preparar pedido: {msg_prep}")
                 return
 
             usar_pool_osab = bool(
@@ -200,20 +244,31 @@ class Command(BaseCommand):
                 break
 
             if not sucesso_pedido:
-                self.stdout.write(self.style.ERROR(f"Etapa 1 falhou: {msg_pedido}"))
+                _print_erro(f"Etapa 1 falhou: {msg_pedido}")
                 return
             _log_etapa("pedido", t0)
 
             t0 = time.time()
             ok_tela, msg_tela = pap.validar_tela_pronta_para_cep()
             if not ok_tela:
-                self.stdout.write(self.style.ERROR(f"Tela CEP: {msg_tela}"))
+                _print_erro(f"Tela CEP: {msg_tela}")
                 return
             _log_etapa("tela", t0)
 
-            cep = CREDITO_CEP_FIXO
-            numero = CREDITO_NUMERO_FIXO
-            ref = CREDITO_REFERENCIA_FIXA
+            endereco_assertiva = (
+                dados_assertiva.endereco if dados_assertiva else None
+            )
+            cep = endereco_assertiva.cep if endereco_assertiva else CREDITO_CEP_FIXO
+            numero = (
+                endereco_assertiva.numero
+                if endereco_assertiva
+                else CREDITO_NUMERO_FIXO
+            )
+            ref = (
+                endereco_assertiva.referencia
+                if endereco_assertiva
+                else CREDITO_REFERENCIA_FIXA
+            )
             t0 = time.time()
             sucesso, msg, extra = pap.etapa2_viabilidade(cep, numero, ref)
             if isinstance(extra, dict) and extra.get("_codigo") == "COMPLEMENTOS":
@@ -224,7 +279,12 @@ class Command(BaseCommand):
                 idx = 1
                 for item in lista:
                     txt = (item.get("texto") or "").upper()
-                    if CREDITO_ENDERECO_ALVO.upper() in txt and numero in txt:
+                    endereco_alvo = (
+                        endereco_assertiva.logradouro
+                        if endereco_assertiva
+                        else CREDITO_ENDERECO_ALVO
+                    )
+                    if endereco_alvo.upper() in txt and numero in txt:
                         idx = item.get("indice", 1)
                         break
                 ok_sel, _ = pap.etapa2_selecionar_endereco_instalacao(idx)
@@ -237,7 +297,7 @@ class Command(BaseCommand):
 
             _log_etapa("etapa2", t0)
             if not sucesso:
-                self.stdout.write(self.style.ERROR(f"Etapa 2 falhou: {msg}"))
+                _print_erro(f"Etapa 2 falhou: {msg}")
                 return
             self.stdout.write(self.style.SUCCESS(f"  Etapa 2 OK: {msg}"))
 
@@ -245,13 +305,21 @@ class Command(BaseCommand):
             sucesso, msg, _ = pap.etapa3_cadastro_cliente(documento_limpo)
             _log_etapa("etapa3", t0)
             if not sucesso:
-                self.stdout.write(self.style.ERROR(f"Etapa 3 falhou: {msg}"))
+                _print_erro(f"Etapa 3 falhou: {msg}")
                 return
             self.stdout.write(self.style.SUCCESS(f"  Etapa 3 OK: {msg}"))
 
-            cel = gerar_celular_random()
-            cel_sec = gerar_celular_random()
-            email = gerar_email_credito()
+            telefones = list(dados_assertiva.telefones) if dados_assertiva else []
+            emails = list(dados_assertiva.emails) if dados_assertiva else []
+            indice_telefone = 0
+            indice_email = 0
+            cel = telefones[0] if telefones else gerar_celular_random()
+            cel_sec = (
+                telefones[1]
+                if len(telefones) > 1
+                else (None if dados_assertiva else gerar_celular_random())
+            )
+            email = emails[0] if emails else gerar_email_credito()
             t0 = time.time()
             resultado_credito: Optional[str] = None
             for tentativa in range(5):
@@ -261,17 +329,34 @@ class Command(BaseCommand):
                 if sucesso:
                     break
                 if msg in ("TELEFONE_REJEITADO",):
-                    cel = gerar_celular_random()
-                    cel_sec = gerar_celular_random()
+                    indice_telefone += 1
+                    if indice_telefone < len(telefones):
+                        cel = telefones[indice_telefone]
+                        cel_sec = (
+                            telefones[indice_telefone + 1]
+                            if len(telefones) > indice_telefone + 1
+                            else None
+                        )
+                    elif dados_assertiva:
+                        break
+                    else:
+                        cel = gerar_celular_random()
+                        cel_sec = gerar_celular_random()
                     continue
                 if msg in ("EMAIL_REJEITADO", "EMAIL_INVALIDO"):
-                    email = gerar_email_credito()
+                    indice_email += 1
+                    if indice_email < len(emails):
+                        email = emails[indice_email]
+                    elif dados_assertiva:
+                        break
+                    else:
+                        email = gerar_email_credito()
                     continue
                 break
 
             _log_etapa("etapa4", t0)
             if not sucesso:
-                self.stdout.write(self.style.ERROR(f"Etapa 4 falhou: {msg}"))
+                _print_erro(f"Etapa 4 falhou: {msg}")
                 return
 
             self.stdout.write(self.style.SUCCESS(f"\nCREDITO OK: {resultado_credito or msg}"))

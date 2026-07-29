@@ -1175,8 +1175,13 @@ class PAPNioAutomation:
                 clicou = False
                 for sel_btn in [
                     'button:has-text("EFETUAR")',
+                    'button:has-text("Entrar")',
+                    'button:has-text("ENTRAR")',
+                    'button:has-text("Acessar")',
                     'button:has-text("Login")',
                     'button[type="submit"]',
+                    'input[type="submit"]',
+                    '[role="button"]:has-text("Entrar")',
                     SELETORES['login']['btn_login'],
                 ]:
                     try:
@@ -1186,7 +1191,21 @@ class PAPNioAutomation:
                     except Exception:
                         continue
                 if not clicou:
-                    return False, "Botão de login não encontrado no PAP."
+                    # Algumas versões do IdP V.tal submetem o formulário apenas
+                    # pelo Enter no campo de senha e não expõem button[type=submit].
+                    self._capture_screenshot(
+                        "00_login_sem_botao_submit",
+                        forcar=True,
+                    )
+                    try:
+                        self.page.keyboard.press("Enter")
+                        clicou = True
+                        logger.warning(
+                            "[PAP] Botão de login não localizado; formulário "
+                            "submetido com Enter."
+                        )
+                    except Exception:
+                        return False, "Botão de login não encontrado no PAP."
 
                 # Aguardar a página reagir (redirecionamento ou mensagem de erro).
                 # Tempo suficiente para o redirect do SSO evitar "Execution context was destroyed".
@@ -1320,12 +1339,17 @@ class PAPNioAutomation:
         """
         logger.warning("[PAP] Relogin automático (url atual=%s)", (self.page.url or "")[:120] if self.page else "-")
         self._fechar_modal_sessao_expirada()
-        self._invalidar_storage_state()
         try:
+            # Apagar apenas o arquivo de storage não remove cookies/JWT do contexto
+            # já aberto. A V.tal continuava recebendo a sessão expirada e entrava
+            # em um ciclo PAP → IdP → PAP → IdP.
+            self._recriar_contexto_sem_storage()
             self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
             self._aguardar_pagina_estavel()
         except Exception as e:
-            logger.debug("[PAP] goto login no relogin: %s", e)
+            self.logado = False
+            logger.warning("[PAP] Falha ao criar contexto limpo no relogin: %s", e)
+            return False, "Não foi possível reiniciar a sessão PAP para refazer o login."
 
         ok, msg = self._fazer_login()
         if not ok or not self._sessao_pap_autenticada():
@@ -4333,12 +4357,52 @@ class PAPNioAutomation:
                 motivo_log="formulário CPF visível (PAP pulou modal de viabilidade)",
             )
         pagina_lower = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
+        modal_bloqueante = self._ler_modal_bloqueante_pap()
+        if modal_bloqueante and modal_bloqueante.get("codigo") in (
+            "POSSE_ENCONTRADA",
+            "PEDIDO_ENCONTRADO",
+            "INDISPONIVEL_TECNICO",
+            PAP_ERRO_PORTAL_NIO,
+            "PAP_OCORREU_ERRO",
+        ):
+            codigo = modal_bloqueante["codigo"]
+            if codigo == PAP_ERRO_PORTAL_NIO:
+                self._fechar_modal_erro_ops()
+                return False, PAP_ERRO_PORTAL_NIO, None
+            self._capture_screenshot(
+                f"02_modal_{codigo.lower()}",
+                forcar=True,
+            )
+            msg = self._mensagem_usuario_modal_bloqueante(
+                modal_bloqueante,
+                etapa="endereco",
+                cep=cep,
+                numero=numero,
+                referencia=referencia,
+            )
+            # Mantém string legada para o fluxo VENDER (comparações == "POSSE_ENCONTRADA").
+            if codigo == "PEDIDO_ENCONTRADO":
+                codigo = "POSSE_ENCONTRADA"
+            if codigo == "PAP_OCORREU_ERRO":
+                return False, msg, None
+            if codigo == "INDISPONIVEL_TECNICO":
+                msg = msg + "\n\nDigite outro *CEP* ou *CONCLUIR* para sair."
+            else:
+                msg = (
+                    msg
+                    + "\n\nDigite outro *CEP* para consultar outro endereço "
+                    "ou *CONCLUIR* para sair."
+                )
+            return False, msg, codigo
         if "posse encontrada" in pagina_lower or (
             "pedido" in pagina_lower and "em andamento" in pagina_lower
         ):
+            endereco = self._formatar_linha_endereco(cep, numero, referencia)
             return False, (
                 "❌ *Posse encontrada*\n\n"
-                "Não é possível abrir um pedido para o endereço consultado pois já existe um pedido em andamento.\n\n"
+                "Não é possível abrir um pedido para o endereço consultado "
+                "pois já existe um pedido em andamento.\n\n"
+                f"📍 *Endereço consultado:* {endereco}\n\n"
                 "Digite outro *CEP* para consultar outro endereço ou *CONCLUIR* para sair."
             ), "POSSE_ENCONTRADA"
         if (
@@ -4346,9 +4410,11 @@ class PAPNioAutomation:
             or "indisponivel" in pagina_lower
             or "sem viabilidade técnica" in pagina_lower
         ):
+            endereco = self._formatar_linha_endereco(cep, numero, referencia)
             return False, (
                 "❌ *Endereço indisponível*\n\n"
                 "Sem viabilidade técnica para o endereço consultado.\n\n"
+                f"📍 *Endereço consultado:* {endereco}\n\n"
                 "Digite outro *CEP* ou *CONCLUIR* para sair."
             ), "INDISPONIVEL_TECNICO"
         if "disponível" in pagina_lower or "disponivel" in pagina_lower:
@@ -4360,7 +4426,11 @@ class PAPNioAutomation:
         try:
             modal_sel = (
                 'h2:has-text("Disponível"), h2:has-text("Indisponível"), '
-                'h3:has-text("Posse encontrada"), h2:has-text("OPS, OCORREU UM ERRO")'
+                'h1:has-text("Posse encontrada"), h2:has-text("Posse encontrada"), '
+                'h3:has-text("Posse encontrada"), '
+                'h1:has-text("Pedido encontrado"), h2:has-text("Pedido encontrado"), '
+                'h3:has-text("Pedido encontrado"), '
+                'h2:has-text("OPS, OCORREU UM ERRO")'
             )
             modal_el = self.page.query_selector(modal_sel)
             spinner = self.page.query_selector('div[class*="spinner"]')
@@ -4517,7 +4587,10 @@ class PAPNioAutomation:
         Campo CPF/CNPJ: input[name="documento"]
         """
         try:
-            logger.info(f"[PAP] Etapa 3 - Documento: {cpf}")
+            logger.info(
+                "[PAP] Etapa 3 - consultando documento (%s dígitos)",
+                len(re.sub(r"\D", "", cpf or "")),
+            )
             ok_sessao, msg_sessao = self._garantir_sessao_sem_descartar_pedido()
             if not ok_sessao:
                 return False, msg_sessao, None
@@ -4685,19 +4758,167 @@ class PAPNioAutomation:
             MSG_CREDITO_SEM_TELA_RESULTADO (modal de resultado não exibido — repetir *CRÉDITO* com o documento).
         """
         try:
-            logger.info(f"[PAP] Etapa 4 - Celular: {celular}, Email: {email}")
+            logger.info(
+                "[PAP] Etapa 4 - preenchendo contato real "
+                "(telefone=%s dígitos, email_configurado=%s)",
+                len(re.sub(r"\D", "", celular or "")),
+                bool(email),
+            )
             modo_rapido_credito = self.optimize_for_credit and parar_no_modal_credito
             ok_sessao, msg_sessao = self._garantir_sessao_sem_descartar_pedido()
             if not ok_sessao:
                 return False, msg_sessao, None, None
-            
-            # Clicar Avançar da Etapa 3 para ir para Etapa 4 (Contato), se ainda não estivermos lá
-            btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
-            if btn_avancar:
-                btn_avancar.click()
-            
-            # Aguardar formulário de contato
-            self.page.wait_for_selector('input#contato, input[name="contato"]', state="visible", timeout=15000)
+
+            contato_selector = 'input#contato, input[name="contato"]'
+            contato_visivel = self.page.query_selector(contato_selector)
+            contato_visivel = bool(contato_visivel and contato_visivel.is_visible())
+
+            if not contato_visivel:
+                # A página mantém botões "Avançar" de etapas anteriores no DOM.
+                # Escolher explicitamente o último botão visível evita clicar em
+                # elemento oculto/stale.
+                botoes_avancar = self.page.locator('button:has-text("Avançar")')
+                clicou = False
+                for indice in reversed(range(botoes_avancar.count())):
+                    botao = botoes_avancar.nth(indice)
+                    if botao.is_visible() and botao.is_enabled():
+                        botao.scroll_into_view_if_needed()
+                        botao.click()
+                        clicou = True
+                        break
+                if not clicou:
+                    return (
+                        False,
+                        "Botão Avançar da etapa de cadastro não está disponível.",
+                        None,
+                        None,
+                    )
+
+                # A API de duplicidade do PAP pode levar mais de 15 s. Em redes
+                # lentas, aguardar até 45 s e repetir o clique uma única vez se
+                # a etapa 3 continuar visível. Também mapeia modais bloqueantes
+                # (Pedido encontrado / Posse / erro do portal).
+                transicao_selector = (
+                    f'{contato_selector}, '
+                    'h1:has-text("Pedido encontrado"), '
+                    'h2:has-text("Pedido encontrado"), '
+                    'h3:has-text("Pedido encontrado"), '
+                    'h1:has-text("Posse encontrada"), '
+                    'h2:has-text("Posse encontrada"), '
+                    'h3:has-text("Posse encontrada"), '
+                    'h2:has-text("OPS, OCORREU UM ERRO"), '
+                    'h2:has-text("Atenção!")'
+                )
+                for tentativa_transicao in range(2):
+                    try:
+                        self.page.wait_for_selector(
+                            transicao_selector,
+                            state="visible",
+                            timeout=25000 if tentativa_transicao == 0 else 20000,
+                        )
+                        contato = self.page.query_selector(contato_selector)
+                        contato_visivel = bool(
+                            contato and contato.is_visible()
+                        )
+                        if contato_visivel:
+                            break
+                        modal_bloqueante = self._ler_modal_bloqueante_pap()
+                        if modal_bloqueante:
+                            self._capture_screenshot(
+                                f"04_modal_{modal_bloqueante['codigo'].lower()}",
+                                forcar=True,
+                            )
+                            if modal_bloqueante["codigo"] == PAP_ERRO_PORTAL_NIO:
+                                self._fechar_modal_erro_ops()
+                                return False, PAP_ERRO_PORTAL_NIO, None, None
+                            msg_modal = self._mensagem_usuario_modal_bloqueante(
+                                modal_bloqueante,
+                                etapa="contato",
+                            )
+                            return False, msg_modal, None, None
+                        # Atenção! sem classificação específica: extrai texto e informa.
+                        modal_atencao = self.page.query_selector(
+                            'h2:has-text("Atenção!")'
+                        )
+                        if modal_atencao and modal_atencao.is_visible():
+                            texto_atencao = self._extrair_texto_ao_redor_titulo(
+                                modal_atencao
+                            )
+                            self._capture_screenshot(
+                                "04_modal_atencao_bloqueio",
+                                forcar=True,
+                            )
+                            btn_ok = self.page.query_selector(
+                                'button:has-text("Ok")'
+                            )
+                            if btn_ok:
+                                btn_ok.click()
+                            return (
+                                False,
+                                (
+                                    "❌ *Atenção!*\n\n"
+                                    f"{texto_atencao or 'O PAP bloqueou o avanço nesta etapa.'}\n\n"
+                                    "Não foi possível avançar para a análise de crédito "
+                                    "com este cliente."
+                                ),
+                                None,
+                                None,
+                            )
+                    except Exception:
+                        if self.verificar_modal_erro_ops_visivel():
+                            self._capture_screenshot(
+                                "04_erro_portal_antes_contato",
+                                forcar=True,
+                            )
+                            self._fechar_modal_erro_ops()
+                            return False, PAP_ERRO_PORTAL_NIO, None, None
+                        modal_bloqueante = self._ler_modal_bloqueante_pap()
+                        if modal_bloqueante:
+                            self._capture_screenshot(
+                                f"04_modal_{modal_bloqueante['codigo'].lower()}",
+                                forcar=True,
+                            )
+                            msg_modal = self._mensagem_usuario_modal_bloqueante(
+                                modal_bloqueante,
+                                etapa="contato",
+                            )
+                            return False, msg_modal, None, None
+                        if tentativa_transicao == 0:
+                            botao = self.page.locator(
+                                'button:has-text("Avançar"):visible'
+                            ).last
+                            try:
+                                if botao.is_enabled():
+                                    logger.warning(
+                                        "[PAP] Etapa 4 não carregou em 25s; "
+                                        "repetindo clique em Avançar."
+                                    )
+                                    botao.click()
+                            except Exception:
+                                pass
+
+                if not contato_visivel:
+                    modal_bloqueante = self._ler_modal_bloqueante_pap()
+                    if modal_bloqueante:
+                        self._capture_screenshot(
+                            f"04_modal_{modal_bloqueante['codigo'].lower()}",
+                            forcar=True,
+                        )
+                        msg_modal = self._mensagem_usuario_modal_bloqueante(
+                            modal_bloqueante,
+                            etapa="contato",
+                        )
+                        return False, msg_modal, None, None
+                    self._capture_screenshot(
+                        "04_erro_formulario_contato_nao_abriu",
+                        forcar=True,
+                    )
+                    return (
+                        False,
+                        "O PAP não abriu o formulário de contato após 45 segundos.",
+                        None,
+                        None,
+                    )
             
             # Fechar modal "Atenção!" se já estiver aberto (ex: de tentativa anterior)
             modal_atencao = self.page.query_selector('h2:has-text("Atenção!")')
@@ -5390,6 +5611,153 @@ class PAPNioAutomation:
             return False
         except Exception:
             return False
+
+    # Títulos conhecidos que impedem avançar no PAP (viabilidade / cadastro / contato).
+    _MODAIS_BLOQUEANTES = (
+        ("Posse encontrada", "POSSE_ENCONTRADA"),
+        ("Pedido encontrado", "PEDIDO_ENCONTRADO"),
+        ("Indisponível", "INDISPONIVEL_TECNICO"),
+        ("OPS, OCORREU UM ERRO", PAP_ERRO_PORTAL_NIO),
+        ("OPS, OCORREU UM ERRO!", PAP_ERRO_PORTAL_NIO),
+        ("Ocorreu um erro", "PAP_OCORREU_ERRO"),
+    )
+
+    @staticmethod
+    def _formatar_linha_endereco(
+        cep: str = "",
+        numero: str = "",
+        referencia: str = "",
+        logradouro: str = "",
+    ) -> str:
+        """Monta linha legível do endereço consultado (sem dados sensíveis extras)."""
+        partes: list[str] = []
+        if logradouro:
+            partes.append(str(logradouro).strip())
+        if cep:
+            partes.append(f"CEP {re.sub(r'\D', '', str(cep))}")
+        if numero:
+            partes.append(f"nº {str(numero).strip()}")
+        if referencia:
+            partes.append(str(referencia).strip())
+        return " · ".join(partes) if partes else "endereço informado"
+
+    def _extrair_texto_ao_redor_titulo(self, titulo_el: Any) -> str:
+        """Sobe no DOM a partir do título até achar o bloco do modal com o texto completo."""
+        try:
+            root = titulo_el.evaluate(
+                """e => {
+                  let n = e;
+                  for (let i = 0; i < 14 && n; i++) {
+                    if (n.getAttribute && n.getAttribute('role') === 'dialog') {
+                      return (n.innerText || '').trim();
+                    }
+                    const cls = (n.className && String(n.className)) || '';
+                    if (
+                      cls.includes('modal') ||
+                      cls.includes('Modal') ||
+                      cls.includes('MuiDialog') ||
+                      cls.includes('sc-')
+                    ) {
+                      const t = (n.innerText || '').trim();
+                      if (t.length > 20 && t.length < 5000) return t;
+                    }
+                    n = n.parentElement;
+                  }
+                  return (e.parentElement && e.parentElement.innerText) || (e.innerText || '');
+                }"""
+            )
+            return str(root or "").strip()[:2500]
+        except Exception:
+            try:
+                return (titulo_el.inner_text() or "").strip()[:800]
+            except Exception:
+                return ""
+
+    def _ler_modal_bloqueante_pap(self) -> Optional[Dict[str, str]]:
+        """
+        Detecta modal que impede avançar e extrai título + texto exibido ao usuário.
+
+        Returns:
+            dict com codigo, titulo, texto (corpo limpo) ou None.
+        """
+        if not self.page:
+            return None
+        for titulo, codigo in self._MODAIS_BLOQUEANTES:
+            for tag in ("h1", "h2", "h3", "h4"):
+                try:
+                    el = self.page.query_selector(f'{tag}:has-text("{titulo}")')
+                    if not el or not el.is_visible():
+                        continue
+                    bruto = self._extrair_texto_ao_redor_titulo(el)
+                    linhas = [
+                        ln.strip()
+                        for ln in (bruto or "").splitlines()
+                        if ln.strip()
+                    ]
+                    # Remove botões do rodapé do texto enviado ao usuário.
+                    ignore = {
+                        "consultar outro cpf/cnpj",
+                        "consultar outro endereço",
+                        "consultar outro endereco",
+                        "salvar interesse",
+                        "voltar",
+                        "ok",
+                        "tentar novamente",
+                        "continuar",
+                    }
+                    corpo_linhas = [
+                        ln
+                        for ln in linhas
+                        if ln.lower() not in ignore
+                        and titulo.lower() not in ln.lower()
+                    ]
+                    corpo = "\n".join(corpo_linhas).strip()
+                    return {
+                        "codigo": codigo,
+                        "titulo": titulo,
+                        "texto": corpo or bruto or titulo,
+                    }
+                except Exception:
+                    continue
+        return None
+
+    def _mensagem_usuario_modal_bloqueante(
+        self,
+        modal: Dict[str, str],
+        *,
+        etapa: str,
+        cep: str = "",
+        numero: str = "",
+        referencia: str = "",
+        logradouro: str = "",
+    ) -> str:
+        """Mensagem WhatsApp com o que o PAP mostrou e o contexto da etapa."""
+        titulo = (modal.get("titulo") or "Atenção").strip()
+        texto = (modal.get("texto") or "").strip()
+        partes = [f"❌ *{titulo}*", ""]
+        if texto:
+            partes.append(texto)
+            partes.append("")
+        if etapa in ("endereco", "viabilidade", "etapa2"):
+            endereco = self._formatar_linha_endereco(
+                cep=cep,
+                numero=numero,
+                referencia=referencia,
+                logradouro=logradouro,
+            )
+            partes.append(f"📍 *Endereço consultado:* {endereco}")
+            partes.append("")
+            partes.append(
+                "Não foi possível concluir a viabilidade neste endereço."
+            )
+        elif etapa in ("contato", "cadastro", "etapa3", "etapa4"):
+            partes.append(
+                "Não foi possível avançar para a análise de crédito "
+                "com este cliente."
+            )
+        else:
+            partes.append("Não foi possível continuar no PAP.")
+        return "\n".join(partes).strip()
 
     def _fechar_modal_erro_ops(self) -> bool:
         """
@@ -7916,8 +8284,15 @@ class PAPNioAutomation:
             logger.warning(f"[PAP] Erro ao clicar Sair: {e}")
             return False
 
-    def _fechar_sessao(self):
-        """Fecha a sessão do navegador e libera recursos. Clica em Sair antes para não travar login."""
+    def _fechar_sessao(self, *, fazer_logout: bool = False):
+        """
+        Fecha o navegador e libera recursos.
+
+        Por padrão NÃO clica em Sair: reaproveita cookies no próximo run
+        (login repetido no IdP V.tal pode bloquear a conta). Relogin limpo
+        (_relogin_pap) só ocorre quando a sessão realmente expirou.
+        Use fazer_logout=True apenas quando for obrigatório encerrar no PAP.
+        """
         tinha_sessao = self.sessao_iniciada
         try:
             if not tinha_sessao:
@@ -7938,13 +8313,25 @@ class PAPNioAutomation:
                 except Exception as e:
                     logger.warning(f"[PAP] Erro ao salvar trace: {e}")
                 self._trace_started = False
-            if self.page:
-                self._clicar_sair()
+            fez_logout = False
+            if fazer_logout and self.page:
+                fez_logout = bool(self._clicar_sair())
             if self.context:
-                try:
-                    self.context.storage_state(path=self.storage_state_path)
-                except:
-                    pass
+                if fez_logout:
+                    # Após Sair, cookies ficam inválidos — não persistir.
+                    self._invalidar_storage_state()
+                elif self._sessao_pap_autenticada():
+                    try:
+                        self.context.storage_state(path=self.storage_state_path)
+                        logger.info(
+                            "[PAP] Storage state preservado para reuso: %s",
+                            os.path.basename(self.storage_state_path),
+                        )
+                    except Exception as e:
+                        logger.debug("[PAP] Salvar storage no fechamento: %s", e)
+                else:
+                    # Sessão já caída no IdP: storage antigo só atrapalha o próximo run.
+                    self._invalidar_storage_state()
 
             if self.page:
                 self.page.close()

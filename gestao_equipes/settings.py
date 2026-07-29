@@ -464,6 +464,34 @@ PAP_CREDITO_FAST_MODE = config('PAP_CREDITO_FAST_MODE', default=True, cast=lambd
 PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA = config('PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA', default=6, cast=int)
 PAP_STATUS_FAST_MODE = config('PAP_STATUS_FAST_MODE', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 
+# Assertiva Localize: dados reais do cliente no fluxo CRÉDITO.
+# A finalidade LGPD enviada pelo serviço é 2 (ciclo de crédito).
+ASSERTIVA_CLIENT_ID = config('ASSERTIVA_CLIENT_ID', default='')
+ASSERTIVA_CLIENT_SECRET = config('ASSERTIVA_CLIENT_SECRET', default='')
+ASSERTIVA_CREDITO_ENABLED = config(
+    'ASSERTIVA_CREDITO_ENABLED',
+    default=bool(ASSERTIVA_CLIENT_ID and ASSERTIVA_CLIENT_SECRET),
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+ASSERTIVA_CREDITO_REQUIRED = config(
+    'ASSERTIVA_CREDITO_REQUIRED',
+    default=True,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+ASSERTIVA_API_BASE_URL = config(
+    'ASSERTIVA_API_BASE_URL',
+    default='https://api.assertivasolucoes.com.br',
+)
+ASSERTIVA_TOKEN_URL = config(
+    'ASSERTIVA_TOKEN_URL',
+    default='https://api.assertivasolucoes.com.br/oauth2/v3/token',
+)
+ASSERTIVA_TIMEOUT_SECONDS = config(
+    'ASSERTIVA_TIMEOUT_SECONDS',
+    default=20,
+    cast=int,
+)
+
 # Sync noturno da esteira (AGENDADO/PENDENCIADA) via PAP
 SYNC_ESTEIRA_HORA_INICIO = config('SYNC_ESTEIRA_HORA_INICIO', default=22, cast=int)
 SYNC_ESTEIRA_HORA_FIM = config('SYNC_ESTEIRA_HORA_FIM', default=7, cast=int)
