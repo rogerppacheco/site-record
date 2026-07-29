@@ -13,7 +13,7 @@ import time
 import logging
 import threading
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from django.conf import settings
 from django.utils import timezone
@@ -714,6 +714,22 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             pass
         return
 
+    analise_historico = AnaliseCreditoHistorico.objects.create(
+        usuario=usuario,
+        cpf_consultado=documento_limpo,
+        telefone_solicitante=telefone,
+        status_execucao=AnaliseCreditoHistorico.STATUS_PENDENTE,
+    )
+
+    def _atualizar_analise_historico(**campos: Any) -> None:
+        """Persiste cada etapa sem perder a consulta se o PAP falhar depois."""
+        from django.utils import timezone
+
+        campos["atualizado_em"] = timezone.now()
+        AnaliseCreditoHistorico.objects.filter(
+            pk=analise_historico.pk
+        ).update(**campos)
+
     dados_assertiva: Optional[DadosCreditoAssertiva] = None
     if getattr(settings, "ASSERTIVA_CREDITO_ENABLED", False):
         try:
@@ -727,6 +743,26 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 campos_ausentes.append("e-mail")
             if not dados_assertiva.endereco:
                 campos_ausentes.append("endereço")
+            endereco_snapshot = dados_assertiva.endereco
+            snapshot_assertiva = {
+                "telefones": list(dados_assertiva.telefones),
+                "emails": list(dados_assertiva.emails),
+                "endereco": (
+                    {
+                        "cep": endereco_snapshot.cep,
+                        "numero": endereco_snapshot.numero,
+                        "referencia": endereco_snapshot.referencia,
+                        "logradouro": endereco_snapshot.logradouro,
+                    }
+                    if endereco_snapshot
+                    else None
+                ),
+            }
+            _atualizar_analise_historico(
+                assertiva_consultada=True,
+                assertiva_dados=snapshot_assertiva,
+                assertiva_erro="",
+            )
             if campos_ausentes and getattr(
                 settings,
                 "ASSERTIVA_CREDITO_REQUIRED",
@@ -741,6 +777,10 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                         "foi enviado ao PAP."
                     ),
                 )
+                _atualizar_analise_historico(
+                    status_execucao=AnaliseCreditoHistorico.STATUS_ERRO,
+                    resultado_detalhe=f"Assertiva sem dados: {ausentes}"[:200],
+                )
                 _resetar_sessao_credito(telefone)
                 return
             logger.info(
@@ -751,6 +791,10 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             )
         except AssertivaError as exc:
             logger.warning("[CRÉDITO] Consulta Assertiva indisponível: %s", exc)
+            _atualizar_analise_historico(
+                assertiva_consultada=False,
+                assertiva_erro=str(exc)[:4000],
+            )
             if getattr(settings, "ASSERTIVA_CREDITO_REQUIRED", True):
                 WhatsAppService().enviar_mensagem_texto(
                     telefone,
@@ -759,11 +803,19 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                         "Nenhum dado aleatório foi enviado ao PAP. Tente novamente."
                     ),
                 )
+                _atualizar_analise_historico(
+                    status_execucao=AnaliseCreditoHistorico.STATUS_ERRO,
+                    resultado_detalhe="Falha na consulta Assertiva",
+                )
                 _resetar_sessao_credito(telefone)
                 return
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='credito')
     if not bo_usuario:
+        _atualizar_analise_historico(
+            status_execucao=AnaliseCreditoHistorico.STATUS_ERRO,
+            resultado_detalhe=(msg_erro or "Login PAP indisponível")[:200],
+        )
         if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
             WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'credito'))
         else:
@@ -789,8 +841,19 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 sucesso=sucesso,
                 mensagem_resultado=mensagem,
             )
+            _atualizar_analise_historico(
+                status_execucao=(
+                    AnaliseCreditoHistorico.STATUS_SUCESSO
+                    if sucesso
+                    else AnaliseCreditoHistorico.STATUS_ERRO
+                ),
+                resultado_detalhe=(mensagem or "")[:200] or None,
+            )
         except Exception:
-            pass
+            logger.exception(
+                "[CRÉDITO] Falha ao atualizar histórico da consulta %s",
+                analise_historico.pk,
+            )
     try:
         bo_primeiro_nome = _primeiro_nome_usuario(bo_usuario)
         WhatsAppService().enviar_mensagem_texto(
@@ -1110,11 +1173,10 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         def _salvar_e_enviar():
             import django.db
             django.db.close_old_connections()
-            AnaliseCreditoHistorico.objects.create(
-                usuario=usuario,
-                cpf_consultado=documento_limpo,
+            _atualizar_analise_historico(
                 aprovado=aprovado,
                 resultado_detalhe=resultado_detalhe,
+                status_execucao=AnaliseCreditoHistorico.STATUS_SUCESSO,
             )
             liberar_bo(bo_usuario.id, telefone)
             _marcar_hist(True, resultado_detalhe or msg or "Consulta concluída com sucesso.")

@@ -1724,6 +1724,15 @@ class AnaliseCreditoHistorico(models.Model):
     Histórico de consultas de análise de crédito via WhatsApp.
     Usado para rate limit (1 min entre análises, 15 por dia) e auditoria.
     """
+    STATUS_PENDENTE = "pendente"
+    STATUS_SUCESSO = "sucesso"
+    STATUS_ERRO = "erro"
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, "Pendente"),
+        (STATUS_SUCESSO, "Sucesso"),
+        (STATUS_ERRO, "Erro"),
+    )
+
     usuario = models.ForeignKey(
         Usuario,
         on_delete=models.CASCADE,
@@ -1736,7 +1745,37 @@ class AnaliseCreditoHistorico(models.Model):
         help_text="CPF consultado (apenas dígitos)",
     )
     aprovado = models.BooleanField(
+        null=True,
+        blank=True,
         help_text="True se crédito aprovado, False se negado",
+    )
+    status_execucao = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDENTE,
+        db_index=True,
+        help_text="Estado atual/final da execução da consulta.",
+    )
+    telefone_solicitante = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Telefone do usuário que solicitou a análise pelo WhatsApp.",
+    )
+    assertiva_consultada = models.BooleanField(
+        default=False,
+        help_text="Indica se a API Assertiva respondeu à consulta cadastral.",
+    )
+    assertiva_dados = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Snapshot normalizado dos contatos e endereço retornados pela Assertiva.",
+    )
+    assertiva_erro = models.TextField(
+        blank=True,
+        default="",
+        help_text="Erro ocorrido ao consultar ou validar os dados da Assertiva.",
     )
     resultado_detalhe = models.CharField(
         max_length=200,
@@ -1745,6 +1784,7 @@ class AnaliseCreditoHistorico(models.Model):
         help_text="Ex: Elegível para todas as formas, Elegível apenas para Cartão",
     )
     criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "crm_analise_credito_historico"
@@ -1756,7 +1796,10 @@ class AnaliseCreditoHistorico(models.Model):
         ]
 
     def __str__(self):
-        status = "Aprovado" if self.aprovado else "Negado"
+        if self.aprovado is None:
+            status = self.get_status_execucao_display()
+        else:
+            status = "Aprovado" if self.aprovado else "Negado"
         return f"{self.cpf_consultado} - {self.usuario.username} - {status} - {self.criado_em}"
 
 

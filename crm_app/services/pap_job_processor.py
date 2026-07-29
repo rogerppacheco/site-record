@@ -18,6 +18,47 @@ from crm_app.pap_job_fila import PapJobFila
 logger = logging.getLogger(__name__)
 
 
+def _notificar_falha_definitiva(job: PapJobFila) -> None:
+    """Evita deixar o usuário aguardando quando o handler nem consegue iniciar."""
+    payload = job.payload or {}
+    telefone = str(payload.get("telefone") or job.telefone or "").strip()
+    if not telefone:
+        return
+
+    try:
+        from crm_app.models import SessaoWhatsapp
+        from crm_app.whatsapp_service import WhatsAppService
+
+        mensagens = {
+            "analise_credito": (
+                "❌ Não foi possível processar a consulta de crédito agora. "
+                "Digite *CRÉDITO* para tentar novamente."
+            ),
+            "status_online": (
+                "❌ Não foi possível concluir a consulta de status agora. "
+                "Digite *STATUS* para tentar novamente."
+            ),
+            "consulta_pedido": (
+                "❌ Não foi possível concluir a consulta do pedido agora. "
+                "Tente novamente em alguns instantes."
+            ),
+        }
+        mensagem = mensagens.get(
+            job.tipo,
+            "❌ Não foi possível concluir sua consulta agora. Tente novamente.",
+        )
+        WhatsAppService().enviar_mensagem_texto(telefone, mensagem)
+        SessaoWhatsapp.objects.filter(telefone=telefone).update(
+            etapa="inicial",
+            dados_temp={},
+        )
+    except Exception:
+        logger.exception(
+            "[PAP_WORKER] Falha ao avisar usuário sobre erro definitivo do job %s",
+            job.id,
+        )
+
+
 def _executar_handler(job: PapJobFila) -> None:
     from crm_app.whatsapp_webhook_handler import (
         _executar_analise_credito_background,
@@ -128,6 +169,7 @@ def processar_job(job: PapJobFila) -> bool:
                 erro=erro_txt,
                 concluir=True,
             )
+            _notificar_falha_definitiva(job)
         except Exception:
             # Nunca deixar falha de persistência derrubar o processo do worker.
             logger.exception(

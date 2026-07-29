@@ -5634,7 +5634,8 @@ class PAPNioAutomation:
         if logradouro:
             partes.append(str(logradouro).strip())
         if cep:
-            partes.append(f"CEP {re.sub(r'\D', '', str(cep))}")
+            cep_limpo = re.sub(r"\D", "", str(cep))
+            partes.append(f"CEP {cep_limpo}")
         if numero:
             partes.append(f"nº {str(numero).strip()}")
         if referencia:
