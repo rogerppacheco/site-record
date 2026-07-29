@@ -9712,6 +9712,10 @@ def processar_webhook_whatsapp(data, request=None):
                             sessao.save()
                             resposta = "✅ CNPJ recebido.\n\nAgora digite o *CPF do representante legal* (11 dígitos), ou *CANCELAR*:"
                         else:
+                            # Persistir aguardando ANTES do despacho evita corrida
+                            # em que o worker reseta a sessão e este save sobrescreve.
+                            sessao.etapa = 'credito_aguardando'
+                            sessao.save()
                             from crm_app.services.pap_dispatcher import despachar_pap
                             despachar_pap(
                                 'analise_credito',
@@ -9725,8 +9729,6 @@ def processar_webhook_whatsapp(data, request=None):
                                 _executar_analise_credito_background,
                                 (telefone_formatado, usuario_id, doc_limpo, None),
                             )
-                            sessao.etapa = 'credito_aguardando'
-                            sessao.save()
                             resposta = "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
             return _enviar_resposta_e_retornar(resposta)
 
@@ -9749,6 +9751,8 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.save()
                         resposta = "❌ Sessão expirada. Digite *CRÉDITO* para iniciar novamente."
                     else:
+                        sessao.etapa = 'credito_aguardando'
+                        sessao.save()
                         from crm_app.services.pap_dispatcher import despachar_pap
                         despachar_pap(
                             'analise_credito',
@@ -9762,8 +9766,6 @@ def processar_webhook_whatsapp(data, request=None):
                             _executar_analise_credito_background,
                             (telefone_formatado, usuario_id, doc_cnpj, cpf_rep),
                         )
-                        sessao.etapa = 'credito_aguardando'
-                        sessao.save()
                         resposta = "⏳ Consultando crédito para o CNPJ... Aguarde alguns instantes. Você receberá a resposta em seguida."
             return _enviar_resposta_e_retornar(resposta)
 

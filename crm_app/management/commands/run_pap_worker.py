@@ -21,7 +21,10 @@ from crm_app.db_resilience import (
     retry_on_db_connection_error,
 )
 from crm_app.pap_job_fila import PapJobFila, recuperar_jobs_pap_travados, reivindicar_proximo_job
-from crm_app.services.pap_job_processor import processar_job
+from crm_app.services.pap_job_processor import (
+    _notificar_falha_definitiva,
+    processar_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,11 +162,36 @@ class Command(BaseCommand):
         except Exception:
             logger.exception("[PAP_WORKER] Falha ao marcar timeout do job %s", job.id)
 
-        # Libera BO se o job travou com lock (timeout do pool = 30 min; aqui antecipamos).
+        # Avisa o usuário e libera BO do telefone deste job (não esperar 30 min do pool).
         try:
+            _notificar_falha_definitiva(job)
+        except Exception:
+            logger.exception(
+                "[PAP_WORKER] Falha ao notificar timeout do job %s",
+                job.id,
+            )
+        try:
+            from crm_app.models import PapBoEmUso
             from crm_app.pool_bo_pap import limpar_sessoes_expiradas
+
+            telefone = str(
+                (job.payload or {}).get("telefone") or job.telefone or ""
+            ).strip()
+            if telefone:
+                deletados, _ = PapBoEmUso.objects.filter(
+                    vendedor_telefone=telefone
+                ).delete()
+                if deletados:
+                    logger.info(
+                        "[PAP_WORKER] BO liberado após timeout do job %s telefone=%s",
+                        job.id,
+                        telefone,
+                    )
             limpar_sessoes_expiradas()
         except Exception:
-            pass
+            logger.exception(
+                "[PAP_WORKER] Falha ao liberar BO após timeout do job %s",
+                job.id,
+            )
 
         return True
