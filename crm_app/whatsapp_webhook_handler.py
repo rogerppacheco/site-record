@@ -665,6 +665,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
     )
     from crm_app.services.credito_pap_service import (
         CODIGOS_EMAIL_RECUSADO,
+        ORIGEM_ASSERTIVA as ORIGEM_CONTATO_ASSERTIVA,
         ORIGEM_PADRAO as ORIGEM_ENDERECO_PADRAO,
         EnderecoCredito,
         SeletorContatosCredito,
@@ -749,11 +750,13 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             dados_assertiva = AssertivaLocalizeService().consultar_para_credito(
                 documento_limpo
             )
+            # O e-mail não entra aqui: o PAP recusa boa parte dos e-mails
+            # históricos da Assertiva e a etapa 4 já assume o e-mail validado
+            # do pool. Telefone e endereço são o que identifica o cliente e
+            # define a viabilidade, por isso continuam obrigatórios.
             campos_ausentes: list[str] = []
             if not dados_assertiva.telefone_principal:
                 campos_ausentes.append("telefone")
-            if not dados_assertiva.email_principal:
-                campos_ausentes.append("e-mail")
             if not dados_assertiva.endereco:
                 campos_ausentes.append("endereço")
             endereco_snapshot = dados_assertiva.endereco
@@ -802,6 +805,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 len(dados_assertiva.emails),
                 bool(dados_assertiva.endereco),
             )
+            if not dados_assertiva.email_principal:
+                logger.info(
+                    "[CRÉDITO] Assertiva sem e-mail para o documento; a etapa 4 "
+                    "usará o e-mail validado do pool."
+                )
         except AssertivaError as exc:
             logger.warning("[CRÉDITO] Consulta Assertiva indisponível: %s", exc)
             _atualizar_analise_historico(
@@ -1193,6 +1201,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 resp += (
                     "\n\n📍 _O endereço cadastral do cliente não tem viabilidade; "
                     "a análise seguiu com o endereço padrão da automação._"
+                )
+            if contato.origem_email != ORIGEM_CONTATO_ASSERTIVA:
+                resp += (
+                    "\n\n✉️ _Sem e-mail válido do cliente; a análise seguiu com "
+                    "o e-mail validado da automação._"
                 )
             resp += f"\n\n⏱ _{tempo_decorrido}s_"
             if screenshot_credito_b64:

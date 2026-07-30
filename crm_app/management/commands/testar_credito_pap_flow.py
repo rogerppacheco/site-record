@@ -98,11 +98,10 @@ class Command(BaseCommand):
                     self.style.ERROR(f"Consulta Assertiva falhou: {exc}")
                 )
                 return
+            # Espelha produção: sem e-mail a etapa 4 usa o pool validado.
             ausentes: list[str] = []
             if not dados_assertiva.telefone_principal:
                 ausentes.append("telefone")
-            if not dados_assertiva.email_principal:
-                ausentes.append("e-mail")
             if not dados_assertiva.endereco:
                 ausentes.append("endereço")
             if ausentes and getattr(settings, "ASSERTIVA_CREDITO_REQUIRED", True):
