@@ -4778,6 +4778,64 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning(f"[PAP] _etapa4_limpar_todos_campos_contato: {e}")
 
+    def _etapa4_codigo_rejeicao_contato_da_pagina(self, pagina_lower: str) -> Optional[str]:
+        """Classifica texto do modal Atenção: telefone/e-mail rejeitado ou inválido."""
+        pagina = (pagina_lower or "").lower()
+        if (
+            "excede" in pagina
+            or "repetições" in pagina
+            or "repeticoes" in pagina
+            or "celular já utilizado" in pagina
+            or "celular ja utilizado" in pagina
+        ):
+            return "TELEFONE_REJEITADO"
+        if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
+            return "EMAIL_REJEITADO"
+        if (
+            "e-mail inválido" in pagina
+            or "email inválido" in pagina
+            or "e-mail invalido" in pagina
+            or "email invalido" in pagina
+            or "preencha um e-mail válido" in pagina
+            or "preencha um email válido" in pagina
+            or "preencha um e-mail valido" in pagina
+            or "preencha um email valido" in pagina
+        ):
+            return "EMAIL_INVALIDO"
+        return None
+
+    def _etapa4_tratar_modal_atencao_contato(self) -> Optional[str]:
+        """
+        Fecha o modal Atenção! se estiver aberto e devolve o código de rejeição.
+
+        O PAP às vezes demora alguns segundos após o Avançar para validar o
+        e-mail; por isso esta checagem também roda durante a espera do modal
+        de crédito (não só no loop curto inicial).
+        """
+        if not self.page:
+            return None
+        modal = self.page.query_selector('h2:has-text("Atenção!")')
+        if not modal:
+            return None
+        try:
+            if not modal.is_visible():
+                return None
+        except Exception:
+            return None
+        pagina = (self._page_content_seguro(tentativas=2, pausa_ms=200) or "").lower()
+        codigo = self._etapa4_codigo_rejeicao_contato_da_pagina(pagina)
+        btn_ok = self.page.query_selector('button:has-text("Ok")')
+        if btn_ok:
+            try:
+                btn_ok.click(force=True, timeout=3000)
+                self.page.wait_for_timeout(300 if self.optimize_for_credit else 500)
+            except Exception:
+                pass
+        if codigo:
+            self._etapa4_limpar_todos_campos_contato()
+            logger.info("[PAP] [CRÉDITO] Modal Atenção classificado como %s", codigo)
+        return codigo
+
     def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None, parar_no_modal_credito: bool = False) -> Tuple[bool, str, Optional[str], Optional[str]]:
         """
         Etapa 4: Informações de contato e análise de crédito.
@@ -5001,19 +5059,9 @@ class PAPNioAutomation:
                 return False, "CELULAR_INVALIDO", None, None
             
             # Verificar modal "Atenção!" (email já usado ou inválido) - pode aparecer ao validar
-            modal_atencao = self.page.query_selector('h2:has-text("Atenção!")')
-            if modal_atencao:
-                pagina = self.page.content().lower()
-                btn_ok = self.page.query_selector('button:has-text("Ok")')
-                if btn_ok:
-                    btn_ok.click()
-                    self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
-                if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
-                    self._etapa4_limpar_todos_campos_contato()
-                    return False, "EMAIL_REJEITADO", None, None
-                if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
-                    self._etapa4_limpar_todos_campos_contato()
-                    return False, "EMAIL_INVALIDO", None, None
+            codigo_pre = self._etapa4_tratar_modal_atencao_contato()
+            if codigo_pre:
+                return False, codigo_pre, None, None
             
             # Clicar Avançar para disparar análise de crédito
             t_avancar = time.time()
@@ -5029,29 +5077,18 @@ class PAPNioAutomation:
                     btn_avancar.click()
             
             # Verificar modal "Atenção!" e modal "OPS, OCORREU UM ERRO!" (erro do portal)
-            loops_atencao = 4 if modo_rapido_credito else 6
-            pausa_atencao_ms = 300 if modo_rapido_credito else 500
+            # Em crédito: mais tentativas — a validação de e-mail do Nio costuma
+            # demorar alguns segundos após o Avançar.
+            loops_atencao = 12 if modo_rapido_credito else 8
+            pausa_atencao_ms = 400 if modo_rapido_credito else 500
             for _ in range(loops_atencao):
                 self.page.wait_for_timeout(pausa_atencao_ms)
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
-                modal_atencao = self.page.query_selector('h2:has-text("Atenção!")')
-                if modal_atencao:
-                    pagina = self.page.content().lower()
-                    btn_ok = self.page.query_selector('button:has-text("Ok")')
-                    if btn_ok:
-                        btn_ok.click()
-                        self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
-                    if "excede" in pagina or "repetições" in pagina or "celular já utilizado" in pagina:
-                        self._etapa4_limpar_todos_campos_contato()
-                        return False, "TELEFONE_REJEITADO", None, None
-                    if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
-                        self._etapa4_limpar_todos_campos_contato()
-                        return False, "EMAIL_REJEITADO", None, None
-                    if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
-                        self._etapa4_limpar_todos_campos_contato()
-                        return False, "EMAIL_INVALIDO", None, None
+                codigo_atencao = self._etapa4_tratar_modal_atencao_contato()
+                if codigo_atencao:
+                    return False, codigo_atencao, None, None
             t_apos_atencao = time.time()
             if parar_no_modal_credito:
                 logger.info("[PAP] [CRÉDITO] Etapa4: loop Atenção=%.1fs (desde clique Avançar)", t_apos_atencao - t_avancar)
@@ -5069,6 +5106,9 @@ class PAPNioAutomation:
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
+                codigo_atencao = self._etapa4_tratar_modal_atencao_contato()
+                if codigo_atencao:
+                    return False, codigo_atencao, None, None
                 pagina_texto = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
                 carregando = self._pagina_carregando_apos_credito()
                 etapa5_visivel = (
@@ -5134,6 +5174,9 @@ class PAPNioAutomation:
             if parar_no_modal_credito and not modal_apareceu and not etapa5_apos_credito:
                 for extra in range(60):
                     self.page.wait_for_timeout(500)
+                    codigo_atencao = self._etapa4_tratar_modal_atencao_contato()
+                    if codigo_atencao:
+                        return False, codigo_atencao, None, None
                     if self._pagina_carregando_apos_credito():
                         continue
                     pagina_extra = self._page_content_seguro(tentativas=2, pausa_ms=300).lower()
@@ -5212,6 +5255,22 @@ class PAPNioAutomation:
                         "não concluir como aprovado (etapa 5 ou texto isolado não bastam). apis=%s",
                         sorted(self._credito_apis_pos_avancar),
                     )
+                    self._capture_screenshot(
+                        "04_err_sem_modal_credito",
+                        wait_selector=None,
+                        wait_timeout_ms=0,
+                        forcar=True,
+                    )
+                    try:
+                        url_final = (self.page.url or "")[:160]
+                        trecho = (pagina_texto or "")[:400].replace("\n", " ")
+                        logger.warning(
+                            "[PAP] [CRÉDITO] Etapa4 sem modal — url=%s texto=%s",
+                            url_final,
+                            trecho,
+                        )
+                    except Exception:
+                        pass
                     return False, MSG_CREDITO_SEM_TELA_RESULTADO, None, None
             # Normalizar para comparação: acentos e variações (cartão/cartao, etc.)
             pagina_norm = unicodedata.normalize("NFD", pagina_texto)

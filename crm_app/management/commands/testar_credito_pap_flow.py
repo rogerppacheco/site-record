@@ -115,14 +115,28 @@ class Command(BaseCommand):
                 f"endereço={'sim' if dados_assertiva.endereco else 'não'}"
             )
 
-        matricula_bo = options.get("matricula_bo")
+        matricula_bo = (options.get("matricula_bo") or "").strip() or None
         senha_bo = options.get("senha_bo")
+        bo = None
+        if matricula_bo and not senha_bo:
+            # Evita misturar senha de outro BO quando só a matrícula é informada.
+            bo = (
+                Usuario.objects.filter(matricula_pap__iexact=matricula_bo)
+                .exclude(senha_pap__isnull=True)
+                .exclude(senha_pap="")
+                .first()
+            )
+            if bo:
+                senha_bo = bo.senha_pap
+                self.stdout.write(f"BO: {bo.username} ({matricula_bo}) — senha do cadastro")
         if not matricula_bo or not senha_bo:
             bo = (
                 Usuario.objects.filter(
                     perfil__cod_perfil__iexact="backoffice",
                     is_active=True,
                     matricula_pap__isnull=False,
+                    pap_automacao_credito=True,
+                    login_pap_disponivel_para_automacao=True,
                 )
                 .exclude(matricula_pap="")
                 .exclude(senha_pap__isnull=True)
