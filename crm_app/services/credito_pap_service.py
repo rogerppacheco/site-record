@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any, Iterable, Optional, Protocol, Sequence
 
 from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
 from crm_app.services.assertiva_localize_service import EnderecoAssertiva
@@ -29,6 +29,11 @@ ORIGEM_MISTO = "misto"
 # Códigos da etapa 2 que indicam bloqueio do endereço (e não do cliente),
 # portanto passíveis de nova tentativa com outro endereço.
 CODIGOS_ENDERECO_BLOQUEADO = ("INDISPONIVEL_TECNICO", "POSSE_ENCONTRADA")
+
+# Códigos do modal "Atenção!" da etapa 4 relacionados ao e-mail.
+CODIGO_EMAIL_INVALIDO = "EMAIL_INVALIDO"
+CODIGO_EMAIL_REJEITADO = "EMAIL_REJEITADO"
+CODIGOS_EMAIL_RECUSADO = (CODIGO_EMAIL_INVALIDO, CODIGO_EMAIL_REJEITADO)
 
 
 @dataclass(frozen=True)
@@ -219,6 +224,16 @@ def consultar_viabilidade_com_fallback(
     return resultado
 
 
+class RepositorioEmailsRecusados(Protocol):
+    """Contrato mínimo de persistência das recusas de e-mail do PAP."""
+
+    def emails_recusados(self, emails: Iterable[str]) -> set[str]:
+        ...
+
+    def registrar_email(self, email: str, motivo: str) -> None:
+        ...
+
+
 class SeletorContatosCredito:
     """
     Entrega os contatos da etapa 4 e avança quando o PAP recusa algum.
@@ -226,15 +241,21 @@ class SeletorContatosCredito:
     Esgotados os dados da Assertiva, passa a sortear celular e a usar o e-mail
     validado (`gerar_email_credito`), evitando encerrar a análise por recusa de
     contato repetido.
+
+    E-mails que o Nio já classificou como inválidos (caixa inexistente) ficam
+    registrados no repositório e são descartados antes da primeira tentativa.
     """
 
     def __init__(
         self,
         telefones: Sequence[str] = (),
         emails: Sequence[str] = (),
+        repositorio: Optional[RepositorioEmailsRecusados] = None,
     ) -> None:
+        self._repositorio = repositorio
         self._telefones = [str(t).strip() for t in telefones if str(t).strip()]
-        self._emails = [str(e).strip() for e in emails if str(e).strip()]
+        informados = [str(e).strip() for e in emails if str(e).strip()]
+        self._emails, self._emails_descartados = self._filtrar_recusados(informados)
         self._indice_telefone = 0
         self._indice_email = 0
         self._telefone_aleatorio: Optional[str] = None
@@ -269,6 +290,30 @@ class SeletorContatosCredito:
         if not self._tem_email_assertiva():
             self._sortear_email()
         return self.atual()
+
+    def email_recusado(self, codigo: str) -> ContatoCredito:
+        """
+        Trata o modal "Atenção!" que recusou o e-mail e devolve o próximo contato.
+
+        `EMAIL_INVALIDO` significa caixa inexistente para o Nio: os demais
+        e-mails da Assertiva tendem a ser igualmente antigos, então vai direto
+        ao e-mail validado do pool e guarda a recusa para as próximas consultas.
+        `EMAIL_REJEITADO` (e-mail válido, já usado em pedido anterior) apenas
+        avança para o candidato seguinte.
+        """
+        email_atual, origem_atual = self._email_atual()
+        if origem_atual == ORIGEM_ASSERTIVA:
+            self._registrar_recusa(email_atual, codigo)
+        if codigo == CODIGO_EMAIL_INVALIDO:
+            self._descartar_emails_assertiva()
+            self._sortear_email()
+            return self.atual()
+        return self.proximo_email()
+
+    @property
+    def emails_descartados(self) -> tuple[str, ...]:
+        """E-mails da Assertiva ignorados por recusa anterior do PAP."""
+        return tuple(self._emails_descartados)
 
     @property
     def origem_contato(self) -> str:
@@ -315,3 +360,35 @@ class SeletorContatosCredito:
     def _sortear_email(self) -> None:
         self._email_aleatorio = gerar_email_credito()
         self._usou_email_aleatorio = True
+
+    def _descartar_emails_assertiva(self) -> None:
+        self._indice_email = len(self._emails)
+
+    def _filtrar_recusados(
+        self,
+        emails: Sequence[str],
+    ) -> tuple[list[str], list[str]]:
+        if not emails or self._repositorio is None:
+            return list(emails), []
+        try:
+            recusados = self._repositorio.emails_recusados(emails)
+        except Exception as erro:  # pragma: no cover - defesa de infraestrutura
+            logger.warning("[CRÉDITO] Não foi possível filtrar e-mails: %s", erro)
+            return list(emails), []
+        aprovados = [e for e in emails if e.lower() not in recusados]
+        descartados = [e for e in emails if e.lower() in recusados]
+        if descartados:
+            logger.info(
+                "[CRÉDITO] %d e-mail(s) da Assertiva ignorado(s) por recusa "
+                "anterior do PAP.",
+                len(descartados),
+            )
+        return aprovados, descartados
+
+    def _registrar_recusa(self, email: str, codigo: str) -> None:
+        if self._repositorio is None:
+            return
+        try:
+            self._repositorio.registrar_email(email, codigo)
+        except Exception as erro:  # pragma: no cover - defesa de infraestrutura
+            logger.warning("[CRÉDITO] Não foi possível registrar recusa: %s", erro)

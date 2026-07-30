@@ -664,12 +664,14 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         DadosCreditoAssertiva,
     )
     from crm_app.services.credito_pap_service import (
+        CODIGOS_EMAIL_RECUSADO,
         ORIGEM_PADRAO as ORIGEM_ENDERECO_PADRAO,
         EnderecoCredito,
         SeletorContatosCredito,
         consultar_viabilidade_com_fallback,
         montar_tentativas_endereco,
     )
+    from crm_app.services.credito_contato_repo import RepositorioEmailsRecusadosPap
     from crm_app.controle_tts_service import (
         obter_matricula_tt_para_credito_pap,
         pular_tt_credito_indisponivel,
@@ -1100,6 +1102,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         seletor_contatos = SeletorContatosCredito(
             telefones=dados_assertiva.telefones if dados_assertiva else (),
             emails=dados_assertiva.emails if dados_assertiva else (),
+            repositorio=RepositorioEmailsRecusadosPap(),
         )
         contato = seletor_contatos.atual()
         max_tentativas = 6
@@ -1122,10 +1125,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                     contato.origem_telefone,
                 )
                 continue
-            if msg in ('EMAIL_REJEITADO', 'EMAIL_INVALIDO'):
-                contato = seletor_contatos.proximo_email()
+            if msg in CODIGOS_EMAIL_RECUSADO:
+                contato = seletor_contatos.email_recusado(msg)
                 logger.info(
-                    "[CRÉDITO] E-mail recusado pelo PAP; nova origem=%s.",
+                    "[CRÉDITO] E-mail recusado pelo PAP (%s); nova origem=%s.",
+                    msg,
                     contato.origem_email,
                 )
                 continue

@@ -8,6 +8,8 @@ from django.test import SimpleTestCase
 
 from crm_app.services.assertiva_localize_service import EnderecoAssertiva
 from crm_app.services.credito_pap_service import (
+    CODIGO_EMAIL_INVALIDO,
+    CODIGO_EMAIL_REJEITADO,
     ORIGEM_ALEATORIO,
     ORIGEM_ASSERTIVA,
     ORIGEM_MISTO,
@@ -17,6 +19,21 @@ from crm_app.services.credito_pap_service import (
     consultar_viabilidade_com_fallback,
     montar_tentativas_endereco,
 )
+
+
+class RepositorioFake:
+    """Guarda as recusas em memória, como o repositório de banco faria."""
+
+    def __init__(self, recusados: set[str] | None = None) -> None:
+        self.recusados = {e.lower() for e in (recusados or set())}
+        self.registros: list[tuple[str, str]] = []
+
+    def emails_recusados(self, emails: tuple[str, ...]) -> set[str]:
+        return {e.lower() for e in emails if e.lower() in self.recusados}
+
+    def registrar_email(self, email: str, motivo: str) -> None:
+        self.registros.append((email, motivo))
+        self.recusados.add(email.lower())
 
 ENDERECO_PADRAO = EnderecoCredito(
     cep="32140000",
@@ -214,6 +231,59 @@ class SeletorContatosCreditoTests(SimpleTestCase):
         self.assertEqual(contato.origem_telefone, ORIGEM_ALEATORIO)
         self.assertEqual(contato.origem_email, ORIGEM_ALEATORIO)
         self.assertEqual(seletor.origem_contato, ORIGEM_ALEATORIO)
+
+    def test_email_invalido_pula_demais_da_assertiva(self):
+        repositorio = RepositorioFake()
+        seletor = SeletorContatosCredito(
+            telefones=("31988887777",),
+            emails=("antigo@live.com", "outro@live.com"),
+            repositorio=repositorio,
+        )
+        contato = seletor.email_recusado(CODIGO_EMAIL_INVALIDO)
+
+        self.assertEqual(contato.origem_email, ORIGEM_ALEATORIO)
+        self.assertNotIn(contato.email, ("antigo@live.com", "outro@live.com"))
+        self.assertEqual(
+            repositorio.registros, [("antigo@live.com", CODIGO_EMAIL_INVALIDO)]
+        )
+
+    def test_email_rejeitado_tenta_proximo_da_assertiva(self):
+        repositorio = RepositorioFake()
+        seletor = SeletorContatosCredito(
+            telefones=("31988887777",),
+            emails=("primeiro@dominio.com", "segundo@dominio.com"),
+            repositorio=repositorio,
+        )
+        contato = seletor.email_recusado(CODIGO_EMAIL_REJEITADO)
+
+        self.assertEqual(contato.email, "segundo@dominio.com")
+        self.assertEqual(contato.origem_email, ORIGEM_ASSERTIVA)
+        self.assertEqual(
+            repositorio.registros, [("primeiro@dominio.com", CODIGO_EMAIL_REJEITADO)]
+        )
+
+    def test_email_ja_recusado_antes_nao_e_tentado(self):
+        repositorio = RepositorioFake({"antigo@live.com"})
+        seletor = SeletorContatosCredito(
+            telefones=("31988887777",),
+            emails=("antigo@live.com",),
+            repositorio=repositorio,
+        )
+        contato = seletor.atual()
+
+        self.assertEqual(contato.origem_email, ORIGEM_ALEATORIO)
+        self.assertEqual(seletor.emails_descartados, ("antigo@live.com",))
+        self.assertEqual(seletor.origem_contato, ORIGEM_MISTO)
+
+    def test_email_aleatorio_recusado_nao_vai_para_o_repositorio(self):
+        repositorio = RepositorioFake()
+        seletor = SeletorContatosCredito(repositorio=repositorio)
+        primeiro = seletor.atual().email
+        segundo = seletor.email_recusado(CODIGO_EMAIL_INVALIDO)
+
+        self.assertEqual(repositorio.registros, [])
+        self.assertEqual(segundo.origem_email, ORIGEM_ALEATORIO)
+        self.assertTrue(primeiro and segundo.email)
 
     def test_recusa_de_telefone_aleatorio_gera_novo_numero(self):
         seletor = SeletorContatosCredito()

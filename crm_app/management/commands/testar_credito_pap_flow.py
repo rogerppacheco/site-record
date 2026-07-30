@@ -63,11 +63,15 @@ class Command(BaseCommand):
             DadosCreditoAssertiva,
         )
         from crm_app.services.credito_pap_service import (
+            CODIGOS_EMAIL_RECUSADO,
             ORIGEM_PADRAO,
             EnderecoCredito,
             SeletorContatosCredito,
             consultar_viabilidade_com_fallback,
             montar_tentativas_endereco,
+        )
+        from crm_app.services.credito_contato_repo import (
+            RepositorioEmailsRecusadosPap,
         )
         from crm_app.services_pap_nio import PAPNioAutomation
         from crm_app.whatsapp_webhook_handler import (
@@ -328,7 +332,15 @@ class Command(BaseCommand):
             seletor_contatos = SeletorContatosCredito(
                 telefones=dados_assertiva.telefones if dados_assertiva else (),
                 emails=dados_assertiva.emails if dados_assertiva else (),
+                repositorio=RepositorioEmailsRecusadosPap(),
             )
+            if seletor_contatos.emails_descartados:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "  E-mail(s) da Assertiva já recusados pelo PAP: "
+                        f"{', '.join(seletor_contatos.emails_descartados)}"
+                    )
+                )
             contato = seletor_contatos.atual()
             t0 = time.time()
             resultado_credito: Optional[str] = None
@@ -344,8 +356,14 @@ class Command(BaseCommand):
                 if msg == "TELEFONE_REJEITADO":
                     contato = seletor_contatos.proximo_telefone()
                     continue
-                if msg in ("EMAIL_REJEITADO", "EMAIL_INVALIDO"):
-                    contato = seletor_contatos.proximo_email()
+                if msg in CODIGOS_EMAIL_RECUSADO:
+                    contato = seletor_contatos.email_recusado(msg)
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  Modal do PAP recusou o e-mail ({msg}); "
+                            f"nova origem={contato.origem_email}"
+                        )
+                    )
                     continue
                 break
 

@@ -4824,6 +4824,7 @@ class PAPNioAutomation:
             return None
         pagina = (self._page_content_seguro(tentativas=2, pausa_ms=200) or "").lower()
         codigo = self._etapa4_codigo_rejeicao_contato_da_pagina(pagina)
+        texto_modal = self._extrair_texto_ao_redor_titulo(modal) or ""
         btn_ok = self.page.query_selector('button:has-text("Ok")')
         if btn_ok:
             try:
@@ -4833,7 +4834,16 @@ class PAPNioAutomation:
                 pass
         if codigo:
             self._etapa4_limpar_todos_campos_contato()
-            logger.info("[PAP] [CRÉDITO] Modal Atenção classificado como %s", codigo)
+            logger.info(
+                "[PAP] [CRÉDITO] Modal Atenção classificado como %s: %s",
+                codigo,
+                (texto_modal or "(sem texto)").replace("\n", " ")[:200],
+            )
+        elif texto_modal:
+            logger.warning(
+                "[PAP] [CRÉDITO] Modal Atenção sem classificação: %s",
+                texto_modal.replace("\n", " ")[:300],
+            )
         return codigo
 
     def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None, parar_no_modal_credito: bool = False) -> Tuple[bool, str, Optional[str], Optional[str]]:

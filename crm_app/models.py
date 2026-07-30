@@ -1863,6 +1863,51 @@ class AnaliseCreditoHistorico(models.Model):
         return f"{self.cpf_consultado} - {self.usuario.username} - {status} - {self.criado_em}"
 
 
+class EmailRecusadoPapCredito(models.Model):
+    """
+    E-mails que o PAP recusou na etapa de contato da análise de crédito.
+
+    O Nio valida a entregabilidade do e-mail; os contatos históricos da Assertiva
+    costumam apontar para caixas desativadas. Guardar a recusa evita repetir o
+    modal "E-mail inválido" (e os ~7s de retrabalho) na próxima consulta do
+    mesmo cliente.
+    """
+    MOTIVO_INVALIDO = "EMAIL_INVALIDO"
+    MOTIVO_REJEITADO = "EMAIL_REJEITADO"
+    MOTIVO_CHOICES = (
+        (MOTIVO_INVALIDO, "E-mail inválido para o Nio"),
+        (MOTIVO_REJEITADO, "E-mail já usado em pedido anterior"),
+    )
+
+    email = models.EmailField(
+        max_length=254,
+        unique=True,
+        help_text="E-mail recusado pelo PAP (sempre em minúsculas).",
+    )
+    motivo = models.CharField(
+        max_length=20,
+        choices=MOTIVO_CHOICES,
+        default=MOTIVO_INVALIDO,
+        db_index=True,
+        help_text="Classificação do modal Atenção! que recusou o e-mail.",
+    )
+    ocorrencias = models.PositiveIntegerField(
+        default=1,
+        help_text="Quantidade de vezes que o PAP recusou este e-mail.",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_email_recusado_pap_credito"
+        verbose_name = "E-mail recusado no PAP (crédito)"
+        verbose_name_plural = "E-mails recusados no PAP (crédito)"
+        ordering = ["-atualizado_em"]
+
+    def __str__(self) -> str:
+        return f"{self.email} - {self.motivo} ({self.ocorrencias}x)"
+
+
 class EstatisticaBotWhatsApp(models.Model):
     """
     Armazena estatísticas de mensagens enviadas pelo bot WhatsApp
