@@ -67,6 +67,7 @@ class Command(BaseCommand):
             ORIGEM_PADRAO,
             EnderecoCredito,
             SeletorContatosCredito,
+            classificar_formas_pagamento,
             consultar_viabilidade_com_fallback,
             montar_tentativas_endereco,
         )
@@ -373,6 +374,14 @@ class Command(BaseCommand):
                 break
 
             _log_etapa("etapa4", t0)
+            if msg == "CREDITO_NEGADO":
+                self.stdout.write(
+                    self.style.WARNING(
+                        "\nCREDITO NEGADO — motivo do modal: "
+                        f"{resultado_credito or '(não identificado)'}"
+                    )
+                )
+                return
             if not sucesso:
                 _print_erro(f"Etapa 4 falhou: {msg}")
                 return
@@ -380,7 +389,8 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f"\nCREDITO OK ({seletor_contatos.origem_contato}): "
-                    f"{resultado_credito or msg}"
+                    f"{resultado_credito or msg} "
+                    f"[formas={classificar_formas_pagamento(resultado_credito) or '-'}]"
                 )
             )
             self.stdout.write(f"Contato usado: {contato.como_dict()}")

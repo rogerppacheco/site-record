@@ -13,6 +13,7 @@ Regras de negócio isoladas aqui:
 from __future__ import annotations
 
 import logging
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional, Protocol, Sequence
 
@@ -34,6 +35,69 @@ CODIGOS_ENDERECO_BLOQUEADO = ("INDISPONIVEL_TECNICO", "POSSE_ENCONTRADA")
 CODIGO_EMAIL_INVALIDO = "EMAIL_INVALIDO"
 CODIGO_EMAIL_REJEITADO = "EMAIL_REJEITADO"
 CODIGOS_EMAIL_RECUSADO = (CODIGO_EMAIL_INVALIDO, CODIGO_EMAIL_REJEITADO)
+
+# Formas de pagamento liberadas no modal "Resultado da análise de crédito".
+FORMAS_TODAS = "todas"
+FORMAS_CARTAO = "cartao"
+
+# Linhas fixas do modal de resultado (título, veredito e botões) que não fazem
+# parte do motivo da negativa.
+_LINHAS_IGNORADAS_MODAL = (
+    "resultado da análise de crédito",
+    "resultado da analise de credito",
+    "resultado análise de crédito",
+    "resultado analise de credito",
+    "crédito negado",
+    "credito negado",
+    "consultar outro cpf/cnpj",
+    "salvar interesse",
+    "ok",
+    "fechar",
+    "voltar",
+    "continuar",
+)
+
+
+def _sem_acentos(texto: str) -> str:
+    normalizado = unicodedata.normalize("NFD", texto or "")
+    return "".join(c for c in normalizado if unicodedata.category(c) != "Mn")
+
+
+def classificar_formas_pagamento(resultado_detalhe: Optional[str]) -> str:
+    """
+    Traduz o texto do modal aprovado em um valor consultável no relatório.
+
+    Sem isso o histórico só guardaria a frase livre do portal, que muda de
+    redação e não permite filtrar aprovações restritas a cartão.
+    """
+    texto = _sem_acentos(str(resultado_detalhe or "")).lower()
+    if not texto:
+        return ""
+    if "todas as formas" in texto:
+        return FORMAS_TODAS
+    if "cartao" in texto:
+        return FORMAS_CARTAO
+    return ""
+
+
+def extrair_motivo_negativa(texto_modal: Optional[str]) -> str:
+    """
+    Isola o motivo exibido no modal de crédito negado (ex.: débito na Nio).
+
+    O portal monta o modal com título, veredito e botões no mesmo bloco de
+    texto, então as linhas fixas são descartadas e sobra a justificativa.
+    """
+    linhas = [
+        linha.strip()
+        for linha in str(texto_modal or "").splitlines()
+        if linha.strip()
+    ]
+    motivos = [
+        linha
+        for linha in linhas
+        if _sem_acentos(linha).lower().strip(" .:!") not in _LINHAS_IGNORADAS_MODAL
+    ]
+    return " ".join(motivos)[:300]
 
 
 @dataclass(frozen=True)

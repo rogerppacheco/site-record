@@ -10,6 +10,8 @@ from crm_app.services.assertiva_localize_service import EnderecoAssertiva
 from crm_app.services.credito_pap_service import (
     CODIGO_EMAIL_INVALIDO,
     CODIGO_EMAIL_REJEITADO,
+    FORMAS_CARTAO,
+    FORMAS_TODAS,
     ORIGEM_ALEATORIO,
     ORIGEM_ASSERTIVA,
     ORIGEM_MISTO,
@@ -17,7 +19,9 @@ from crm_app.services.credito_pap_service import (
     ContatoCredito,
     EnderecoCredito,
     SeletorContatosCredito,
+    classificar_formas_pagamento,
     consultar_viabilidade_com_fallback,
+    extrair_motivo_negativa,
     montar_tentativas_endereco,
     resumo_origem_dados,
 )
@@ -183,6 +187,52 @@ class ConsultarViabilidadeComFallbackTests(SimpleTestCase):
         self.assertFalse(resultado.sucesso)
         self.assertEqual(resultado.mensagem, "❌ Indisponível loja")
         self.assertEqual(len(resultado.bloqueios), 2)
+
+
+class ResultadoModalCreditoTests(SimpleTestCase):
+    def test_classifica_todas_as_formas(self):
+        self.assertEqual(
+            classificar_formas_pagamento("Elegível para todas as formas de pagamento"),
+            FORMAS_TODAS,
+        )
+
+    def test_classifica_apenas_cartao(self):
+        self.assertEqual(
+            classificar_formas_pagamento("Elegível apenas para Cartão de Crédito"),
+            FORMAS_CARTAO,
+        )
+
+    def test_texto_desconhecido_fica_sem_classificacao(self):
+        self.assertEqual(classificar_formas_pagamento("Aprovado"), "")
+        self.assertEqual(classificar_formas_pagamento(None), "")
+
+    def test_extrai_motivo_do_modal_negado(self):
+        modal = (
+            "Resultado da análise de crédito\n"
+            "Crédito negado\n"
+            "CPF/CNPJ com débito na Nio.\n"
+            "Consultar outro CPF/CNPJ\n"
+            "Salvar interesse"
+        )
+
+        self.assertEqual(
+            extrair_motivo_negativa(modal), "CPF/CNPJ com débito na Nio."
+        )
+
+    def test_motivo_junta_linhas_e_respeita_limite(self):
+        modal = "Crédito negado\nSem histórico suficiente.\nTente mais tarde."
+
+        self.assertEqual(
+            extrair_motivo_negativa(modal),
+            "Sem histórico suficiente. Tente mais tarde.",
+        )
+        self.assertLessEqual(len(extrair_motivo_negativa("x " * 400)), 300)
+
+    def test_modal_sem_motivo_retorna_vazio(self):
+        modal = "Resultado da análise de crédito\nCrédito negado\nOk"
+
+        self.assertEqual(extrair_motivo_negativa(modal), "")
+        self.assertEqual(extrair_motivo_negativa(None), "")
 
 
 class ResumoOrigemDadosTests(SimpleTestCase):

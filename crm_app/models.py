@@ -1775,6 +1775,12 @@ class AnaliseCreditoHistorico(models.Model):
         (ORIGEM_DADOS_ALEATORIO, "Aleatório"),
         (ORIGEM_DADOS_MISTO, "Misto"),
     )
+    FORMAS_TODAS = "todas"
+    FORMAS_CARTAO = "cartao"
+    FORMAS_PAGAMENTO_CHOICES = (
+        (FORMAS_TODAS, "Todas as formas de pagamento"),
+        (FORMAS_CARTAO, "Apenas cartão de crédito"),
+    )
 
     usuario = models.ForeignKey(
         Usuario,
@@ -1850,6 +1856,23 @@ class AnaliseCreditoHistorico(models.Model):
         blank=True,
         null=True,
         help_text="Ex: Elegível para todas as formas, Elegível apenas para Cartão",
+    )
+    formas_pagamento = models.CharField(
+        max_length=20,
+        choices=FORMAS_PAGAMENTO_CHOICES,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=(
+            "Quando aprovado: se o PAP liberou todas as formas de pagamento ou "
+            "apenas cartão de crédito."
+        ),
+    )
+    motivo_negativa = models.CharField(
+        max_length=300,
+        blank=True,
+        default="",
+        help_text="Quando negado: motivo exibido no modal de resultado do PAP.",
     )
     criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
     atualizado_em = models.DateTimeField(auto_now=True)

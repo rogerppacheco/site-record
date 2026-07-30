@@ -874,6 +874,33 @@ class PAPNioAutomation:
             )
         return False
 
+    def _ler_motivo_credito_negado(self) -> str:
+        """Lê no modal de resultado a justificativa da negativa (ex.: débito na Nio)."""
+        if not self.page:
+            return ""
+        from crm_app.services.credito_pap_service import extrair_motivo_negativa
+
+        titulos = (
+            'h2:has-text("Resultado da análise de crédito")',
+            'h2:has-text("Resultado análise de crédito")',
+            'h1:has-text("Resultado da análise de crédito")',
+            'h3:has-text("Resultado da análise de crédito")',
+            'h2:has-text("Crédito negado")',
+        )
+        for seletor in titulos:
+            try:
+                titulo = self.page.query_selector(seletor)
+            except Exception:
+                titulo = None
+            if not titulo:
+                continue
+            motivo = extrair_motivo_negativa(
+                self._extrair_texto_ao_redor_titulo(titulo)
+            )
+            if motivo:
+                return motivo
+        return ""
+
     def _pagina_carregando_apos_credito(self) -> bool:
         """Overlay/spinner enquanto o PAP consulta crédito ou catálogo de ofertas."""
         if not self.page:
@@ -5288,6 +5315,8 @@ class PAPNioAutomation:
             # Crédito negado - capturar screenshot do modal e fechar antes de retornar
             if self._pagina_indica_credito_negado(pagina_texto):
                 screenshot_b64 = None
+                # O motivo é lido antes de fechar o modal, senão o texto some.
+                motivo_negativa = self._ler_motivo_credito_negado()
                 try:
                     screenshot_bytes = self.page.screenshot(type="png")
                     if screenshot_bytes:
@@ -5303,7 +5332,12 @@ class PAPNioAutomation:
                         except Exception:
                             pass
                         break
-                return False, "CREDITO_NEGADO", None, screenshot_b64
+                if motivo_negativa:
+                    logger.info(
+                        "[PAP] Análise de crédito negada. Motivo do modal: %s",
+                        motivo_negativa,
+                    )
+                return False, "CREDITO_NEGADO", motivo_negativa or None, screenshot_b64
             # Crédito aprovado (todas formas ou apenas cartão): exige modal visível no fluxo CRÉDITO
             if "crédito aprovado" in pagina_texto or "credito aprovado" in pagina_texto:
                 if parar_no_modal_credito and not modal_apareceu:

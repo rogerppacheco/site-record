@@ -668,6 +668,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
         ORIGEM_PADRAO as ORIGEM_ENDERECO_PADRAO,
         EnderecoCredito,
         SeletorContatosCredito,
+        classificar_formas_pagamento,
         consultar_viabilidade_com_fallback,
         montar_tentativas_endereco,
         resumo_origem_dados,
@@ -1146,6 +1147,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
 
         aprovado = msg != "CREDITO_NEGADO" and sucesso
         resultado_detalhe = (resultado_credito or "") if sucesso else None
+        # No negado, a etapa 4 devolve o motivo lido no modal em resultado_credito.
+        motivo_negativa = "" if aprovado else (resultado_credito or "")
+        formas_pagamento = (
+            classificar_formas_pagamento(resultado_detalhe) if aprovado else ""
+        )
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
         # Resumo de tempos para análise (meta: total < 60s)
         logger.info(
@@ -1166,15 +1172,25 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             _atualizar_analise_historico(
                 aprovado=aprovado,
                 resultado_detalhe=resultado_detalhe,
+                formas_pagamento=formas_pagamento,
+                motivo_negativa=motivo_negativa[:300],
                 status_execucao=AnaliseCreditoHistorico.STATUS_SUCESSO,
             )
             liberar_bo(bo_usuario.id, telefone)
-            _marcar_hist(True, resultado_detalhe or msg or "Consulta concluída com sucesso.")
+            _marcar_hist(
+                True,
+                resultado_detalhe
+                or motivo_negativa
+                or msg
+                or "Consulta concluída com sucesso.",
+            )
             _resetar_sessao_credito(telefone)
             if aprovado:
                 resp = f"✅ *Crédito APROVADO!*\n\n{resultado_detalhe or 'Elegível para formas de pagamento disponíveis.'}"
             else:
                 resp = "❌ *Crédito NEGADO* para este CPF."
+                if motivo_negativa:
+                    resp += f"\n\n📄 _Motivo informado pelo PAP: {motivo_negativa}_"
             if resultado_endereco.usou_fallback:
                 resp += (
                     "\n\n📍 _O endereço cadastral do cliente não tem viabilidade; "
