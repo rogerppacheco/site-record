@@ -665,12 +665,12 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
     )
     from crm_app.services.credito_pap_service import (
         CODIGOS_EMAIL_RECUSADO,
-        ORIGEM_ASSERTIVA as ORIGEM_CONTATO_ASSERTIVA,
         ORIGEM_PADRAO as ORIGEM_ENDERECO_PADRAO,
         EnderecoCredito,
         SeletorContatosCredito,
         consultar_viabilidade_com_fallback,
         montar_tentativas_endereco,
+        resumo_origem_dados,
     )
     from crm_app.services.credito_contato_repo import RepositorioEmailsRecusadosPap
     from crm_app.controle_tts_service import (
@@ -750,13 +750,14 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             dados_assertiva = AssertivaLocalizeService().consultar_para_credito(
                 documento_limpo
             )
-            # O e-mail não entra aqui: o PAP recusa boa parte dos e-mails
-            # históricos da Assertiva e a etapa 4 já assume o e-mail validado
-            # do pool. Telefone e endereço são o que identifica o cliente e
-            # define a viabilidade, por isso continuam obrigatórios.
+            # Nenhum campo é obrigatório: cada dado ausente cai no plano B
+            # (celular sorteado, e-mail validado do pool, endereço padrão da
+            # automação). O que faltou fica registrado para auditoria.
             campos_ausentes: list[str] = []
             if not dados_assertiva.telefone_principal:
                 campos_ausentes.append("telefone")
+            if not dados_assertiva.email_principal:
+                campos_ausentes.append("e-mail")
             if not dados_assertiva.endereco:
                 campos_ausentes.append("endereço")
             endereco_snapshot = dados_assertiva.endereco
@@ -777,59 +778,35 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             _atualizar_analise_historico(
                 assertiva_consultada=True,
                 assertiva_dados=snapshot_assertiva,
-                assertiva_erro="",
+                assertiva_erro=(
+                    f"Assertiva sem {', '.join(campos_ausentes)}; "
+                    "usando dados padrão da automação nesses campos."
+                    if campos_ausentes
+                    else ""
+                ),
             )
-            if campos_ausentes and getattr(
-                settings,
-                "ASSERTIVA_CREDITO_REQUIRED",
-                True,
-            ):
-                ausentes = ", ".join(campos_ausentes)
-                WhatsAppService().enviar_mensagem_texto(
-                    telefone,
-                    (
-                        "❌ A Assertiva não retornou todos os dados necessários "
-                        f"para esta análise ({ausentes}). Nenhum dado aleatório "
-                        "foi enviado ao PAP."
-                    ),
-                )
-                _atualizar_analise_historico(
-                    status_execucao=AnaliseCreditoHistorico.STATUS_ERRO,
-                    resultado_detalhe=f"Assertiva sem dados: {ausentes}"[:200],
-                )
-                _resetar_sessao_credito(telefone)
-                return
             logger.info(
                 "[CRÉDITO] Assertiva consultada: telefones=%s, emails=%s, endereco=%s",
                 len(dados_assertiva.telefones),
                 len(dados_assertiva.emails),
                 bool(dados_assertiva.endereco),
             )
-            if not dados_assertiva.email_principal:
+            if campos_ausentes:
                 logger.info(
-                    "[CRÉDITO] Assertiva sem e-mail para o documento; a etapa 4 "
-                    "usará o e-mail validado do pool."
+                    "[CRÉDITO] Assertiva sem %s; a automação completará esses "
+                    "campos com os dados padrão.",
+                    ", ".join(campos_ausentes),
                 )
         except AssertivaError as exc:
-            logger.warning("[CRÉDITO] Consulta Assertiva indisponível: %s", exc)
+            logger.warning(
+                "[CRÉDITO] Consulta Assertiva indisponível (%s); seguindo com "
+                "dados padrão da automação.",
+                exc,
+            )
             _atualizar_analise_historico(
                 assertiva_consultada=False,
                 assertiva_erro=str(exc)[:4000],
             )
-            if getattr(settings, "ASSERTIVA_CREDITO_REQUIRED", True):
-                WhatsAppService().enviar_mensagem_texto(
-                    telefone,
-                    (
-                        f"❌ Não foi possível obter os dados do cliente na Assertiva: {exc} "
-                        "Nenhum dado aleatório foi enviado ao PAP. Tente novamente."
-                    ),
-                )
-                _atualizar_analise_historico(
-                    status_execucao=AnaliseCreditoHistorico.STATUS_ERRO,
-                    resultado_detalhe="Falha na consulta Assertiva",
-                )
-                _resetar_sessao_credito(telefone)
-                return
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='credito')
     if not bo_usuario:
@@ -1149,6 +1126,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                 f"{max_tentativas} tentativas."
             )
         registro_execucao["origem_contato"] = seletor_contatos.origem_contato
+        registro_execucao["contato_utilizado"] = contato.como_dict()
         if erro_contato:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
@@ -1202,11 +1180,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
                     "\n\n📍 _O endereço cadastral do cliente não tem viabilidade; "
                     "a análise seguiu com o endereço padrão da automação._"
                 )
-            if contato.origem_email != ORIGEM_CONTATO_ASSERTIVA:
-                resp += (
-                    "\n\n✉️ _Sem e-mail válido do cliente; a análise seguiu com "
-                    "o e-mail validado da automação._"
-                )
+            resp += f"\n\n{resumo_origem_dados(contato, resultado_endereco.endereco)}"
             resp += f"\n\n⏱ _{tempo_decorrido}s_"
             if screenshot_credito_b64:
                 try:

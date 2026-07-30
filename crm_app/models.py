@@ -1837,6 +1837,14 @@ class AnaliseCreditoHistorico(models.Model):
             "gerados aleatoriamente ou uma combinação dos dois."
         ),
     )
+    contato_utilizado = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Telefone(s) e e-mail aceitos pelo PAP, com a origem de cada um "
+            "(assertiva ou aleatorio)."
+        ),
+    )
     resultado_detalhe = models.CharField(
         max_length=200,
         blank=True,

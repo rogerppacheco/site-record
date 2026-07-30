@@ -473,11 +473,6 @@ ASSERTIVA_CREDITO_ENABLED = config(
     default=bool(ASSERTIVA_CLIENT_ID and ASSERTIVA_CLIENT_SECRET),
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
-ASSERTIVA_CREDITO_REQUIRED = config(
-    'ASSERTIVA_CREDITO_REQUIRED',
-    default=True,
-    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
-)
 ASSERTIVA_API_BASE_URL = config(
     'ASSERTIVA_API_BASE_URL',
     default='https://api.assertivasolucoes.com.br',

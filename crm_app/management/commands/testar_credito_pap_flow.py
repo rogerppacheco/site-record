@@ -95,22 +95,28 @@ class Command(BaseCommand):
                 )
             except AssertivaError as exc:
                 self.stdout.write(
-                    self.style.ERROR(f"Consulta Assertiva falhou: {exc}")
-                )
-                return
-            # Espelha produção: sem e-mail a etapa 4 usa o pool validado.
-            ausentes: list[str] = []
-            if not dados_assertiva.telefone_principal:
-                ausentes.append("telefone")
-            if not dados_assertiva.endereco:
-                ausentes.append("endereço")
-            if ausentes and getattr(settings, "ASSERTIVA_CREDITO_REQUIRED", True):
-                self.stdout.write(
-                    self.style.ERROR(
-                        "Assertiva não retornou: " + ", ".join(ausentes)
+                    self.style.WARNING(
+                        f"Consulta Assertiva falhou ({exc}); seguindo com dados "
+                        "padrão da automação."
                     )
                 )
-                return
+            # Espelha produção: cada dado ausente cai no plano B da automação.
+            ausentes: list[str] = []
+            if dados_assertiva and not dados_assertiva.telefone_principal:
+                ausentes.append("telefone")
+            if dados_assertiva and not dados_assertiva.email_principal:
+                ausentes.append("e-mail")
+            if dados_assertiva and not dados_assertiva.endereco:
+                ausentes.append("endereço")
+            if ausentes:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Assertiva não retornou: "
+                        + ", ".join(ausentes)
+                        + " — usando dados padrão nesses campos."
+                    )
+                )
+        if dados_assertiva:
             self.stdout.write(
                 "Assertiva: "
                 f"{len(dados_assertiva.telefones)} telefone(s), "
@@ -376,6 +382,11 @@ class Command(BaseCommand):
                     f"\nCREDITO OK ({seletor_contatos.origem_contato}): "
                     f"{resultado_credito or msg}"
                 )
+            )
+            self.stdout.write(f"Contato usado: {contato.como_dict()}")
+            self.stdout.write(
+                "Endereço usado: "
+                f"{resultado_endereco.endereco.como_dict() if resultado_endereco.endereco else '-'}"
             )
             self.stdout.write(f"Tempos: {tempos} | total={round(time.time() - t_total, 1)}s")
 

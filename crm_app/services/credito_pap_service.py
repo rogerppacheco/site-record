@@ -66,6 +66,16 @@ class ContatoCredito:
     origem_telefone: str = ORIGEM_ASSERTIVA
     origem_email: str = ORIGEM_ASSERTIVA
 
+    def como_dict(self) -> dict[str, Optional[str]]:
+        """Contato aceito pelo PAP, para auditoria no histórico da análise."""
+        return {
+            "telefone": self.telefone,
+            "telefone_secundario": self.telefone_secundario,
+            "email": self.email,
+            "origem_telefone": self.origem_telefone,
+            "origem_email": self.origem_email,
+        }
+
 
 @dataclass
 class ResultadoViabilidade:
@@ -222,6 +232,39 @@ def consultar_viabilidade_com_fallback(
             codigo,
         )
     return resultado
+
+
+def resumo_origem_dados(
+    contato: ContatoCredito,
+    endereco: Optional[EnderecoCredito],
+) -> str:
+    """
+    Descreve, para o solicitante, quais dados vieram do cliente e quais a
+    automação completou. Sem essa distinção o vendedor não sabe se o telefone
+    do resultado serve para contato real.
+    """
+    reais: list[str] = []
+    automacao: list[str] = []
+
+    (reais if contato.origem_telefone == ORIGEM_ASSERTIVA else automacao).append(
+        "telefone"
+    )
+    (reais if contato.origem_email == ORIGEM_ASSERTIVA else automacao).append("e-mail")
+    if endereco is not None:
+        destino = reais if endereco.origem == ORIGEM_ASSERTIVA else automacao
+        destino.append("endereço")
+
+    if not automacao:
+        return "📇 _Análise feita com telefone, e-mail e endereço do cliente._"
+    if not reais:
+        return (
+            "🧩 _Sem dados do cliente disponíveis; a análise usou telefone, "
+            "e-mail e endereço padrão da automação._"
+        )
+    return (
+        f"🧩 _Dados do cliente usados: {', '.join(reais)}. "
+        f"Completado pela automação: {', '.join(automacao)}._"
+    )
 
 
 class RepositorioEmailsRecusados(Protocol):

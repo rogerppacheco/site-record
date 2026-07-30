@@ -14,10 +14,12 @@ from crm_app.services.credito_pap_service import (
     ORIGEM_ASSERTIVA,
     ORIGEM_MISTO,
     ORIGEM_PADRAO,
+    ContatoCredito,
     EnderecoCredito,
     SeletorContatosCredito,
     consultar_viabilidade_com_fallback,
     montar_tentativas_endereco,
+    resumo_origem_dados,
 )
 
 
@@ -183,6 +185,51 @@ class ConsultarViabilidadeComFallbackTests(SimpleTestCase):
         self.assertEqual(len(resultado.bloqueios), 2)
 
 
+class ResumoOrigemDadosTests(SimpleTestCase):
+    def _contato(self, origem_telefone: str, origem_email: str) -> ContatoCredito:
+        return ContatoCredito(
+            telefone="31988887777",
+            email="cliente@dominio.com",
+            origem_telefone=origem_telefone,
+            origem_email=origem_email,
+        )
+
+    def test_tudo_do_cliente(self):
+        endereco = EnderecoCredito(
+            cep="30130001",
+            numero="522",
+            referencia="Endereço cadastral do cliente",
+            origem=ORIGEM_ASSERTIVA,
+        )
+        resumo = resumo_origem_dados(
+            self._contato(ORIGEM_ASSERTIVA, ORIGEM_ASSERTIVA), endereco
+        )
+
+        self.assertIn("telefone, e-mail e endereço do cliente", resumo)
+
+    def test_parcial_separa_reais_e_automacao(self):
+        resumo = resumo_origem_dados(
+            self._contato(ORIGEM_ASSERTIVA, ORIGEM_ALEATORIO), ENDERECO_PADRAO
+        )
+
+        self.assertIn("Dados do cliente usados: telefone", resumo)
+        self.assertIn("Completado pela automação: e-mail, endereço", resumo)
+
+    def test_sem_dados_do_cliente(self):
+        resumo = resumo_origem_dados(
+            self._contato(ORIGEM_ALEATORIO, ORIGEM_ALEATORIO), ENDERECO_PADRAO
+        )
+
+        self.assertIn("Sem dados do cliente", resumo)
+
+    def test_sem_endereco_resolvido_considera_apenas_contato(self):
+        resumo = resumo_origem_dados(
+            self._contato(ORIGEM_ASSERTIVA, ORIGEM_ASSERTIVA), None
+        )
+
+        self.assertIn("telefone, e-mail e endereço do cliente", resumo)
+
+
 class SeletorContatosCreditoTests(SimpleTestCase):
     def test_usa_contatos_da_assertiva_primeiro(self):
         seletor = SeletorContatosCredito(
@@ -284,6 +331,15 @@ class SeletorContatosCreditoTests(SimpleTestCase):
         self.assertEqual(repositorio.registros, [])
         self.assertEqual(segundo.origem_email, ORIGEM_ALEATORIO)
         self.assertTrue(primeiro and segundo.email)
+
+    def test_contato_expoe_origens_para_o_historico(self):
+        seletor = SeletorContatosCredito(telefones=("31988887777",))
+        registro = seletor.atual().como_dict()
+
+        self.assertEqual(registro["telefone"], "31988887777")
+        self.assertEqual(registro["origem_telefone"], ORIGEM_ASSERTIVA)
+        self.assertEqual(registro["origem_email"], ORIGEM_ALEATORIO)
+        self.assertIn("@", str(registro["email"]))
 
     def test_recusa_de_telefone_aleatorio_gera_novo_numero(self):
         seletor = SeletorContatosCredito()
