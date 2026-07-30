@@ -11,7 +11,12 @@ from django.conf import settings
 from django.db.models import F, Max, Q
 from django.utils import timezone
 
-from crm_app.models import ControleTTDiaTratado, ControleTTCreditoUsoDiario, ImportacaoOsab
+from crm_app.models import (
+    ControleTTCreditoCursorPap,
+    ControleTTCreditoUsoDiario,
+    ControleTTDiaTratado,
+    ImportacaoOsab,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,26 +126,118 @@ def _mapa_uso_credito_hoje(matriculas: list[str]) -> dict[str, int]:
         return {}
 
 
+def _normalizar_matriculas_ordenadas(candidatos: List[str]) -> list[str]:
+    """Remove vazios/duplicados preservando a ordem do dropdown do PAP."""
+    vistas: set[str] = set()
+    ordenadas: list[str] = []
+    for raw in candidatos:
+        mat = str(raw or "").strip()
+        chave = mat.upper()
+        if not mat or chave in vistas:
+            continue
+        vistas.add(chave)
+        ordenadas.append(mat)
+    return ordenadas
+
+
+def obter_proximo_tt_lista_pap(
+    candidatos: List[str],
+    *,
+    bo_matricula: str,
+    excluir: Optional[Set[str]] = None,
+    matricula_fallback: str = "",
+) -> str:
+    """
+    Percorre a lista do PAP em sequência (1º, 2º, 3º…).
+
+    O cursor fica em ControleTTCreditoCursorPap por login BO/PDV: a próxima
+    consulta começa depois da última matrícula entregue e volta ao início ao
+    chegar no fim da lista. Matrículas em `excluir` (falharam nesta sessão)
+    são puladas sem avançar o cursor de forma permanente além da escolha.
+    """
+    lista = _normalizar_matriculas_ordenadas(candidatos)
+    fallback = (matricula_fallback or "").strip()
+    if not lista:
+        logger.warning(
+            "[Controle TT] Crédito (PAP sequencial): lista vazia — fallback %s",
+            fallback or "(vazio)",
+        )
+        return fallback
+
+    excluir_norm = {
+        (m or "").strip().upper() for m in (excluir or set()) if (m or "").strip()
+    }
+    chave_bo = (bo_matricula or "").strip() or "sem-bo"
+    cursor, _ = ControleTTCreditoCursorPap.objects.get_or_create(
+        bo_matricula=chave_bo,
+        defaults={"ultima_matricula": "", "posicao": 0},
+    )
+
+    inicio = 0
+    ultima = (cursor.ultima_matricula or "").strip().upper()
+    if ultima:
+        for idx, mat in enumerate(lista):
+            if mat.upper() == ultima:
+                inicio = (idx + 1) % len(lista)
+                break
+
+    for offset in range(len(lista)):
+        idx = (inicio + offset) % len(lista)
+        escolhido = lista[idx]
+        if escolhido.upper() in excluir_norm:
+            continue
+        ControleTTCreditoCursorPap.objects.filter(pk=cursor.pk).update(
+            ultima_matricula=escolhido,
+            posicao=idx,
+        )
+        logger.info(
+            "[Controle TT] Crédito (PAP sequencial): TT=%s pos=%s/%s bo=%s",
+            escolhido,
+            idx + 1,
+            len(lista),
+            chave_bo,
+        )
+        return escolhido
+
+    logger.warning(
+        "[Controle TT] Crédito (PAP sequencial): todos excluídos (n=%s) — fallback %s",
+        len(excluir_norm),
+        fallback or "(vazio)",
+    )
+    return fallback
+
+
 def obter_matricula_tt_para_credito_pap(
     matricula_fallback: str,
     excluir: Optional[Set[str]] = None,
     candidatos: Optional[List[str]] = None,
+    *,
+    bo_matricula: str = "",
+    sequencial_pap: bool = False,
 ) -> str:
     """
-    Escolhe TT para consulta de crédito distribuindo carga no dia:
-    - prioriza quem tem MENOS consultas hoje;
-    - respeita teto PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA;
-    - em empate, sorteia entre os candidatos (evita sempre o mesmo TT).
+    Escolhe TT para consulta de crédito.
 
-    Se candidatos for informado (ex.: matrículas lidas do dropdown do PAP),
-    restringe a escolha a essa lista — evita TT da OSAB que não existem no PDV.
+    Com candidatos do dropdown do PAP e sequencial_pap=True: percorre a lista
+    na ordem (1º, 2º, 3º…) usando cursor por BO — evita matrículas da OSAB
+    que não existem no PDV.
+
+    Sem lista do PAP (legado OSAB): prioriza quem tem MENOS consultas hoje,
+    respeita teto PAP_CREDITO_MAX_CONSULTAS_POR_TT_DIA e sorteia em empate.
     """
     matricula_fallback = (matricula_fallback or "").strip()
     excluir_norm = {(m or "").strip().upper() for m in (excluir or set()) if (m or "").strip()}
 
     if candidatos is not None:
-        matriculas = [str(x).strip() for x in candidatos if str(x).strip()]
+        matriculas = _normalizar_matriculas_ordenadas(list(candidatos))
         origem = "PAP"
+        if sequencial_pap and matriculas:
+            return obter_proximo_tt_lista_pap(
+                matriculas,
+                bo_matricula=bo_matricula,
+                excluir=excluir_norm,
+                matricula_fallback=matricula_fallback,
+            )
     else:
         lista = controle_tts_listar_ordenado()
         matriculas = [
@@ -166,10 +263,10 @@ def obter_matricula_tt_para_credito_pap(
     def disponivel(mat: str) -> bool:
         return mat.strip().upper() not in excluir_norm
 
-    candidatos = [m for m in matriculas if disponivel(m) and uso(m) < max_dia]
-    if not candidatos:
-        candidatos = [m for m in matriculas if disponivel(m)]
-    if not candidatos:
+    candidatos_livres = [m for m in matriculas if disponivel(m) and uso(m) < max_dia]
+    if not candidatos_livres:
+        candidatos_livres = [m for m in matriculas if disponivel(m)]
+    if not candidatos_livres:
         logger.warning(
             "[Controle TT] Crédito: nenhum TT disponível (excluídos=%s) — fallback %s",
             len(excluir_norm),
@@ -177,8 +274,8 @@ def obter_matricula_tt_para_credito_pap(
         )
         return matricula_fallback
 
-    min_uso = min(uso(m) for m in candidatos)
-    empate = [m for m in candidatos if uso(m) == min_uso]
+    min_uso = min(uso(m) for m in candidatos_livres)
+    empate = [m for m in candidatos_livres if uso(m) == min_uso]
     escolhido = random.choice(empate)
     logger.info(
         "[Controle TT] Crédito (%s): TT=%s uso_hoje=%s min=%s empate=%s teto=%s",

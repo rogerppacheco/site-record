@@ -913,64 +913,72 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             _resetar_sessao_credito(telefone)
             return
 
-        usar_pool_osab = bool(
-            headless or getattr(settings, "PAP_CREDITO_SKIP_LISTA_VENDEDORES", False)
+        # Sempre lê a lista real do PDV e percorre em sequência (1º, 2º…).
+        # Evita matrículas da OSAB que não existem no PAP deste login BO.
+        forcar_osab = bool(
+            getattr(settings, "PAP_CREDITO_SKIP_LISTA_VENDEDORES", False)
         )
         matriculas_pap: list[str] = []
-        if usar_pool_osab:
-            logger.info(
-                "[CRÉDITO] Seleção direta (headless=%s) — pool OSAB sem depender do dropdown",
-                headless,
+        if forcar_osab:
+            logger.warning(
+                "[CRÉDITO] PAP_CREDITO_SKIP_LISTA_VENDEDORES=1 — pool OSAB (legado)"
             )
         else:
             matriculas_pap = automacao.listar_matriculas_vendedor_no_pap()
             if not matriculas_pap:
                 automacao._cache_matriculas_pap_dropdown = []
-                matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(forcar_recarga=True)
+                matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(
+                    forcar_recarga=True
+                )
             if not matriculas_pap:
                 automacao._cache_matriculas_pap_dropdown = []
-                logger.warning("[CRÉDITO] Lista vendedores vazia — tentativa paciente (headless)")
+                logger.warning(
+                    "[CRÉDITO] Lista vendedores vazia — tentativa paciente"
+                )
                 matriculas_pap = automacao.listar_matriculas_vendedor_no_pap(
                     forcar_recarga=True,
                     paciente=True,
                 )
 
-        if usar_pool_osab or not matriculas_pap:
-            if not usar_pool_osab and not matriculas_pap:
+        usar_pool_osab = forcar_osab or not matriculas_pap
+        if usar_pool_osab:
+            if not forcar_osab:
                 automacao._capture_screenshot_falha_etapa1(
                     "01_err_lista_vendedores_vazia",
                     wait_selector=None,
                     wait_timeout_ms=0,
                 )
                 logger.warning(
-                    "[CRÉDITO] Dropdown vazio após tentativas — fallback seleção direta (pool OSAB)"
+                    "[CRÉDITO] Dropdown vazio após tentativas — fallback pool OSAB"
                 )
-            usar_pool_osab = True
             candidatos_pap: list = []
             max_tentativas_tt = 8
         else:
             candidatos_pap = list(matriculas_pap)
             max_tentativas_tt = min(max(5, len(candidatos_pap)), 10)
             logger.info(
-                "[CRÉDITO] Vendedores no PAP deste PDV: %s matrícula(s) — amostra: %s",
+                "[CRÉDITO] Lista PAP sequencial: %s matrícula(s) — amostra: %s",
                 len(candidatos_pap),
                 candidatos_pap[:8],
             )
 
+        bo_matricula_cursor = (bo_usuario.matricula_pap or "").strip()
         for tentativa_tt in range(1, max_tentativas_tt + 1):
             if not usar_pool_osab:
                 cache_pap = automacao.obter_cache_matriculas_pap_dropdown()
                 if cache_pap:
                     candidatos_pap = cache_pap
             matricula_pedido = _run_orm_returning(
-                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=None if usar_pool_osab else list(candidatos_pap): obter_matricula_tt_para_credito_pap(
+                lambda fb=matricula_fallback, ex=set(excluir_tt), cand=None if usar_pool_osab else list(candidatos_pap), bo=bo_matricula_cursor, seq=not usar_pool_osab: obter_matricula_tt_para_credito_pap(
                     fb,
                     excluir=ex,
                     candidatos=cand,
+                    bo_matricula=bo,
+                    sequencial_pap=seq,
                 )
             )
             logger.info(
-                "[CRÉDITO] TT distribuído (tentativa %s/%s): %s",
+                "[CRÉDITO] TT sequencial (tentativa %s/%s): %s",
                 tentativa_tt,
                 max_tentativas_tt,
                 matricula_pedido,

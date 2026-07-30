@@ -195,25 +195,31 @@ class Command(BaseCommand):
                 _print_erro(f"Preparar pedido: {msg_prep}")
                 return
 
-            usar_pool_osab = bool(
-                headless or getattr(settings, "PAP_CREDITO_SKIP_LISTA_VENDEDORES", False)
+            forcar_osab = bool(
+                getattr(settings, "PAP_CREDITO_SKIP_LISTA_VENDEDORES", False)
             )
             matriculas_pap: list[str] = []
-            if not usar_pool_osab:
+            if forcar_osab:
+                self.stdout.write("  Seleção TT: pool OSAB forçado (legado)")
+            else:
                 matriculas_pap = pap.listar_matriculas_vendedor_no_pap()
                 if not matriculas_pap:
                     pap._cache_matriculas_pap_dropdown = []
-                    matriculas_pap = pap.listar_matriculas_vendedor_no_pap(forcar_recarga=True)
+                    matriculas_pap = pap.listar_matriculas_vendedor_no_pap(
+                        forcar_recarga=True, paciente=True
+                    )
 
-            if usar_pool_osab or not matriculas_pap:
-                usar_pool_osab = True
+            usar_pool_osab = forcar_osab or not matriculas_pap
+            if usar_pool_osab:
                 candidatos_pap: list = []
                 max_tentativas_tt = 8
-                self.stdout.write("  Seleção TT: pool OSAB (sem dropdown)")
+                self.stdout.write("  Seleção TT: pool OSAB (lista PAP vazia)")
             else:
                 candidatos_pap = list(matriculas_pap)
                 max_tentativas_tt = min(max(5, len(candidatos_pap)), 10)
-                self.stdout.write(f"  Vendedores no PDV: {len(candidatos_pap)}")
+                self.stdout.write(
+                    f"  Lista PAP sequencial: {len(candidatos_pap)} matrícula(s)"
+                )
 
             excluir_tt: set[str] = set()
             sucesso_pedido = False
@@ -225,8 +231,12 @@ class Command(BaseCommand):
                     if cache:
                         candidatos_pap = cache
                 matricula_pedido = _run_orm_returning(
-                    lambda fb=matricula_fallback, ex=set(excluir_tt), cand=None if usar_pool_osab else list(candidatos_pap): obter_matricula_tt_para_credito_pap(
-                        fb, excluir=ex, candidatos=cand
+                    lambda fb=matricula_fallback, ex=set(excluir_tt), cand=None if usar_pool_osab else list(candidatos_pap), bo=matricula_bo, seq=not usar_pool_osab: obter_matricula_tt_para_credito_pap(
+                        fb,
+                        excluir=ex,
+                        candidatos=cand,
+                        bo_matricula=bo,
+                        sequencial_pap=seq,
                     )
                 )
                 self.stdout.write(f"  TT tentativa {tentativa}: {matricula_pedido}")

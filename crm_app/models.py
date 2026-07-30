@@ -1045,6 +1045,41 @@ class ControleTTCreditoUsoDiario(models.Model):
         return f"{self.matricula_vendedor} em {self.data}: {self.consultas} consulta(s)"
 
 
+class ControleTTCreditoCursorPap(models.Model):
+    """
+    Cursor da rotação sequencial de TTs na análise de crédito.
+
+    Guarda a última matrícula entregue para cada PDV (login BO), permitindo que
+    a próxima consulta pegue o item seguinte da lista do próprio PAP em vez de
+    sortear matrículas da OSAB que podem não existir no portal.
+    """
+    bo_matricula = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text="Matrícula do login BO/PDV cuja lista de vendedores é percorrida.",
+    )
+    ultima_matricula = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Última matrícula entregue; a próxima consulta começa depois dela.",
+    )
+    posicao = models.PositiveIntegerField(
+        default=0,
+        help_text="Posição da última matrícula na lista ordenada (auditoria).",
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_controle_tt_credito_cursor_pap"
+        verbose_name = "Controle TT crédito (cursor PAP)"
+        verbose_name_plural = "Controle TT crédito (cursor PAP)"
+        ordering = ["bo_matricula"]
+
+    def __str__(self) -> str:
+        return f"{self.bo_matricula}: {self.ultima_matricula or '(inicio)'} (pos {self.posicao})"
+
+
 class CicloPagamento(models.Model):
     ano = models.IntegerField(null=True, blank=True)
     mes = models.CharField(max_length=20, null=True, blank=True)
