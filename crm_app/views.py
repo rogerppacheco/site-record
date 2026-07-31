@@ -137,6 +137,7 @@ from rest_framework import status
 # URL alternativa: https://site-record-production.up.railway.app/api/crm/webhook-whatsapp/
 # Configurar webhook: Z-API ou Evolution (instancia site_record_zap)
 # URL: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
+# WhatsAtende (com segredo): .../api/crm/webhook-whatsapp/<WHATSATENDE_WEBHOOK_TOKEN>/
 class WebhookWhatsAppView(APIView):
     permission_classes = [AllowAny]  # Permite acesso sem autenticação para webhooks
 
@@ -144,11 +145,26 @@ class WebhookWhatsAppView(APIView):
         """
         Endpoint para receber eventos do WhatsApp e processar fluxos.
         Sempre retorna uma resposta HTTP para evitar 502 (ngrok/Z-API/Evolution).
+        Token opcional no path/query/header para WhatsAtende (sem HMAC nativo).
         """
         import logging
         from django.conf import settings
 
         logger_webhook = logging.getLogger(__name__)
+
+        from crm_app.services.whatsapp.webhook_token import (
+            validar_token_webhook_whatsatende,
+        )
+
+        path_token = kwargs.get("webhook_token")
+        ok_token, erro_token = validar_token_webhook_whatsatende(
+            request, path_token=path_token
+        )
+        if not ok_token:
+            return Response(
+                {"status": "erro", "mensagem": erro_token or "Não autorizado"},
+                status=403,
+            )
 
         try:
             data = request.data

@@ -364,10 +364,15 @@ urlpatterns = [
     path('logs-importacao-gdp/', LogsImportacaoGdpPrecoView.as_view(), name='logs-importacao-gdp'),
     path('preco-plano-gdp/', PrecoPlanoGdpLookupView.as_view(), name='preco-plano-gdp'),
     path('logs-importacao-cnpj/', LogsImportacaoCNPJView.as_view(), name='logs-importacao-cnpj'),
-    # Webhook WhatsApp - URL para configurar no Z-API:
-    # Produção: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
-    # Alternativa: https://site-record-production.up.railway.app/api/crm/webhook-whatsapp/
+    # Webhook WhatsApp - URL para configurar no Z-API / Evolution / WhatsAtende:
+    # Produção Z-API: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
+    # WhatsAtende:    https://www.recordpap.com.br/api/crm/webhook-whatsapp/<WHATSATENDE_WEBHOOK_TOKEN>/
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
+    path(
+        'webhook-whatsapp/<str:webhook_token>/',
+        WebhookWhatsAppView.as_view(),
+        name='webhook-whatsapp-token',
+    ),
     
     # Validação WhatsApp (Duas rotas para compatibilidade)
     path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='verificar-zap-path'), # Rota antiga

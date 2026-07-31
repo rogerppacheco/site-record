@@ -145,16 +145,20 @@ class WhatsAtendeProvider(WhatsAppProvider):
             return None
         if data.get("error") and data.get("statusCode", 200) not in (200, 201):
             return None
+        # Resposta oficial app14: existsInWhatsapp
+        if "existsInWhatsapp" in data:
+            return bool(data["existsInWhatsapp"])
         for key in ("exists", "numberExists", "isWhatsapp", "whatsapp"):
             if key in data:
                 return bool(data[key])
         nested = data.get("data") or data.get("result") or data.get("contact")
         if isinstance(nested, dict):
+            if "existsInWhatsapp" in nested:
+                return bool(nested["existsInWhatsapp"])
             for key in ("exists", "numberExists", "isWhatsapp", "whatsapp"):
                 if key in nested:
                     return bool(nested[key])
-        # Algumas forks devolvem o número validado sem flag booleana
-        if data.get("number") or (isinstance(nested, dict) and nested.get("number")):
+        if data.get("status") == "success" and data.get("number"):
             return True
         logger.warning(
             "[WhatsAtende] checkNumber resposta ambígua para %s: %s",
@@ -187,6 +191,51 @@ class WhatsAtendeProvider(WhatsAppProvider):
             erro = resp.get("message") or resp.get("error") or resp
         logger.error("[WhatsAtende] Falha texto para %s: %s", numero, erro)
         return False, erro if erro is not None else "Erro ao enviar"
+
+    def enviar_template(
+        self,
+        telefone: str,
+        template_name: str,
+        language_code: str = "pt_BR",
+        template_params: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[bool, Any]:
+        """
+        Envio de template Meta (Número B / Cloud API).
+        Fora da janela de 24h é obrigatório.
+        """
+        numero = self._destino(telefone)
+        payload: Dict[str, Any] = {
+            "number": numero,
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code or "pt_BR"},
+            },
+        }
+        if template_params:
+            payload["templateParams"] = template_params
+        resp = self._request("POST", "/api/messages/send", payload)
+        if self.resposta_indica_sucesso(resp):
+            mid = self._message_id(resp)
+            if isinstance(resp, dict) and mid and "messageId" not in resp:
+                resp = {**resp, "messageId": mid}
+            return True, resp
+        return False, resp
+
+    def listar_templates(self) -> Any:
+        return self._request("GET", "/api/messages/templates")
+
+    def enviar_imagem_url(
+        self, telefone: str, url: str, caption: str = ""
+    ) -> Tuple[bool, Any]:
+        numero = self._destino(telefone)
+        payload = {
+            "number": numero,
+            "msdelay": 1000,
+            "url": url,
+            "caption": caption or "",
+        }
+        resp = self._request("POST", "/api/messages/send/linkImage", payload, timeout=60)
+        return self.resposta_indica_sucesso(resp), resp
 
     def enviar_mensagem_com_botoes_reply(
         self,

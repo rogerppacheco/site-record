@@ -33,6 +33,21 @@ class TestWebhookNormalizer(SimpleTestCase):
             "whatsatende",
         )
 
+    def test_detecta_whatsatende_payload_oficial(self) -> None:
+        payload = {
+            "id": "wamid.HBgMNTUzMTk5OTk5OTk5FQIAEh...",
+            "type": "text",
+            "message": "Olá, quero atendimento",
+            "mediaUrl": None,
+            "mediaType": None,
+            "senderNumber": "5531999999999",
+            "ticketId": 12345,
+            "status": "open",
+            "userId": None,
+            "queueId": 10,
+        }
+        self.assertEqual(detectar_provedor(payload), "whatsatende")
+
     def test_detecta_whatsatende_por_contact_message(self) -> None:
         payload = {
             "event": "message.received",
@@ -58,28 +73,70 @@ class TestWebhookNormalizer(SimpleTestCase):
         self.assertFalse(canon["fromMe"])
         self.assertEqual(canon["message"]["text"], "VENDER")
 
-    def test_normaliza_texto_whatsatende(self) -> None:
+    def test_normaliza_texto_whatsatende_oficial(self) -> None:
         payload = {
-            "event": "message.received",
-            "contact": {"number": "5531999882528"},
-            "message": {"body": "VENDER", "fromMe": False, "id": "WA1"},
+            "id": "wamid.ABC123",
+            "type": "text",
+            "message": "VENDER",
+            "mediaUrl": None,
+            "mediaType": None,
+            "senderNumber": "5531999882528",
+            "ticketId": 12345,
+            "status": "open",
+            "userId": None,
+            "queueId": 10,
         }
         canon = normalizar_webhook(payload)
         self.assertEqual(canon["phone"], "5531999882528")
         self.assertEqual(canon["message"]["text"], "VENDER")
         self.assertEqual(canon["type"], "ReceivedCallback")
-        self.assertEqual(canon["messageId"], "WA1")
+        self.assertEqual(canon["messageId"], "wamid.ABC123")
+        self.assertFalse(canon["fromMe"])
 
-    def test_normaliza_status_whatsatende(self) -> None:
+    def test_normaliza_whatsatende_enviada_pela_api_eh_from_me(self) -> None:
         payload = {
-            "event": "message.status",
-            "status": "delivered",
-            "messageId": "MID99",
-            "number": "5531999882528",
+            "id": "wamid.OUT1",
+            "type": "text",
+            "message": "Olá! Como posso ajudar?",
+            "senderNumber": "5531999882528",
+            "ticketId": 1,
+            "status": "open",
+            "userId": 7,
+            "queueId": 10,
         }
         canon = normalizar_webhook(payload)
-        self.assertEqual(canon["type"], "MessageStatusCallback")
-        self.assertIn("MID99", canon.get("ids") or [])
+        self.assertTrue(canon["fromMe"])
+
+    def test_normaliza_whatsatende_midia(self) -> None:
+        payload = {
+            "id": "wamid.IMG1",
+            "type": "image",
+            "message": "Segue comprovante",
+            "mediaUrl": "https://api.app14.whatsatende.com.br/public/arquivo.jpg",
+            "mediaType": "image/jpeg",
+            "senderNumber": "5531999999999",
+            "ticketId": 12345,
+            "status": "open",
+            "userId": None,
+            "queueId": 10,
+        }
+        canon = normalizar_webhook(payload)
+        self.assertEqual(canon["image"]["imageUrl"], payload["mediaUrl"])
+        self.assertEqual(canon["message"]["text"], "Segue comprovante")
+
+    def test_status_ticket_open_nao_vira_delivery_callback(self) -> None:
+        """status=open é do ticket; WhatsAtende não tem ACK público de entrega."""
+        payload = {
+            "id": "wamid.X",
+            "type": "text",
+            "message": "oi",
+            "senderNumber": "5531999882528",
+            "ticketId": 1,
+            "status": "open",
+            "userId": None,
+        }
+        canon = normalizar_webhook(payload)
+        self.assertEqual(canon["type"], "ReceivedCallback")
 
     def test_normaliza_botao_evolution(self) -> None:
         payload = {
@@ -194,7 +251,12 @@ class TestWhatsAtendeProvider(SimpleTestCase):
     def test_check_number(self, mock_req) -> None:
         mock_resp = mock_req.return_value
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"exists": True, "number": "5531999882528"}
+        mock_resp.json.return_value = {
+            "status": "success",
+            "existsInWhatsapp": True,
+            "number": "5531999882528",
+            "numberFormatted": "5531999882528@s.whatsapp.net",
+        }
         provider = WhatsAtendeProvider()
         self.assertTrue(provider.verificar_numero_existe("31999882528"))
 

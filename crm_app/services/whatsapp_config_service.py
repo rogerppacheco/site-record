@@ -113,11 +113,25 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         "evolutionConfigured": _credenciais_evolution_ok(),
         "whatsatendeConfigured": _credenciais_whatsatende_ok(),
         "whatsatendeConnectionConfigured": _credenciais_whatsatende_conexao_ok(),
+        "whatsatendeWebhookTokenConfigured": bool(
+            (getattr(settings, "WHATSATENDE_WEBHOOK_TOKEN", "") or "").strip()
+        ),
         "n8nConfigured": _credenciais_n8n_ok(),
         "envDefaultProvider": env_default,
         "atualizadoEm": atualizado_em,
         "atualizadoPor": atualizado_por,
     }
+    try:
+        from crm_app.services.whatsapp.webhook_token import (
+            montar_url_webhook_whatsatende,
+        )
+
+        payload["whatsatendeWebhookUrl"] = montar_url_webhook_whatsatende()
+    except Exception:
+        payload["whatsatendeWebhookUrl"] = (
+            f"{getattr(settings, 'SITE_URL', 'https://www.recordpap.com.br').rstrip('/')}"
+            "/api/crm/webhook-whatsapp/"
+        )
     if db_indisponivel:
         payload["dbIndisponivel"] = True
         payload["aviso"] = (

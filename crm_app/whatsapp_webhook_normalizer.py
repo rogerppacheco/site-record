@@ -50,7 +50,13 @@ def detectar_provedor(payload: Any) -> str:
     if "whatsatende" in source or "souchat" in source:
         return _PROVEDOR_WHATSATENDE
 
-    evento = str(payload.get("event") or payload.get("type") or "").lower()
+    # Payload oficial app14 (suporte 2026-07-31): senderNumber + id/ticketId
+    if payload.get("senderNumber") and (
+        payload.get("id") is not None or payload.get("ticketId") is not None
+    ):
+        return _PROVEDOR_WHATSATENDE
+
+    evento = str(payload.get("event") or "").lower()
     if evento in ("messages.upsert", "messages.update", "send.message"):
         return _PROVEDOR_EVOLUTION
     if payload.get("data") and isinstance(payload.get("data"), dict):
@@ -61,7 +67,7 @@ def detectar_provedor(payload: Any) -> str:
     if evento in _WHATSATENDE_EVENTS_INBOUND or evento in _WHATSATENDE_EVENTS_STATUS:
         return _PROVEDOR_WHATSATENDE
 
-    # Formato típico SouChat/Whaticket: contact + message
+    # Formato legado SouChat: contact + message (objetos)
     contact = payload.get("contact")
     message = payload.get("message")
     if isinstance(contact, dict) and isinstance(message, dict):
@@ -97,49 +103,42 @@ def _digitos_telefone(val: Any) -> str:
 
 def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Best-effort: formatos comuns SouChat/Whaticket/Chatiops.
-    Ajustar quando o suporte enviar o payload oficial.
-    """
-    evento = str(payload.get("event") or payload.get("type") or "").lower()
+    Payload oficial app14 (webhook de mensagem recebida/enviada).
 
-    # Status de entrega → formato do delivery_tracker
-    if evento in _WHATSATENDE_EVENTS_STATUS or payload.get("status") in (
-        "sent",
-        "delivered",
-        "read",
-        "failed",
-        "error",
-        "PENDING",
-        "SERVER_ACK",
-        "DELIVERY_ACK",
-        "READ",
-        "PLAYED",
-    ):
-        status_raw = str(
-            payload.get("status")
-            or (payload.get("message") or {}).get("status")
-            or evento.split(".")[-1]
-            or ""
-        ).lower()
-        mid = (
-            payload.get("messageId")
-            or payload.get("id")
-            or (payload.get("message") or {}).get("id")
-            or (payload.get("message") or {}).get("messageId")
-        )
+    Exemplo resumido:
+    {
+      "id": "wamid....",
+      "type": "text"|"image"|...,
+      "message": "texto",
+      "mediaUrl": null|"https://...",
+      "mediaType": null|"image/jpeg",
+      "senderNumber": "5531...",
+      "ticketId": 12345,
+      "status": "open",   # status do ticket, NÃO ACK de entrega
+      "userId": null|7,   # null = cliente; preenchido = enviado pela plataforma/API
+      "queueId": 10
+    }
+
+    Não existe webhook público de entregue/lida/falha — não gerar DeliveryCallback
+    a partir de status de ticket.
+    """
+    evento = str(payload.get("event") or "").lower()
+
+    # Só trata como ACK se o evento for explicitamente de status (não oferecido hoje)
+    if evento in _WHATSATENDE_EVENTS_STATUS:
+        mid = payload.get("messageId") or payload.get("id")
         phone = _digitos_telefone(
-            payload.get("number")
+            payload.get("senderNumber")
+            or payload.get("number")
             or payload.get("phone")
-            or (payload.get("contact") or {}).get("number")
         )
+        status_raw = str(payload.get("ackStatus") or payload.get("deliveryStatus") or "").lower()
         if status_raw in ("failed", "error", "fail"):
             return {
                 "type": "DeliveryCallback",
                 "messageId": mid,
                 "phone": phone,
-                "error": payload.get("error")
-                or payload.get("errorMessage")
-                or "falha de entrega",
+                "error": payload.get("error") or "falha de entrega",
                 "_whatsatende_raw": payload,
             }
         if status_raw in ("delivered", "delivery_ack", "read", "played"):
@@ -150,7 +149,6 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "phone": phone,
                 "_whatsatende_raw": payload,
             }
-        # sent / server_ack → DeliveryCallback sem erro = aceito
         return {
             "type": "DeliveryCallback",
             "messageId": mid,
@@ -158,67 +156,123 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
             "_whatsatende_raw": payload,
         }
 
-    contact = payload.get("contact") if isinstance(payload.get("contact"), dict) else {}
-    message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-    ticket = payload.get("ticket") if isinstance(payload.get("ticket"), dict) else {}
+    # Payload bruto opcional (sendMsgWhatsapp): objeto original em "msg"
+    msg_bruto = payload.get("msg") if isinstance(payload.get("msg"), dict) else {}
 
+    # Formato oficial: message é string; legado: message é objeto
+    message_field = payload.get("message")
+    if isinstance(message_field, str):
+        texto = message_field.strip()
+        message_obj: Dict[str, Any] = {}
+    elif isinstance(message_field, dict):
+        message_obj = message_field
+        texto = str(
+            message_obj.get("body")
+            or message_obj.get("text")
+            or message_obj.get("message")
+            or ""
+        ).strip()
+    else:
+        message_obj = {}
+        texto = str(payload.get("body") or "").strip()
+
+    if not texto and msg_bruto:
+        texto = str(
+            msg_bruto.get("conversation")
+            or (msg_bruto.get("extendedTextMessage") or {}).get("text")
+            or msg_bruto.get("body")
+            or ""
+        ).strip()
+
+    contact = payload.get("contact") if isinstance(payload.get("contact"), dict) else {}
     phone = _digitos_telefone(
-        contact.get("number")
+        payload.get("senderNumber")
+        or contact.get("number")
         or contact.get("phone")
         or payload.get("number")
         or payload.get("phone")
-        or ticket.get("contactNumber")
     )
+
+    # userId preenchido = mensagem enviada pelo WhatsAtende/API (fromMe)
+    user_id = payload.get("userId")
     from_me = bool(
-        message.get("fromMe")
-        or message.get("from_me")
+        user_id not in (None, "", 0, "0")
         or payload.get("fromMe")
         or payload.get("isFromMe")
+        or message_obj.get("fromMe")
     )
-    texto = str(
-        message.get("body")
-        or message.get("text")
-        or message.get("message")
-        or payload.get("body")
-        or ""
-    ).strip()
+
     mid = (
-        message.get("id")
-        or message.get("messageId")
+        payload.get("id")
         or payload.get("messageId")
-        or payload.get("id")
+        or message_obj.get("id")
+        or message_obj.get("messageId")
     )
+    msg_type = str(payload.get("type") or message_obj.get("type") or "text").lower()
 
     canonico: Dict[str, Any] = {
         "phone": phone,
         "from": phone,
         "fromMe": from_me,
         "isFromMe": from_me,
-        "isGroup": bool(payload.get("isGroup") or message.get("isGroup")),
+        "isGroup": bool(payload.get("isGroup") or "@g.us" in str(phone)),
         "messageId": mid,
         "type": "ReceivedCallback",
         "message": {"text": texto, "body": texto},
         "text": {"message": texto, "text": texto},
+        "ticketId": payload.get("ticketId"),
+        "queueId": payload.get("queueId"),
+        "whatsatendeUserId": user_id,
+        "whatsatendeTicketStatus": payload.get("status"),
+        "whatsatendeMessageType": msg_type,
         "_whatsatende_raw": payload,
     }
 
-    # Botão / lista — formatos possíveis até o suporte confirmar
+    media_url = (
+        payload.get("mediaUrl")
+        or message_obj.get("mediaUrl")
+        or message_obj.get("media_url")
+        or message_obj.get("url")
+    )
+    mime = str(
+        payload.get("mediaType")
+        or message_obj.get("mediaType")
+        or message_obj.get("mimetype")
+        or ""
+    ).lower()
+    if media_url:
+        if msg_type in ("image", "img", "sticker") or "image" in mime:
+            canonico["image"] = {"imageUrl": media_url}
+        elif msg_type in ("document", "pdf", "file") or "pdf" in mime or "document" in mime:
+            canonico["document"] = {"documentUrl": media_url}
+        elif msg_type in ("audio", "ptt") or "audio" in mime:
+            canonico["audio"] = {"audioUrl": media_url}
+        elif msg_type == "video" or "video" in mime:
+            canonico["video"] = {"videoUrl": media_url}
+        else:
+            # fallback: caption de mídia desconhecida
+            canonico["document"] = {"documentUrl": media_url}
+
+    # Resposta de botão/template chega como texto normal no webhook (confirmado suporte).
+    # Mantém parsing legado se vier estruturado no futuro.
     btn = (
-        message.get("buttonsResponseMessage")
-        or message.get("buttonResponse")
-        or message.get("selectedButton")
+        message_obj.get("buttonsResponseMessage")
         or payload.get("buttonsResponseMessage")
+        or msg_bruto.get("buttonsResponseMessage")
+        or msg_bruto.get("templateButtonReplyMessage")
     )
     if isinstance(btn, dict):
         bid = (
             btn.get("buttonId")
             or btn.get("selectedButtonId")
+            or btn.get("selectedId")
             or btn.get("id")
             or ""
         )
         btxt = (
             btn.get("message")
             or btn.get("selectedDisplayText")
+            or btn.get("selectedButtonText")
             or btn.get("text")
             or ""
         )
@@ -231,31 +285,6 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
         if btxt and not texto:
             canonico["message"] = {"text": str(btxt), "body": str(btxt)}
             canonico["text"] = {"message": str(btxt), "text": str(btxt)}
-
-    lista = message.get("listResponseMessage") or message.get("listResponse")
-    if isinstance(lista, dict):
-        sel = lista.get("singleSelectReply") or lista.get("selectedRowId") or lista
-        if isinstance(sel, dict):
-            titulo = sel.get("title") or sel.get("selectedRowId") or ""
-            if titulo:
-                canonico["listResponseMessage"] = lista
-                if not texto:
-                    canonico["message"] = {"text": str(titulo), "body": str(titulo)}
-                    canonico["text"] = {"message": str(titulo), "text": str(titulo)}
-
-    media_url = (
-        message.get("mediaUrl")
-        or message.get("media_url")
-        or message.get("url")
-        or message.get("fileUrl")
-    )
-    mime = str(message.get("mimetype") or message.get("mime") or "").lower()
-    media_type = str(message.get("mediaType") or message.get("type") or "").lower()
-    if media_url:
-        if "image" in mime or media_type in ("image", "img"):
-            canonico["image"] = {"imageUrl": media_url}
-        elif "pdf" in mime or media_type in ("document", "pdf", "file"):
-            canonico["document"] = {"documentUrl": media_url}
 
     return canonico
 
