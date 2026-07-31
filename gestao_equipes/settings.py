@@ -266,7 +266,7 @@ CLOUDFLARE_R2_PUBLIC_URL = config('CLOUDFLARE_R2_PUBLIC_URL', default='')
 # Prefixo raiz no bucket; cada funcionalidade usa subpasta própria (Record_Apoia, CDOI, etc.)
 R2_FOLDER_ROOT = config('R2_FOLDER_ROOT', default='CDOI_Record_Vertical')
 
-# --- WHATSAPP: Z-API (legado) ou Evolution API ---
+# --- WHATSAPP: Z-API (legado), Evolution API ou WhatsAtende ---
 WHATSAPP_PROVIDER = config('WHATSAPP_PROVIDER', default='zapi').strip().lower()
 ZAPI_INSTANCE_ID = config('ZAPI_INSTANCE_ID', default='')
 ZAPI_TOKEN = config('ZAPI_TOKEN', default='')
@@ -277,6 +277,13 @@ EVOLUTION_API_URL = config(
 )
 EVOLUTION_API_KEY = config('EVOLUTION_API_KEY', default='')
 EVOLUTION_INSTANCE_NAME = config('EVOLUTION_INSTANCE_NAME', default='site_record_zap')
+# WhatsAtende (SouChat): token da conexão + ID em Conexões
+WHATSATENDE_API_URL = config(
+    'WHATSATENDE_API_URL',
+    default='https://api.app14.whatsatende.com.br',
+)
+WHATSATENDE_TOKEN = config('WHATSATENDE_TOKEN', default='')
+WHATSATENDE_WHATSAPP_ID = config('WHATSATENDE_WHATSAPP_ID', default='')
 # Outbound híbrido (Opção B): texto/mídia URL via n8n → Evolution
 N8N_OUTBOUND_WEBHOOK_URL = config('N8N_OUTBOUND_WEBHOOK_URL', default='')
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')

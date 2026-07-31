@@ -1,8 +1,9 @@
-"""Factory do provider WhatsApp (zapi | evolution híbrido n8n)."""
+"""Factory do provider WhatsApp (zapi | evolution híbrido n8n | whatsatende)."""
 from __future__ import annotations
 
 from crm_app.services.whatsapp.base import WhatsAppProvider
 from crm_app.services.whatsapp.n8n_outbound_provider import N8nOutboundProvider
+from crm_app.services.whatsapp.whatsatende_provider import WhatsAtendeProvider
 from crm_app.services.whatsapp.zapi_provider import ZapiProvider
 
 _cached_provider_name: str | None = None
@@ -31,6 +32,8 @@ def get_whatsapp_provider() -> WhatsAppProvider:
 
     if provider == "evolution":
         _cached_provider = N8nOutboundProvider()
+    elif provider == "whatsatende":
+        _cached_provider = WhatsAtendeProvider()
     else:
         _cached_provider = ZapiProvider()
     _cached_provider_name = provider

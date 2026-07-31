@@ -1,4 +1,4 @@
-"""Contrato dos providers WhatsApp (Z-API / Evolution)."""
+"""Contrato dos providers WhatsApp (Z-API / Evolution / WhatsAtende)."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

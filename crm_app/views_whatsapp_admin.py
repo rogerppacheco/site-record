@@ -14,6 +14,10 @@ from crm_app.services.whatsapp_config_service import (
     build_whatsapp_config_payload,
     set_whatsapp_provider,
 )
+from crm_app.services.whatsatende_connection_service import (
+    WhatsAtendeConnectionError,
+    WhatsAtendeConnectionService,
+)
 from crm_app.utils import is_member
 
 _GESTAO_WHATSAPP = ("Diretoria", "Admin", "BackOffice")
@@ -29,6 +33,33 @@ def _evolution_disponivel() -> bool:
     from crm_app.services.whatsapp_config_service import _credenciais_evolution_ok
 
     return _credenciais_evolution_ok()
+
+
+def _whatsatende_conexao_disponivel() -> bool:
+    from crm_app.services.whatsapp_config_service import (
+        _credenciais_whatsatende_conexao_ok,
+    )
+
+    return _credenciais_whatsatende_conexao_ok()
+
+
+def _backend_conexao(request) -> str:
+    """
+    Qual backend usar para status/QR/disconnect.
+    Query ?backend=evolution|whatsatende ou provedor ativo.
+    """
+    q = (request.query_params.get("backend") or "").strip().lower()
+    if q in ("evolution", "whatsatende"):
+        return q
+    provider = build_whatsapp_config_payload().get("provider") or "zapi"
+    if provider == WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE:
+        return "whatsatende"
+    if provider == WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION:
+        return "evolution"
+    # Z-API ativo: preferir WhatsAtende se já tiver ID+token (setup paralelo)
+    if _whatsatende_conexao_disponivel():
+        return "whatsatende"
+    return "evolution"
 
 
 @api_view(["GET", "PATCH"])
@@ -61,6 +92,41 @@ def whatsapp_status_api(request):
         return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
 
     config = build_whatsapp_config_payload()
+    backend = _backend_conexao(request)
+
+    if backend == "whatsatende":
+        if not _whatsatende_conexao_disponivel():
+            return Response(
+                {
+                    "provider": config["provider"],
+                    "connected": False,
+                    "state": "unconfigured",
+                    "instanceName": config.get("whatsatendeWhatsappId") or "",
+                    "message": (
+                        "Credenciais WhatsAtende incompletas "
+                        "(WHATSATENDE_TOKEN e WHATSATENDE_WHATSAPP_ID)."
+                    ),
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        try:
+            data = WhatsAtendeConnectionService().get_status()
+            data["provider"] = config["provider"]
+            data["activeProvider"] = config["provider"]
+            data["setupMode"] = (
+                config["provider"] != WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE
+            )
+            if data.get("setupMode"):
+                data["message"] = (
+                    "Aparelho WhatsAtende (setup). Provedor ativo ainda não é "
+                    "WhatsAtende — escaneie o QR e só então salve WhatsAtende."
+                )
+            return Response(data)
+        except WhatsAtendeConnectionError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
     if not _evolution_disponivel():
         return Response(
             {
@@ -96,6 +162,26 @@ def whatsapp_status_api(request):
 def whatsapp_qrcode_api(request):
     if not _usuario_pode_gerenciar_whatsapp(request.user):
         return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
+
+    backend = _backend_conexao(request)
+    if backend == "whatsatende":
+        if not _whatsatende_conexao_disponivel():
+            return Response(
+                {
+                    "detail": (
+                        "Credenciais WhatsAtende incompletas "
+                        "(WHATSATENDE_TOKEN / WHATSATENDE_WHATSAPP_ID)."
+                    )
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        try:
+            return Response(WhatsAtendeConnectionService().get_qrcode())
+        except WhatsAtendeConnectionError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
     if not _evolution_disponivel():
         return Response(
             {
@@ -118,6 +204,21 @@ def whatsapp_qrcode_api(request):
 def whatsapp_disconnect_api(request):
     if not _usuario_pode_gerenciar_whatsapp(request.user):
         return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
+
+    backend = _backend_conexao(request)
+    if backend == "whatsatende":
+        if not _whatsatende_conexao_disponivel():
+            return Response(
+                {"detail": "Credenciais WhatsAtende não configuradas no servidor."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        try:
+            return Response(WhatsAtendeConnectionService().disconnect())
+        except WhatsAtendeConnectionError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
     if not _evolution_disponivel():
         return Response(
             {"detail": "Credenciais Evolution não configuradas no servidor."},

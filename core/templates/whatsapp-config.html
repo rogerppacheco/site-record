@@ -6,7 +6,7 @@
 
 {% block extra_css %}
 <style>
-.whatsapp-config-page main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+.whatsapp-config-page main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
         .whatsapp-config-page .provider-card { border: 2px solid transparent; cursor: pointer; transition: all .2s; background: var(--bg-card); }
         .whatsapp-config-page .provider-card.active { border-color: var(--accent-primary); background: var(--bg-secondary); }
         .whatsapp-config-page .provider-card:hover { border-color: color-mix(in srgb, var(--accent-primary) 50%, transparent); }
@@ -21,30 +21,41 @@
 {% block content %}
 <main class="whatsapp-config-page">
         <h2 class="fw-bold mb-1"><i class="bi bi-whatsapp text-success"></i> Configuração WhatsApp</h2>
-        <p class="text-muted mb-4">Escolha o provedor ativo e gerencie a conexão. O padrão é Z-API — produção continua funcionando até você mudar aqui.</p>
+        <p class="text-muted mb-4">Escolha o provedor ativo. O padrão é Z-API — produção continua funcionando até você mudar aqui.</p>
 
         <div class="card card-modern shadow-sm mb-4">
-            <div class="card-header fw-bold">Provedor ativo (Plano A / Plano B)</div>
+            <div class="card-header fw-bold">Provedor ativo</div>
             <div class="card-body">
                 <div class="row g-3 mb-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="card card-modern provider-card h-100 p-3" id="card-provider-zapi" onclick="selecionarProvider('zapi')">
                             <div class="d-flex align-items-start gap-2">
                                 <input class="form-check-input mt-1" type="radio" name="provider" id="radio-zapi" value="zapi">
                                 <div>
-                                    <strong>Z-API</strong> <span class="badge bg-secondary ms-1">Plano B / legado</span>
-                                    <p class="small text-muted mb-0 mt-1">Volte aqui se Evolution ou n8n falharem. Webhook no painel Z-API → Django.</p>
+                                    <strong>Z-API</strong> <span class="badge bg-secondary ms-1">legado</span>
+                                    <p class="small text-muted mb-0 mt-1">Webhook no painel Z-API → Django.</p>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="card card-modern provider-card h-100 p-3" id="card-provider-evolution" onclick="selecionarProvider('evolution')">
                             <div class="d-flex align-items-start gap-2">
                                 <input class="form-check-input mt-1" type="radio" name="provider" id="radio-evolution" value="evolution">
                                 <div>
-                                    <strong>Evolution + n8n</strong> <span class="badge bg-primary ms-1">Opção B</span>
-                                    <p class="small text-muted mb-0 mt-1">Outbound via n8n; inbound direto no Django. Requer QR Code abaixo.</p>
+                                    <strong>Evolution + n8n</strong>
+                                    <p class="small text-muted mb-0 mt-1">Outbound via n8n; inbound direto. Requer QR abaixo.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-modern provider-card h-100 p-3" id="card-provider-whatsatende" onclick="selecionarProvider('whatsatende')">
+                            <div class="d-flex align-items-start gap-2">
+                                <input class="form-check-input mt-1" type="radio" name="provider" id="radio-whatsatende" value="whatsatende">
+                                <div>
+                                    <strong>WhatsAtende</strong> <span class="badge bg-success ms-1">novo</span>
+                                    <p class="small text-muted mb-0 mt-1">API + painel. Token da conexão no .env.</p>
                                 </div>
                             </div>
                         </div>
@@ -69,7 +80,7 @@
         <div class="card card-modern shadow-sm mb-4 d-none" id="panel-evolution">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                 <span class="fw-bold">Evolution — conexão</span>
-                <button type="button" class="btn btn-sm btn-light" onclick="carregarWhatsAppConexao()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                <button type="button" class="btn btn-sm btn-light" onclick="carregarWhatsAppConexao('evolution')"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
             </div>
             <div class="card-body">
                 <p class="text-muted small">Instância <code id="wa-instance-name">site_record_zap</code></p>
@@ -80,8 +91,8 @@
                 <div id="wa-connected-msg" class="alert alert-success py-2 small d-none">Aparelho conectado.</div>
                 <div id="wa-connecting-msg" class="alert alert-warning py-2 small d-none">Estado connecting — desconecte e gere QR limpo.</div>
                 <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-success btn-sm" id="btn-wa-qrcode" onclick="gerarWhatsAppQrCode()"><i class="bi bi-qr-code"></i> Gerar QR Code</button>
-                    <button type="button" class="btn btn-outline-danger btn-sm d-none" id="btn-wa-disconnect" onclick="desconectarWhatsApp()"><i class="bi bi-box-arrow-right"></i> Desconectar</button>
+                    <button type="button" class="btn btn-success btn-sm" id="btn-wa-qrcode" onclick="gerarWhatsAppQrCode('evolution')"><i class="bi bi-qr-code"></i> Gerar QR Code</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm d-none" id="btn-wa-disconnect" onclick="desconectarWhatsApp('evolution')"><i class="bi bi-box-arrow-right"></i> Desconectar</button>
                 </div>
                 <div id="wa-qrcode-wrap" class="text-center mt-3 d-none">
                     <img id="wa-qrcode-img" alt="QR Code" class="border rounded p-2 bg-white" width="260" height="260">
@@ -89,15 +100,38 @@
             </div>
         </div>
 
+        <div class="card card-modern shadow-sm mb-4 d-none" id="panel-whatsatende">
+            <div class="card-header text-white d-flex justify-content-between align-items-center" style="background:#0f766e;">
+                <span class="fw-bold">WhatsAtende — conexão</span>
+                <button type="button" class="btn btn-sm btn-light" onclick="carregarWhatsAppConexao('whatsatende')"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+            </div>
+            <div class="card-body">
+                <p class="mb-2" id="whatsatende-cred-status"></p>
+                <p class="text-muted small mb-2">API <code id="wa-atende-api-url">—</code> · conexão <code id="wa-atende-id">—</code></p>
+                <div class="mb-3">
+                    <span id="wa-atende-status-badge" class="badge bg-secondary">—</span>
+                </div>
+                <div id="wa-atende-connected-msg" class="alert alert-success py-2 small d-none">Conexão WhatsAtende ativa.</div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-success btn-sm" id="btn-wa-atende-qrcode" onclick="gerarWhatsAppQrCode('whatsatende')"><i class="bi bi-qr-code"></i> Gerar QR Code</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm d-none" id="btn-wa-atende-disconnect" onclick="desconectarWhatsApp('whatsatende')"><i class="bi bi-box-arrow-right"></i> Desconectar</button>
+                </div>
+                <div id="wa-atende-qrcode-wrap" class="text-center mt-3 d-none">
+                    <img id="wa-atende-qrcode-img" alt="QR Code WhatsAtende" class="border rounded p-2 bg-white" width="260" height="260">
+                </div>
+                <p class="small text-muted mt-3 mb-0">Configure <code>WHATSATENDE_TOKEN</code> (token da conexão) e <code>WHATSATENDE_WHATSAPP_ID</code> no servidor. Webhook inbound → <code>/api/crm/webhook-whatsapp/</code>.</p>
+            </div>
+        </div>
+
         <div id="wa-error-msg" class="alert alert-danger d-none"></div>
 
         <div class="card card-modern border-warning shadow-sm">
             <div class="card-body small">
-                <strong><i class="bi bi-info-circle"></i> Botões interativos (PAP)</strong>
+                <strong><i class="bi bi-info-circle"></i> Capacidades por provedor</strong>
                 <ul class="mb-0 mt-2">
-                    <li><strong>Z-API (hoje em produção):</strong> botões funcionam normalmente.</li>
-                    <li><strong>Evolution:</strong> botões usam API direta; se falharem, o bot envia texto pedindo para digitar SIM/CONFIRMAR.</li>
-                    <li>Deploy do código <em>sem</em> trocar o provedor aqui mantém Z-API — nada para de funcionar.</li>
+                    <li><strong>Z-API:</strong> botões, lista, delivery e webhook completos (produção atual).</li>
+                    <li><strong>Evolution:</strong> botões via API direta; se falharem, fallback para texto.</li>
+                    <li><strong>WhatsAtende:</strong> texto/mídia/checkNumber prontos; botões/lista/grupos aguardando confirmação do suporte. Sem webhook inbound confirmado, o bot não processa recebidas.</li>
                 </ul>
             </div>
         </div>
@@ -113,6 +147,11 @@
         let cfgAtual = null;
         let providerSelecionado = 'zapi';
         let waPollInterval = null;
+        const providerNomes = {
+            zapi: 'Z-API (legado)',
+            evolution: 'Evolution + n8n',
+            whatsatende: 'WhatsAtende',
+        };
 
         async function apiFetch(endpoint, options = {}) {
             const headers = { 'Content-Type': 'application/json', ...options.headers };
@@ -136,13 +175,23 @@
 
         function marcarProviderUi(provider) {
             providerSelecionado = provider;
-            document.getElementById('radio-zapi').checked = provider === 'zapi';
-            document.getElementById('radio-evolution').checked = provider === 'evolution';
-            document.getElementById('card-provider-zapi').classList.toggle('active', provider === 'zapi');
-            document.getElementById('card-provider-evolution').classList.toggle('active', provider === 'evolution');
+            ['zapi', 'evolution', 'whatsatende'].forEach((p) => {
+                const radio = document.getElementById(`radio-${p}`);
+                const card = document.getElementById(`card-provider-${p}`);
+                if (radio) radio.checked = provider === p;
+                if (card) card.classList.toggle('active', provider === p);
+            });
             document.getElementById('panel-zapi').classList.toggle('d-none', provider !== 'zapi');
             const evoOk = cfgAtual?.evolutionConfigured;
-            document.getElementById('panel-evolution').classList.toggle('d-none', !(provider === 'evolution' || evoOk));
+            const waOk = cfgAtual?.whatsatendeConfigured;
+            document.getElementById('panel-evolution').classList.toggle(
+                'd-none',
+                !(provider === 'evolution' || (provider === 'zapi' && evoOk))
+            );
+            document.getElementById('panel-whatsatende').classList.toggle(
+                'd-none',
+                !(provider === 'whatsatende' || waOk)
+            );
         }
 
         function selecionarProvider(p) { marcarProviderUi(p); }
@@ -153,6 +202,7 @@
             const linhas = [
                 `Credenciais Z-API no servidor: ${cfgAtual.zapiConfigured ? 'OK' : 'ausentes'}`,
                 `Evolution: ${cfgAtual.evolutionConfigured ? 'OK' : 'ausente'}`,
+                `WhatsAtende: ${cfgAtual.whatsatendeConfigured ? 'OK' : 'ausente'}${cfgAtual.whatsatendeConnectionConfigured ? ' (conexão completa)' : cfgAtual.whatsatendeConfigured ? ' (falta WHATSATENDE_WHATSAPP_ID para QR)' : ''}`,
                 `n8n outbound: ${cfgAtual.n8nConfigured ? 'OK' : 'ausente (só afeta envios no modo Evolution)'}`,
             ];
             if (cfgAtual.aviso) linhas.unshift(`<span class="text-warning">${cfgAtual.aviso}</span>`);
@@ -161,12 +211,18 @@
             document.getElementById('zapi-cred-status').innerHTML = cfgAtual.zapiConfigured
                 ? '<span class="text-success"><i class="bi bi-check-circle"></i> ZAPI_INSTANCE_ID e ZAPI_TOKEN configurados.</span>'
                 : '<span class="text-danger"><i class="bi bi-x-circle"></i> Credenciais Z-API não encontradas nas variáveis do servidor.</span>';
-            if (cfgAtual.evolutionConfigured) {
-                carregarWhatsAppConexao(true);
-            }
+            document.getElementById('whatsatende-cred-status').innerHTML = cfgAtual.whatsatendeConfigured
+                ? (cfgAtual.whatsatendeConnectionConfigured
+                    ? '<span class="text-success"><i class="bi bi-check-circle"></i> Token e ID da conexão configurados.</span>'
+                    : '<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Token OK — falta WHATSATENDE_WHATSAPP_ID para QR/status.</span>')
+                : '<span class="text-danger"><i class="bi bi-x-circle"></i> WHATSATENDE_TOKEN ausente no servidor.</span>';
+            if (cfgAtual.whatsatendeApiUrl) document.getElementById('wa-atende-api-url').textContent = cfgAtual.whatsatendeApiUrl;
+            if (cfgAtual.whatsatendeWhatsappId) document.getElementById('wa-atende-id').textContent = cfgAtual.whatsatendeWhatsappId;
+            if (cfgAtual.evolutionConfigured) carregarWhatsAppConexao('evolution', true);
+            if (cfgAtual.whatsatendeConnectionConfigured) carregarWhatsAppConexao('whatsatende', true);
             if (cfgAtual.provider === 'zapi' && cfgAtual.evolutionConfigured) {
                 document.getElementById('cfg-save-msg').innerHTML =
-                    '<span class="text-info">Provedor ativo: Z-API. Escaneie o QR abaixo e só depois salve Evolution.</span>';
+                    '<span class="text-info">Provedor ativo: Z-API. Escaneie o QR Evolution e só depois salve Evolution.</span>';
             }
         }
 
@@ -175,7 +231,7 @@
                 document.getElementById('cfg-save-msg').textContent = 'Nenhuma alteração.';
                 return;
             }
-            const nome = providerSelecionado === 'zapi' ? 'Z-API (Plano B)' : 'Evolution + n8n';
+            const nome = providerNomes[providerSelecionado] || providerSelecionado;
             if (!confirm(`Alterar provedor ativo para ${nome}?\n\nConfirme que o webhook inbound aponta para /api/crm/webhook-whatsapp/ no provedor escolhido.`)) return;
             document.getElementById('btn-salvar-provider').disabled = true;
             try {
@@ -191,8 +247,19 @@
             }
         }
 
-        function waAtualizarUi(status) {
+        function waAtualizarUi(status, backend) {
             if (!status) return;
+            if (backend === 'whatsatende') {
+                const badge = document.getElementById('wa-atende-status-badge');
+                const map = { open: 'Conectado', close: 'Desconectado', connecting: 'Aguardando QR', unconfigured: 'Não configurado' };
+                badge.textContent = map[status.state] || status.state || '—';
+                badge.className = 'badge ' + (status.connected ? 'bg-success' : 'bg-secondary');
+                if (status.instanceName) document.getElementById('wa-atende-id').textContent = status.instanceName;
+                document.getElementById('wa-atende-connected-msg').classList.toggle('d-none', !status.connected);
+                document.getElementById('btn-wa-atende-disconnect').classList.toggle('d-none', !(status.connected || status.state === 'connecting'));
+                document.getElementById('btn-wa-atende-qrcode').classList.toggle('d-none', !!status.connected);
+                return;
+            }
             const badge = document.getElementById('wa-status-badge');
             const map = { open: 'Conectado', close: 'Desconectado', connecting: 'Aguardando', zapi: 'Z-API', unconfigured: 'Não configurado' };
             badge.textContent = map[status.state] || status.state || '—';
@@ -208,26 +275,30 @@
             document.getElementById('btn-wa-qrcode').classList.toggle('d-none', !!status.connected);
         }
 
-        async function carregarWhatsAppConexao(silent) {
+        async function carregarWhatsAppConexao(backend, silent) {
             waSetError('');
+            const b = backend || (cfgAtual?.provider === 'whatsatende' ? 'whatsatende' : 'evolution');
             try {
-                const data = await apiFetch('/whatsapp/status/');
-                waAtualizarUi(data);
+                const data = await apiFetch(`/whatsapp/status/?backend=${b}`);
+                waAtualizarUi(data, b);
                 if (data.connected && waPollInterval) { clearInterval(waPollInterval); waPollInterval = null; }
-                if (!data.connected && cfgAtual?.evolutionConfigured && !waPollInterval) {
-                    waPollInterval = setInterval(() => carregarWhatsAppConexao(true), 5000);
-                }
             } catch (e) {
-                waSetError(e.message || 'Erro ao consultar status.');
+                if (!silent) waSetError(e.message || 'Erro ao consultar status.');
             }
         }
 
-        async function gerarWhatsAppQrCode() {
+        async function gerarWhatsAppQrCode(backend) {
             waSetError('');
+            const b = backend || 'evolution';
             try {
-                const data = await apiFetch('/whatsapp/qrcode/');
-                if (data.base64) {
-                    document.getElementById('wa-qrcode-img').src = data.base64;
+                const data = await apiFetch(`/whatsapp/qrcode/?backend=${b}`);
+                const src = data.base64 || data.qrcode || '';
+                if (!src) throw new Error('QR Code não retornado pela API.');
+                if (b === 'whatsatende') {
+                    document.getElementById('wa-atende-qrcode-img').src = src;
+                    document.getElementById('wa-atende-qrcode-wrap').classList.remove('d-none');
+                } else {
+                    document.getElementById('wa-qrcode-img').src = src;
                     document.getElementById('wa-qrcode-wrap').classList.remove('d-none');
                 }
             } catch (e) {
@@ -235,12 +306,19 @@
             }
         }
 
-        async function desconectarWhatsApp() {
-            if (!confirm('Desconectar e resetar sessão Evolution?')) return;
+        async function desconectarWhatsApp(backend) {
+            const b = backend || 'evolution';
+            const label = b === 'whatsatende' ? 'WhatsAtende' : 'Evolution';
+            if (!confirm(`Desconectar e resetar sessão ${label}?`)) return;
             try {
-                const res = await apiFetch('/whatsapp/disconnect/', { method: 'DELETE' });
-                waAtualizarUi(res.status || res);
-                document.getElementById('wa-qrcode-wrap').classList.add('d-none');
+                const res = await apiFetch(`/whatsapp/disconnect/?backend=${b}`, { method: 'DELETE' });
+                waAtualizarUi(res.status || res, b);
+                if (b === 'whatsatende') {
+                    document.getElementById('wa-atende-qrcode-wrap').classList.add('d-none');
+                } else {
+                    document.getElementById('wa-qrcode-wrap').classList.add('d-none');
+                }
+                await carregarWhatsAppConexao(b);
             } catch (e) {
                 waSetError(e.message);
             }

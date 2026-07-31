@@ -4290,13 +4290,15 @@ class FunilVendaWppEvento(models.Model):
 
 
 class WhatsAppIntegracaoConfig(models.Model):
-    """Configuração única do provedor WhatsApp (Z-API ou Evolution+n8n)."""
+    """Configuração única do provedor WhatsApp (Z-API, Evolution+n8n ou WhatsAtende)."""
 
     PROVIDER_ZAPI = "zapi"
     PROVIDER_EVOLUTION = "evolution"
+    PROVIDER_WHATSATENDE = "whatsatende"
     PROVIDER_CHOICES = (
         (PROVIDER_ZAPI, "Z-API (legado / plano B)"),
         (PROVIDER_EVOLUTION, "Evolution + n8n (Opção B)"),
+        (PROVIDER_WHATSATENDE, "WhatsAtende"),
     )
 
     provider = models.CharField(

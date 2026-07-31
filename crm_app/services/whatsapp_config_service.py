@@ -8,16 +8,21 @@ from django.conf import settings
 
 from crm_app.models import WhatsAppIntegracaoConfig
 
+_PROVIDERS_VALIDOS = frozenset(
+    {
+        WhatsAppIntegracaoConfig.PROVIDER_ZAPI,
+        WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION,
+        WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE,
+    }
+)
+
 
 def get_active_whatsapp_provider_name() -> str:
     """Provedor efetivo: registro único no banco; fallback para env/settings."""
     try:
         cfg = WhatsAppIntegracaoConfig.load()
         provider = (cfg.provider or "").strip().lower()
-        if provider in (
-            WhatsAppIntegracaoConfig.PROVIDER_ZAPI,
-            WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION,
-        ):
+        if provider in _PROVIDERS_VALIDOS:
             return provider
     except Exception:
         pass
@@ -46,6 +51,17 @@ def _credenciais_evolution_ok() -> bool:
     return bool(
         getattr(settings, "EVOLUTION_API_URL", "")
         and getattr(settings, "EVOLUTION_API_KEY", "")
+    )
+
+
+def _credenciais_whatsatende_ok() -> bool:
+    return bool((getattr(settings, "WHATSATENDE_TOKEN", "") or "").strip())
+
+
+def _credenciais_whatsatende_conexao_ok() -> bool:
+    """Token + ID da conexão — necessários para QR/status/disconnect."""
+    return _credenciais_whatsatende_ok() and bool(
+        (getattr(settings, "WHATSATENDE_WHATSAPP_ID", "") or "").strip()
     )
 
 
@@ -89,8 +105,14 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
             provider, provider
         ),
         "instanceName": getattr(settings, "EVOLUTION_INSTANCE_NAME", "site_record_zap"),
+        "whatsatendeWhatsappId": getattr(settings, "WHATSATENDE_WHATSAPP_ID", "") or "",
+        "whatsatendeApiUrl": getattr(
+            settings, "WHATSATENDE_API_URL", "https://api.app14.whatsatende.com.br"
+        ),
         "zapiConfigured": _credenciais_zapi_ok(),
         "evolutionConfigured": _credenciais_evolution_ok(),
+        "whatsatendeConfigured": _credenciais_whatsatende_ok(),
+        "whatsatendeConnectionConfigured": _credenciais_whatsatende_conexao_ok(),
         "n8nConfigured": _credenciais_n8n_ok(),
         "envDefaultProvider": env_default,
         "atualizadoEm": atualizado_em,
@@ -107,11 +129,7 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
 
 def set_whatsapp_provider(provider: str, user) -> WhatsAppIntegracaoConfig:
     normalized = (provider or "").strip().lower()
-    valid = {
-        WhatsAppIntegracaoConfig.PROVIDER_ZAPI,
-        WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION,
-    }
-    if normalized not in valid:
+    if normalized not in _PROVIDERS_VALIDOS:
         raise ValueError(f"Provedor inválido: {provider}")
     cfg = WhatsAppIntegracaoConfig.load()
     cfg.provider = normalized
