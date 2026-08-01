@@ -244,6 +244,29 @@ class QualidadeFaltamNoCrmView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+class QualidadeDashboardFpdNioView(APIView):
+    """GET /api/qualidade/dashboard-fpd-nio/?indicador=FPD&meses=6
+
+    Tabela no formato do dashboard Nio (pagas / total / % aberto / faixas).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        try:
+            data = qs.dashboard_fpd_estilo_nio(
+                indicador=request.GET.get('indicador', 'FPD'),
+                meses=request.GET.get('meses', 6),
+            )
+            return Response(data)
+        except Exception as e:
+            logger.exception('Erro no dashboard FPD estilo Nio')
+            return Response({'error': str(e)}, status=500)
+
+
 class QualidadeContratoFaturasView(APIView):
     """GET/POST /api/qualidade/contratos/<id>/faturas/ — painel das 10 faturas."""
 

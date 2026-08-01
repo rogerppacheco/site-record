@@ -699,6 +699,148 @@ def reconciliar_fpd_com_painel(
     }
 
 
+# Faixas da planilha → rótulos do dashboard Nio
+FAIXAS_NIO_ORDEM = [
+    ('d10_15', '10 a 15 Dias'),
+    ('d15_30', '15 a 30 Dias'),
+    ('d30_45', '30 a 45 Dias'),
+    ('d45_55', '45 a 55 Dias'),
+    ('d55_60', '55 a 60 Dias'),
+    ('d61', '>= a 61 Dias'),
+]
+
+
+def _normalizar_faixa_nio(faixa: str, dias_atraso: int = 0) -> str:
+    """Mapeia FAIXA da planilha (ou dias) para chave do dashboard estilo Nio."""
+    f = (faixa or '').strip().upper().replace('Á', 'A')
+    f = re.sub(r'\s+', ' ', f)
+    if '0 A 15' in f or '10 A 15' in f or '0-15' in f or '10-15' in f:
+        return 'd10_15'
+    if '15 A 30' in f or '15-30' in f:
+        return 'd15_30'
+    if '30 A 45' in f or '30-45' in f:
+        return 'd30_45'
+    if '45 A 55' in f or '45-55' in f:
+        return 'd45_55'
+    if '55 A 60' in f or '55-60' in f:
+        return 'd55_60'
+    if '>60' in f or '>=' in f or '61' in f:
+        return 'd61'
+    if 'MAIS DE 60' in f:
+        return 'd61'
+
+    # Fallback por NR_DIAS_ATRASO
+    try:
+        d = int(dias_atraso or 0)
+    except (TypeError, ValueError):
+        d = 0
+    if d <= 0:
+        return 'd10_15'
+    if d <= 15:
+        return 'd10_15'
+    if d <= 30:
+        return 'd15_30'
+    if d <= 45:
+        return 'd30_45'
+    if d <= 55:
+        return 'd45_55'
+    if d <= 60:
+        return 'd55_60'
+    return 'd61'
+
+
+def dashboard_fpd_estilo_nio(
+    *,
+    indicador: str = 'FPD',
+    meses: Optional[int] = 6,
+) -> dict[str, Any]:
+    """Monta tabela no formato do dashboard Nio (colunas = meses de vencimento).
+
+    Fonte: ``ImportacaoFPD`` (planilha operadora = verdade).
+    """
+    ind = (indicador or 'FPD').strip().upper()
+    if ind not in ('FPD', 'SPD', 'TPD'):
+        ind = 'FPD'
+    try:
+        n_meses = max(1, min(12, int(meses or 6)))
+    except (TypeError, ValueError):
+        n_meses = 6
+
+    qs = (
+        ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
+        .values('dt_venc_orig', 'ds_sit_fatura', 'faixa', 'nr_dias_atraso')
+    )
+
+    # Agrupa por YYYYMM
+    por_mes: dict[str, dict[str, Any]] = {}
+    for row in qs.iterator(chunk_size=3000):
+        dt = row['dt_venc_orig']
+        if not dt:
+            continue
+        chave = dt.strftime('%Y%m')
+        bucket = por_mes.setdefault(
+            chave,
+            {
+                'mes_fatura': chave,
+                'mes': dt.strftime('%Y-%m'),
+                'label': _label_mes(dt.strftime('%Y-%m')),
+                'fatura_paga': 0,
+                'total_fatura': 0,
+                'faixas': {k: 0 for k, _ in FAIXAS_NIO_ORDEM},
+            },
+        )
+        bucket['total_fatura'] += 1
+        sit = (row['ds_sit_fatura'] or '').strip().upper()
+        if sit == 'FECHADA':
+            bucket['fatura_paga'] += 1
+        elif sit == 'ABERTA':
+            fk = _normalizar_faixa_nio(row.get('faixa') or '', row.get('nr_dias_atraso') or 0)
+            bucket['faixas'][fk] = bucket['faixas'].get(fk, 0) + 1
+        else:
+            # Sem sit: trata pago se não houver atraso
+            if (row.get('nr_dias_atraso') or 0) <= 0 and not (row.get('faixa') or '').strip():
+                bucket['fatura_paga'] += 1
+            else:
+                fk = _normalizar_faixa_nio(row.get('faixa') or '', row.get('nr_dias_atraso') or 0)
+                bucket['faixas'][fk] = bucket['faixas'].get(fk, 0) + 1
+
+    # Ordena e limita aos N meses mais recentes
+    meses_ord = sorted(por_mes.keys())[-n_meses:]
+    colunas = []
+    for chave in meses_ord:
+        b = por_mes[chave]
+        abertas = sum(b['faixas'].values())
+        total = b['total_fatura']
+        pct = round((abertas / total * 100), 2) if total else 0.0
+        colunas.append({
+            'mes_fatura': b['mes_fatura'],
+            'mes': b['mes'],
+            'label': b['label'],
+            'fatura_paga': b['fatura_paga'],
+            'total_fatura': total,
+            'pct_aberto': pct,
+            'abertas': abertas,
+            'faixas': b['faixas'],
+        })
+
+    linhas = [
+        {'chave': 'mes_fatura', 'label': 'MÊS FATURA', 'tipo': 'header'},
+        {'chave': 'fatura_paga', 'label': 'FATURA PAGA', 'tipo': 'metric'},
+        {'chave': 'total_fatura', 'label': 'TOTAL FATURA', 'tipo': 'metric'},
+        {'chave': 'pct_aberto', 'label': '% ABERTO', 'tipo': 'pct'},
+    ]
+    for fk, label in FAIXAS_NIO_ORDEM:
+        linhas.append({'chave': fk, 'label': label, 'tipo': 'faixa'})
+
+    return {
+        'indicador': ind,
+        'colunas': colunas,
+        'linhas': linhas,
+        'faixas_ordem': [{'chave': k, 'label': lbl} for k, lbl in FAIXAS_NIO_ORDEM],
+        'fonte': 'ImportacaoFPD (planilha operadora)',
+    }
+
+
 def listar_faltam_no_crm(
     *,
     indicador: Optional[str] = None,

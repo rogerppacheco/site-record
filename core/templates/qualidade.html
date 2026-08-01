@@ -97,6 +97,41 @@
 }
 .qualidade-filas .btn-check:checked + .btn .badge { background: rgba(255,255,255,.25); color: #fff; }
 .qualidade-kpi-mini { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; }
+
+/* Dashboard FPD estilo Nio */
+.nio-fpd-wrap { padding: 0.25rem 0.15rem 0.5rem; }
+.nio-fpd-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+.table-nio-fpd {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: #fff;
+    color: #222;
+}
+.table-nio-fpd th, .table-nio-fpd td {
+    border: 2px solid #c62828;
+    padding: 0.35rem 0.65rem;
+    text-align: center;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.table-nio-fpd th:first-child, .table-nio-fpd td:first-child {
+    text-align: left;
+    background: #fff;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 8.5rem;
+}
+.table-nio-fpd .nio-num { text-decoration: underline; text-underline-offset: 2px; }
+.table-nio-fpd .nio-faixa-d10_15 { background: #fff59d; }
+.table-nio-fpd .nio-faixa-d15_30 { background: #ffe082; }
+.table-nio-fpd .nio-faixa-d30_45 { background: #ef9a9a; }
+.table-nio-fpd .nio-faixa-d45_55 { background: #e57373; color: #fff; }
+.table-nio-fpd .nio-faixa-d55_60 { background: #ef5350; color: #fff; }
+.table-nio-fpd .nio-faixa-d61 { background: #b71c1c; color: #fff; }
+.table-nio-fpd .nio-row-header td { background: #fff; }
 .qualidade-page.modo-tratamento .qualidade-shell { padding: 0.3rem 0.4rem !important; }
 .qualidade-page.modo-tratamento .qualidade-lente { margin-bottom: 0.2rem !important; }
 .qualidade-page.modo-tratamento .q-titulo-bloco { display: none; }
@@ -229,6 +264,11 @@
                     <button class="nav-link active" id="tab-tratamento" type="button" onclick="setAbaPrincipal('tratamento')">
                         <i class="bi bi-headset"></i> Tratamento
                         <span class="badge rounded-pill text-bg-danger" id="badge-tratar">0</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-dash-nio" type="button" onclick="setAbaPrincipal('dash_nio')">
+                        <i class="bi bi-table"></i> Dashboard FPD
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -379,6 +419,34 @@
                         <tr><td colspan="11" class="text-center text-muted py-4">Abra esta aba após importar o FPD</td></tr>
                     </tbody>
                 </table>
+            </div>
+            <div id="wrap-dash-nio" class="qualidade-table-wrap d-none">
+                <div class="nio-fpd-wrap">
+                    <div class="nio-fpd-toolbar">
+                        <select id="filtro-indicador-nio" class="form-select form-select-sm" style="width:auto" onchange="carregarDashboardFpdNio()">
+                            <option value="FPD" selected>FPD (1ª fatura)</option>
+                            <option value="SPD">SPD (2ª fatura)</option>
+                            <option value="TPD">TPD (3ª fatura)</option>
+                        </select>
+                        <select id="filtro-meses-nio" class="form-select form-select-sm" style="width:auto" onchange="carregarDashboardFpdNio()">
+                            <option value="3">3 meses</option>
+                            <option value="6" selected>6 meses</option>
+                            <option value="8">8 meses</option>
+                            <option value="12">12 meses</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarDashboardFpdNio()">
+                            <i class="bi bi-arrow-clockwise"></i> Atualizar
+                        </button>
+                        <small class="text-muted" id="nio-fpd-fonte">Fonte: planilha FPD importada</small>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table-nio-fpd" id="table-nio-fpd">
+                            <tbody id="tbody-nio-fpd">
+                                <tr><td class="text-muted">Carregando…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
             <div class="d-flex justify-content-between align-items-center qualidade-paginacao">
                 <small class="text-muted" id="paginacao-info"></small>
@@ -555,15 +623,34 @@
     function setAbaPrincipal(aba) {
         abaPrincipal = aba;
         const pageEl = document.getElementById('qualidade-page');
-        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento' || aba === 'faltam');
+        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento' || aba === 'faltam' || aba === 'dash_nio');
         document.getElementById('tab-painel').classList.toggle('active', aba === 'painel');
         document.getElementById('tab-tratamento').classList.toggle('active', aba === 'tratamento');
         document.getElementById('tab-faltam').classList.toggle('active', aba === 'faltam');
+        const tabNio = document.getElementById('tab-dash-nio');
+        if (tabNio) tabNio.classList.toggle('active', aba === 'dash_nio');
 
         const toolbar = document.getElementById('qualidade-toolbar');
         const filasEl = document.getElementById('filas-tratamento');
         const wrapContratos = document.getElementById('wrap-tabela-contratos');
         const wrapFaltam = document.getElementById('wrap-tabela-faltam');
+        const wrapNio = document.getElementById('wrap-dash-nio');
+        const paginacao = document.querySelector('.qualidade-paginacao');
+        const reconc = document.getElementById('reconciliacao-fpd');
+
+        if (aba === 'dash_nio') {
+            if (toolbar) toolbar.style.display = 'none';
+            if (wrapContratos) wrapContratos.classList.add('d-none');
+            if (wrapFaltam) wrapFaltam.classList.add('d-none');
+            if (wrapNio) wrapNio.classList.remove('d-none');
+            if (paginacao) paginacao.classList.add('d-none');
+            if (reconc) reconc.classList.add('d-none');
+            carregarDashboardFpdNio();
+            return;
+        }
+
+        if (wrapNio) wrapNio.classList.add('d-none');
+        if (paginacao) paginacao.classList.remove('d-none');
 
         if (aba === 'faltam') {
             if (toolbar) toolbar.style.display = 'none';
@@ -1081,6 +1168,61 @@
             document.getElementById('btn-next').disabled = page >= (totalPages || 1);
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="11" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
+        }
+    };
+
+    window.carregarDashboardFpdNio = async function () {
+        const tbody = document.getElementById('tbody-nio-fpd');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td class="text-muted">Carregando…</td></tr>';
+        const indicador = (document.getElementById('filtro-indicador-nio') || {}).value || 'FPD';
+        const meses = (document.getElementById('filtro-meses-nio') || {}).value || '6';
+        const params = new URLSearchParams({ indicador, meses });
+        try {
+            const r = await fetch(`${API}/api/qualidade/dashboard-fpd-nio/?${params}`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao carregar dashboard FPD');
+            const cols = data.colunas || [];
+            const fonte = document.getElementById('nio-fpd-fonte');
+            if (fonte) {
+                fonte.textContent = `${data.fonte || 'Planilha FPD'} · ${indicador} · ${cols.length} mês(es)`;
+            }
+            if (!cols.length) {
+                tbody.innerHTML = '<tr><td class="text-muted">Sem dados importados. Importe a planilha FPD.</td></tr>';
+                return;
+            }
+
+            const fmtPct = (v) => {
+                const n = Number(v || 0);
+                return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+            };
+            const cell = (val, cls = '') =>
+                `<td class="${cls}"><span class="nio-num">${escapeHtml(String(val))}</span></td>`;
+
+            let html = '';
+            // MÊS FATURA
+            html += '<tr class="nio-row-header"><td>MÊS FATURA</td>' +
+                cols.map(c => cell(c.mes_fatura)).join('') + '</tr>';
+            // FATURA PAGA
+            html += '<tr><td>FATURA PAGA</td>' +
+                cols.map(c => cell(c.fatura_paga)).join('') + '</tr>';
+            // TOTAL
+            html += '<tr><td>TOTAL FATURA</td>' +
+                cols.map(c => cell(c.total_fatura)).join('') + '</tr>';
+            // % ABERTO
+            html += '<tr><td>% ABERTO</td>' +
+                cols.map(c => cell(fmtPct(c.pct_aberto))).join('') + '</tr>';
+            // Faixas
+            (data.faixas_ordem || []).forEach(fx => {
+                html += `<tr class="nio-faixa-${fx.chave}"><td>${escapeHtml(fx.label)}</td>` +
+                    cols.map(c => {
+                        const v = (c.faixas && c.faixas[fx.chave]) || 0;
+                        return cell(v, `nio-faixa-${fx.chave}`);
+                    }).join('') + '</tr>';
+            });
+            tbody.innerHTML = html;
+        } catch (e) {
+            tbody.innerHTML = `<tr><td class="text-danger">${escapeHtml(e.message)}</td></tr>`;
         }
     };
 
