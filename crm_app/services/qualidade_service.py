@@ -33,6 +33,16 @@ from crm_app.whatsapp_service import WhatsAppService
 
 logger = logging.getLogger(__name__)
 
+# PAGO + OUTROS (Cancelada/Zerada/FECHADA): fechadas na visão FPD — entram em "Pagas"
+# sem alterar o status exibido (mantém OUTROS para rastrear cancelamento).
+STATUS_FATURA_FECHADA: frozenset[str] = frozenset({'PAGO', 'OUTROS'})
+
+
+def _fatura_esta_fechada(status: Optional[str]) -> bool:
+    """True se a fatura conta como paga/fechada operacionalmente."""
+    return (status or '').upper() in STATUS_FATURA_FECHADA
+
+
 # ---------------------------------------------------------------------------
 # HistoricoEnvioQualidade (quando existir no models.py):
 #   contrato = FK(ContratoM10, related_name='historico_envios_qualidade')
@@ -158,7 +168,11 @@ def _recalcular_totais_safra(safra_str: str) -> None:
         data_instalacao__lt=data_fim,
     ).annotate(
         total_faturas=Count('faturas', distinct=True),
-        faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
+        faturas_pagas=Count(
+            'faturas',
+            filter=Q(faturas__status__in=STATUS_FATURA_FECHADA),
+            distinct=True,
+        ),
     )
     elegiveis = 0
     for c in contratos_safra:
@@ -188,7 +202,7 @@ def _contrato_elegivel_dinamico(contrato: ContratoM10) -> bool:
     if total_f is None:
         total_f = contrato.faturas.count()
     if pagas is None:
-        pagas = contrato.faturas.filter(status='PAGO').count()
+        pagas = contrato.faturas.filter(status__in=STATUS_FATURA_FECHADA).count()
     if total_f == 0 and contrato.status_fatura_fpd and str(contrato.status_fatura_fpd).lower().startswith('paga'):
         total_f, pagas = 1, 1
     return (
@@ -263,8 +277,8 @@ def listar_periodos(lente: str) -> list[dict[str, Any]]:
             .values('mes_ref')
             .annotate(
                 total=Count('id'),
-                pagas=Count('id', filter=Q(status='PAGO')),
-                abertas=Count('id', filter=~Q(status='PAGO')),
+                pagas=Count('id', filter=Q(status__in=STATUS_FATURA_FECHADA)),
+                abertas=Count('id', filter=~Q(status__in=STATUS_FATURA_FECHADA)),
             )
         )
         for row in qs:
@@ -373,8 +387,9 @@ def _q_fatura1_paga() -> Q:
     """1ª fatura fechada/paga na visão FPD (PAGO + OUTROS/Cancelada).
 
     Espelha a linha FATURA PAGA / DS_SIT_FATURA=FECHADA da planilha.
+    Mantém status OUTROS no registro; só a fila/contagem trata como paga.
     """
-    return Q(faturas__numero_fatura=1) & Q(faturas__status__in=['PAGO', 'OUTROS'])
+    return Q(faturas__numero_fatura=1) & Q(faturas__status__in=STATUS_FATURA_FECHADA)
 
 
 def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet[ContratoM10]:
@@ -412,7 +427,7 @@ def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, int
 def _fatura_envio_id(contrato: ContratoM10, faturas_por_contrato: dict[int, list[FaturaM10]]) -> Optional[int]:
     """Fatura em aberto mais antiga (menor número); fallback fatura 1."""
     faturas = faturas_por_contrato.get(contrato.id, [])
-    abertas = [f for f in faturas if f.status != 'PAGO']
+    abertas = [f for f in faturas if not _fatura_esta_fechada(f.status)]
     if abertas:
         abertas.sort(key=lambda f: (f.numero_fatura or 99, f.data_vencimento or date.max))
         return abertas[0].id
@@ -520,7 +535,11 @@ def dashboard_qualidade(
         .select_related('vendedor', 'venda', 'venda__cliente', 'status_tratamento')
         .annotate(
             total_faturas=Count('faturas', distinct=True),
-            faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
+            faturas_pagas=Count(
+                'faturas',
+                filter=Q(faturas__status__in=STATUS_FATURA_FECHADA),
+                distinct=True,
+            ),
         )
         .order_by('-data_instalacao', 'id')
     )
@@ -557,7 +576,7 @@ def dashboard_qualidade(
         f1_ids = [faturas1_map[c.id].id for c in contratos_list if c.id in faturas1_map]
         f1_qs = FaturaM10.objects.filter(id__in=f1_ids) if f1_ids else FaturaM10.objects.none()
         total_f1 = f1_qs.count()
-        pagas_f1 = f1_qs.filter(status='PAGO').count()
+        pagas_f1 = f1_qs.filter(status__in=STATUS_FATURA_FECHADA).count()
         abertas_f1 = total_f1 - pagas_f1
         taxa = round((abertas_f1 / total_f1 * 100) if total_f1 > 0 else 0, 1)
         kpis: dict[str, Any] = {
@@ -1516,7 +1535,7 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
     faturas: list[dict[str, Any]] = []
     pagas = 0
     for f in faturas_qs:
-        if f.status == 'PAGO':
+        if _fatura_esta_fechada(f.status):
             pagas += 1
         tem_pdf = bool(f.arquivo_pdf) or bool(f.pdf_url)
         indicador = NUMERO_FATURA_PARA_INDICADOR.get(f.numero_fatura, '')
@@ -1530,6 +1549,7 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
             'conferencia_fpd': f.conferencia_fpd or '',
             'status_informado_tratamento': f.status_informado_tratamento or '',
             'ds_status_fatura_fpd': f.ds_status_fatura_fpd or '',
+            'fechada': _fatura_esta_fechada(f.status),
             'data_vencimento': f.data_vencimento.isoformat() if f.data_vencimento else '',
             'data_pagamento': f.data_pagamento.isoformat() if f.data_pagamento else '',
             'data_promessa_pagamento': (

@@ -185,6 +185,7 @@
 .badge-orfao { background: #6c757d; font-size: 0.65rem; }
 .badge-atrasado { background: #dc3545; font-size: 0.65rem; }
 .badge-aberto { background: #fd7e14; font-size: 0.65rem; }
+.badge-outros { background: #6c757d; font-size: 0.65rem; }
 .badge-conf-aguardando { background: #0dcaf0; color: #033; font-size: 0.62rem; }
 .badge-conf-confirmado { background: #198754; font-size: 0.62rem; }
 .badge-conf-divergente { background: #dc3545; font-size: 0.62rem; }
@@ -878,7 +879,11 @@
         const s = (status || '').toUpperCase();
         if (s === 'ATRASADO') return `<span class="badge badge-atrasado">${escapeHtml(display || 'Atrasado')}</span>`;
         if (s === 'PAGO') return `<span class="badge text-bg-success">${escapeHtml(display || 'Pago')}</span>`;
-        if (s === 'NAO_PAGO' || s === 'AGUARDANDO' || s === 'OUTROS') {
+        // OUTROS (Cancelada etc.) mantém o rótulo, mas conta como paga/fechada na fila
+        if (s === 'OUTROS') {
+            return `<span class="badge badge-outros" title="Cancelada/zerada — considerada paga (fechada) na fila">${escapeHtml(display || 'Outros')}</span>`;
+        }
+        if (s === 'NAO_PAGO' || s === 'AGUARDANDO') {
             return `<span class="badge badge-aberto">${escapeHtml(display || s)}</span>`;
         }
         return escapeHtml(display || status || '-');

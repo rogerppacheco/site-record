@@ -54,9 +54,9 @@ def aplicar_status_fpd_com_conferencia(
     )
 
     if aguardando_tratamento and informado:
-        # Compara "pago vs não pago" de forma prática para o BO
-        tratado_pago = informado == 'PAGO'
-        fpd_pago = status_fpd_n == 'PAGO'
+        # Compara fechado (PAGO/OUTROS) vs em aberto — cancelada conta como paga
+        tratado_pago = informado in ('PAGO', 'OUTROS')
+        fpd_pago = status_fpd_n in ('PAGO', 'OUTROS')
         if tratado_pago == fpd_pago:
             out['status'] = status_fpd_n
             out['status_origem'] = ORIGEM_FPD
