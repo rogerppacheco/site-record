@@ -339,28 +339,34 @@ def _aplicar_filtros_contratos(
 
 
 def _q_fatura1_atrasada(hoje: date) -> Q:
-    """1ª fatura em débito vencido (atrasado ou não pago com vencimento passado)."""
+    """1ª fatura em débito vencido (ABERTA na planilha FPD).
+
+    OUTROS (ex.: Cancelada/FECHADA) não entra aqui — vai para Pagas/fechadas.
+    """
     return Q(faturas__numero_fatura=1) & (
         Q(faturas__status='ATRASADO')
         | (
-            Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO', 'OUTROS'])
+            Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO'])
             & Q(faturas__data_vencimento__lt=hoje)
         )
     )
 
 
 def _q_fatura1_em_aberto(hoje: date) -> Q:
-    """1ª fatura em aberto ainda no prazo (não paga e vencimento >= hoje)."""
+    """1ª fatura em aberto ainda no prazo (ABERTA na planilha, vencimento >= hoje)."""
     return (
         Q(faturas__numero_fatura=1)
-        & Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO', 'OUTROS'])
+        & Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO'])
         & Q(faturas__data_vencimento__gte=hoje)
     )
 
 
 def _q_fatura1_paga() -> Q:
-    """1ª fatura paga (espelha FATURA PAGA / FECHADA paga da planilha FPD)."""
-    return Q(faturas__numero_fatura=1) & Q(faturas__status='PAGO')
+    """1ª fatura fechada/paga na visão FPD (PAGO + OUTROS/Cancelada).
+
+    Espelha a linha FATURA PAGA / DS_SIT_FATURA=FECHADA da planilha.
+    """
+    return Q(faturas__numero_fatura=1) & Q(faturas__status__in=['PAGO', 'OUTROS'])
 
 
 def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet[ContratoM10]:
@@ -483,11 +489,14 @@ def dashboard_qualidade(
             data_instalacao__lt=data_fim,
         )
     else:
+        # Lente vencimento FPD: só contratos com 1ª fatura sincronizada da planilha
+        # (evita inflar o mês com vencimento calculado instalação+25 sem FPD).
         contrato_ids = (
             FaturaM10.objects.filter(
                 numero_fatura=1,
                 data_vencimento__gte=data_inicio,
                 data_vencimento__lt=data_fim,
+                data_importacao_fpd__isnull=False,
             )
             .values_list('contrato_id', flat=True)
             .distinct()

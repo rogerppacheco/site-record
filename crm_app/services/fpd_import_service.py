@@ -230,78 +230,47 @@ def sincronizar_vencimentos_fpd_nas_faturas() -> dict[str, int]:
     A planilha FPD/SPD/TPD é a fonte da verdade. Útil após imports em que o signal
     de ContratoM10 sobrescreveu o vencimento com instalação+25.
     """
-    from crm_app.models import FaturaM10, ImportacaoFPD
+    from django.db import connection
 
-    # Última importação por (contrato, número da fatura)
-    vistos: set[tuple[int, int]] = set()
-    atualizados = 0
-    sem_fatura = 0
-    iguais = 0
-
-    qs = (
-        ImportacaoFPD.objects.filter(
-            match_status=MATCH_MATCHED,
-            contrato_m10_id__isnull=False,
-            dt_venc_orig__isnull=False,
-        )
-        .order_by('-atualizada_em')
-        .only('contrato_m10_id', 'numero_fatura_m10', 'dt_venc_orig', 'indicador')
+    sql_faturas = """
+    WITH latest AS (
+      SELECT DISTINCT ON (contrato_m10_id, COALESCE(numero_fatura_m10, 1))
+        contrato_m10_id,
+        COALESCE(numero_fatura_m10, 1) AS numero_fatura,
+        dt_venc_orig
+      FROM crm_app_importacaofpd
+      WHERE match_status = 'MATCHED'
+        AND contrato_m10_id IS NOT NULL
+        AND dt_venc_orig IS NOT NULL
+      ORDER BY contrato_m10_id, COALESCE(numero_fatura_m10, 1), atualizada_em DESC
     )
-
-    batch_updates: list = []
-    for imp in qs.iterator(chunk_size=2000):
-        num = int(imp.numero_fatura_m10 or INDICADOR_PARA_NUMERO_FATURA.get(imp.indicador or 'FPD', 1))
-        chave = (imp.contrato_m10_id, num)
-        if chave in vistos:
-            continue
-        vistos.add(chave)
-
-        fatura = FaturaM10.objects.filter(
-            contrato_id=imp.contrato_m10_id, numero_fatura=num
-        ).first()
-        if not fatura:
-            sem_fatura += 1
-            continue
-        if fatura.data_vencimento == imp.dt_venc_orig:
-            iguais += 1
-            continue
-        fatura.data_vencimento = imp.dt_venc_orig
-        batch_updates.append(fatura)
-        if len(batch_updates) >= 500:
-            FaturaM10.objects.bulk_update(batch_updates, ['data_vencimento'], batch_size=500)
-            atualizados += len(batch_updates)
-            batch_updates = []
-
-    if batch_updates:
-        FaturaM10.objects.bulk_update(batch_updates, ['data_vencimento'], batch_size=500)
-        atualizados += len(batch_updates)
-
-    # Espelha vencimento FPD no contrato a partir da fatura 1
-    from crm_app.models import ContratoM10
-
-    contratos_upd = []
-    f1s = FaturaM10.objects.filter(
-        numero_fatura=1,
-        data_importacao_fpd__isnull=False,
-    ).select_related('contrato')
-    for f1 in f1s.iterator(chunk_size=2000):
-        c = f1.contrato
-        if c.data_vencimento_fpd != f1.data_vencimento:
-            c.data_vencimento_fpd = f1.data_vencimento
-            contratos_upd.append(c)
-            if len(contratos_upd) >= 500:
-                ContratoM10.objects.bulk_update(
-                    contratos_upd, ['data_vencimento_fpd'], batch_size=500
-                )
-                contratos_upd = []
-    if contratos_upd:
-        ContratoM10.objects.bulk_update(contratos_upd, ['data_vencimento_fpd'], batch_size=500)
+    UPDATE crm_app_faturam10 f
+    SET data_vencimento = l.dt_venc_orig,
+        atualizado_em = NOW()
+    FROM latest l
+    WHERE f.contrato_id = l.contrato_m10_id
+      AND f.numero_fatura = l.numero_fatura
+      AND f.data_vencimento IS DISTINCT FROM l.dt_venc_orig
+    """
+    sql_contratos = """
+    UPDATE crm_app_contratom10 c
+    SET data_vencimento_fpd = f.data_vencimento,
+        atualizado_em = NOW()
+    FROM crm_app_faturam10 f
+    WHERE f.contrato_id = c.id
+      AND f.numero_fatura = 1
+      AND f.data_importacao_fpd IS NOT NULL
+      AND c.data_vencimento_fpd IS DISTINCT FROM f.data_vencimento
+    """
+    with connection.cursor() as cur:
+        cur.execute(sql_faturas)
+        faturas = cur.rowcount
+        cur.execute(sql_contratos)
+        contratos = cur.rowcount
 
     resultado = {
-        'contratos_faturas_vistos': len(vistos),
-        'vencimentos_corrigidos': atualizados,
-        'ja_iguais': iguais,
-        'sem_fatura': sem_fatura,
+        'vencimentos_corrigidos': faturas,
+        'contratos_fpd_atualizados': contratos,
     }
     logger.info('[FPD] sincronizar_vencimentos_fpd_nas_faturas %s', resultado)
     return resultado
