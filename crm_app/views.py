@@ -2193,7 +2193,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             if not resumo:
                 return Response({"detail": "Não foi possível montar o resumo da venda."}, status=status.HTTP_400_BAD_REQUEST)
 
-            svc = WhatsAppService()
+            svc = WhatsAppService.para_cliente()
             telefone_fmt = formatar_telefone_br(telefone)
 
             existe = svc.verificar_numero_existe(telefone)
@@ -14912,7 +14912,7 @@ class EnviarLembreteInstalacaoView(APIView):
 
         enviados = 0
         erros = []
-        svc = WhatsAppService()
+        svc = WhatsAppService.para_cliente()
 
         for i, venda in enumerate(vendas):
             if i > 0:
@@ -15078,7 +15078,7 @@ class EnviarBoasVindasView(APIView):
 
         enviados = 0
         erros = []
-        svc = WhatsAppService()
+        svc = WhatsAppService.para_cliente()
 
         for i, venda in enumerate(vendas):
             if i > 0:
@@ -15343,7 +15343,7 @@ class BoasVindasEnviarGestaoView(APIView):
 
         enviados = 0
         erros = []
-        svc = WhatsAppService()
+        svc = WhatsAppService.para_cliente()
 
         for i, venda in enumerate(vendas):
             if i > 0:

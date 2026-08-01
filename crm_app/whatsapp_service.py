@@ -3,7 +3,11 @@ import base64
 import io
 from datetime import datetime
 
-from crm_app.services.whatsapp.factory import get_whatsapp_provider
+from crm_app.services.whatsapp.factory import (
+    PURPOSE_CLIENTE,
+    PURPOSE_INTERNO,
+    get_whatsapp_provider,
+)
 from crm_app.services.whatsapp.phone_utils import destino_zapi, formatar_telefone_br
 
 try:
@@ -19,8 +23,22 @@ logger = logging.getLogger(__name__)
 class WhatsAppService:
     """Facade: variacao de texto, geracao de imagens e delegacao ao provider."""
 
-    def __init__(self) -> None:
-        self._provider = get_whatsapp_provider()
+    def __init__(self, purpose: str = PURPOSE_INTERNO) -> None:
+        """
+        purpose=interno → Número A (bot/equipe).
+        purpose=cliente → Número B (oficial / cliente final).
+        """
+        self.purpose = (
+            PURPOSE_CLIENTE
+            if (purpose or "").strip().lower() == PURPOSE_CLIENTE
+            else PURPOSE_INTERNO
+        )
+        self._provider = get_whatsapp_provider(purpose=self.purpose)
+
+    @classmethod
+    def para_cliente(cls) -> "WhatsAppService":
+        """Atalho para envios a cliente final (Número B)."""
+        return cls(purpose=PURPOSE_CLIENTE)
 
     @property
     def instance_id(self) -> str:

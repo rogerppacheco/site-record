@@ -7638,7 +7638,7 @@ def processar_webhook_whatsapp(data, request=None):
             pend_cliente['event'].set()
             try:
                 msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
-                WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+                WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg_cliente)
             except Exception:
                 pass
             return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
@@ -7683,7 +7683,7 @@ def processar_webhook_whatsapp(data, request=None):
                                 f"[Webhook] [Auditoria] Protocolo confirmação venda {venda.id}: {proto_envio}"
                             )
                     msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
-                    WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg_cliente)
                 except Exception:
                     pass
                 return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
@@ -7701,7 +7701,7 @@ def processar_webhook_whatsapp(data, request=None):
         ).exists()
         if pendente_auditoria:
             try:
-                WhatsAppService().enviar_mensagem_texto(
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado,
                     "Para confirmar o resumo do plano, responda *SIM* ou *CONFIRMAR*."
                 )
@@ -7737,7 +7737,7 @@ def processar_webhook_whatsapp(data, request=None):
             if mensagem_limpa in ['SIM', 'S', 'CONFIRMAR', 'CONFIRMO', 'OK', 'CERTO', 'PODE SER', 'POSSO']:
                 msg = f"Confirmação registrada!\nSua instalação Nio Fibra está confirmada para hoje, das {horario_texto}.\nNosso técnico entrará em contato por ligação e WhatsApp quando estiver a caminho. Obrigado por escolher a Nio Fibra."
                 try:
-                    WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
                 except Exception:
                     pass
                 lembrete.respondido_em = agora
@@ -7750,7 +7750,7 @@ def processar_webhook_whatsapp(data, request=None):
             if mensagem_limpa == 'SUPORTE' or mensagem_limpa in ['NAO', 'NÃO', 'NAO QUERO', 'NÃO QUERO', 'CANCELAR', 'CANCELAR INSTALACAO', 'DESISTIR']:
                 msg = "Em breve um especialista irá falar contigo"
                 try:
-                    WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
                 except Exception:
                     pass
                 lembrete.respondido_em = agora
@@ -7777,7 +7777,7 @@ def processar_webhook_whatsapp(data, request=None):
             if not msg:
                 msg = "Em breve um especialista irá falar contigo"
             try:
-                WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
+                WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
             except Exception:
                 pass
             lembrete.respondido_em = agora
@@ -7840,7 +7840,9 @@ def processar_webhook_whatsapp(data, request=None):
                             telefone_formatado_usuario, texto_resposta, origem="BOAS_VINDAS"
                         )
                         if resp_bv:
-                            WhatsAppService().enviar_mensagem_texto(telefone_formatado, resp_bv)
+                            WhatsAppService.para_cliente().enviar_mensagem_texto(
+                                telefone_formatado, resp_bv
+                            )
                 except Exception as e_bv_ia:
                     logger.warning("[Webhook] Resposta IA cliente (boas-vindas): %s", e_bv_ia)
             return {'status': 'ok', 'mensagem': 'Resposta boas-vindas registrada'}
@@ -7881,7 +7883,7 @@ def processar_webhook_whatsapp(data, request=None):
         pend_cliente['event'].set()
         try:
             msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
-            WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+            WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg_cliente)
         except Exception:
             pass
         return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
@@ -7921,7 +7923,9 @@ def processar_webhook_whatsapp(data, request=None):
                     logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (celular={k}, sessao_id={pend.sessao_id})")
                     try:
                         msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
-                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+                        WhatsAppService.para_cliente().enviar_mensagem_texto(
+                            telefone_formatado, msg_cliente
+                        )
                     except Exception:
                         pass
                     return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
@@ -7955,7 +7959,9 @@ def processar_webhook_whatsapp(data, request=None):
                     )
                     if resposta_cliente:
                         try:
-                            WhatsAppService().enviar_mensagem_texto(telefone_formatado, resposta_cliente)
+                            WhatsAppService.para_cliente().enviar_mensagem_texto(
+                                telefone_formatado, resposta_cliente
+                            )
                         except Exception as e:
                             logger.exception(
                                 "[Webhook] Erro ao enviar resposta atendimento cliente (venda): %s", e

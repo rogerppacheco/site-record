@@ -20,31 +20,65 @@ class WhatsAtendeProvider(WhatsAppProvider):
     """
     Outbound via Bearer token da conexão (Conexões → token).
 
-    Endpoints documentados: send, linkImage, linkPDF, base64, checkNumber.
-    Botões/lista/grupos: ainda sem doc pública — retornam não suportado até
-    confirmação do suporte.
+    role=interno → Número A (bot/equipe); role=cliente → Número B (oficial).
+    Endpoints: send, linkImage, linkPDF, base64, checkNumber.
+    Botões/lista/grupos: ainda sem doc pública — retornam não suportado.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, role: str = "interno") -> None:
         self.base_url = (
             getattr(settings, "WHATSATENDE_API_URL", None)
             or os.environ.get("WHATSATENDE_API_URL")
             or DEFAULT_API_URL
         ).rstrip("/")
-        self.token = (
-            getattr(settings, "WHATSATENDE_TOKEN", None)
-            or os.environ.get("WHATSATENDE_TOKEN")
-            or ""
-        ).strip()
-        self.whatsapp_id = str(
-            getattr(settings, "WHATSATENDE_WHATSAPP_ID", None)
-            or os.environ.get("WHATSATENDE_WHATSAPP_ID")
-            or ""
-        ).strip()
+        self.role = (role or "interno").strip().lower()
+        if self.role == "cliente":
+            token_b = (
+                getattr(settings, "WHATSATENDE_TOKEN_B", None)
+                or os.environ.get("WHATSATENDE_TOKEN_B")
+                or ""
+            ).strip()
+            id_b = str(
+                getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", None)
+                or os.environ.get("WHATSATENDE_WHATSAPP_ID_B")
+                or ""
+            ).strip()
+            if token_b:
+                self.token = token_b
+                self.whatsapp_id = id_b
+            else:
+                # Evita silenciar push a cliente se B ainda não estiver no env.
+                logger.warning(
+                    "[WhatsAtende] WHATSATENDE_TOKEN_B ausente — "
+                    "usando conexão A (interno) para role=cliente"
+                )
+                self.token = (
+                    getattr(settings, "WHATSATENDE_TOKEN", None)
+                    or os.environ.get("WHATSATENDE_TOKEN")
+                    or ""
+                ).strip()
+                self.whatsapp_id = str(
+                    getattr(settings, "WHATSATENDE_WHATSAPP_ID", None)
+                    or os.environ.get("WHATSATENDE_WHATSAPP_ID")
+                    or ""
+                ).strip()
+                self.role = "interno"
+        else:
+            self.token = (
+                getattr(settings, "WHATSATENDE_TOKEN", None)
+                or os.environ.get("WHATSATENDE_TOKEN")
+                or ""
+            ).strip()
+            self.whatsapp_id = str(
+                getattr(settings, "WHATSATENDE_WHATSAPP_ID", None)
+                or os.environ.get("WHATSATENDE_WHATSAPP_ID")
+                or ""
+            ).strip()
         if not self.token:
             logger.error(
-                "WhatsAtende CRITICO: WHATSATENDE_TOKEN não configurado "
-                "(token da conexão no painel)."
+                "WhatsAtende CRITICO: token não configurado "
+                "(role=%s; painel Conexões).",
+                self.role,
             )
 
     def _headers(self) -> Dict[str, str]:
@@ -65,7 +99,13 @@ class WhatsAtendeProvider(WhatsAppProvider):
         timeout: int = 30,
     ) -> Any:
         url = f"{self.base_url}{path}"
-        logger.debug("[WhatsAtende] %s %s", method, url)
+        logger.debug(
+            "[WhatsAtende] %s %s role=%s id=%s",
+            method,
+            url,
+            getattr(self, "role", "?"),
+            self.whatsapp_id or "-",
+        )
         if not self.token:
             logger.error("[WhatsAtende] Sem token — abortando %s %s", method, path)
             return None
@@ -181,7 +221,11 @@ class WhatsAtendeProvider(WhatsAppProvider):
         if self.resposta_indica_sucesso(resp):
             mid = self._message_id(resp)
             logger.info(
-                "[WhatsAtende] Texto enviado para %s messageId=%s", numero, mid
+                "[WhatsAtende] Texto enviado role=%s id=%s para %s messageId=%s",
+                getattr(self, "role", "?"),
+                self.whatsapp_id or "-",
+                numero,
+                mid,
             )
             if isinstance(resp, dict) and mid and "messageId" not in resp:
                 resp = {**resp, "messageId": mid}

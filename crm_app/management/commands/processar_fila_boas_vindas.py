@@ -54,7 +54,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"  - Venda #{f.venda_id} agendado para {f.agendado_para}")
             return
 
-        svc = WhatsAppService()
+        svc = WhatsAppService.para_cliente()
         primeiro_nome = "Especialista"
         saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
         despedida = 'boa tarde!' if agora.hour >= 12 else 'bom dia!'

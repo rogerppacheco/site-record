@@ -965,7 +965,7 @@ def enviar_cobranca_whatsapp(
     )
 
     try:
-        ok, resp = WhatsAppService().enviar_mensagem_texto(telefone, mensagem, variar=False)
+        ok, resp = WhatsAppService.para_cliente().enviar_mensagem_texto(telefone, mensagem, variar=False)
     except Exception as exc:
         logger.exception('[Qualidade] Erro WhatsApp contrato=%s', contrato_id)
         _registrar_historico_envio(

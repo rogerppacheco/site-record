@@ -284,6 +284,9 @@ WHATSATENDE_API_URL = config(
 )
 WHATSATENDE_TOKEN = config('WHATSATENDE_TOKEN', default='')
 WHATSATENDE_WHATSAPP_ID = config('WHATSATENDE_WHATSAPP_ID', default='')
+# Número B (Cloud API oficial) — envios a cliente final
+WHATSATENDE_TOKEN_B = config('WHATSATENDE_TOKEN_B', default='')
+WHATSATENDE_WHATSAPP_ID_B = config('WHATSATENDE_WHATSAPP_ID_B', default='')
 # Segredo no path/query do webhook inbound (WhatsAtende não tem HMAC nativo)
 WHATSATENDE_WEBHOOK_TOKEN = config('WHATSATENDE_WEBHOOK_TOKEN', default='')
 # Outbound híbrido (Opção B): texto/mídia URL via n8n → Evolution

@@ -59,9 +59,16 @@ def _credenciais_whatsatende_ok() -> bool:
 
 
 def _credenciais_whatsatende_conexao_ok() -> bool:
-    """Token + ID da conexão — necessários para QR/status/disconnect."""
+    """Token + ID da conexão A — necessários para QR/status/disconnect."""
     return _credenciais_whatsatende_ok() and bool(
         (getattr(settings, "WHATSATENDE_WHATSAPP_ID", "") or "").strip()
+    )
+
+
+def _credenciais_whatsatende_cliente_ok() -> bool:
+    """Número B (oficial) — envios a cliente final."""
+    return bool((getattr(settings, "WHATSATENDE_TOKEN_B", "") or "").strip()) and bool(
+        (getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", "") or "").strip()
     )
 
 
@@ -106,6 +113,7 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         ),
         "instanceName": getattr(settings, "EVOLUTION_INSTANCE_NAME", "site_record_zap"),
         "whatsatendeWhatsappId": getattr(settings, "WHATSATENDE_WHATSAPP_ID", "") or "",
+        "whatsatendeWhatsappIdB": getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", "") or "",
         "whatsatendeApiUrl": getattr(
             settings, "WHATSATENDE_API_URL", "https://api.app14.whatsatende.com.br"
         ),
@@ -113,6 +121,7 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         "evolutionConfigured": _credenciais_evolution_ok(),
         "whatsatendeConfigured": _credenciais_whatsatende_ok(),
         "whatsatendeConnectionConfigured": _credenciais_whatsatende_conexao_ok(),
+        "whatsatendeClienteConfigured": _credenciais_whatsatende_cliente_ok(),
         "whatsatendeWebhookTokenConfigured": bool(
             (getattr(settings, "WHATSATENDE_WEBHOOK_TOKEN", "") or "").strip()
         ),

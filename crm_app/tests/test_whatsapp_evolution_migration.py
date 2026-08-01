@@ -203,6 +203,31 @@ class TestProviderFactory(SimpleTestCase):
         clear_whatsapp_provider_cache()
         self.assertIsInstance(get_whatsapp_provider(), WhatsAtendeProvider)
 
+    @override_settings(
+        WHATSAPP_PROVIDER="whatsatende",
+        WHATSATENDE_TOKEN="tok-a",
+        WHATSATENDE_WHATSAPP_ID="196",
+        WHATSATENDE_TOKEN_B="tok-b",
+        WHATSATENDE_WHATSAPP_ID_B="194",
+    )
+    @patch(
+        "crm_app.services.whatsapp_config_service.get_active_whatsapp_provider_name",
+        return_value="whatsatende",
+    )
+    def test_factory_whatsatende_dual_ab(self, _mock_provider: object) -> None:
+        from crm_app.services.whatsapp.factory import PURPOSE_CLIENTE
+
+        clear_whatsapp_provider_cache()
+        interno = get_whatsapp_provider()
+        cliente = get_whatsapp_provider(purpose=PURPOSE_CLIENTE)
+        self.assertIsInstance(interno, WhatsAtendeProvider)
+        self.assertIsInstance(cliente, WhatsAtendeProvider)
+        self.assertEqual(interno.token, "tok-a")
+        self.assertEqual(interno.whatsapp_id, "196")
+        self.assertEqual(cliente.token, "tok-b")
+        self.assertEqual(cliente.whatsapp_id, "194")
+        self.assertIsNot(interno, cliente)
+
     @patch(
         "crm_app.services.whatsapp_config_service.get_active_whatsapp_provider_name",
         side_effect=["zapi", "evolution"],

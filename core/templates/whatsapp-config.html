@@ -202,7 +202,8 @@
             const linhas = [
                 `Credenciais Z-API no servidor: ${cfgAtual.zapiConfigured ? 'OK' : 'ausentes'}`,
                 `Evolution: ${cfgAtual.evolutionConfigured ? 'OK' : 'ausente'}`,
-                `WhatsAtende: ${cfgAtual.whatsatendeConfigured ? 'OK' : 'ausente'}${cfgAtual.whatsatendeConnectionConfigured ? ' (conexão completa)' : cfgAtual.whatsatendeConfigured ? ' (falta WHATSATENDE_WHATSAPP_ID para QR)' : ''}`,
+                `WhatsAtende A (bot): ${cfgAtual.whatsatendeConfigured ? 'OK' : 'ausente'}${cfgAtual.whatsatendeConnectionConfigured ? ' (conexão completa)' : cfgAtual.whatsatendeConfigured ? ' (falta WHATSATENDE_WHATSAPP_ID)' : ''}`,
+                `WhatsAtende B (cliente): ${cfgAtual.whatsatendeClienteConfigured ? 'OK id=' + (cfgAtual.whatsatendeWhatsappIdB || '') : 'ausente'}`,
                 `n8n outbound: ${cfgAtual.n8nConfigured ? 'OK' : 'ausente (só afeta envios no modo Evolution)'}`,
             ];
             if (cfgAtual.aviso) linhas.unshift(`<span class="text-warning">${cfgAtual.aviso}</span>`);
@@ -213,8 +214,8 @@
                 : '<span class="text-danger"><i class="bi bi-x-circle"></i> Credenciais Z-API não encontradas nas variáveis do servidor.</span>';
             document.getElementById('whatsatende-cred-status').innerHTML = cfgAtual.whatsatendeConfigured
                 ? (cfgAtual.whatsatendeConnectionConfigured
-                    ? '<span class="text-success"><i class="bi bi-check-circle"></i> Token e ID da conexão configurados.</span>'
-                    : '<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Token OK — falta WHATSATENDE_WHATSAPP_ID para QR/status.</span>')
+                    ? `<span class="text-success"><i class="bi bi-check-circle"></i> Número A (bot) OK.${cfgAtual.whatsatendeClienteConfigured ? ' Número B (cliente) OK.' : ' <strong>Falta TOKEN_B / WHATSAPP_ID_B</strong>.'}</span>`
+                    : '<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Token A OK — falta WHATSATENDE_WHATSAPP_ID para QR/status.</span>')
                 : '<span class="text-danger"><i class="bi bi-x-circle"></i> WHATSATENDE_TOKEN ausente no servidor.</span>';
             if (cfgAtual.whatsatendeApiUrl) document.getElementById('wa-atende-api-url').textContent = cfgAtual.whatsatendeApiUrl;
             if (cfgAtual.whatsatendeWhatsappId) document.getElementById('wa-atende-id').textContent = cfgAtual.whatsatendeWhatsappId;

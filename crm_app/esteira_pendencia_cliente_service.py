@@ -155,7 +155,7 @@ def _enviar_whatsapp_pendencia_cliente(telefone: str, venda, usuario) -> tuple[b
     """
     from crm_app.whatsapp_service import WhatsAppService
 
-    svc = WhatsAppService()
+    svc = WhatsAppService.para_cliente()
     botoes = montar_botoes_pendencia_cliente(venda)
     if botoes:
         mensagem_btn = montar_mensagem_reagendamento_pendencia_cliente(
