@@ -192,6 +192,15 @@
 .link-faturas { cursor: pointer; color: var(--accent-color); text-decoration: underline; font-weight: 600; }
 .faturas-table input, .faturas-table select { font-size: 0.8rem; }
 .faturas-table .col-num { width: 36px; }
+.faturas-table .col-ind { width: 52px; min-width: 52px; text-align: center; }
+.faturas-table .badge-ind {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.faturas-table .badge-ind-fpd { background: #0d6efd; }
+.faturas-table .badge-ind-spd { background: #6f42c1; }
+.faturas-table .badge-ind-tpd { background: #fd7e14; }
 .faturas-table .col-status { width: 168px; min-width: 168px; }
 .faturas-table .fat-status {
     min-width: 148px;
@@ -572,6 +581,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th class="col-num">#</th>
+                                <th class="col-ind" title="Indicador da planilha">Ind.</th>
                                 <th class="col-status">Status</th>
                                 <th class="col-date">Vencimento</th>
                                 <th class="col-promessa">Promessa pgto</th>
@@ -1395,17 +1405,23 @@
                 ? `<button type="button" class="btn btn-sm btn-outline-success" onclick="downloadPdfFatura(${f.id})" title="Download"><i class="bi bi-download"></i></button>`
                 : '';
             const confBadge = badgeConferenciaFpd(f.conferencia_fpd);
-            const espelhoFpd = f.ds_status_fatura_fpd
-                ? `<div class="small text-muted mt-1">FPD: ${escapeHtml(f.ds_status_fatura_fpd)}</div>`
+            const ind = (f.indicador || ({ 1: 'FPD', 2: 'SPD', 3: 'TPD' }[f.numero_fatura] || '')).toUpperCase();
+            const indClass = ind === 'SPD' ? 'badge-ind-spd' : (ind === 'TPD' ? 'badge-ind-tpd' : (ind === 'FPD' ? 'badge-ind-fpd' : 'text-bg-secondary'));
+            const indBadge = ind
+                ? `<span class="badge badge-ind ${indClass}" title="Indicador planilha (${ind})">${escapeHtml(ind)}</span>`
+                : '<span class="text-muted">—</span>';
+            const espelhoPlanilha = f.ds_status_fatura_fpd
+                ? `<div class="small text-muted mt-1">${escapeHtml(ind || 'Planilha')}: ${escapeHtml(f.ds_status_fatura_fpd)}</div>`
                 : '';
             const pix = f.codigo_pix || '';
             const barras = f.codigo_barras || '';
             return `<tr data-fatura-id="${f.id}" data-numero-fatura="${f.numero_fatura}">
                 <td class="text-center fw-bold">${f.numero_fatura}</td>
+                <td class="col-ind">${indBadge}</td>
                 <td class="col-status">
                     <select class="form-select form-select-sm fat-status">${optionsStatus(f.status)}</select>
                     ${confBadge ? `<div class="mt-1">${confBadge}</div>` : ''}
-                    ${espelhoFpd}
+                    ${espelhoPlanilha}
                 </td>
                 <td><input type="date" class="form-control form-control-sm fat-venc" value="${f.data_vencimento || ''}"></td>
                 <td><input type="date" class="form-control form-control-sm fat-promessa" value="${f.data_promessa_pagamento || ''}"></td>
@@ -1432,7 +1448,7 @@
                     </label>
                 </td>
             </tr>`;
-        }).join('') || '<tr><td colspan="8" class="text-muted text-center">Sem faturas</td></tr>';
+        }).join('') || '<tr><td colspan="9" class="text-muted text-center">Sem faturas</td></tr>';
     }
 
     function formatValorInput(v) {
@@ -1444,7 +1460,7 @@
 
     window.abrirFaturas = async function (contratoId) {
         const tbody = document.getElementById('tbody-faturas');
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center">Carregando…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">Carregando…</td></tr>';
         modalFaturas.show();
         try {
             const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/faturas/`, { headers: authHeaders() });
@@ -1452,7 +1468,7 @@
             if (!r.ok) throw new Error(data.error || 'Falha ao carregar faturas');
             renderFaturasTabela(data);
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-danger">${escapeHtml(e.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="text-danger">${escapeHtml(e.message)}</td></tr>`;
         }
     };
 

@@ -18,6 +18,7 @@ from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
+from crm_app.fpd_status_mapping import NUMERO_FATURA_PARA_INDICADOR
 from crm_app.models import (
     Cliente,
     ContratoM10,
@@ -1518,9 +1519,11 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
         if f.status == 'PAGO':
             pagas += 1
         tem_pdf = bool(f.arquivo_pdf) or bool(f.pdf_url)
+        indicador = NUMERO_FATURA_PARA_INDICADOR.get(f.numero_fatura, '')
         faturas.append({
             'id': f.id,
             'numero_fatura': f.numero_fatura,
+            'indicador': indicador,
             'status': f.status,
             'status_display': f.get_status_display(),
             'status_origem': f.status_origem or '',
