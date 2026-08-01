@@ -215,6 +215,35 @@ class QualidadeOrfaosView(APIView):
         return Response({'total': len(data), 'contratos': data})
 
 
+class QualidadeFaltamNoCrmView(APIView):
+    """GET /api/qualidade/faltam-no-crm/ — linhas FPD/SPD/TPD sem match no CRM."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        apenas = (request.GET.get('apenas_abertas') or '').strip().lower() in (
+            '1', 'true', 'sim', 'yes',
+        )
+        try:
+            data = qs.listar_faltam_no_crm(
+                indicador=request.GET.get('indicador'),
+                mes=request.GET.get('mes'),
+                q=request.GET.get('q'),
+                apenas_abertas=apenas,
+                page=request.GET.get('page', 1),
+                page_size=request.GET.get('page_size', 100),
+            )
+            return Response(data)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        except Exception as e:
+            logger.exception('Erro ao listar faltam no CRM')
+            return Response({'error': str(e)}, status=500)
+
+
 class QualidadeContratoFaturasView(APIView):
     """GET/POST /api/qualidade/contratos/<id>/faturas/ — painel das 10 faturas."""
 

@@ -18,7 +18,15 @@ from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from crm_app.models import Cliente, ContratoM10, FaturaM10, SafraM10, StatusCRM, Venda
+from crm_app.models import (
+    Cliente,
+    ContratoM10,
+    FaturaM10,
+    ImportacaoFPD,
+    SafraM10,
+    StatusCRM,
+    Venda,
+)
 from crm_app.utils import is_member
 from crm_app.whatsapp_service import WhatsAppService
 
@@ -469,6 +477,10 @@ def dashboard_qualidade(
         )
         queryset = ContratoM10.objects.filter(id__in=contrato_ids)
 
+    # Órfãos ficam fora do tratamento por padrão (contam em "Faltam no CRM" / modal órfãos)
+    if filtros.get('orfao') in (None, '') and _contrato_tem_campo('orfao'):
+        queryset = queryset.filter(orfao=False)
+
     queryset = (
         _aplicar_filtros_contratos(queryset, filtros)
         .select_related('vendedor', 'venda', 'venda__cliente', 'status_tratamento')
@@ -480,6 +492,7 @@ def dashboard_qualidade(
     )
 
     filas = contagens_filas_tratamento(queryset)
+    reconciliacao = reconciliar_fpd_com_painel(mes, filas, lente=lente_norm)
     fila = (filtros.get('fila') or 'todos').strip().lower()
     if fila and fila != 'todos':
         queryset = _aplicar_filtro_fila(queryset, fila)
@@ -595,6 +608,7 @@ def dashboard_qualidade(
         'label': _label_mes(mes),
         'kpis': kpis,
         'filas': filas,
+        'reconciliacao': reconciliacao,
         'fila': fila if fila else 'todos',
         'status_tratamento_opcoes': listar_status_tratamento_qualidade(),
         'contratos': contratos_data,
@@ -603,6 +617,143 @@ def dashboard_qualidade(
         'total_pages': total_pages,
         'total': total,
         'pode_ver_valor_bonus': ver_bonus,
+    }
+
+
+def reconciliar_fpd_com_painel(
+    mes: str,
+    filas: dict[str, int],
+    *,
+    lente: str = 'vencimento',
+) -> dict[str, Any]:
+    """Compara FPD ABERTA da planilha importada com atrasados + em aberto do painel."""
+    data_inicio, data_fim = mes_range(mes)
+    painel = int(filas.get('atrasados') or 0) + int(filas.get('abertos') or 0)
+
+    qs_fpd_abertas = ImportacaoFPD.objects.filter(
+        indicador='FPD',
+        ds_sit_fatura__iexact='ABERTA',
+        dt_venc_orig__gte=data_inicio,
+        dt_venc_orig__lt=data_fim,
+    )
+    fpd_abertas = qs_fpd_abertas.count()
+    fpd_abertas_matched = qs_fpd_abertas.filter(match_status='MATCHED').count()
+    faltam_crm = ImportacaoFPD.objects.filter(
+        match_status='FALTA_CRM',
+        indicador='FPD',
+        dt_venc_orig__gte=data_inicio,
+        dt_venc_orig__lt=data_fim,
+    ).count()
+    faltam_crm_abertas = ImportacaoFPD.objects.filter(
+        match_status='FALTA_CRM',
+        indicador='FPD',
+        ds_sit_fatura__iexact='ABERTA',
+        dt_venc_orig__gte=data_inicio,
+        dt_venc_orig__lt=data_fim,
+    ).count()
+
+    return {
+        'mes': mes,
+        'lente': lente,
+        'fpd_abertas_planilha': fpd_abertas,
+        'fpd_abertas_vinculadas': fpd_abertas_matched,
+        'painel_atrasados_abertos': painel,
+        'diferenca': fpd_abertas_matched - painel,
+        'faltam_crm_fpd': faltam_crm,
+        'faltam_crm_fpd_abertas': faltam_crm_abertas,
+        'bate': fpd_abertas_matched == painel,
+    }
+
+
+def listar_faltam_no_crm(
+    *,
+    indicador: Optional[str] = None,
+    mes: Optional[str] = None,
+    q: Optional[str] = None,
+    apenas_abertas: bool = False,
+    page: int = 1,
+    page_size: int = 100,
+) -> dict[str, Any]:
+    """Linhas da planilha FPD/SPD/TPD sem ContratoM10/Venda no CRM."""
+    qs = ImportacaoFPD.objects.filter(match_status='FALTA_CRM').order_by(
+        '-atualizada_em', 'nr_ordem'
+    )
+
+    if indicador:
+        ind = str(indicador).strip().upper()
+        if ind in ('FPD', 'SPD', 'TPD'):
+            qs = qs.filter(indicador=ind)
+
+    if mes:
+        data_inicio, data_fim = mes_range(mes)
+        qs = qs.filter(dt_venc_orig__gte=data_inicio, dt_venc_orig__lt=data_fim)
+
+    if apenas_abertas:
+        qs = qs.filter(ds_sit_fatura__iexact='ABERTA')
+
+    if q:
+        q_clean = str(q).strip()
+        qs = qs.filter(
+            Q(nr_ordem__icontains=q_clean)
+            | Q(id_contrato__icontains=q_clean)
+            | Q(nr_fatura__icontains=q_clean)
+            | Q(cd_vendedor_original__icontains=q_clean)
+            | Q(municipio__icontains=q_clean)
+        )
+
+    total = qs.count()
+    page = max(1, int(page or 1))
+    page_size = max(1, min(250, int(page_size or 100)))
+    start = (page - 1) * page_size
+    end = start + page_size
+    rows = list(qs[start:end])
+
+    itens = []
+    for r in rows:
+        itens.append({
+            'id': r.id,
+            'nr_ordem': r.nr_ordem,
+            'indicador': r.indicador,
+            'numero_fatura_m10': r.numero_fatura_m10,
+            'id_contrato': r.id_contrato,
+            'nr_fatura': r.nr_fatura,
+            'ds_status_fatura': r.ds_status_fatura,
+            'ds_sit_fatura': r.ds_sit_fatura,
+            'faixa': r.faixa,
+            'nr_dias_atraso': r.nr_dias_atraso,
+            'dt_venc_orig': r.dt_venc_orig.isoformat() if r.dt_venc_orig else None,
+            'dt_pagamento': r.dt_pagamento.isoformat() if r.dt_pagamento else None,
+            'vl_fatura': str(r.vl_fatura) if r.vl_fatura is not None else '0',
+            'municipio': r.municipio,
+            'uf': r.uf,
+            'cd_vendedor_original': r.cd_vendedor_original,
+            'nm_pdv': r.nm_pdv,
+            'nm_gc': r.nm_gc,
+            'atualizada_em': r.atualizada_em.isoformat() if r.atualizada_em else None,
+            'dica_match': (
+                'Buscar venda pelo nr_ordem (O.S.) no CRM / OSAB; '
+                'confirmar se a venda está INSTALADA e se a O.S. está preenchida.'
+            ),
+        })
+
+    base_totais = ImportacaoFPD.objects.filter(match_status='FALTA_CRM')
+    if mes:
+        data_inicio, data_fim = mes_range(mes)
+        base_totais = base_totais.filter(
+            dt_venc_orig__gte=data_inicio, dt_venc_orig__lt=data_fim
+        )
+    totais_indicador = {
+        row['indicador']: row['c']
+        for row in base_totais.values('indicador').annotate(c=Count('id'))
+    }
+
+    return {
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': (total + page_size - 1) // page_size if total else 0,
+        'totais_indicador': totais_indicador,
+        'itens': itens,
     }
 
 

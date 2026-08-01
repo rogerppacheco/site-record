@@ -231,6 +231,12 @@
                         <span class="badge rounded-pill text-bg-danger" id="badge-tratar">0</span>
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-faltam" type="button" onclick="setAbaPrincipal('faltam')">
+                        <i class="bi bi-exclamation-triangle"></i> Faltam no CRM
+                        <span class="badge rounded-pill text-bg-warning" id="badge-faltam">0</span>
+                    </button>
+                </li>
             </ul>
             <div class="qualidade-lente btn-group" role="group" aria-label="Lente">
                 <button type="button" class="btn btn-primary" id="btn-lente-vencimento" onclick="setLente('vencimento')" title="Vencimento 1ª fatura">
@@ -249,7 +255,11 @@
                 <button class="btn btn-outline-dark btn-sm" onclick="carregarOrfaos()" title="Órfãos"><i class="bi bi-exclamation-diamond"></i></button>
             </div>
         </div>
-        <p class="q-sub q-painel-only mb-2">1ª fatura (FPD) e acompanhamento das 10 faturas / bônus</p>
+        <p class="q-sub q-painel-only mb-2">1ª fatura (FPD), 2ª (SPD), 3ª (TPD) e acompanhamento das 10 faturas / bônus</p>
+
+        <div id="reconciliacao-fpd" class="alert alert-light border py-2 px-3 mb-2 d-none" role="status">
+            <small id="reconciliacao-fpd-texto"></small>
+        </div>
 
         <div id="periodos-cards" class="qualidade-cards q-painel-only" aria-label="Meses"></div>
 
@@ -305,7 +315,7 @@
         </div><!-- /.qualidade-chrome -->
 
         <div class="qualidade-area-tabela">
-            <div class="qualidade-table-wrap">
+            <div id="wrap-tabela-contratos" class="qualidade-table-wrap">
                 <table class="table table-sm table-hover table-qualidade">
                     <thead>
                         <tr>
@@ -324,6 +334,45 @@
                     </thead>
                     <tbody id="tbody-contratos">
                         <tr><td colspan="11" class="text-center text-muted py-4">Selecione um mês</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="wrap-tabela-faltam" class="qualidade-table-wrap d-none">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-2 px-1">
+                    <select id="filtro-indicador-faltam" class="form-select form-select-sm" style="width:auto" onchange="carregarFaltamNoCrm()">
+                        <option value="">Todos (FPD/SPD/TPD)</option>
+                        <option value="FPD">FPD (1ª)</option>
+                        <option value="SPD">SPD (2ª)</option>
+                        <option value="TPD">TPD (3ª)</option>
+                    </select>
+                    <div class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" id="filtro-abertas-faltam" onchange="carregarFaltamNoCrm()">
+                        <label class="form-check-label" for="filtro-abertas-faltam">Só ABERTAS</label>
+                    </div>
+                    <input type="search" id="filtro-q-faltam" class="form-control form-control-sm" style="max-width:220px"
+                           placeholder="O.S. / id contrato / vendedor"
+                           onkeydown="if(event.key==='Enter')carregarFaltamNoCrm()">
+                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarFaltamNoCrm()">Buscar</button>
+                    <small class="text-muted" id="faltam-totais"></small>
+                </div>
+                <table class="table table-sm table-hover table-qualidade">
+                    <thead>
+                        <tr>
+                            <th>O.S.</th>
+                            <th>Ind.</th>
+                            <th>ID Contrato</th>
+                            <th>NR Fatura</th>
+                            <th>Status</th>
+                            <th>Sit.</th>
+                            <th>Faixa</th>
+                            <th>Venc.</th>
+                            <th>Município</th>
+                            <th>Vendedor TT</th>
+                            <th>PDV / GC</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-faltam">
+                        <tr><td colspan="11" class="text-center text-muted py-4">Abra esta aba após importar o FPD</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -502,17 +551,32 @@
     function setAbaPrincipal(aba) {
         abaPrincipal = aba;
         const pageEl = document.getElementById('qualidade-page');
-        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento');
+        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento' || aba === 'faltam');
         document.getElementById('tab-painel').classList.toggle('active', aba === 'painel');
         document.getElementById('tab-tratamento').classList.toggle('active', aba === 'tratamento');
+        document.getElementById('tab-faltam').classList.toggle('active', aba === 'faltam');
 
         const toolbar = document.getElementById('qualidade-toolbar');
         const filasEl = document.getElementById('filas-tratamento');
+        const wrapContratos = document.getElementById('wrap-tabela-contratos');
+        const wrapFaltam = document.getElementById('wrap-tabela-faltam');
+
+        if (aba === 'faltam') {
+            if (toolbar) toolbar.style.display = 'none';
+            if (wrapContratos) wrapContratos.classList.add('d-none');
+            if (wrapFaltam) wrapFaltam.classList.remove('d-none');
+            page = 1;
+            carregarFaltamNoCrm();
+            return;
+        }
+
+        if (wrapContratos) wrapContratos.classList.remove('d-none');
+        if (wrapFaltam) wrapFaltam.classList.add('d-none');
+
         if (aba === 'tratamento') {
             if (toolbar) toolbar.style.display = '';
             if (filasEl) filasEl.style.display = '';
         } else {
-            // No Painel, toolbar de fila/mês fica oculta — cards de mês bastam
             if (toolbar) toolbar.style.display = 'none';
         }
         page = 1;
@@ -608,7 +672,11 @@
             el.classList.toggle('active', el.dataset.mes === mes);
         });
         atualizarSelectMes();
-        carregarDashboard();
+        if (abaPrincipal === 'faltam') {
+            carregarFaltamNoCrm();
+        } else {
+            carregarDashboard();
+        }
     };
 
     function atualizarContagensFilas(filas) {
@@ -620,6 +688,29 @@
         document.getElementById('cnt-abertos').textContent = abe;
         document.getElementById('cnt-todos').textContent = tod;
         document.getElementById('badge-tratar').textContent = atr + abe;
+    }
+
+    function atualizarReconciliacao(rec) {
+        const box = document.getElementById('reconciliacao-fpd');
+        const txt = document.getElementById('reconciliacao-fpd-texto');
+        if (!box || !txt || !rec) {
+            if (box) box.classList.add('d-none');
+            return;
+        }
+        const bate = !!rec.bate;
+        box.classList.remove('d-none', 'alert-light', 'alert-success', 'alert-warning');
+        box.classList.add(bate ? 'alert-success' : 'alert-warning');
+        const diff = rec.diferenca || 0;
+        txt.innerHTML = [
+            `<strong>Reconciliação FPD (${escapeHtml(rec.mes || '')}):</strong>`,
+            `planilha ABERTA vinculadas = <strong>${rec.fpd_abertas_vinculadas ?? 0}</strong>`,
+            `· painel atrasados+abertos = <strong>${rec.painel_atrasados_abertos ?? 0}</strong>`,
+            `· Δ = <strong>${diff}</strong>`,
+            `· faltam no CRM (FPD abertas) = <strong>${rec.faltam_crm_fpd_abertas ?? 0}</strong>`,
+            bate ? '· <span class="text-success">números batem</span>' : '· <span class="text-danger">não bate — ver aba Faltam no CRM</span>',
+        ].join(' ');
+        const badgeF = document.getElementById('badge-faltam');
+        if (badgeF) badgeF.textContent = String(rec.faltam_crm_fpd ?? 0);
     }
 
     function formatDataBr(iso) {
@@ -714,6 +805,7 @@
             podeVerBonus = !!data.pode_ver_valor_bonus;
             renderKpis(data.kpis || {});
             atualizarContagensFilas(data.filas);
+            atualizarReconciliacao(data.reconciliacao);
             popularFiltroStatusTratamento(data.status_tratamento_opcoes || []);
             document.getElementById('th-bonus').style.display = podeVerBonus ? '' : 'none';
             document.getElementById('kpi-bonus-wrap').style.display = podeVerBonus ? '' : 'none';
@@ -799,7 +891,11 @@
         const nova = page + delta;
         if (nova < 1 || nova > totalPages) return;
         page = nova;
-        carregarDashboard();
+        if (abaPrincipal === 'faltam') {
+            carregarFaltamNoCrm();
+        } else {
+            carregarDashboard();
+        }
     };
 
     window.abrirEnvio = function (contratoId, faturaId, canal, telefone, email, podeTratar) {
@@ -922,6 +1018,59 @@
             modalOrfaos.show();
         } catch (e) {
             alert(e.message);
+        }
+    };
+
+    window.carregarFaltamNoCrm = async function () {
+        const tbody = document.getElementById('tbody-faltam');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Carregando…</td></tr>';
+        const indicador = (document.getElementById('filtro-indicador-faltam') || {}).value || '';
+        const apenasAbertas = !!(document.getElementById('filtro-abertas-faltam') || {}).checked;
+        const q = ((document.getElementById('filtro-q-faltam') || {}).value || '').trim();
+        const params = new URLSearchParams({
+            page: String(page),
+            page_size: '150',
+        });
+        if (mesAtual) params.set('mes', mesAtual);
+        if (indicador) params.set('indicador', indicador);
+        if (apenasAbertas) params.set('apenas_abertas', '1');
+        if (q) params.set('q', q);
+        try {
+            const r = await fetch(`${API}/api/qualidade/faltam-no-crm/?${params}`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao listar faltantes');
+            totalPages = data.total_pages || 1;
+            page = data.page || 1;
+            const totais = data.totais_indicador || {};
+            const elTot = document.getElementById('faltam-totais');
+            if (elTot) {
+                elTot.textContent = `Total: ${data.total || 0} · FPD ${totais.FPD || 0} · SPD ${totais.SPD || 0} · TPD ${totais.TPD || 0}`;
+            }
+            const badgeF = document.getElementById('badge-faltam');
+            if (badgeF) badgeF.textContent = String(data.total || 0);
+            const rows = data.itens || [];
+            tbody.innerHTML = rows.length
+                ? rows.map(c => `<tr title="${escapeAttr(c.dica_match || '')}">
+                    <td><code>${escapeHtml(c.nr_ordem || '-')}</code></td>
+                    <td><span class="badge text-bg-secondary">${escapeHtml(c.indicador || '-')}</span></td>
+                    <td>${escapeHtml(c.id_contrato || '—')}</td>
+                    <td>${escapeHtml(c.nr_fatura || '—')}</td>
+                    <td>${escapeHtml(c.ds_status_fatura || '—')}</td>
+                    <td>${escapeHtml(c.ds_sit_fatura || '—')}</td>
+                    <td>${escapeHtml(c.faixa || '—')}</td>
+                    <td>${formatDataBr(c.dt_venc_orig)}</td>
+                    <td>${escapeHtml([c.municipio, c.uf].filter(Boolean).join('/') || '—')}</td>
+                    <td>${escapeHtml(c.cd_vendedor_original || '—')}</td>
+                    <td>${escapeHtml([c.nm_pdv, c.nm_gc].filter(Boolean).join(' · ') || '—')}</td>
+                </tr>`).join('')
+                : '<tr><td colspan="11" class="text-center text-muted py-4">Nenhuma O.S. faltando no CRM para este filtro</td></tr>';
+            document.getElementById('paginacao-info').textContent =
+                `Página ${page} de ${totalPages || 1} · ${data.total || 0} registro(s)`;
+            document.getElementById('btn-prev').disabled = page <= 1;
+            document.getElementById('btn-next').disabled = page >= (totalPages || 1);
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="11" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
         }
     };
 

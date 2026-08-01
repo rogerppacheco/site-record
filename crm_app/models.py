@@ -3193,34 +3193,81 @@ class ImportacaoRecompra(models.Model):
 
 
 class ImportacaoFPD(models.Model):
-    """Modelo para importação de dados FPD (Faturas Pagas/Detalhadas)"""
-    
+    """Modelo para importação de dados FPD / SPD / TPD (planilha operadora)."""
+
+    MATCH_STATUS_CHOICES = [
+        ('MATCHED', 'Vinculado ao CRM'),
+        ('FALTA_CRM', 'Falta no CRM'),
+        ('ORFAO', 'Órfão (sem CPF/venda)'),
+    ]
+    INDICADOR_CHOICES = [
+        ('FPD', '1ª fatura (FPD)'),
+        ('SPD', '2ª fatura (SPD)'),
+        ('TPD', '3ª fatura (TPD)'),
+    ]
+
     # Chaves de matching
     nr_ordem = models.CharField(max_length=100, db_index=True, help_text="Número de Ordem (O.S)")
     numero_os = models.CharField(max_length=100, null=True, blank=True, db_index=True, help_text="Alternativa NR_OS")
     id_contrato = models.CharField(max_length=100, help_text="ID_CONTRATO do arquivo FPD")
-    
+
+    # FPD / SPD / TPD
+    indicador = models.CharField(
+        max_length=3,
+        choices=INDICADOR_CHOICES,
+        default='FPD',
+        db_index=True,
+        help_text="FPD=1ª, SPD=2ª, TPD=3ª fatura",
+    )
+    numero_fatura_m10 = models.PositiveSmallIntegerField(
+        default=1,
+        db_index=True,
+        help_text="Número da fatura no M-10 (1/2/3)",
+    )
+
     # Dados da fatura
     nr_fatura = models.CharField(max_length=100, help_text="NR_FATURA do arquivo FPD")
     dt_venc_orig = models.DateField(help_text="Data de vencimento original")
     dt_pagamento = models.DateField(null=True, blank=True, help_text="Data de pagamento")
     nr_dias_atraso = models.IntegerField(default=0, help_text="Número de dias em atraso")
     ds_status_fatura = models.CharField(max_length=50, help_text="Status da fatura (PAGO, ABERTO, VENCIDO, etc)")
+    ds_sit_fatura = models.CharField(
+        max_length=20,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="ABERTA / FECHADA (planilha)",
+    )
+    faixa = models.CharField(max_length=40, blank=True, default='', help_text="Faixa de atraso da planilha")
     vl_fatura = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Valor da fatura")
-    
+
+    # Dados auxiliares para investigar "faltam no CRM"
+    municipio = models.CharField(max_length=120, blank=True, default='')
+    uf = models.CharField(max_length=2, blank=True, default='')
+    cd_vendedor_original = models.CharField(max_length=50, blank=True, default='')
+    nm_pdv = models.CharField(max_length=120, blank=True, default='')
+    nm_gc = models.CharField(max_length=120, blank=True, default='')
+    match_status = models.CharField(
+        max_length=20,
+        choices=MATCH_STATUS_CHOICES,
+        default='MATCHED',
+        db_index=True,
+        help_text="Resultado do vínculo com ContratoM10/Venda",
+    )
+
     # Vínculo com ContratoM10
     contrato_m10 = models.ForeignKey(
-        ContratoM10, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name='importacoes_fpd'
+        ContratoM10,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='importacoes_fpd',
     )
-    
+
     # Timestamps
     importada_em = models.DateTimeField(auto_now_add=True, help_text="Data da importação")
     atualizada_em = models.DateTimeField(auto_now=True, help_text="Data da última atualização")
-    
+
     class Meta:
         verbose_name = "Importação FPD"
         verbose_name_plural = "Importações FPD"
@@ -3229,10 +3276,13 @@ class ImportacaoFPD(models.Model):
             models.Index(fields=["nr_ordem"]),
             models.Index(fields=["id_contrato"]),
             models.Index(fields=["ds_status_fatura"]),
+            models.Index(fields=["indicador", "ds_sit_fatura"]),
+            models.Index(fields=["match_status", "indicador"]),
+            models.Index(fields=["nr_ordem", "indicador"]),
         ]
-    
+
     def __str__(self):
-        return f"FPD {self.nr_ordem} - Fatura {self.nr_fatura}"
+        return f"{self.indicador} {self.nr_ordem} - Fatura {self.nr_fatura}"
 
 
 class LogImportacaoFPD(models.Model):

@@ -12796,37 +12796,40 @@ class ImportarFPDView(APIView):
         })
     
     def _processar_fpd_interno(self, log_id, arquivo_bytes, arquivo_nome, user_id):
-        """Processa FPD em background thread"""
-        from .models import ImportacaoFPD, LogImportacaoFPD
+        """Processa planilha FPD/SPD/TPD em background e atualiza FaturaM10 1/2/3."""
+        from .models import ImportacaoFPD, LogImportacaoFPD, Venda
+        from crm_app.services.fpd_import_service import (
+            MATCH_FALTA_CRM,
+            MATCH_MATCHED,
+            buscar_venda_por_os,
+            chave_importacao,
+            criar_contrato_de_venda,
+            extrair_campos_linha_fpd,
+            normalizar_nr_ordem,
+            variacoes_ordem_servico,
+        )
         from django.utils import timezone
         from django.db import transaction
         from io import BytesIO
-        
-        # Recuperar log e usuário
+
         log = LogImportacaoFPD.objects.get(id=log_id)
         User = get_user_model()
         usuario = User.objects.get(id=user_id)
-        # Recuperar log e usuário
-        log = LogImportacaoFPD.objects.get(id=log_id)
-        User = get_user_model()
-        usuario = User.objects.get(id=user_id)
-        
-        inicio = timezone.now()
+
         os_nao_encontradas = []
         erros_detalhados = []
 
         try:
-            # Criar objeto BytesIO do arquivo
             arquivo_io = BytesIO(arquivo_bytes)
-            
-            # Lê arquivo Excel/CSV
-            # IMPORTANTE: Ler colunas numéricas como STRING para preservar leading zeros
+
             dtype_spec = {
-                'ID_CONTRATO': str,      # Força leitura como texto
-                'NR_FATURA': str,        # Força leitura como texto  
-                'NR_ORDEM': str,         # Força leitura como texto
+                'ID_CONTRATO': str,
+                'NR_FATURA': str,
+                'NR_ORDEM': str,
+                'nr_ordem': str,
+                'INDICADOR': str,
             }
-            
+
             if arquivo_nome.endswith('.csv'):
                 df = pd.read_csv(arquivo_io, dtype=dtype_spec)
             elif arquivo_nome.endswith('.xlsb'):
@@ -12842,80 +12845,74 @@ class ImportarFPDView(APIView):
             else:
                 df = pd.read_excel(arquivo_io, dtype=dtype_spec)
 
-            # Normalizar nomes de colunas para minúsculas E remover espaços extras
             df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
-            
-            # GAP 7: Validar presença da coluna obrigatória NR_ORDEM
+
             if 'nr_ordem' not in df.columns:
                 colunas_encontradas = ', '.join(sorted(df.columns[:15]))
                 log.status = 'ERRO'
                 log.mensagem_erro = (
                     'Coluna NR_ORDEM não encontrada no arquivo. '
                     'A planilha FPD deve ter uma coluna "NR_ORDEM" (ou "Nr Ordem"). '
-                    f'Colunas encontradas: {colunas_encontradas}' + ('...' if len(df.columns) > 15 else '')
+                    f'Colunas encontradas: {colunas_encontradas}'
+                    + ('...' if len(df.columns) > 15 else '')
                 )
                 log.finalizado_em = timezone.now()
                 log.calcular_duracao()
                 log.save()
                 return
-            
+
             log.total_linhas = len(df)
             log.save(update_fields=['total_linhas'])
             registros_nao_encontrados = 0
             registros_importacoes_fpd = 0
             registros_atualizados = 0
             registros_pulados = 0
+            registros_criados_venda = 0
+            contagem_por_indicador = {'FPD': 0, 'SPD': 0, 'TPD': 0}
             valor_total = 0
             data_importacao_agora = timezone.now()
-            
-            # Otimização: pre-carregar contratos em memória para evitar N queries
-            # Criar dicionário com múltiplas variações de chaves para melhor matching
+            hoje = timezone.localdate()
+
             contratos_dict = {}
-            # Pre-carregar faturas para evitar N+1 queries
             contratos_list = list(ContratoM10.objects.prefetch_related('faturas').all())
-            # Criar dicionário de faturas por contrato para acesso rápido
             faturas_por_contrato = {}
             for c in contratos_list:
                 if c.ordem_servico:
-                    os = str(c.ordem_servico).strip()
-                    if not os:
-                        continue
-                    # Indexar por múltiplas variações para facilitar busca
-                    os_sem_zeros = os.lstrip('0') or '0'  # Proteger contra string vazia
-                    variacoes = [
-                        os,
-                        os_sem_zeros,
-                        os.zfill(8) if len(os) <= 8 else os,  # 8 dígitos (compatível com churn)
-                        f'OS-{os}',
-                        f'OS-{os_sem_zeros}',
-                        f'OS-{os.zfill(8)}' if len(os) <= 8 else None,
-                    ]
-                    variacoes = [v for v in variacoes if v]
-                    for variacao in variacoes:
-                        if variacao and variacao not in contratos_dict:
+                    for variacao in variacoes_ordem_servico(str(c.ordem_servico).strip()):
+                        if variacao not in contratos_dict:
                             contratos_dict[variacao] = c
-                # Pre-carregar faturas do contrato em dicionário para acesso rápido
-                faturas_contrato = list(c.faturas.all())
-                faturas_por_contrato[c.id] = {f.numero_fatura: f for f in faturas_contrato}
-            
-            # Otimização: pre-carregar ImportacaoFPD em memória também
-            # Indexar apenas por nr_ordem (atualizar registro existente com mesmo nr_ordem)
+                faturas_por_contrato[c.id] = {f.numero_fatura: f for f in c.faturas.all()}
+
+            # Vendas INSTALADAS sem ContratoM10 — fallback de matching
+            vendas_dict = {}
+            vendas_qs = (
+                Venda.objects.filter(
+                    ativo=True,
+                    ordem_servico__isnull=False,
+                    status_esteira__nome__iexact='INSTALADA',
+                )
+                .exclude(ordem_servico='')
+                .select_related('cliente', 'vendedor', 'plano', 'status_esteira')
+            )
+            for venda in vendas_qs.iterator(chunk_size=2000):
+                for variacao in variacoes_ordem_servico(str(venda.ordem_servico).strip()):
+                    if variacao not in vendas_dict:
+                        vendas_dict[variacao] = venda
+
             importacoes_dict = {}
             for imp in ImportacaoFPD.objects.all().order_by('-atualizada_em'):
-                if imp.nr_ordem and imp.nr_ordem not in importacoes_dict:
-                    importacoes_dict[imp.nr_ordem] = imp
-            
-            # Listas para bulk operations (reduz queries drasticamente)
+                chave = chave_importacao(imp.nr_ordem, getattr(imp, 'indicador', None) or 'FPD')
+                if chave not in importacoes_dict:
+                    importacoes_dict[chave] = imp
+
             faturas_para_criar = []
             faturas_para_atualizar = []
             importacoes_para_criar = []
             importacoes_para_atualizar = []
-            # GAP 1+2: contratos que tiveram fatura 1 criada/atualizada (para atualizar ContratoM10 e elegibilidade)
             contratos_afetados_ids = set()
             faturas_atualizar_ids: set[int] = set()
 
             def _carregar_faturas_contrato(contrato_id: int) -> dict:
-                """Garante cache com faturas do banco (signal de órfão cria fatura 1 na hora)."""
                 cache = faturas_por_contrato.get(contrato_id)
                 if cache is None:
                     cache = {
@@ -12925,16 +12922,16 @@ class ImportarFPDView(APIView):
                     faturas_por_contrato[contrato_id] = cache
                 return cache
 
-            def _agendar_fatura1(contrato, campos: dict) -> None:
-                """Agenda create/update da fatura 1 sem duplicar (mesmo O.S ou signal)."""
+            def _agendar_fatura_n(contrato, numero_fatura: int, campos: dict) -> None:
+                """Agenda create/update da fatura N (1=FPD, 2=SPD, 3=TPD)."""
                 cache = _carregar_faturas_contrato(contrato.id)
-                fatura = cache.get(1)
+                fatura = cache.get(numero_fatura)
                 if fatura is None:
                     fatura = FaturaM10.objects.filter(
-                        contrato_id=contrato.id, numero_fatura=1
+                        contrato_id=contrato.id, numero_fatura=numero_fatura
                     ).first()
                     if fatura:
-                        cache[1] = fatura
+                        cache[numero_fatura] = fatura
 
                 if fatura is not None and getattr(fatura, 'pk', None):
                     for chave, valor in campos.items():
@@ -12942,280 +12939,155 @@ class ImportarFPDView(APIView):
                     if fatura.pk not in faturas_atualizar_ids:
                         faturas_para_atualizar.append(fatura)
                         faturas_atualizar_ids.add(fatura.pk)
-                    cache[1] = fatura
+                    cache[numero_fatura] = fatura
                 elif fatura is not None:
-                    # Já enfileirada em faturas_para_criar (O.S repetida na planilha)
                     for chave, valor in campos.items():
                         setattr(fatura, chave, valor)
                 else:
-                    nova = FaturaM10(contrato=contrato, numero_fatura=1, **campos)
+                    nova = FaturaM10(
+                        contrato=contrato, numero_fatura=numero_fatura, **campos
+                    )
                     faturas_para_criar.append(nova)
-                    cache[1] = nova
+                    cache[numero_fatura] = nova
 
-            with transaction.atomic():  # Garantir atomicidade
+            def _aplicar_importacao(nr_ordem, campos, contrato, match_status):
+                nonlocal registros_atualizados, registros_importacoes_fpd, valor_total
+                chave = chave_importacao(nr_ordem, campos['indicador'])
+                payload = {
+                    'id_contrato': campos['id_contrato'],
+                    'nr_fatura': campos['nr_fatura'],
+                    'dt_venc_orig': campos['dt_venc_date'],
+                    'dt_pagamento': campos['dt_pgto_date'],
+                    'nr_dias_atraso': campos['nr_dias_atraso'],
+                    'ds_status_fatura': campos['status_str'],
+                    'vl_fatura': campos['vl_fatura'],
+                    'contrato_m10': contrato,
+                    'indicador': campos['indicador'],
+                    'numero_fatura_m10': campos['numero_fatura'],
+                    'ds_sit_fatura': campos['ds_sit_fatura'],
+                    'faixa': campos['faixa'],
+                    'municipio': campos['municipio'],
+                    'uf': campos['uf'],
+                    'cd_vendedor_original': campos['cd_vendedor_original'],
+                    'nm_pdv': campos['nm_pdv'],
+                    'nm_gc': campos['nm_gc'],
+                    'match_status': match_status,
+                }
+                existente = importacoes_dict.get(chave)
+                if existente:
+                    for k, v in payload.items():
+                        setattr(existente, k, v)
+                    importacoes_para_atualizar.append(existente)
+                    registros_atualizados += 1
+                else:
+                    nova_imp = ImportacaoFPD(nr_ordem=nr_ordem, **payload)
+                    importacoes_para_criar.append(nova_imp)
+                    importacoes_dict[chave] = nova_imp
+                    registros_importacoes_fpd += 1
+                valor_total += campos['vl_fatura']
+
+            with transaction.atomic():
                 for idx, row in df.iterrows():
                     try:
-                        # Busca por O.S (nr_ordem - com coluna normalizada para minúsculas)
-                        nr_ordem_raw = row.get('nr_ordem', '')
-                        
-                        # Converter para string mas MANTER ZEROS à esquerda
-                        if pd.isna(nr_ordem_raw):
-                            registros_pulados += 1
-                            continue
-                        
-                        nr_ordem = str(nr_ordem_raw).strip()
-                        
-                        # Se for número, remover ".0" se existir (vem do pandas quando lê números do Excel)
-                        if nr_ordem.replace('.', '').replace('-', '').isdigit():
-                            nr_ordem = nr_ordem.split('.')[0]
-                        
-                        if not nr_ordem or nr_ordem == 'nan':
+                        nr_ordem = normalizar_nr_ordem(row.get('nr_ordem', ''))
+                        if not nr_ordem:
                             registros_pulados += 1
                             continue
 
-                        # Tenta encontrar contrato por ordem_servico com variações (lookup em memória)
-                        # Tenta múltiplas variações para melhor matching
+                        campos = extrair_campos_linha_fpd(row, hoje=hoje)
+                        contagem_por_indicador[campos['indicador']] = (
+                            contagem_por_indicador.get(campos['indicador'], 0) + 1
+                        )
+
                         contrato = None
-                        variacoes_nr_ordem = [
-                            nr_ordem,                          # Exato (como veio)
-                            nr_ordem.zfill(8),                # Com zeros à esquerda (8 dígitos)
-                            nr_ordem.lstrip('0') or '0',       # Sem zeros à esquerda
-                            f'OS-{nr_ordem}',                  # Com prefixo OS-
-                            f'OS-{nr_ordem.zfill(8)}',         # Prefixo OS- com zeros
-                            f'OS-{nr_ordem.lstrip("0") or "0"}', # Prefixo OS- sem zeros
-                        ]
-                        for variacao in variacoes_nr_ordem:
+                        for variacao in variacoes_ordem_servico(nr_ordem):
                             if variacao in contratos_dict:
                                 contrato = contratos_dict[variacao]
                                 break
-                        if contrato:
-                            # Enriquece CPF/nome a partir da venda quando o FPD só traz O.S.
+
+                        if contrato is None:
+                            venda = buscar_venda_por_os(nr_ordem, vendas_dict)
+                            if venda is not None:
+                                try:
+                                    contrato = criar_contrato_de_venda(
+                                        venda, id_contrato=campos['id_contrato'] or None
+                                    )
+                                    for variacao in variacoes_ordem_servico(nr_ordem):
+                                        contratos_dict[variacao] = contrato
+                                    faturas_por_contrato[contrato.id] = {
+                                        f.numero_fatura: f
+                                        for f in FaturaM10.objects.filter(
+                                            contrato_id=contrato.id
+                                        )
+                                    }
+                                    registros_criados_venda += 1
+                                except Exception as e_venda:
+                                    logger.warning(
+                                        'Falha ao criar ContratoM10 da venda OS=%s: %s',
+                                        nr_ordem,
+                                        e_venda,
+                                    )
+                                    contrato = None
+
+                        if contrato is not None:
                             if contrato.venda_id:
                                 venda_fk = contrato.venda
                                 if venda_fk and venda_fk.cliente_id:
                                     cli = venda_fk.cliente
+                                    updates = []
                                     if cli and cli.cpf_cnpj and not (contrato.cpf_cliente or '').strip():
                                         contrato.cpf_cliente = cli.cpf_cnpj
+                                        updates.append('cpf_cliente')
                                     if cli and cli.nome_razao_social:
                                         contrato.cliente_nome = cli.nome_razao_social
+                                        updates.append('cliente_nome')
                                     if getattr(contrato, 'orfao', False) and (contrato.cpf_cliente or '').strip():
                                         contrato.orfao = False
-                                    contrato.save(update_fields=[
-                                        'cpf_cliente', 'cliente_nome', 'orfao', 'atualizado_em'
-                                    ] if hasattr(contrato, 'orfao') else [
-                                        'cpf_cliente', 'cliente_nome', 'atualizado_em'
-                                    ])
-                            
-                            # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
-                            nr_contrato = str(row.get('id_contrato', '')).strip()
-                            if nr_contrato and nr_contrato != 'nan':
-                                contrato.numero_contrato_definitivo = nr_contrato
-                                # Save será feito em bulk ao final
-                            
-                            # Extrai dados FPD
-                            # Já vêm como STRING do pandas, preservando zeros
-                            id_contrato = str(row.get('id_contrato', '')).strip()
-                            dt_venc = row.get('dt_venc_orig')
-                            dt_pgto = row.get('dt_pagamento')
-                            status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
-                            nr_fatura = str(row.get('nr_fatura', '')).strip()
-                            vl_fatura = row.get('vl_fatura', 0)
-                            nr_dias_atraso = row.get('nr_dias_atraso', 0)
-                            
-                            # Normalizar status usando mapeamento padronizado
-                            status = normalizar_status_fpd(status_str)
+                                        updates.append('orfao')
+                                    if updates:
+                                        updates.append('atualizado_em')
+                                        contrato.save(update_fields=list(dict.fromkeys(updates)))
 
-                            # Extrair e converter datas - Excel armazena como números serial
-                            dt_venc = row.get('dt_venc_orig')
-                            if pd.notna(dt_venc):
-                                # Se for número, converter de serial Excel
-                                if isinstance(dt_venc, (int, float)):
-                                    dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
-                                else:
-                                    dt_venc_date = pd.to_datetime(dt_venc).date()
-                            else:
-                                dt_venc_date = timezone.now().date()
+                            if campos['id_contrato']:
+                                contrato.numero_contrato_definitivo = campos['id_contrato']
 
-                            dt_pgto = row.get('dt_pagamento')
-                            if pd.notna(dt_pgto):
-                                # Se for número, converter de serial Excel
-                                if isinstance(dt_pgto, (int, float)):
-                                    dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
-                                else:
-                                    dt_pgto_date = pd.to_datetime(dt_pgto).date()
-                            else:
-                                dt_pgto_date = None
-
-                            # Se houver data de vencimento, define safra de FPD por mês de vencimento
-                            if dt_venc_date:
-                                safra_fpd_mes = dt_venc_date.replace(day=1)
-                                safra_fpd, _ = SafraM10.objects.get_or_create(
+                            if campos['dt_venc_date'] and campos['numero_fatura'] == 1:
+                                safra_fpd_mes = campos['dt_venc_date'].replace(day=1)
+                                SafraM10.objects.get_or_create(
                                     mes_referencia=safra_fpd_mes,
-                                    defaults={'total_instalados': 0, 'total_ativos': 0}
+                                    defaults={'total_instalados': 0, 'total_ativos': 0},
                                 )
 
-                            # Preparar fatura 1 (update se já existe — inclusive via signal)
-                            vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
-                            nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
-
-                            _agendar_fatura1(contrato, {
-                                'numero_fatura_operadora': nr_fatura,
-                                'valor': vl_fatura_float,
-                                'data_vencimento': dt_venc_date,
-                                'data_pagamento': dt_pgto_date,
-                                'dias_atraso': nr_dias_atraso_int,
-                                'status': status,
-                                'id_contrato_fpd': id_contrato,
-                                'dt_pagamento_fpd': dt_pgto_date,
-                                'ds_status_fatura_fpd': status_str,
+                            _agendar_fatura_n(contrato, campos['numero_fatura'], {
+                                'numero_fatura_operadora': campos['nr_fatura'],
+                                'valor': campos['vl_fatura'],
+                                'data_vencimento': campos['dt_venc_date'],
+                                'data_pagamento': campos['dt_pgto_date'],
+                                'dias_atraso': campos['nr_dias_atraso'],
+                                'status': campos['status'],
+                                'id_contrato_fpd': campos['id_contrato'],
+                                'dt_pagamento_fpd': campos['dt_pgto_date'],
+                                'ds_status_fatura_fpd': campos['status_str'],
                                 'data_importacao_fpd': data_importacao_agora,
                             })
                             contratos_afetados_ids.add(contrato.id)
-
-                            # Preparar ImportacaoFPD para bulk
-                            # Buscar por nr_ordem (atualizar se existir, criar se não existir)
-                            importacao_existente = importacoes_dict.get(nr_ordem)
-                            
-                            if importacao_existente:
-                                # Atualizar registro existente com novos dados da planilha
-                                importacao_existente.id_contrato = id_contrato
-                                importacao_existente.nr_fatura = nr_fatura  # Atualiza também o nr_fatura
-                                importacao_existente.dt_venc_orig = dt_venc_date
-                                importacao_existente.dt_pagamento = dt_pgto_date
-                                importacao_existente.nr_dias_atraso = nr_dias_atraso_int
-                                importacao_existente.ds_status_fatura = status_str
-                                importacao_existente.vl_fatura = vl_fatura_float
-                                importacao_existente.contrato_m10 = contrato
-                                importacoes_para_atualizar.append(importacao_existente)
-                                registros_atualizados += 1
-                            else:
-                                # Criar novo registro
-                                importacoes_para_criar.append(ImportacaoFPD(
-                                    nr_ordem=nr_ordem,
-                                    nr_fatura=nr_fatura,
-                                    id_contrato=id_contrato,
-                                    dt_venc_orig=dt_venc_date,
-                                    dt_pagamento=dt_pgto_date,
-                                    nr_dias_atraso=nr_dias_atraso_int,
-                                    ds_status_fatura=status_str,
-                                    vl_fatura=vl_fatura_float,
-                                    contrato_m10=contrato
-                                ))
-                                registros_importacoes_fpd += 1
-                            
-                            valor_total += vl_fatura_float
-                        else:  # Contrato não encontrado → cria órfão Qualidade (double-check FPD)
-                            from crm_app.services.qualidade_service import criar_contrato_orfao_fpd
-
-                            id_contrato = str(row.get('id_contrato', '')).strip()
-                            if id_contrato == 'nan':
-                                id_contrato = ''
-                            dt_venc = row.get('dt_venc_orig')
-                            dt_pgto = row.get('dt_pagamento')
-                            status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
-                            nr_fatura = str(row.get('nr_fatura', '')).strip()
-                            vl_fatura = row.get('vl_fatura', 0)
-                            nr_dias_atraso = row.get('nr_dias_atraso', 0)
-                            status = normalizar_status_fpd(status_str)
-
-                            if pd.notna(dt_venc):
-                                if isinstance(dt_venc, (int, float)):
-                                    dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
-                                else:
-                                    dt_venc_date = pd.to_datetime(dt_venc).date()
-                            else:
-                                dt_venc_date = timezone.now().date()
-
-                            if pd.notna(dt_pgto):
-                                if isinstance(dt_pgto, (int, float)):
-                                    dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
-                                else:
-                                    dt_pgto_date = pd.to_datetime(dt_pgto).date()
-                            else:
-                                dt_pgto_date = None
-
-                            vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
-                            nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
-
-                            try:
-                                contrato_orfao = criar_contrato_orfao_fpd(
-                                    ordem_servico=nr_ordem,
-                                    id_contrato=id_contrato or None,
-                                    dt_vencimento=dt_venc_date,
-                                    valor_fatura=vl_fatura_float,
-                                    status_fatura=status_str,
+                            _aplicar_importacao(nr_ordem, campos, contrato, MATCH_MATCHED)
+                        else:
+                            # Sem ContratoM10 nem Venda → "faltam no CRM" (não cria órfão)
+                            _aplicar_importacao(nr_ordem, campos, None, MATCH_FALTA_CRM)
+                            registros_nao_encontrados += 1
+                            if len(os_nao_encontradas) < 30:
+                                os_nao_encontradas.append(
+                                    f"{nr_ordem} ({campos['indicador']})"
                                 )
-                                # Indexa para não recriar na mesma importação
-                                for variacao in [
-                                    nr_ordem,
-                                    nr_ordem.zfill(8),
-                                    nr_ordem.lstrip('0') or '0',
-                                    f'OS-{nr_ordem}',
-                                ]:
-                                    contratos_dict[variacao] = contrato_orfao
-                                # Signal post_save já pode ter criado fatura 1 — recarrega do banco
-                                faturas_por_contrato[contrato_orfao.id] = {
-                                    f.numero_fatura: f
-                                    for f in FaturaM10.objects.filter(contrato_id=contrato_orfao.id)
-                                }
-                                _agendar_fatura1(contrato_orfao, {
-                                    'numero_fatura_operadora': nr_fatura,
-                                    'valor': vl_fatura_float,
-                                    'data_vencimento': dt_venc_date,
-                                    'data_pagamento': dt_pgto_date,
-                                    'dias_atraso': nr_dias_atraso_int,
-                                    'status': status,
-                                    'id_contrato_fpd': id_contrato,
-                                    'dt_pagamento_fpd': dt_pgto_date,
-                                    'ds_status_fatura_fpd': status_str,
-                                    'data_importacao_fpd': data_importacao_agora,
-                                })
-                                contratos_afetados_ids.add(contrato_orfao.id)
-                                vinculo_contrato = contrato_orfao
-                            except Exception as e_orf:
-                                logger.warning('Falha ao criar órfão FPD OS=%s: %s', nr_ordem, e_orf)
-                                vinculo_contrato = None
 
-                            importacao_sem_contrato = importacoes_dict.get(nr_ordem)
-                            if importacao_sem_contrato:
-                                importacao_sem_contrato.id_contrato = id_contrato
-                                importacao_sem_contrato.nr_fatura = nr_fatura
-                                importacao_sem_contrato.dt_venc_orig = dt_venc_date
-                                importacao_sem_contrato.dt_pagamento = dt_pgto_date
-                                importacao_sem_contrato.nr_dias_atraso = nr_dias_atraso_int
-                                importacao_sem_contrato.ds_status_fatura = status_str
-                                importacao_sem_contrato.vl_fatura = vl_fatura_float
-                                importacao_sem_contrato.contrato_m10 = vinculo_contrato
-                                importacoes_para_atualizar.append(importacao_sem_contrato)
-                                registros_nao_encontrados += 1
-                            else:
-                                importacoes_para_criar.append(ImportacaoFPD(
-                                    nr_ordem=nr_ordem,
-                                    nr_fatura=nr_fatura,
-                                    id_contrato=id_contrato,
-                                    dt_venc_orig=dt_venc_date,
-                                    dt_pagamento=dt_pgto_date,
-                                    nr_dias_atraso=nr_dias_atraso_int,
-                                    ds_status_fatura=status_str,
-                                    vl_fatura=vl_fatura_float,
-                                    contrato_m10=vinculo_contrato,
-                                ))
-                                registros_importacoes_fpd += 1
-                                registros_nao_encontrados += 1
-
-                            valor_total += vl_fatura_float
-                            if len(os_nao_encontradas) < 20:
-                                os_nao_encontradas.append(f"{nr_ordem} (órfão criado)" if vinculo_contrato else f"{nr_ordem} (sem contrato)")
-                            continue
-                    
                     except Exception as e:
-                        erros_detalhados.append(f"Linha {idx+2}: {str(e)}")
+                        erros_detalhados.append(f"Linha {idx + 2}: {str(e)}")
                         if len(erros_detalhados) <= 10:
+                            log.detalhes_json = log.detalhes_json or {}
                             log.detalhes_json['erros'] = erros_detalhados
-                
-                # Executar bulk operations (reduz milhares de queries para dezenas)
+
                 if faturas_para_criar:
-                    # Última defesa: evita duplicate key se o mesmo (contrato, nº) entrou 2x
                     vistas: dict[tuple, int] = {}
                     faturas_dedup: list = []
                     for fat in faturas_para_criar:
@@ -13234,7 +13106,7 @@ class ImportarFPDView(APIView):
                         (cid, num): pk
                         for cid, num, pk in FaturaM10.objects.filter(
                             contrato_id__in=ids_contratos_criar,
-                            numero_fatura=1,
+                            numero_fatura__in=[1, 2, 3],
                         ).values_list('contrato_id', 'numero_fatura', 'id')
                     } if ids_contratos_criar else {}
 
@@ -13253,38 +13125,57 @@ class ImportarFPDView(APIView):
                             so_criar.append(fat)
                     if so_criar:
                         FaturaM10.objects.bulk_create(so_criar, batch_size=500)
+
                 if faturas_para_atualizar:
                     FaturaM10.objects.bulk_update(faturas_para_atualizar, [
                         'numero_fatura_operadora', 'valor', 'data_vencimento',
                         'data_pagamento', 'dias_atraso', 'status', 'id_contrato_fpd',
-                        'dt_pagamento_fpd', 'ds_status_fatura_fpd', 'data_importacao_fpd'
+                        'dt_pagamento_fpd', 'ds_status_fatura_fpd', 'data_importacao_fpd',
                     ], batch_size=500)
-                
+
+                campos_imp_update = [
+                    'id_contrato', 'nr_fatura', 'dt_venc_orig', 'dt_pagamento',
+                    'nr_dias_atraso', 'ds_status_fatura', 'vl_fatura', 'contrato_m10',
+                    'indicador', 'numero_fatura_m10', 'ds_sit_fatura', 'faixa',
+                    'municipio', 'uf', 'cd_vendedor_original', 'nm_pdv', 'nm_gc',
+                    'match_status',
+                ]
                 if importacoes_para_criar:
                     ImportacaoFPD.objects.bulk_create(importacoes_para_criar, batch_size=500)
                 if importacoes_para_atualizar:
-                    ImportacaoFPD.objects.bulk_update(importacoes_para_atualizar, [
-                        'id_contrato', 'nr_fatura', 'dt_venc_orig', 'dt_pagamento', 'nr_dias_atraso',
-                        'ds_status_fatura', 'vl_fatura', 'contrato_m10'
-                    ], batch_size=500)
-                
-                # Salvar contratos atualizados em bulk
-                contratos_para_atualizar = [c for c in contratos_dict.values() if c.numero_contrato_definitivo]
-                if contratos_para_atualizar:
-                    ContratoM10.objects.bulk_update(contratos_para_atualizar, ['numero_contrato_definitivo'], batch_size=500)
+                    ImportacaoFPD.objects.bulk_update(
+                        importacoes_para_atualizar, campos_imp_update, batch_size=500
+                    )
 
-                # GAP 1+2: Atualizar campos FPD no ContratoM10 e recalcular elegibilidade nos contratos afetados
+                contratos_para_atualizar = [
+                    c for c in contratos_dict.values() if c.numero_contrato_definitivo
+                ]
+                # Dedup por id (dict pode ter várias chaves para o mesmo contrato)
+                vistos_cids = set()
+                contratos_uniq = []
+                for c in contratos_para_atualizar:
+                    if c.id not in vistos_cids:
+                        vistos_cids.add(c.id)
+                        contratos_uniq.append(c)
+                if contratos_uniq:
+                    ContratoM10.objects.bulk_update(
+                        contratos_uniq, ['numero_contrato_definitivo'], batch_size=500
+                    )
+
+                # Espelha campos *_fpd do ContratoM10 a partir da 1ª fatura (FPD)
                 if contratos_afetados_ids:
                     faturas1 = FaturaM10.objects.filter(
                         contrato_id__in=contratos_afetados_ids,
-                        numero_fatura=1
+                        numero_fatura=1,
                     ).select_related('contrato')
                     contratos_fpd_atualizar = []
                     for fatura in faturas1:
                         c = fatura.contrato
                         c.data_vencimento_fpd = fatura.data_vencimento
                         c.data_pagamento_fpd = fatura.data_pagamento
-                        c.status_fatura_fpd = fatura.ds_status_fatura_fpd or (fatura.status if fatura.status else None)
+                        c.status_fatura_fpd = fatura.ds_status_fatura_fpd or (
+                            fatura.status if fatura.status else None
+                        )
                         c.valor_fatura_fpd = fatura.valor
                         c.nr_dias_atraso_fpd = fatura.dias_atraso or 0
                         c.data_ultima_sincronizacao_fpd = data_importacao_agora
@@ -13292,7 +13183,8 @@ class ImportarFPDView(APIView):
                     if contratos_fpd_atualizar:
                         ContratoM10.objects.bulk_update(contratos_fpd_atualizar, [
                             'data_vencimento_fpd', 'data_pagamento_fpd', 'status_fatura_fpd',
-                            'valor_fatura_fpd', 'nr_dias_atraso_fpd', 'data_ultima_sincronizacao_fpd'
+                            'valor_fatura_fpd', 'nr_dias_atraso_fpd',
+                            'data_ultima_sincronizacao_fpd',
                         ], batch_size=500)
                     for cid in contratos_afetados_ids:
                         try:
@@ -13300,47 +13192,59 @@ class ImportarFPDView(APIView):
                             contrato.calcular_elegibilidade()
                         except ContratoM10.DoesNotExist:
                             pass
-                    # GAP 3: Recalcular totais das safras afetadas
                     safras_afetadas = set(
-                        ContratoM10.objects.filter(id__in=contratos_afetados_ids).values_list('safra', flat=True)
+                        ContratoM10.objects.filter(id__in=contratos_afetados_ids)
+                        .values_list('safra', flat=True)
                     )
                     safras_afetadas.discard(None)
                     safras_afetadas.discard('')
                     for safra_str in safras_afetadas:
                         _recalcular_totais_safra_m10(safra_str)
 
-            # Finalizar log
             log.finalizado_em = timezone.now()
             log.calcular_duracao()
-            # Total processadas = novos criados + atualizados + sem contrato criados/atualizados
             log.total_processadas = registros_importacoes_fpd + registros_atualizados
-            log.total_erros = len(erros_detalhados)
+            log.erros = len(erros_detalhados)
             log.total_contratos_nao_encontrados = registros_nao_encontrados
             log.total_valor_importado = valor_total
-            log.exemplos_nao_encontrados = ', '.join(os_nao_encontradas[:10]) if os_nao_encontradas else None
-            
-            # Debug log
-            print(f"DEBUG Final: Pulados={registros_pulados} | Criados={registros_importacoes_fpd} | Atualizados={registros_atualizados} | Sem M10={registros_nao_encontrados}")
-            
+            log.exemplos_nao_encontrados = (
+                ', '.join(os_nao_encontradas[:15]) if os_nao_encontradas else None
+            )
+            log.detalhes_json = {
+                **(log.detalhes_json or {}),
+                'por_indicador': contagem_por_indicador,
+                'criados_via_venda': registros_criados_venda,
+                'faltam_crm': registros_nao_encontrados,
+                'pulados': registros_pulados,
+                'usuario_id': usuario.id if usuario else None,
+            }
+
             if registros_pulados == log.total_linhas:
-                # TODAS as linhas foram puladas!
                 log.status = 'ERRO'
-                log.mensagem_erro = f'Todas as {registros_pulados} linhas foram puladas (NR_ORDEM vazio ou inválido). Verificar formato do arquivo.'
-            elif registros_nao_encontrados > 0 and registros_atualizados == 0:
-                # Todos os registros foram salvos sem contrato (sem vincular ao M10)
-                log.status = 'PARCIAL'
-                log.mensagem_erro = f'{registros_nao_encontrados} registros FPD importados sem vínculo M10 (O.S não encontrados na base ContratoM10). Você pode fazer matching depois.'
+                log.mensagem_erro = (
+                    f'Todas as {registros_pulados} linhas foram puladas '
+                    '(NR_ORDEM vazio ou inválido). Verificar formato do arquivo.'
+                )
             elif registros_nao_encontrados > 0:
-                # Alguns registros com contrato, alguns sem
                 log.status = 'PARCIAL'
-                log.mensagem_erro = f'{registros_atualizados} registros vinculados a contratos M10, {registros_nao_encontrados} importados sem vínculo (O.S não encontradas). Pode fazer matching depois.'
+                log.mensagem_erro = (
+                    f'FPD={contagem_por_indicador.get("FPD", 0)}, '
+                    f'SPD={contagem_por_indicador.get("SPD", 0)}, '
+                    f'TPD={contagem_por_indicador.get("TPD", 0)}. '
+                    f'{registros_nao_encontrados} O.S. sem match no CRM '
+                    f'(aba "Faltam no CRM"). '
+                    f'{registros_criados_venda} contratos criados a partir de Venda.'
+                )
             else:
                 log.status = 'SUCESSO'
-            
+                log.mensagem = (
+                    f'Importação OK — FPD={contagem_por_indicador.get("FPD", 0)}, '
+                    f'SPD={contagem_por_indicador.get("SPD", 0)}, '
+                    f'TPD={contagem_por_indicador.get("TPD", 0)}'
+                )
+
             log.save()
 
-            # FIM DO PROCESSAMENTO - retorno já foi enviado antes via HTTP
-            
         except Exception as e:
             log.status = 'ERRO'
             log.mensagem_erro = str(e)

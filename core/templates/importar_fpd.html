@@ -171,25 +171,28 @@
 {% block content %}
 <main class="importar-page"><div class="import-container">
         <div class="text-center mb-4">
-            <h2 class="fw-bold text-dark">Importar Base FPD (Operadora)</h2>
-            <p class="text-muted">Upload da planilha de faturas da primeira cobrança - Sistema Bônus M-10</p>
+            <h2 class="fw-bold text-dark">Importar Base FPD / SPD / TPD</h2>
+            <p class="text-muted">Planilha da operadora com INDICADOR (FPD=1ª, SPD=2ª, TPD=3ª) — vínculo por NR_ORDEM</p>
         </div>
 
         <!-- Informações Importantes -->
         <div class="info-card card-modern">
             <h5 class="text-primary mb-3"><i class="bi bi-info-circle"></i> Instruções</h5>
             <ul class="mb-0">
-                <li>Faça download da planilha de faturas diretamente do sistema da operadora</li>
+                <li>Faça download da planilha diretamente do sistema da operadora (base pré-FPD com FPD/SPD/TPD)</li>
                 <li>O arquivo deve estar em formato <strong>Excel (.xlsx, .xls, .xlsb)</strong> ou <strong>CSV</strong></li>
-                <li>O sistema processará automaticamente contratos, vendedores e status de pagamento</li>
-                <li>Após importação, os dados estarão disponíveis na página <a href="/bonus-m10/">Bônus M-10</a></li>
+                <li>A coluna <strong>INDICADOR</strong> define a fatura: FPD→1ª, SPD→2ª, TPD→3ª</li>
+                <li>Match por <strong>NR_ORDEM</strong>; O.S. sem contrato/venda vão para a aba <strong>Faltam no CRM</strong> em Qualidade</li>
             </ul>
 
             <div class="required-columns">
                 <strong class="text-dark">Colunas obrigatórias na planilha:</strong><br>
+                <span class="column-tag">NR_ORDEM</span>
+                <span class="column-tag">INDICADOR</span>
                 <span class="column-tag">ID_CONTRATO</span>
                 <span class="column-tag">NR_FATURA</span>
                 <span class="column-tag">DS_STATUS_FATURA</span>
+                <span class="column-tag">DS_SIT_FATURA</span>
                 <span class="column-tag">DT_VENC_ORIG</span>
                 <span class="column-tag">DT_PAGAMENTO</span>
                 <span class="column-tag">NR_DIAS_ATRASO</span>
