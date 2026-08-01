@@ -289,6 +289,12 @@ WHATSATENDE_TOKEN_B = config('WHATSATENDE_TOKEN_B', default='')
 WHATSATENDE_WHATSAPP_ID_B = config('WHATSATENDE_WHATSAPP_ID_B', default='')
 # Segredo no path/query do webhook inbound (WhatsAtende não tem HMAC nativo)
 WHATSATENDE_WEBHOOK_TOKEN = config('WHATSATENDE_WEBHOOK_TOKEN', default='')
+# Templates Meta Nio (confirmação/instalação/cobrança). Default: ativo se provider=whatsatende
+_use_nio_tpl = config('WHATSAPP_USE_NIO_TEMPLATES', default='')
+if str(_use_nio_tpl).strip() == '':
+    WHATSAPP_USE_NIO_TEMPLATES = WHATSAPP_PROVIDER == 'whatsatende'
+else:
+    WHATSAPP_USE_NIO_TEMPLATES = config('WHATSAPP_USE_NIO_TEMPLATES', default=False, cast=bool)
 # Outbound híbrido (Opção B): texto/mídia URL via n8n → Evolution
 N8N_OUTBOUND_WEBHOOK_URL = config('N8N_OUTBOUND_WEBHOOK_URL', default='')
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')

@@ -923,8 +923,17 @@ def enviar_cobranca_whatsapp(
     fatura_id: int,
     user: Any,
     telefone_override: Optional[str] = None,
+    *,
+    modo: str = "auto",
 ) -> dict[str, Any]:
-    """Envia cobrança Roteiro 1 via WhatsApp. Bloqueia órfão ou sem CPF."""
+    """
+    Envia cobrança via WhatsApp.
+
+    modo:
+      - auto: template Meta se habilitado; senão Roteiro 1 (PIX/barras)
+      - template: só template (lembrete/vencida/recorrente conforme dias)
+      - roteiro1: texto completo com 2ª via (janela 24h / após botão)
+    """
     try:
         contrato = ContratoM10.objects.select_related('venda', 'venda__cliente', 'vendedor').get(
             pk=contrato_id
@@ -964,8 +973,51 @@ def enviar_cobranca_whatsapp(
         nome_atendente=nome_atendente or '_________',
     )
 
+    from crm_app.services.whatsapp.nio_templates import (
+        TEMPLATE_FATURA_LEMBRETE_5D,
+        TEMPLATE_FATURA_RECORRENTE,
+        TEMPLATE_FATURA_VENCIDA_5D,
+        enviar_template_fatura,
+        templates_habilitados,
+    )
+
+    modo_eff = (modo or 'auto').strip().lower()
+    usar_template = modo_eff == 'template' or (
+        modo_eff == 'auto' and templates_habilitados()
+    )
+
+    canal = 'roteiro1'
+    ok = False
+    resp: Any = None
     try:
-        ok, resp = WhatsAppService.para_cliente().enviar_mensagem_texto(telefone, mensagem, variar=False)
+        if usar_template and modo_eff != 'roteiro1':
+            hoje = timezone.localdate()
+            venc = fatura.data_vencimento
+            dias_ate = (venc - hoje).days
+            dias_atraso = (hoje - venc).days
+            nome_cli = (contrato.cliente_nome or 'Cliente').strip()
+            if dias_ate >= 0:
+                tpl = TEMPLATE_FATURA_LEMBRETE_5D
+                incluir_atraso = False
+            elif dias_atraso <= 7:
+                tpl = TEMPLATE_FATURA_VENCIDA_5D
+                incluir_atraso = False
+            else:
+                tpl = TEMPLATE_FATURA_RECORRENTE
+                incluir_atraso = True
+            ok, resp, canal = enviar_template_fatura(
+                telefone,
+                tpl,
+                nome_cli,
+                fatura,
+                fallback_texto=mensagem,
+                incluir_dias_atraso=incluir_atraso,
+            )
+        else:
+            ok, resp = WhatsAppService.para_cliente().enviar_mensagem_texto(
+                telefone, mensagem, variar=False
+            )
+            canal = 'roteiro1'
     except Exception as exc:
         logger.exception('[Qualidade] Erro WhatsApp contrato=%s', contrato_id)
         _registrar_historico_envio(
@@ -985,7 +1037,7 @@ def enviar_cobranca_whatsapp(
         fatura=fatura,
         canal='WHATSAPP',
         destinatario=telefone,
-        mensagem=mensagem,
+        mensagem=f'[{canal}] {mensagem[:500]}',
         user=user,
         sucesso=bool(ok),
         erro=None if ok else str(resp),
@@ -995,6 +1047,7 @@ def enviar_cobranca_whatsapp(
         'telefone': telefone,
         'fatura_id': fatura.id,
         'mensagem': mensagem,
+        'canal': canal,
         'resposta': resp,
         'erro': None if ok else (str(resp) if resp else 'Falha no envio WhatsApp'),
     }

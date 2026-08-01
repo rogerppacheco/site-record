@@ -2219,12 +2219,15 @@ class VendaViewSet(viewsets.ModelViewSet):
                     telefone_fmt,
                 )
 
-            ok_envio, resp_envio = svc.enviar_mensagem_texto(telefone, resumo)
+            from crm_app.services.whatsapp.nio_templates import enviar_confirmacao_pedido_venda
+
+            ok_envio, resp_envio, canal = enviar_confirmacao_pedido_venda(venda, telefone)
             if not ok_envio:
                 logger.error(
-                    "[Resumo WhatsApp] Falha no envio venda=%s destino=%s resp=%s",
+                    "[Resumo WhatsApp] Falha no envio venda=%s destino=%s canal=%s resp=%s",
                     venda.id,
                     telefone_fmt,
+                    canal,
                     resp_envio,
                 )
                 return Response(
@@ -2243,57 +2246,62 @@ class VendaViewSet(viewsets.ModelViewSet):
                 message_id = resp_envio.get("messageId") or resp_envio.get("id")
                 zaap_id = resp_envio.get("zaapId")
             logger.info(
-                "[Resumo WhatsApp] Aceito pela API venda=%s destino=%s messageId=%s zaapId=%s — aguardando DeliveryCallback",
+                "[Resumo WhatsApp] Aceito pela API venda=%s destino=%s canal=%s messageId=%s zaapId=%s",
                 venda.id,
                 telefone_fmt,
+                canal,
                 message_id,
                 zaap_id,
             )
 
-            from crm_app.services.whatsapp.delivery_tracker import aguardar_entrega
+            # WhatsAtende oficial não expõe ACK de entrega; só aguarda em provedores com callback.
+            provider_name = (getattr(settings, "WHATSAPP_PROVIDER", "") or "").strip().lower()
+            if provider_name != "whatsatende" and canal != "template":
+                from crm_app.services.whatsapp.delivery_tracker import aguardar_entrega
 
-            entregue, detalhe_entrega = aguardar_entrega(message_id, zaap_id)
-            if not entregue:
-                erro_cb = None
-                if isinstance(detalhe_entrega, dict):
-                    erro_cb = detalhe_entrega.get("error") or detalhe_entrega.get("error_code")
-                if erro_cb:
+                entregue, detalhe_entrega = aguardar_entrega(message_id, zaap_id)
+                if not entregue:
+                    erro_cb = None
+                    if isinstance(detalhe_entrega, dict):
+                        erro_cb = detalhe_entrega.get("error") or detalhe_entrega.get("error_code")
+                    if erro_cb:
+                        logger.error(
+                            "[Resumo WhatsApp] Entrega rejeitada venda=%s destino=%s erro=%s",
+                            venda.id,
+                            telefone_fmt,
+                            erro_cb,
+                        )
+                        return Response(
+                            {
+                                "detail": (
+                                    "O WhatsApp rejeitou a entrega da mensagem. "
+                                    f"Motivo: {erro_cb}. Destino: {telefone_fmt or telefone}."
+                                )
+                            },
+                            status=status.HTTP_502_BAD_GATEWAY,
+                        )
                     logger.error(
-                        "[Resumo WhatsApp] Entrega rejeitada venda=%s destino=%s erro=%s",
+                        "[Resumo WhatsApp] Sem confirmação de entrega venda=%s destino=%s messageId=%s",
                         venda.id,
                         telefone_fmt,
-                        erro_cb,
+                        message_id,
                     )
                     return Response(
                         {
                             "detail": (
-                                "O WhatsApp rejeitou a entrega da mensagem. "
-                                f"Motivo: {erro_cb}. Destino: {telefone_fmt or telefone}."
+                                "A API aceitou o envio, mas a entrega no WhatsApp não foi confirmada a tempo. "
+                                "O cliente pode não ter recebido — tente novamente mais tarde. "
+                                f"Destino: {telefone_fmt or telefone}."
                             )
                         },
-                        status=status.HTTP_502_BAD_GATEWAY,
+                        status=status.HTTP_504_GATEWAY_TIMEOUT,
                     )
-                logger.error(
-                    "[Resumo WhatsApp] Sem confirmação de entrega venda=%s destino=%s messageId=%s",
-                    venda.id,
-                    telefone_fmt,
-                    message_id,
-                )
-                return Response(
-                    {
-                        "detail": (
-                            "A API aceitou o envio, mas a entrega no WhatsApp não foi confirmada a tempo. "
-                            "O cliente pode não ter recebido — tente novamente mais tarde. "
-                            f"Destino: {telefone_fmt or telefone}."
-                        )
-                    },
-                    status=status.HTTP_504_GATEWAY_TIMEOUT,
-                )
 
             logger.info(
-                "[Resumo WhatsApp] Entrega confirmada venda=%s destino=%s messageId=%s",
+                "[Resumo WhatsApp] Envio ok venda=%s destino=%s canal=%s messageId=%s",
                 venda.id,
                 telefone_fmt,
+                canal,
                 message_id,
             )
 
@@ -2309,7 +2317,10 @@ class VendaViewSet(viewsets.ModelViewSet):
                     venda=venda,
                     enviado_por=request.user,
                 )
-            return Response({"detail": "Resumo enviado para o Cliente com sucesso!"})
+            return Response({
+                "detail": "Resumo enviado para o Cliente com sucesso!",
+                "canal": canal,
+            })
         except Exception as e:
             logger.error(f"Erro ao enviar resumo plano WhatsApp (venda {venda.id}): {e}", exc_info=True)
             return Response(
@@ -14901,7 +14912,6 @@ class EnviarLembreteInstalacaoView(APIView):
         vendas = list(vendas_qs[offset:offset + limite])
         random.shuffle(vendas)
 
-        primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
         agora = timezone.now()
         saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
         dd_mm = data_filtro.strftime('%d/%m')
@@ -14912,7 +14922,7 @@ class EnviarLembreteInstalacaoView(APIView):
 
         enviados = 0
         erros = []
-        svc = WhatsAppService.para_cliente()
+        from crm_app.services.whatsapp.nio_templates import enviar_lembrete_instalacao
 
         for i, venda in enumerate(vendas):
             if i > 0:
@@ -14920,19 +14930,24 @@ class EnviarLembreteInstalacaoView(APIView):
                 time.sleep(delay)
             nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
             mensagem = (
-                f"Olá, {saudacao} Sr(a). {nome_cliente}\n\n"
-                f"Me chamo {primeiro_nome}, sou especialista de qualidade do Record PAP, parceiro Oficial da Nio Fibra.\n\n"
-                f"A sua instalação da Nio Fibra está agendada para hoje ({dd_mm}), no período das {periodo_texto}.\n\n"
+                f"Olá, {saudacao} {nome_cliente.split()[0]}\n\n"
+                f"Parceiro oficial da Nio Fibra.\n"
+                f"Sua instalação da Nio Fibra está agendada para hoje ({dd_mm}), "
+                f"no período das {periodo_texto}.\n\n"
                 "Se você não puder estar presente, é necessário que uma pessoa maior de 18 anos esteja no local.\n\n"
-                "Informações sobre sua instalação:\n"
                 "A instalação é gratuita.\n"
                 "Não realizamos instalações em dias de chuva.\n\n"
-                "Para confirmar, digite SIM\n"
-                "Para reagendar, envie o dia e o período (manhã/tarde)\n"
-                "Para falar com suporte, envie SUPORTE"
+                "Toque em *Confirmar*, *Reagendar* ou *Suporte* "
+                "(ou digite SIM / REAGENDAR / SUPORTE)."
             )
             try:
-                ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
+                ok, _, canal = enviar_lembrete_instalacao(
+                    venda.telefone1,
+                    nome_cliente,
+                    data_filtro,
+                    turno,
+                    mensagem,
+                )
                 if ok:
                     enviados += 1
                     tel_chave = _normalizar_telefone_chave(venda.telefone1)
@@ -14943,6 +14958,11 @@ class EnviarLembreteInstalacaoView(APIView):
                             data_agendamento=venda.data_agendamento,
                             periodo_agendamento=venda.periodo_agendamento or turno,
                         )
+                    logger.info(
+                        "[LembreteInstalacao] venda=%s canal=%s",
+                        venda.id,
+                        canal,
+                    )
                 else:
                     erros.append(f"Venda #{venda.id} ({venda.telefone1})")
             except Exception as e:

@@ -73,6 +73,20 @@ def processar_fila_boas_vindas():
         logger.error(f"Traceback: {traceback.format_exc()}")
 
 
+def enviar_templates_cobranca_nio():
+    """Templates Meta cobrança: D−5, D+5 e recorrente (Número B)."""
+    try:
+        if not getattr(settings, "WHATSAPP_USE_NIO_TEMPLATES", False):
+            logger.info("[SCHEDULER] Templates Nio desabilitados — pulando cobrança")
+            return
+        logger.info("📬 Enviando templates Meta de cobrança Nio...")
+        call_command("enviar_templates_cobranca_nio", "--limite", "80")
+    except Exception as e:
+        logger.error("❌ Erro templates cobrança Nio: %s", e)
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 def _processar_fallback_sonax_auditoria():
     try:
         from crm_app.tasks import processar_fallback_auditoria_ligacoes_sonax
@@ -191,6 +205,15 @@ def _registrar_jobs(scheduler):
         trigger=IntervalTrigger(minutes=5),
         id='processar_fila_boas_vindas',
         name='Processar fila de boas-vindas (a cada 5 min)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    tz_cob = getattr(settings, "TIME_ZONE", None) or "America/Sao_Paulo"
+    scheduler.add_job(
+        _wrap_scheduler_job(enviar_templates_cobranca_nio),
+        trigger=CronTrigger.from_crontab("0 10 * * *", timezone=tz_cob),
+        id="enviar_templates_cobranca_nio",
+        name="Templates Meta cobrança Nio (10:00)",
         replace_existing=True,
         max_instances=1,
     )

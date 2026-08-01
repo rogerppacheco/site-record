@@ -241,28 +241,78 @@ class WhatsAtendeProvider(WhatsAppProvider):
         telefone: str,
         template_name: str,
         language_code: str = "pt_BR",
-        template_params: Optional[Dict[str, Any]] = None,
+        template_params: Optional[Any] = None,
+        body_params: Optional[List[str]] = None,
     ) -> Tuple[bool, Any]:
         """
         Envio de template Meta (Número B / Cloud API).
         Fora da janela de 24h é obrigatório.
+
+        body_params: lista ordenada das variáveis do BODY ({{1}}, {{2}}, …).
         """
         numero = self._destino(telefone)
+        lang = language_code or "pt_BR"
+        params_list: List[str] = []
+        if body_params:
+            params_list = [str(p) if p is not None else "-" for p in body_params]
+        elif isinstance(template_params, list):
+            params_list = [str(p) if p is not None else "-" for p in template_params]
+        elif isinstance(template_params, dict):
+            if isinstance(template_params.get("body"), list):
+                params_list = [str(p) for p in template_params["body"]]
+            else:
+                keys = sorted(
+                    (k for k in template_params.keys() if str(k).isdigit()),
+                    key=lambda x: int(str(x)),
+                )
+                if keys:
+                    params_list = [str(template_params[k]) for k in keys]
+
+        template_obj: Dict[str, Any] = {
+            "name": template_name,
+            "language": {"code": lang},
+        }
+        if params_list:
+            template_obj["components"] = [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": p if str(p).strip() else "-"}
+                        for p in params_list
+                    ],
+                }
+            ]
+
         payload: Dict[str, Any] = {
             "number": numero,
-            "template": {
-                "name": template_name,
-                "language": {"code": language_code or "pt_BR"},
-            },
+            "template": template_obj,
         }
-        if template_params:
-            payload["templateParams"] = template_params
+        if self.whatsapp_id:
+            try:
+                payload["whatsappId"] = int(self.whatsapp_id)
+            except (TypeError, ValueError):
+                payload["whatsappId"] = self.whatsapp_id
+        if params_list:
+            payload["templateParams"] = params_list
+
         resp = self._request("POST", "/api/messages/send", payload)
         if self.resposta_indica_sucesso(resp):
             mid = self._message_id(resp)
             if isinstance(resp, dict) and mid and "messageId" not in resp:
                 resp = {**resp, "messageId": mid}
+            logger.info(
+                "[WhatsAtende] Template %s enviado para %s (vars=%s)",
+                template_name,
+                numero,
+                len(params_list),
+            )
             return True, resp
+        logger.error(
+            "[WhatsAtende] Falha template %s para %s: %s",
+            template_name,
+            numero,
+            resp,
+        )
         return False, resp
 
     def listar_templates(self) -> Any:

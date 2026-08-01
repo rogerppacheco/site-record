@@ -103,6 +103,39 @@ class WhatsAppService:
             [{"id": "pap_confirmar_sim", "type": "REPLY", "label": "SIM"}],
         )
 
+    def enviar_template(
+        self,
+        telefone,
+        template_name,
+        language_code="pt_BR",
+        body_params=None,
+        template_params=None,
+    ):
+        """
+        Envia template Meta aprovado (Cloud API / WhatsAtende Número B).
+        Preferir WhatsAppService.para_cliente() + body_params (lista {{1}}…).
+        """
+        fn = getattr(self._provider, "enviar_template", None)
+        if not callable(fn):
+            logger.error(
+                "[WhatsAppService] Provider %s não suporta enviar_template",
+                type(self._provider).__name__,
+            )
+            return False, "Provider sem suporte a templates Meta"
+        return fn(
+            telefone,
+            template_name,
+            language_code=language_code,
+            body_params=body_params,
+            template_params=template_params,
+        )
+
+    def listar_templates(self):
+        fn = getattr(self._provider, "listar_templates", None)
+        if not callable(fn):
+            return []
+        return fn()
+
     def enviar_imagem_b64(self, telefone, img_b64, caption=""):
         return self._provider.enviar_imagem_b64(telefone, img_b64, caption=caption)
 

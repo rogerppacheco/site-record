@@ -6020,11 +6020,20 @@ def _executar_venda_pap_etapa6_em_diante(
         celular_cliente = dados.get('celular', '') or automacao.dados_pedido.get('celular', '')
         msg_cliente = resumo_txt
         try:
-            ws = WhatsAppService()
-            extra = "\n\nPara confirmar, toque no botão *SIM* ou responda *SIM*."
-            ok_btn, _ = ws.enviar_resumo_pap_com_botao_confirmar(celular_cliente, resumo_txt, texto_extra=extra)
+            from crm_app.services.whatsapp.nio_templates import enviar_confirmacao_pedido_pap
+
+            dados_tpl = dict(automacao.dados_pedido or {})
+            dados_tpl.update({k: v for k, v in (dados or {}).items() if v})
+            ok_btn, _, canal = enviar_confirmacao_pedido_pap(
+                celular_cliente, dados_tpl, resumo_txt
+            )
             if not ok_btn:
-                ws.enviar_mensagem_texto(celular_cliente, f"{msg_cliente}\n\nPara confirmar, responda *SIM*.")
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
+                    celular_cliente,
+                    f"{msg_cliente}\n\nPara confirmar, responda *CORRETO* ou *SIM*.",
+                )
+            else:
+                logger.info("[VENDA PAP] Resumo cliente canal=%s", canal)
         except Exception as e:
             logger.error(f"[VENDA PAP] Erro ao enviar resumo ao cliente: {e}")
             automacao._fechar_sessao()
@@ -7609,11 +7618,27 @@ def processar_webhook_whatsapp(data, request=None):
         except Exception as e:
             logger.warning('[Webhook] Erro posso antecipar vendedor: %s', e, exc_info=True)
 
-    # --- Resposta do CLIENTE (SIM/CONFIRMAR) antes de exigir usuário ativo ---
+    # --- Resposta do CLIENTE (SIM/CONFIRMAR/CORRETO) antes de exigir usuário ativo ---
     # Quando o sistema envia "RESUMO DO PEDIDO... responda SIM" ao cliente (fluxo PAP ou
     # resumo enviado da auditoria), a resposta vem do número do cliente, que não é usuário interno.
     # Tratar aqui para não rejeitar com "não pertence a nenhum usuário ativo".
-    if mensagem_limpa in ['SIM', 'S', 'CONFIRMAR']:
+    from crm_app.services.whatsapp.nio_templates import (
+        BTN_CORRETO,
+        BTN_CORRIGIR,
+        BTN_ENTENDI,
+        BTN_FALAR_ATENDENTE,
+        BTN_FALAR_SUPORTE,
+        BTN_JA_PAGUEI,
+        BTN_REAGENDAR,
+        BTN_SEGUNDA_VIA,
+        BTN_SUPORTE,
+        classificar_botao,
+        enviar_instalacao_confirmada,
+    )
+
+    botao_meta = classificar_botao(mensagem_texto) or classificar_botao(mensagem_limpa)
+
+    if mensagem_limpa in ['SIM', 'S', 'CONFIRMAR', 'CORRETO'] or botao_meta == BTN_CORRETO:
         chave = _chave_telefone(telefone_formatado_usuario)
         chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
         with _pending_lock:
@@ -7689,6 +7714,35 @@ def processar_webhook_whatsapp(data, request=None):
                 return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
         except Exception as e:
             logger.warning(f"[Webhook] Erro ao confirmar PapConfirmacaoCliente (BD): {e}", exc_info=True)
+
+    # CORRIGIR / Falar com atendente no resumo do pedido (template Meta)
+    if botao_meta in (BTN_CORRIGIR, BTN_FALAR_ATENDENTE):
+        chave = _chave_telefone(telefone_formatado_usuario)
+        chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
+        try:
+            from crm_app.models import PapConfirmacaoCliente
+
+            pend_bd = PapConfirmacaoCliente.objects.filter(
+                celular_cliente__in=chaves_tentar, confirmado=False
+            ).order_by("-criado_em").first()
+            if pend_bd or botao_meta == BTN_FALAR_ATENDENTE:
+                if botao_meta == BTN_CORRIGIR:
+                    msg = (
+                        "Sem problemas. Informe o que precisa ser corrigido "
+                        "(endereço, plano, pagamento, dados pessoais) e um especialista dará continuidade."
+                    )
+                else:
+                    msg = "Em breve um especialista irá falar contigo."
+                try:
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
+                except Exception:
+                    pass
+                return {
+                    "status": "ok",
+                    "mensagem": f"Resumo pedido botão={botao_meta}",
+                }
+        except Exception as e:
+            logger.warning("[Webhook] Erro CORRIGIR/atendente: %s", e, exc_info=True)
     
     # Se este número tem resumo enviado da auditoria (pendência de confirmação, sessao=None),
     # não enviar "usuário não ativo" — orientar a responder SIM ou CONFIRMAR.
@@ -7703,7 +7757,8 @@ def processar_webhook_whatsapp(data, request=None):
             try:
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado,
-                    "Para confirmar o resumo do plano, responda *SIM* ou *CONFIRMAR*."
+                    "Para confirmar o resumo do plano, toque em *CORRETO* ou responda *SIM* / *CONFIRMAR*.\n"
+                    "Se algo estiver errado, toque em *CORRIGIR*."
                 )
             except Exception as e:
                 logger.warning(f"[Webhook] Erro ao enviar orientação resumo auditoria: {e}")
@@ -7734,20 +7789,47 @@ def processar_webhook_whatsapp(data, request=None):
             venda = lembrete.venda
             campos_venda = ['cliente_resposta_lembrete_instalacao', 'data_resposta_lembrete_instalacao', 'cliente_confirmou_lembrete_instalacao']
 
-            if mensagem_limpa in ['SIM', 'S', 'CONFIRMAR', 'CONFIRMO', 'OK', 'CERTO', 'PODE SER', 'POSSO']:
-                msg = f"Confirmação registrada!\nSua instalação Nio Fibra está confirmada para hoje, das {horario_texto}.\nNosso técnico entrará em contato por ligação e WhatsApp quando estiver a caminho. Obrigado por escolher a Nio Fibra."
+            from crm_app.services.whatsapp.nio_templates import BTN_CONFIRMAR as _BTN_CONF
+
+            confirmou = (
+                mensagem_limpa in ['SIM', 'S', 'CONFIRMAR', 'CONFIRMO', 'OK', 'CERTO', 'PODE SER', 'POSSO']
+                or botao_meta == _BTN_CONF
+            )
+
+            if confirmou:
+                data_ref = lembrete.data_agendamento or timezone.localdate()
+                periodo_ref = lembrete.periodo_agendamento or periodo
                 try:
-                    WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
+                    data_txt = data_ref.strftime('%d/%m/%Y')
                 except Exception:
-                    pass
+                    data_txt = str(data_ref)
+                fallback = (
+                    f"Confirmação registrada!\n"
+                    f"Sua instalação Nio Fibra está confirmada para {data_txt}, "
+                    f"das {horario_texto}.\n"
+                    "Nosso técnico entrará em contato por ligação e WhatsApp quando estiver a caminho."
+                )
+                try:
+                    enviar_instalacao_confirmada(
+                        telefone_formatado, data_ref, periodo_ref, fallback
+                    )
+                except Exception:
+                    try:
+                        WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, fallback)
+                    except Exception:
+                        pass
                 lembrete.respondido_em = agora
                 lembrete.save(update_fields=['respondido_em'])
                 venda.cliente_confirmou_lembrete_instalacao = True
                 venda.cliente_resposta_lembrete_instalacao = texto_resposta[:2000] if texto_resposta else None
                 venda.data_resposta_lembrete_instalacao = agora
                 venda.save(update_fields=campos_venda)
-                return {'status': 'ok', 'mensagem': 'Confirmação instalação (SIM)'}
-            if mensagem_limpa == 'SUPORTE' or mensagem_limpa in ['NAO', 'NÃO', 'NAO QUERO', 'NÃO QUERO', 'CANCELAR', 'CANCELAR INSTALACAO', 'DESISTIR']:
+                return {'status': 'ok', 'mensagem': 'Confirmação instalação (SIM/Confirmar)'}
+            if (
+                mensagem_limpa == 'SUPORTE'
+                or botao_meta in (BTN_SUPORTE, BTN_FALAR_SUPORTE)
+                or mensagem_limpa in ['NAO', 'NÃO', 'NAO QUERO', 'NÃO QUERO', 'CANCELAR', 'CANCELAR INSTALACAO', 'DESISTIR']
+            ):
                 msg = "Em breve um especialista irá falar contigo"
                 try:
                     WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
@@ -7760,6 +7842,25 @@ def processar_webhook_whatsapp(data, request=None):
                 venda.data_resposta_lembrete_instalacao = agora
                 venda.save(update_fields=campos_venda)
                 return {'status': 'ok', 'mensagem': 'Resposta lembrete instalação (não/suporte)'}
+            if botao_meta == BTN_REAGENDAR or mensagem_limpa == 'REAGENDAR':
+                msg = (
+                    "Para reagendar, envie o *dia* e o *período* desejados (manhã ou tarde). "
+                    "Ex.: 20/08 manhã"
+                )
+                try:
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(telefone_formatado, msg)
+                except Exception:
+                    pass
+                # Mantém lembrete aberto para a próxima mensagem com a nova data
+                venda.cliente_confirmou_lembrete_instalacao = False
+                venda.cliente_resposta_lembrete_instalacao = texto_resposta[:2000] if texto_resposta else None
+                venda.data_resposta_lembrete_instalacao = agora
+                venda.save(update_fields=campos_venda)
+                return {'status': 'ok', 'mensagem': 'Lembrete instalação — pedir reagendamento'}
+            if botao_meta == BTN_ENTENDI:
+                lembrete.respondido_em = agora
+                lembrete.save(update_fields=['respondido_em'])
+                return {'status': 'ok', 'mensagem': 'Instalação — Entendi'}
             # Qualquer outra resposta: tenta atendimento com dados do pedido; senão escalona humano
             msg = None
             if texto_resposta:
@@ -7789,6 +7890,74 @@ def processar_webhook_whatsapp(data, request=None):
             return {'status': 'ok', 'mensagem': 'Resposta lembrete instalação (outro)'}
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao processar lembrete instalação: {e}", exc_info=True)
+
+    # --- Botões de cobrança (template Meta fatura) ---
+    if botao_meta in (BTN_SEGUNDA_VIA, BTN_JA_PAGUEI, BTN_FALAR_SUPORTE):
+        try:
+            from datetime import timedelta as _td_cob
+            from crm_app.models import HistoricoEnvioQualidade
+            from crm_app.services.qualidade_service import montar_mensagem_cobranca_roteiro1
+
+            chave_cob = _chave_telefone(telefone_formatado_usuario)
+            chaves_cob = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave_cob]
+            digitos_set = set()
+            for c in chaves_cob:
+                d = "".join(filter(str.isdigit, str(c or "")))
+                if d:
+                    digitos_set.add(d)
+                    if d.startswith("55") and len(d) > 11:
+                        digitos_set.add(d[2:])
+                    elif not d.startswith("55") and len(d) >= 10:
+                        digitos_set.add("55" + d)
+
+            hist = (
+                HistoricoEnvioQualidade.objects.filter(
+                    canal="WHATSAPP",
+                    sucesso=True,
+                    criado_em__gte=timezone.now() - _td_cob(days=14),
+                    fatura_id__isnull=False,
+                )
+                .select_related("fatura", "contrato")
+                .order_by("-criado_em")[:40]
+            )
+            fatura_ctx = None
+            contrato_ctx = None
+            for h in hist:
+                dest = "".join(filter(str.isdigit, str(h.destinatario or "")))
+                if dest in digitos_set or any(dest.endswith(d[-11:]) for d in digitos_set if len(d) >= 11):
+                    fatura_ctx = h.fatura
+                    contrato_ctx = h.contrato
+                    break
+
+            if botao_meta == BTN_FALAR_SUPORTE:
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
+                    telefone_formatado, "Em breve um especialista irá falar contigo."
+                )
+                return {"status": "ok", "mensagem": "Cobrança — suporte"}
+
+            if botao_meta == BTN_JA_PAGUEI:
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
+                    telefone_formatado,
+                    "Obrigado! Se possível, envie o *comprovante de pagamento* nesta conversa "
+                    "para agilizarmos a baixa. A confirmação pode levar até 5 dias úteis.",
+                )
+                return {"status": "ok", "mensagem": "Cobrança — já paguei"}
+
+            # Quero a 2ª via
+            if fatura_ctx and contrato_ctx:
+                msg = montar_mensagem_cobranca_roteiro1(contrato_ctx, fatura_ctx)
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
+                    telefone_formatado, msg, variar=False
+                )
+                return {"status": "ok", "mensagem": "Cobrança — 2ª via enviada"}
+            WhatsAppService.para_cliente().enviar_mensagem_texto(
+                telefone_formatado,
+                "Para enviar a 2ª via, responda com o *CPF* do titular "
+                "ou aguarde um especialista.",
+            )
+            return {"status": "ok", "mensagem": "Cobrança — 2ª via sem contexto"}
+        except Exception as e:
+            logger.warning("[Webhook] Erro botão cobrança: %s", e, exc_info=True)
     
     # --- Resposta ao boas-vindas: gravar TODAS as mensagens do cliente (histórico completo) ---
     try:
