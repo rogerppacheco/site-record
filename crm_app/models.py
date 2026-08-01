@@ -2978,6 +2978,44 @@ class FaturaM10(models.Model):
     )
     dias_atraso = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NAO_PAGO')
+    # Origem/conferência do status (tratamento manual x planilha FPD)
+    STATUS_ORIGEM_CHOICES = [
+        ('FPD', 'Planilha FPD'),
+        ('TRATAMENTO', 'Tratamento (manual)'),
+        ('SISTEMA', 'Sistema'),
+    ]
+    CONFERENCIA_FPD_CHOICES = [
+        ('', '—'),
+        ('AGUARDANDO', 'Aguardando confirmação FPD'),
+        ('CONFIRMADO', 'Confirmado na planilha FPD'),
+        ('DIVERGENTE', 'Divergente da planilha FPD'),
+    ]
+    status_origem = models.CharField(
+        max_length=20,
+        choices=STATUS_ORIGEM_CHOICES,
+        default='SISTEMA',
+        db_index=True,
+        help_text="Se o status atual veio do FPD ou foi informado no tratamento",
+    )
+    conferencia_fpd = models.CharField(
+        max_length=20,
+        choices=CONFERENCIA_FPD_CHOICES,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="Conferência do status de tratamento com a próxima importação FPD",
+    )
+    status_informado_tratamento = models.CharField(
+        max_length=20,
+        blank=True,
+        default='',
+        help_text="Status que o BO informou no tratamento (para conferir no FPD)",
+    )
+    data_status_tratamento = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Quando o status foi alterado no tratamento",
+    )
     # Campos mapeados diretamente do arquivo FPD
     id_contrato_fpd = models.CharField(max_length=100, blank=True, null=True, help_text="ID_CONTRATO do arquivo FPD")
     dt_pagamento_fpd = models.DateField(blank=True, null=True, help_text="DT_PAGAMENTO do arquivo FPD")

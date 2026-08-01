@@ -185,17 +185,48 @@
 .badge-orfao { background: #6c757d; font-size: 0.65rem; }
 .badge-atrasado { background: #dc3545; font-size: 0.65rem; }
 .badge-aberto { background: #fd7e14; font-size: 0.65rem; }
+.badge-conf-aguardando { background: #0dcaf0; color: #033; font-size: 0.62rem; }
+.badge-conf-confirmado { background: #198754; font-size: 0.62rem; }
+.badge-conf-divergente { background: #dc3545; font-size: 0.62rem; }
 .acoes-btns .btn { padding: 1px 6px; font-size: 0.72rem; }
 .link-faturas { cursor: pointer; color: var(--accent-color); text-decoration: underline; font-weight: 600; }
-.faturas-table input, .faturas-table select { font-size: 0.8rem; min-width: 0; }
-.faturas-table .col-num { width: 40px; }
-.faturas-table .col-status { width: 130px; }
-.faturas-table .col-date { width: 130px; }
-.faturas-table .col-valor { width: 140px; min-width: 140px; }
-.faturas-table .col-valor input { width: 100%; min-width: 120px; }
-.faturas-table .col-promessa { width: 130px; min-width: 130px; }
-.faturas-pix { font-size: 0.75rem; }
-#modalFaturas .modal-dialog { max-width: 1200px; }
+.faturas-table input, .faturas-table select { font-size: 0.8rem; }
+.faturas-table .col-num { width: 36px; }
+.faturas-table .col-status { width: 168px; min-width: 168px; }
+.faturas-table .fat-status {
+    min-width: 148px;
+    width: 100%;
+    max-width: none;
+}
+.faturas-table .col-date { width: 128px; min-width: 120px; }
+.faturas-table .col-valor { width: 110px; min-width: 100px; }
+.faturas-table .col-valor input { width: 100%; min-width: 90px; }
+.faturas-table .col-promessa { width: 128px; min-width: 120px; }
+.faturas-table .col-pix { width: 96px; min-width: 90px; text-align: center; }
+.faturas-pix-btns {
+    display: flex;
+    gap: 0.35rem;
+    justify-content: center;
+    align-items: center;
+}
+.faturas-pix-btns .btn {
+    padding: 0.28rem 0.5rem;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+.faturas-pix-btns .btn.has-value {
+    border-color: #198754;
+    color: #198754;
+}
+.faturas-pix-btns .btn.empty {
+    opacity: 0.45;
+}
+.faturas-pix-btns .btn.copied {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: rgba(13, 110, 253, 0.08);
+}
+#modalFaturas .modal-dialog { max-width: 1280px; }
 
 .qualidade-page.modo-tratamento {
     height: calc(100vh - 100px);
@@ -336,6 +367,12 @@
             <select id="filtro-status-tratamento" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status tratamento">
                 <option value="">Status trat.</option>
                 <option value="sem">Sem status</option>
+            </select>
+            <select id="filtro-conferencia-fpd" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Conferência FPD">
+                <option value="">Conf. FPD</option>
+                <option value="AGUARDANDO">Aguardando FPD</option>
+                <option value="CONFIRMADO">Confirmado FPD</option>
+                <option value="DIVERGENTE">Divergente FPD</option>
             </select>
             <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="O.S. / cliente / CPF" onkeydown="if(event.key==='Enter')carregarDashboard()">
             <select id="filtro-status" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status contrato">
@@ -540,14 +577,14 @@
                                 <th class="col-promessa">Promessa pgto</th>
                                 <th class="col-date">Pagamento</th>
                                 <th class="col-valor">Valor</th>
-                                <th>PIX / Barras</th>
-                                <th style="width:160px">PDF / Nio</th>
+                                <th class="col-pix" title="Clique no ícone para copiar">PIX / Barras</th>
+                                <th style="width:140px">PDF / Nio</th>
                             </tr>
                         </thead>
                         <tbody id="tbody-faturas"></tbody>
                     </table>
                 </div>
-                <div class="text-muted small">Altere e clique em Salvar. Marcar como Pago preenche a data de pagamento com hoje se estiver vazia.</div>
+                <div class="text-muted small">Altere e clique em Salvar. Ícones PIX / código de barras: clique copia; se vazio (ou Shift+clique), permite informar. Status alterado no tratamento fica <strong>Aguardando FPD</strong> até a próxima importação confirmar ou divergir.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
@@ -696,6 +733,8 @@
         document.getElementById('filtro-elegivel').value = '';
         const stTrat = document.getElementById('filtro-status-tratamento');
         if (stTrat) stTrat.value = '';
+        const confFpd = document.getElementById('filtro-conferencia-fpd');
+        if (confFpd) confFpd.value = '';
         if (abaPrincipal === 'tratamento') {
             fila = 'atrasados';
             document.getElementById('fila-atrasados').checked = true;
@@ -817,6 +856,14 @@
         return `${m[3]}/${m[2]}/${m[1]}`;
     }
 
+    function badgeConferenciaFpd(conf) {
+        const c = (conf || '').toUpperCase();
+        if (c === 'AGUARDANDO') return '<span class="badge badge-conf-aguardando" title="Aguardando confirmação na planilha FPD">Aguard. FPD</span>';
+        if (c === 'CONFIRMADO') return '<span class="badge badge-conf-confirmado" title="Confirmado na planilha FPD">OK FPD</span>';
+        if (c === 'DIVERGENTE') return '<span class="badge badge-conf-divergente" title="Divergente da planilha FPD">Divergente</span>';
+        return '';
+    }
+
     function badgeFatura(status, display) {
         const s = (status || '').toUpperCase();
         if (s === 'ATRASADO') return `<span class="badge badge-atrasado">${escapeHtml(display || 'Atrasado')}</span>`;
@@ -880,6 +927,7 @@
         const st = document.getElementById('filtro-status').value;
         const el = document.getElementById('filtro-elegivel').value;
         const stTrat = (document.getElementById('filtro-status-tratamento') || {}).value || '';
+        const confFpd = (document.getElementById('filtro-conferencia-fpd') || {}).value || '';
         const params = new URLSearchParams({
             lente,
             mes: mesAtual,
@@ -892,6 +940,7 @@
         if (el) params.set('elegivel', el);
         if (stTrat === 'sem') params.set('status_tratamento_id', 'sem');
         else if (stTrat) params.set('status_tratamento_id', stTrat);
+        if (confFpd) params.set('conferencia_fpd', confFpd);
 
         const tbody = document.getElementById('tbody-contratos');
         tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Carregando…</td></tr>';
@@ -928,7 +977,7 @@
                         <td class="col-cliente">${escapeHtml(c.cliente_nome || '-')}</td>
                         <td>${escapeHtml(c.vendedor_nome || '-')}</td>
                         <td>${escapeHtml(c.status_contrato || '-')}</td>
-                        <td>${badgeFatura(c.status_fatura1, c.status_fatura1_display)}</td>
+                        <td>${badgeFatura(c.status_fatura1, c.status_fatura1_display)} ${badgeConferenciaFpd(c.conferencia_fpd)}</td>
                         <td>${formatDataBr(c.data_vencimento_f1)}</td>
                         <td>
                             <select class="form-select form-select-sm q-status-trat" data-prev="${c.status_tratamento_id || ''}" ${corBord}
@@ -1241,6 +1290,93 @@
         ).join('');
     }
 
+    function pixBarrasBtnClass(valor) {
+        return (valor || '').trim() ? 'has-value' : 'empty';
+    }
+
+    function tituloBtnPixBarras(tipo, valor) {
+        const tem = !!(valor || '').trim();
+        if (tipo === 'pix') {
+            return tem
+                ? 'Copiar PIX (Shift+clique para editar)'
+                : 'Sem PIX — clique para informar';
+        }
+        return tem
+            ? 'Copiar código de barras (Shift+clique para editar)'
+            : 'Sem código — clique para informar';
+    }
+
+    function atualizarBotoesPixBarras(tr) {
+        if (!tr) return;
+        const pix = (tr.querySelector('.fat-pix') || {}).value || '';
+        const barras = (tr.querySelector('.fat-barras') || {}).value || '';
+        const btnPix = tr.querySelector('.btn-copiar-pix');
+        const btnBarras = tr.querySelector('.btn-copiar-barras');
+        if (btnPix) {
+            btnPix.classList.toggle('has-value', !!pix.trim());
+            btnPix.classList.toggle('empty', !pix.trim());
+            btnPix.title = tituloBtnPixBarras('pix', pix);
+        }
+        if (btnBarras) {
+            btnBarras.classList.toggle('has-value', !!barras.trim());
+            btnBarras.classList.toggle('empty', !barras.trim());
+            btnBarras.title = tituloBtnPixBarras('barras', barras);
+        }
+    }
+
+    function editarCampoPixBarras(tr, seletor, label) {
+        const input = tr.querySelector(seletor);
+        if (!input) return;
+        const novo = window.prompt(`Informe o ${label}:`, input.value || '');
+        if (novo === null) return;
+        input.value = String(novo).trim();
+        atualizarBotoesPixBarras(tr);
+    }
+
+    async function copiarDoInput(tr, seletor, label, btn) {
+        const input = tr.querySelector(seletor);
+        const texto = (input && input.value || '').trim();
+        if (!texto) return;
+        try {
+            await navigator.clipboard.writeText(texto);
+            if (btn) {
+                btn.classList.add('copied');
+                const prev = btn.title;
+                btn.title = 'Copiado!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.title = prev;
+                }, 1200);
+            }
+        } catch (e) {
+            window.prompt(`Copie o ${label} (Ctrl+C):`, texto);
+        }
+    }
+
+    window.acaoPixFatura = function (btn, ev) {
+        const tr = btn.closest('tr');
+        if (!tr) return;
+        const input = tr.querySelector('.fat-pix');
+        const vazio = !(input && input.value || '').trim();
+        if ((ev && ev.shiftKey) || vazio) {
+            editarCampoPixBarras(tr, '.fat-pix', 'PIX (copia e cola)');
+            return;
+        }
+        copiarDoInput(tr, '.fat-pix', 'PIX', btn);
+    };
+
+    window.acaoBarrasFatura = function (btn, ev) {
+        const tr = btn.closest('tr');
+        if (!tr) return;
+        const input = tr.querySelector('.fat-barras');
+        const vazio = !(input && input.value || '').trim();
+        if ((ev && ev.shiftKey) || vazio) {
+            editarCampoPixBarras(tr, '.fat-barras', 'código de barras');
+            return;
+        }
+        copiarDoInput(tr, '.fat-barras', 'código de barras', btn);
+    };
+
     function renderFaturasTabela(data) {
         document.getElementById('faturas-contrato-id').value = data.id;
         document.getElementById('faturas-subtitulo').textContent =
@@ -1258,16 +1394,34 @@
             const pdfBtns = f.tem_pdf
                 ? `<button type="button" class="btn btn-sm btn-outline-success" onclick="downloadPdfFatura(${f.id})" title="Download"><i class="bi bi-download"></i></button>`
                 : '';
+            const confBadge = badgeConferenciaFpd(f.conferencia_fpd);
+            const espelhoFpd = f.ds_status_fatura_fpd
+                ? `<div class="small text-muted mt-1">FPD: ${escapeHtml(f.ds_status_fatura_fpd)}</div>`
+                : '';
+            const pix = f.codigo_pix || '';
+            const barras = f.codigo_barras || '';
             return `<tr data-fatura-id="${f.id}" data-numero-fatura="${f.numero_fatura}">
                 <td class="text-center fw-bold">${f.numero_fatura}</td>
-                <td><select class="form-select form-select-sm fat-status">${optionsStatus(f.status)}</select></td>
+                <td class="col-status">
+                    <select class="form-select form-select-sm fat-status">${optionsStatus(f.status)}</select>
+                    ${confBadge ? `<div class="mt-1">${confBadge}</div>` : ''}
+                    ${espelhoFpd}
+                </td>
                 <td><input type="date" class="form-control form-control-sm fat-venc" value="${f.data_vencimento || ''}"></td>
                 <td><input type="date" class="form-control form-control-sm fat-promessa" value="${f.data_promessa_pagamento || ''}"></td>
                 <td><input type="date" class="form-control form-control-sm fat-pagto" value="${f.data_pagamento || ''}"></td>
                 <td><input type="text" inputmode="decimal" class="form-control form-control-sm fat-valor" value="${formatValorInput(f.valor)}"></td>
-                <td>
-                    <input type="text" class="form-control form-control-sm fat-pix mb-1" placeholder="PIX copia e cola" value="${escapeAttr(f.codigo_pix || '')}">
-                    <input type="text" class="form-control form-control-sm fat-barras faturas-pix" placeholder="Código de barras" value="${escapeAttr(f.codigo_barras || '')}">
+                <td class="col-pix">
+                    <input type="hidden" class="fat-pix" value="${escapeAttr(pix)}">
+                    <input type="hidden" class="fat-barras" value="${escapeAttr(barras)}">
+                    <div class="faturas-pix-btns">
+                        <button type="button" class="btn btn-outline-secondary btn-copiar-pix ${pixBarrasBtnClass(pix)}"
+                            title="${escapeAttr(tituloBtnPixBarras('pix', pix))}"
+                            onclick="acaoPixFatura(this, event)"><i class="bi bi-qr-code"></i></button>
+                        <button type="button" class="btn btn-outline-secondary btn-copiar-barras ${pixBarrasBtnClass(barras)}"
+                            title="${escapeAttr(tituloBtnPixBarras('barras', barras))}"
+                            onclick="acaoBarrasFatura(this, event)"><i class="bi bi-upc"></i></button>
+                    </div>
                 </td>
                 <td class="acoes-btns">
                     <button type="button" class="btn btn-sm btn-outline-primary" title="Buscar na Nio" onclick="buscarNioFatura(${f.numero_fatura}, ${f.id})"><i class="bi bi-cloud-download"></i></button>

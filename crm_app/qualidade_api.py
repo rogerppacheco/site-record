@@ -68,6 +68,7 @@ class QualidadeDashboardView(APIView):
             'status_fatura1': request.GET.get('status_fatura1'),
             'fila': request.GET.get('fila', 'todos'),
             'status_tratamento_id': request.GET.get('status_tratamento_id') or request.GET.get('status_tratamento'),
+            'conferencia_fpd': request.GET.get('conferencia_fpd'),
         }
         try:
             data = qs.dashboard_qualidade(lente, mes, request.user, filtros)

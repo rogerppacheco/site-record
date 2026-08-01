@@ -22,6 +22,58 @@ MATCH_MATCHED = 'MATCHED'
 MATCH_FALTA_CRM = 'FALTA_CRM'
 MATCH_ORFAO = 'ORFAO'
 
+CONFERENCIA_AGUARDANDO = 'AGUARDANDO'
+CONFERENCIA_CONFIRMADO = 'CONFIRMADO'
+CONFERENCIA_DIVERGENTE = 'DIVERGENTE'
+ORIGEM_FPD = 'FPD'
+ORIGEM_TRATAMENTO = 'TRATAMENTO'
+
+
+def aplicar_status_fpd_com_conferencia(
+    fatura: Any,
+    *,
+    status_fpd: str,
+    campos_fpd: dict[str, Any],
+) -> dict[str, Any]:
+    """Mescla status da planilha FPD com status informado no tratamento.
+
+    - Se o BO marcou status no tratamento e ainda aguarda FPD:
+      - FPD confirma (mesmo resultado) → CONFIRMADO + aplica FPD
+      - FPD diverge → DIVERGENTE e **mantém** o status do tratamento
+        (espelho FPD continua nos campos *_fpd)
+    - Caso contrário → aplica status da planilha (fonte da verdade).
+    """
+    out = dict(campos_fpd)
+    origem = getattr(fatura, 'status_origem', '') or ''
+    conf = getattr(fatura, 'conferencia_fpd', '') or ''
+    informado = (getattr(fatura, 'status_informado_tratamento', '') or '').upper()
+    status_fpd_n = (status_fpd or 'NAO_PAGO').upper()
+
+    aguardando_tratamento = (
+        origem == ORIGEM_TRATAMENTO and conf == CONFERENCIA_AGUARDANDO
+    )
+
+    if aguardando_tratamento and informado:
+        # Compara "pago vs não pago" de forma prática para o BO
+        tratado_pago = informado == 'PAGO'
+        fpd_pago = status_fpd_n == 'PAGO'
+        if tratado_pago == fpd_pago:
+            out['status'] = status_fpd_n
+            out['status_origem'] = ORIGEM_FPD
+            out['conferencia_fpd'] = CONFERENCIA_CONFIRMADO
+        else:
+            # Mantém o status do tratamento; só atualiza espelho FPD
+            out.pop('status', None)
+            out['status_origem'] = ORIGEM_TRATAMENTO
+            out['conferencia_fpd'] = CONFERENCIA_DIVERGENTE
+    else:
+        # Sem pendência de tratamento: planilha manda no status operacional
+        out['status'] = status_fpd_n
+        out['status_origem'] = ORIGEM_FPD
+        out['conferencia_fpd'] = ''
+
+    return out
+
 
 def variacoes_ordem_servico(nr_ordem: str) -> list[str]:
     """Gera chaves de matching para O.S. (zeros, prefixo OS-, etc.)."""

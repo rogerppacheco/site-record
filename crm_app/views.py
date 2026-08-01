@@ -12801,6 +12801,8 @@ class ImportarFPDView(APIView):
         from crm_app.services.fpd_import_service import (
             MATCH_FALTA_CRM,
             MATCH_MATCHED,
+            ORIGEM_FPD,
+            aplicar_status_fpd_com_conferencia,
             buscar_venda_por_os,
             chave_importacao,
             criar_contrato_de_venda,
@@ -12924,7 +12926,11 @@ class ImportarFPDView(APIView):
                 return cache
 
             def _agendar_fatura_n(contrato, numero_fatura: int, campos: dict) -> None:
-                """Agenda create/update da fatura N (1=FPD, 2=SPD, 3=TPD)."""
+                """Agenda create/update da fatura N (1=FPD, 2=SPD, 3=TPD).
+
+                Se o BO alterou o status no tratamento (AGUARDANDO), confere com a
+                planilha: confirma, marca divergente ou aplica FPD normalmente.
+                """
                 cache = _carregar_faturas_contrato(contrato.id)
                 fatura = cache.get(numero_fatura)
                 if fatura is None:
@@ -12934,19 +12940,32 @@ class ImportarFPDView(APIView):
                     if fatura:
                         cache[numero_fatura] = fatura
 
+                status_fpd = campos.get('status') or 'NAO_PAGO'
+                if fatura is not None:
+                    campos_aplicados = aplicar_status_fpd_com_conferencia(
+                        fatura,
+                        status_fpd=status_fpd,
+                        campos_fpd=campos,
+                    )
+                else:
+                    campos_aplicados = dict(campos)
+                    campos_aplicados['status'] = status_fpd
+                    campos_aplicados['status_origem'] = ORIGEM_FPD
+                    campos_aplicados['conferencia_fpd'] = ''
+
                 if fatura is not None and getattr(fatura, 'pk', None):
-                    for chave, valor in campos.items():
+                    for chave, valor in campos_aplicados.items():
                         setattr(fatura, chave, valor)
                     if fatura.pk not in faturas_atualizar_ids:
                         faturas_para_atualizar.append(fatura)
                         faturas_atualizar_ids.add(fatura.pk)
                     cache[numero_fatura] = fatura
                 elif fatura is not None:
-                    for chave, valor in campos.items():
+                    for chave, valor in campos_aplicados.items():
                         setattr(fatura, chave, valor)
                 else:
                     nova = FaturaM10(
-                        contrato=contrato, numero_fatura=numero_fatura, **campos
+                        contrato=contrato, numero_fatura=numero_fatura, **campos_aplicados
                     )
                     faturas_para_criar.append(nova)
                     cache[numero_fatura] = nova
@@ -13132,6 +13151,7 @@ class ImportarFPDView(APIView):
                         'numero_fatura_operadora', 'valor', 'data_vencimento',
                         'data_pagamento', 'dias_atraso', 'status', 'id_contrato_fpd',
                         'dt_pagamento_fpd', 'ds_status_fatura_fpd', 'data_importacao_fpd',
+                        'status_origem', 'conferencia_fpd',
                     ], batch_size=500)
 
                 campos_imp_update = [

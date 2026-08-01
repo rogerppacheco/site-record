@@ -322,6 +322,13 @@ def _aplicar_filtros_contratos(
             faturas__status=status_fatura1,
         ).distinct()
 
+    conferencia_fpd = (filtros.get('conferencia_fpd') or '').strip().upper()
+    if conferencia_fpd:
+        queryset = queryset.filter(
+            faturas__numero_fatura=1,
+            faturas__conferencia_fpd=conferencia_fpd,
+        ).distinct()
+
     busca = filtros.get('q') or filtros.get('busca')
     if busca:
         busca_digits = re.sub(r'\D', '', str(busca))
@@ -613,6 +620,9 @@ def dashboard_qualidade(
             'status_contrato': c.status_contrato,
             'status_fatura1': status_fatura1,
             'status_fatura1_display': status_fatura1_display,
+            'conferencia_fpd': (f1.conferencia_fpd if f1 else '') or '',
+            'status_origem': (f1.status_origem if f1 else '') or '',
+            'ds_status_fatura_fpd': (f1.ds_status_fatura_fpd if f1 else '') or '',
             'data_vencimento_f1': data_venc_f1,
             'status_tratamento_id': st.id if st else None,
             'status_tratamento_nome': st.nome if st else None,
@@ -1513,6 +1523,10 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
             'numero_fatura': f.numero_fatura,
             'status': f.status,
             'status_display': f.get_status_display(),
+            'status_origem': f.status_origem or '',
+            'conferencia_fpd': f.conferencia_fpd or '',
+            'status_informado_tratamento': f.status_informado_tratamento or '',
+            'ds_status_fatura_fpd': f.ds_status_fatura_fpd or '',
             'data_vencimento': f.data_vencimento.isoformat() if f.data_vencimento else '',
             'data_pagamento': f.data_pagamento.isoformat() if f.data_pagamento else '',
             'data_promessa_pagamento': (
@@ -1578,9 +1592,12 @@ def salvar_faturas_contrato(
             continue
 
         campos: list[str] = []
+        status_mudou = False
         if 'status' in item and item['status']:
             st = str(item['status']).upper()
             if st in STATUS_FATURA_EDITAVEIS:
+                if fatura.status != st:
+                    status_mudou = True
                 fatura.status = st
                 campos.append('status')
             else:
@@ -1642,20 +1659,32 @@ def salvar_faturas_contrato(
             if 'data_pagamento' not in campos:
                 campos.append('data_pagamento')
 
+        # Status alterado no tratamento → aguarda confirmação na próxima importação FPD
+        if status_mudou:
+            fatura.status_origem = 'TRATAMENTO'
+            fatura.conferencia_fpd = 'AGUARDANDO'
+            fatura.status_informado_tratamento = fatura.status
+            fatura.data_status_tratamento = timezone.now()
+            campos.extend([
+                'status_origem',
+                'conferencia_fpd',
+                'status_informado_tratamento',
+                'data_status_tratamento',
+            ])
+
         if campos:
             campos.append('atualizado_em')
             fatura.save(update_fields=list(dict.fromkeys(campos)))
             atualizadas += 1
 
-            # Espelha fatura 1 nos campos FPD do contrato
+            # Espelha datas/valor da fatura 1; status_fatura_fpd fica só com a planilha
             if fatura.numero_fatura == 1:
                 contrato.data_vencimento_fpd = fatura.data_vencimento
                 contrato.data_pagamento_fpd = fatura.data_pagamento
-                contrato.status_fatura_fpd = fatura.status
                 contrato.valor_fatura_fpd = fatura.valor
                 contrato.save(update_fields=[
                     'data_vencimento_fpd', 'data_pagamento_fpd',
-                    'status_fatura_fpd', 'valor_fatura_fpd', 'atualizado_em',
+                    'valor_fatura_fpd', 'atualizado_em',
                 ])
 
     elegivel = contrato.calcular_elegibilidade()
