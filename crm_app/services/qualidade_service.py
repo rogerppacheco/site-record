@@ -358,23 +358,40 @@ def _q_fatura1_em_aberto(hoje: date) -> Q:
     )
 
 
+def _q_fatura1_paga() -> Q:
+    """1ª fatura paga (espelha FATURA PAGA / FECHADA paga da planilha FPD)."""
+    return Q(faturas__numero_fatura=1) & Q(faturas__status='PAGO')
+
+
 def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet[ContratoM10]:
-    """Filas de tratamento: atrasados (débito) x em aberto (no prazo)."""
+    """Filas de tratamento: atrasados x em aberto x pagas (total = união das três)."""
     hoje = timezone.localdate()
     if fila == 'atrasados':
         return queryset.filter(_q_fatura1_atrasada(hoje)).distinct()
     if fila in ('abertos', 'em_aberto'):
         return queryset.filter(_q_fatura1_em_aberto(hoje)).distinct()
+    if fila in ('pagas', 'pago', 'pagos'):
+        return queryset.filter(_q_fatura1_paga()).distinct()
+    if fila in ('todos', 'total', ''):
+        return queryset.filter(
+            _q_fatura1_atrasada(hoje) | _q_fatura1_em_aberto(hoje) | _q_fatura1_paga()
+        ).distinct()
     return queryset
 
 
 def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, int]:
     """Contagens das filas sem aplicar o filtro de fila atual."""
     hoje = timezone.localdate()
+    atrasados = queryset.filter(_q_fatura1_atrasada(hoje)).distinct().count()
+    abertos = queryset.filter(_q_fatura1_em_aberto(hoje)).distinct().count()
+    pagas = queryset.filter(_q_fatura1_paga()).distinct().count()
     return {
-        'atrasados': queryset.filter(_q_fatura1_atrasada(hoje)).distinct().count(),
-        'abertos': queryset.filter(_q_fatura1_em_aberto(hoje)).distinct().count(),
-        'todos': queryset.count(),
+        'atrasados': atrasados,
+        'abertos': abertos,
+        'pagas': pagas,
+        # Total operacional = soma das filas (bate com planilha quando vencimentos estão corretos)
+        'todos': atrasados + abertos + pagas,
+        'base': queryset.count(),
     }
 
 
@@ -494,7 +511,7 @@ def dashboard_qualidade(
     filas = contagens_filas_tratamento(queryset)
     reconciliacao = reconciliar_fpd_com_painel(mes, filas, lente=lente_norm)
     fila = (filtros.get('fila') or 'todos').strip().lower()
-    if fila and fila != 'todos':
+    if fila:
         queryset = _aplicar_filtro_fila(queryset, fila)
 
     contratos_list = list(queryset)
@@ -626,42 +643,50 @@ def reconciliar_fpd_com_painel(
     *,
     lente: str = 'vencimento',
 ) -> dict[str, Any]:
-    """Compara FPD ABERTA da planilha importada com atrasados + em aberto do painel."""
+    """Compara totais da planilha FPD com as filas do painel (atrasados/abertos/pagas)."""
     data_inicio, data_fim = mes_range(mes)
-    painel = int(filas.get('atrasados') or 0) + int(filas.get('abertos') or 0)
+    atrasados = int(filas.get('atrasados') or 0)
+    abertos = int(filas.get('abertos') or 0)
+    pagas = int(filas.get('pagas') or 0)
+    painel_total = atrasados + abertos + pagas
+    painel_abertas = atrasados + abertos
 
-    qs_fpd_abertas = ImportacaoFPD.objects.filter(
+    qs_fpd = ImportacaoFPD.objects.filter(
         indicador='FPD',
-        ds_sit_fatura__iexact='ABERTA',
         dt_venc_orig__gte=data_inicio,
         dt_venc_orig__lt=data_fim,
     )
-    fpd_abertas = qs_fpd_abertas.count()
-    fpd_abertas_matched = qs_fpd_abertas.filter(match_status='MATCHED').count()
-    faltam_crm = ImportacaoFPD.objects.filter(
-        match_status='FALTA_CRM',
-        indicador='FPD',
-        dt_venc_orig__gte=data_inicio,
-        dt_venc_orig__lt=data_fim,
+    fpd_total = qs_fpd.count()
+    fpd_abertas = qs_fpd.filter(ds_sit_fatura__iexact='ABERTA').count()
+    fpd_fechadas = qs_fpd.filter(ds_sit_fatura__iexact='FECHADA').count()
+    fpd_abertas_matched = qs_fpd.filter(
+        ds_sit_fatura__iexact='ABERTA', match_status='MATCHED'
     ).count()
-    faltam_crm_abertas = ImportacaoFPD.objects.filter(
-        match_status='FALTA_CRM',
-        indicador='FPD',
-        ds_sit_fatura__iexact='ABERTA',
-        dt_venc_orig__gte=data_inicio,
-        dt_venc_orig__lt=data_fim,
+    fpd_total_matched = qs_fpd.filter(match_status='MATCHED').count()
+    faltam_crm = qs_fpd.filter(match_status='FALTA_CRM').count()
+    faltam_crm_abertas = qs_fpd.filter(
+        match_status='FALTA_CRM', ds_sit_fatura__iexact='ABERTA'
     ).count()
 
     return {
         'mes': mes,
         'lente': lente,
+        'fpd_total_planilha': fpd_total,
+        'fpd_fechadas_planilha': fpd_fechadas,
         'fpd_abertas_planilha': fpd_abertas,
+        'fpd_total_vinculadas': fpd_total_matched,
         'fpd_abertas_vinculadas': fpd_abertas_matched,
-        'painel_atrasados_abertos': painel,
-        'diferenca': fpd_abertas_matched - painel,
+        'painel_atrasados': atrasados,
+        'painel_abertos': abertos,
+        'painel_pagas': pagas,
+        'painel_total': painel_total,
+        'painel_atrasados_abertos': painel_abertas,
+        'diferenca_total': fpd_total_matched - painel_total,
+        'diferenca_abertas': fpd_abertas_matched - painel_abertas,
         'faltam_crm_fpd': faltam_crm,
         'faltam_crm_fpd_abertas': faltam_crm_abertas,
-        'bate': fpd_abertas_matched == painel,
+        'bate_total': fpd_total_matched == painel_total,
+        'bate': fpd_abertas_matched == painel_abertas,
     }
 
 

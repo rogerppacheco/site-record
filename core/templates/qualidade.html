@@ -284,9 +284,13 @@
                 <label class="btn btn-outline-warning" for="fila-abertos" onclick="setFila('abertos')">
                     Em aberto <span class="badge" id="cnt-abertos">0</span>
                 </label>
+                <input type="radio" class="btn-check" name="fila-trat" id="fila-pagas" autocomplete="off">
+                <label class="btn btn-outline-success" for="fila-pagas" onclick="setFila('pagas')">
+                    Pagas <span class="badge" id="cnt-pagas">0</span>
+                </label>
                 <input type="radio" class="btn-check" name="fila-trat" id="fila-todos" autocomplete="off">
                 <label class="btn btn-outline-secondary" for="fila-todos" onclick="setFila('todos')">
-                    Todos <span class="badge" id="cnt-todos">0</span>
+                    Total <span class="badge" id="cnt-todos">0</span>
                 </label>
             </div>
             <select id="filtro-status-tratamento" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status tratamento">
@@ -589,6 +593,7 @@
         page = 1;
         document.getElementById('fila-atrasados').checked = nova === 'atrasados';
         document.getElementById('fila-abertos').checked = nova === 'abertos';
+        document.getElementById('fila-pagas').checked = nova === 'pagas';
         document.getElementById('fila-todos').checked = nova === 'todos';
         if (abaPrincipal !== 'tratamento') {
             setAbaPrincipal('tratamento');
@@ -683,9 +688,12 @@
         const f = filas || {};
         const atr = f.atrasados || 0;
         const abe = f.abertos || 0;
-        const tod = f.todos || 0;
+        const pag = f.pagas || 0;
+        const tod = f.todos != null ? f.todos : (atr + abe + pag);
         document.getElementById('cnt-atrasados').textContent = atr;
         document.getElementById('cnt-abertos').textContent = abe;
+        const cntPagas = document.getElementById('cnt-pagas');
+        if (cntPagas) cntPagas.textContent = pag;
         document.getElementById('cnt-todos').textContent = tod;
         document.getElementById('badge-tratar').textContent = atr + abe;
     }
@@ -697,17 +705,19 @@
             if (box) box.classList.add('d-none');
             return;
         }
-        const bate = !!rec.bate;
+        const bate = !!(rec.bate_total ?? rec.bate);
         box.classList.remove('d-none', 'alert-light', 'alert-success', 'alert-warning');
         box.classList.add(bate ? 'alert-success' : 'alert-warning');
-        const diff = rec.diferenca || 0;
+        const diffTotal = rec.diferenca_total ?? rec.diferenca ?? 0;
         txt.innerHTML = [
             `<strong>Reconciliação FPD (${escapeHtml(rec.mes || '')}):</strong>`,
-            `planilha ABERTA vinculadas = <strong>${rec.fpd_abertas_vinculadas ?? 0}</strong>`,
-            `· painel atrasados+abertos = <strong>${rec.painel_atrasados_abertos ?? 0}</strong>`,
-            `· Δ = <strong>${diff}</strong>`,
-            `· faltam no CRM (FPD abertas) = <strong>${rec.faltam_crm_fpd_abertas ?? 0}</strong>`,
-            bate ? '· <span class="text-success">números batem</span>' : '· <span class="text-danger">não bate — ver aba Faltam no CRM</span>',
+            `planilha total = <strong>${rec.fpd_total_planilha ?? '—'}</strong>`,
+            `(pagas ${rec.fpd_fechadas_planilha ?? '—'} · abertas ${rec.fpd_abertas_planilha ?? '—'})`,
+            `· painel = <strong>${rec.painel_total ?? ((rec.painel_atrasados||0)+(rec.painel_abertos||0)+(rec.painel_pagas||0))}</strong>`,
+            `(atrasados ${rec.painel_atrasados ?? '—'} · abertos ${rec.painel_abertos ?? '—'} · pagas ${rec.painel_pagas ?? '—'})`,
+            `· Δ total = <strong>${diffTotal}</strong>`,
+            `· faltam CRM = <strong>${rec.faltam_crm_fpd ?? 0}</strong>`,
+            bate ? '· <span class="text-success">números batem</span>' : '· <span class="text-danger">não bate — conferir vencimentos / Faltam no CRM</span>',
         ].join(' ');
         const badgeF = document.getElementById('badge-faltam');
         if (badgeF) badgeF.textContent = String(rec.faltam_crm_fpd ?? 0);

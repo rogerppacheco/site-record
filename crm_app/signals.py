@@ -111,12 +111,15 @@ def disparar_whatsapp_cadastrada(sender, instance, created, **kwargs):
 @receiver(post_save, sender=ContratoM10)
 def criar_faturas_automatico(sender, instance, created, **kwargs):
     """
-    Após salvar um ContratoM10, cria ou atualiza as 10 faturas com datas de vencimento calculadas
+    Após criar um ContratoM10, garante as 10 faturas.
+    Em updates, só completa faturas faltantes — não sobrescreve vencimento do FPD
+    (protegido em ``criar_ou_atualizar_faturas`` quando há data_importacao_fpd).
     """
     try:
         if instance.data_instalacao:
             instance.criar_ou_atualizar_faturas()
-            logger.info(f"✅ Faturas criadas/atualizadas para contrato {instance.numero_contrato}")
+            if created:
+                logger.info(f"✅ Faturas criadas/atualizadas para contrato {instance.numero_contrato}")
     except Exception as e:
         logger.error(f"❌ Erro ao criar/atualizar faturas para {instance.numero_contrato}: {e}")
 

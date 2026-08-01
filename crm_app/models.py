@@ -2872,11 +2872,16 @@ class ContratoM10(models.Model):
             return vencimento_fatura_1 + relativedelta(months=numero_fatura - 1)
     
     def criar_ou_atualizar_faturas(self):
-        """Cria ou atualiza as 10 faturas com as datas de vencimento calculadas"""
+        """Cria ou atualiza as 10 faturas com as datas de vencimento calculadas.
+
+        Importante: se a fatura já foi sincronizada pela planilha FPD/SPD/TPD
+        (``data_importacao_fpd`` preenchido), o vencimento da operadora prevalece
+        e não é sobrescrito pelo cálculo instalação+25.
+        """
         for i in range(1, 11):
             data_vencimento = self.calcular_vencimento_fatura_n(i)
             data_disponibilidade = self.calcular_data_disponibilidade(i)
-            
+
             fatura, created = FaturaM10.objects.get_or_create(
                 contrato=self,
                 numero_fatura=i,
@@ -2886,12 +2891,20 @@ class ContratoM10(models.Model):
                     'valor': self.valor_plano,
                 }
             )
-            
-            # Se já existe, atualiza apenas as datas
-            if not created:
-                fatura.data_vencimento = data_vencimento
-                fatura.data_disponibilidade = data_disponibilidade
-                fatura.save(update_fields=['data_vencimento', 'data_disponibilidade', 'atualizado_em'])
+
+            if created:
+                continue
+
+            # Planilha FPD/SPD/TPD é a fonte da verdade do vencimento real
+            if fatura.data_importacao_fpd:
+                if not fatura.data_disponibilidade:
+                    fatura.data_disponibilidade = data_disponibilidade
+                    fatura.save(update_fields=['data_disponibilidade', 'atualizado_em'])
+                continue
+
+            fatura.data_vencimento = data_vencimento
+            fatura.data_disponibilidade = data_disponibilidade
+            fatura.save(update_fields=['data_vencimento', 'data_disponibilidade', 'atualizado_em'])
 
     def calcular_elegibilidade(self):
         """Verifica se o contrato é elegível para bônus M-10.
@@ -2899,7 +2912,12 @@ class ContratoM10(models.Model):
         Nova regra: basta que todas as faturas cadastradas estejam pagas
         (qualquer quantidade) e o contrato esteja ativo. Mantemos o bloqueio
         para contratos com downgrade.
+
+        Usa ``QuerySet.update`` para não disparar post_save (que recria faturas
+        e apagaria o vencimento importado do FPD).
         """
+        from django.utils import timezone
+
         total_faturas = self.faturas.count()
         faturas_pagas = self.faturas.filter(status='PAGO').count()
 
@@ -2915,7 +2933,10 @@ class ContratoM10(models.Model):
             not self.teve_downgrade and
             self.status_contrato == 'ATIVO'
         )
-        self.save(update_fields=['elegivel_bonus', 'atualizado_em'])
+        ContratoM10.objects.filter(pk=self.pk).update(
+            elegivel_bonus=self.elegivel_bonus,
+            atualizado_em=timezone.now(),
+        )
         return self.elegivel_bonus
 
 

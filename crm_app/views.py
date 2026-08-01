@@ -12806,6 +12806,7 @@ class ImportarFPDView(APIView):
             criar_contrato_de_venda,
             extrair_campos_linha_fpd,
             normalizar_nr_ordem,
+            sincronizar_vencimentos_fpd_nas_faturas,
             variacoes_ordem_servico,
         )
         from django.utils import timezone
@@ -13201,6 +13202,13 @@ class ImportarFPDView(APIView):
                     for safra_str in safras_afetadas:
                         _recalcular_totais_safra_m10(safra_str)
 
+            # Garante vencimento da planilha após elegibilidade/signals
+            try:
+                sync_venc = sincronizar_vencimentos_fpd_nas_faturas()
+            except Exception as e_sync:
+                logger.exception('Falha ao sincronizar vencimentos FPD: %s', e_sync)
+                sync_venc = {'erro': str(e_sync)}
+
             log.finalizado_em = timezone.now()
             log.calcular_duracao()
             log.total_processadas = registros_importacoes_fpd + registros_atualizados
@@ -13217,6 +13225,7 @@ class ImportarFPDView(APIView):
                 'faltam_crm': registros_nao_encontrados,
                 'pulados': registros_pulados,
                 'usuario_id': usuario.id if usuario else None,
+                'sync_vencimentos': sync_venc,
             }
 
             if registros_pulados == log.total_linhas:
