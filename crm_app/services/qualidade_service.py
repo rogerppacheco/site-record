@@ -344,6 +344,12 @@ def _aplicar_filtros_contratos(
             faturas__conferencia_fpd=conferencia_fpd,
         ).distinct()
 
+    faixa_atraso = (filtros.get('faixa_atraso') or filtros.get('faixa') or '').strip()
+    if faixa_atraso:
+        queryset = queryset.filter(
+            _q_faixa_atraso_fatura1(faixa_atraso, timezone.localdate())
+        ).distinct()
+
     busca = filtros.get('q') or filtros.get('busca')
     if busca:
         busca_digits = re.sub(r'\D', '', str(busca))
@@ -544,6 +550,16 @@ def dashboard_qualidade(
         .order_by('-data_instalacao', 'id')
     )
 
+    # Filtro N/10 depois do annotate para reutilizar faturas_pagas
+    faturas_pagas_n = filtros.get('faturas_pagas') or filtros.get('faturas_pagas_n')
+    if faturas_pagas_n not in (None, ''):
+        try:
+            n_pagas = int(str(faturas_pagas_n).split('/')[0].strip())
+        except (TypeError, ValueError):
+            n_pagas = None
+        if n_pagas is not None and 0 <= n_pagas <= 10:
+            queryset = queryset.filter(faturas_pagas=n_pagas)
+
     filas = contagens_filas_tratamento(queryset)
     reconciliacao = reconciliar_fpd_com_painel(mes, filas, lente=lente_norm)
     fila = (filtros.get('fila') or 'todos').strip().lower()
@@ -729,15 +745,26 @@ def reconciliar_fpd_com_painel(
     }
 
 
-# Faixas da planilha → rótulos do dashboard Nio
+# Faixas da planilha → rótulos do dashboard Nio / filtro Tratamento
 FAIXAS_NIO_ORDEM = [
     ('d10_15', '10 a 15 Dias'),
     ('d15_30', '15 a 30 Dias'),
     ('d30_45', '30 a 45 Dias'),
-    ('d45_55', '45 a 55 Dias'),
-    ('d55_60', '55 a 60 Dias'),
-    ('d61', '>= a 61 Dias'),
+    ('d45_59', '45 a 59 Dias'),
+    ('d61', '>= 60 Dias'),
 ]
+
+# Limites inclusivos de dias de atraso (fatura 1) para filtro do painel
+FAIXA_ATRASO_RANGES: dict[str, tuple[int, Optional[int]]] = {
+    'd10_15': (0, 15),
+    'd15_30': (16, 30),
+    'd30_45': (31, 45),
+    'd45_59': (46, 59),
+    'd61': (60, None),
+    # Legado (planilhas antigas / UI antiga)
+    'd45_55': (46, 59),
+    'd55_60': (46, 59),
+}
 
 
 def _normalizar_faixa_nio(faixa: str, dias_atraso: int = 0) -> str:
@@ -750,13 +777,11 @@ def _normalizar_faixa_nio(faixa: str, dias_atraso: int = 0) -> str:
         return 'd15_30'
     if '30 A 45' in f or '30-45' in f:
         return 'd30_45'
-    if '45 A 55' in f or '45-55' in f:
-        return 'd45_55'
-    if '55 A 60' in f or '55-60' in f:
-        return 'd55_60'
-    if '>60' in f or '>=' in f or '61' in f:
-        return 'd61'
-    if 'MAIS DE 60' in f:
+    if '45 A 59' in f or '45-59' in f or '45 A 55' in f or '45-55' in f:
+        return 'd45_59'
+    if '55 A 60' in f or '55-60' in f or '45 A 60' in f:
+        return 'd45_59'
+    if '>60' in f or '>=' in f or '61' in f or 'MAIS DE 60' in f:
         return 'd61'
 
     # Fallback por NR_DIAS_ATRASO
@@ -764,19 +789,45 @@ def _normalizar_faixa_nio(faixa: str, dias_atraso: int = 0) -> str:
         d = int(dias_atraso or 0)
     except (TypeError, ValueError):
         d = 0
-    if d <= 0:
-        return 'd10_15'
     if d <= 15:
         return 'd10_15'
     if d <= 30:
         return 'd15_30'
     if d <= 45:
         return 'd30_45'
-    if d <= 55:
-        return 'd45_55'
-    if d <= 60:
-        return 'd55_60'
+    if d <= 59:
+        return 'd45_59'
     return 'd61'
+
+
+def _q_faixa_atraso_fatura1(faixa_chave: str, hoje: date) -> Q:
+    """Filtro de contratos pela faixa de atraso da 1ª fatura."""
+    chave = (faixa_chave or '').strip().lower()
+    limites = FAIXA_ATRASO_RANGES.get(chave)
+    if not limites:
+        return Q()
+    lo, hi = limites
+    base = Q(faturas__numero_fatura=1) & ~Q(faturas__status__in=STATUS_FATURA_FECHADA)
+
+    por_dias = Q(faturas__dias_atraso__gte=lo)
+    if hi is not None:
+        por_dias &= Q(faturas__dias_atraso__lte=hi)
+
+    # Fallback quando dias_atraso não veio da planilha: calcula pelo vencimento
+    from datetime import timedelta
+
+    if hi is None:
+        por_venc = Q(
+            faturas__dias_atraso__isnull=True,
+            faturas__data_vencimento__lte=hoje - timedelta(days=lo),
+        )
+    else:
+        por_venc = Q(
+            faturas__dias_atraso__isnull=True,
+            faturas__data_vencimento__gte=hoje - timedelta(days=hi),
+            faturas__data_vencimento__lte=hoje - timedelta(days=lo),
+        )
+    return base & (por_dias | por_venc)
 
 
 def dashboard_fpd_estilo_nio(

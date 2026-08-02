@@ -73,16 +73,47 @@
 .qualidade-toolbar {
     flex-shrink: 0;
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem 0.4rem;
-    padding: 0.15rem 0 0.3rem;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.2rem 0 0.35rem;
     min-width: 0;
 }
-.qualidade-toolbar .q-busca { width: 10.5rem; max-width: 100%; flex: 0 1 10.5rem; }
+.qualidade-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.45rem;
+    min-width: 0;
+}
+.qualidade-toolbar .q-busca {
+    width: 14rem;
+    max-width: 100%;
+    flex: 1 1 12rem;
+    min-width: 10rem;
+}
 .qualidade-toolbar .q-sel-mes { width: auto; min-width: 7.2rem; max-width: 9rem; }
+.qualidade-toolbar .q-sel-filtro {
+    width: auto;
+    min-width: 7.5rem;
+    max-width: 11rem;
+    font-size: 0.78rem;
+}
 .qualidade-toolbar .q-sel-status,
-.qualidade-toolbar .q-sel-elegivel { width: auto; min-width: 6.2rem; max-width: 8rem; }
+.qualidade-toolbar .q-sel-elegivel { width: auto; min-width: 6.2rem; max-width: 8.5rem; }
+.qualidade-mais-filtros {
+    display: none;
+    width: 100%;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0.4rem;
+    background: color-mix(in srgb, var(--bg-secondary, #f1f3f5) 88%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+.qualidade-mais-filtros.is-open { display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: center; }
+.qualidade-chip-ativos {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
 .table-qualidade .q-status-trat {
     min-width: 8.5rem;
     max-width: 11rem;
@@ -128,8 +159,7 @@
 .table-nio-fpd .nio-faixa-d10_15 { background: #fff59d; }
 .table-nio-fpd .nio-faixa-d15_30 { background: #ffe082; }
 .table-nio-fpd .nio-faixa-d30_45 { background: #ef9a9a; }
-.table-nio-fpd .nio-faixa-d45_55 { background: #e57373; color: #fff; }
-.table-nio-fpd .nio-faixa-d55_60 { background: #ef5350; color: #fff; }
+.table-nio-fpd .nio-faixa-d45_59 { background: #e57373; color: #fff; }
 .table-nio-fpd .nio-faixa-d61 { background: #b71c1c; color: #fff; }
 .table-nio-fpd .nio-row-header td { background: #fff; }
 .qualidade-page.modo-tratamento .qualidade-shell { padding: 0.3rem 0.4rem !important; }
@@ -355,52 +385,84 @@
         </div>
 
         <div class="qualidade-toolbar" id="qualidade-toolbar">
-            <select id="sel-mes-tratamento" class="form-select form-select-sm q-sel-mes" title="Mês" onchange="selecionarMes(this.value)"></select>
-            <div class="qualidade-filas btn-group" role="group" aria-label="Fila de tratamento" id="filas-tratamento">
-                <input type="radio" class="btn-check" name="fila-trat" id="fila-atrasados" autocomplete="off" checked>
-                <label class="btn btn-outline-danger" for="fila-atrasados" onclick="setFila('atrasados')">
-                    Atrasados <span class="badge" id="cnt-atrasados">0</span>
-                </label>
-                <input type="radio" class="btn-check" name="fila-trat" id="fila-abertos" autocomplete="off">
-                <label class="btn btn-outline-warning" for="fila-abertos" onclick="setFila('abertos')">
-                    Em aberto <span class="badge" id="cnt-abertos">0</span>
-                </label>
-                <input type="radio" class="btn-check" name="fila-trat" id="fila-pagas" autocomplete="off">
-                <label class="btn btn-outline-success" for="fila-pagas" onclick="setFila('pagas')">
-                    Pagas <span class="badge" id="cnt-pagas">0</span>
-                </label>
-                <input type="radio" class="btn-check" name="fila-trat" id="fila-todos" autocomplete="off">
-                <label class="btn btn-outline-secondary" for="fila-todos" onclick="setFila('todos')">
-                    Total <span class="badge" id="cnt-todos">0</span>
-                </label>
+            <div class="qualidade-toolbar-row">
+                <select id="sel-mes-tratamento" class="form-select form-select-sm q-sel-mes" title="Mês" onchange="selecionarMes(this.value)"></select>
+                <div class="qualidade-filas btn-group" role="group" aria-label="Fila de tratamento" id="filas-tratamento">
+                    <input type="radio" class="btn-check" name="fila-trat" id="fila-atrasados" autocomplete="off" checked>
+                    <label class="btn btn-outline-danger" for="fila-atrasados" onclick="setFila('atrasados')">
+                        Atrasados <span class="badge" id="cnt-atrasados">0</span>
+                    </label>
+                    <input type="radio" class="btn-check" name="fila-trat" id="fila-abertos" autocomplete="off">
+                    <label class="btn btn-outline-warning" for="fila-abertos" onclick="setFila('abertos')">
+                        Em aberto <span class="badge" id="cnt-abertos">0</span>
+                    </label>
+                    <input type="radio" class="btn-check" name="fila-trat" id="fila-pagas" autocomplete="off">
+                    <label class="btn btn-outline-success" for="fila-pagas" onclick="setFila('pagas')">
+                        Pagas <span class="badge" id="cnt-pagas">0</span>
+                    </label>
+                    <input type="radio" class="btn-check" name="fila-trat" id="fila-todos" autocomplete="off">
+                    <label class="btn btn-outline-secondary" for="fila-todos" onclick="setFila('todos')">
+                        Total <span class="badge" id="cnt-todos">0</span>
+                    </label>
+                </div>
+                <span class="qualidade-kpi-mini ms-auto" id="kpi-mini"></span>
             </div>
-            <select id="filtro-status-tratamento" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status tratamento">
-                <option value="">Status trat.</option>
-                <option value="sem">Sem status</option>
-            </select>
-            <select id="filtro-conferencia-fpd" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Conferência FPD">
-                <option value="">Conf. FPD</option>
-                <option value="AGUARDANDO">Aguardando FPD</option>
-                <option value="CONFIRMADO">Confirmado FPD</option>
-                <option value="DIVERGENTE">Divergente FPD</option>
-            </select>
-            <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="O.S. / cliente / CPF" onkeydown="if(event.key==='Enter')carregarDashboard()">
-            <select id="filtro-status" class="form-select form-select-sm q-sel-status" onchange="carregarDashboard()" title="Status contrato">
-                <option value="">Status</option>
-                <option value="ATIVO">Ativo</option>
-                <option value="CANCELADO">Cancelado</option>
-                <option value="DOWNGRADE">Downgrade</option>
-            </select>
-            <select id="filtro-elegivel" class="form-select form-select-sm q-sel-elegivel" onchange="carregarDashboard()" title="Elegibilidade">
-                <option value="">Elegível</option>
-                <option value="true">Sim</option>
-                <option value="false">Não</option>
-            </select>
-            <button class="btn btn-primary btn-sm" type="button" onclick="carregarDashboard()" title="Filtrar"><i class="bi bi-funnel"></i></button>
-            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="limparFiltrosQualidade()" title="Limpar filtros">
-                <i class="bi bi-x-circle"></i>
-            </button>
-            <span class="qualidade-kpi-mini" id="kpi-mini"></span>
+            <div class="qualidade-toolbar-row">
+                <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="Buscar O.S., cliente ou CPF" onkeydown="if(event.key==='Enter'){page=1;carregarDashboard()}">
+                <select id="filtro-faixa-atraso" class="form-select form-select-sm q-sel-filtro" onchange="page=1;carregarDashboard()" title="Faixa de atraso da 1ª fatura">
+                    <option value="">Atraso (dias)</option>
+                    <option value="d10_15">10 a 15 dias</option>
+                    <option value="d15_30">15 a 30 dias</option>
+                    <option value="d30_45">30 a 45 dias</option>
+                    <option value="d45_59">45 a 59 dias</option>
+                    <option value="d61">≥ 60 dias</option>
+                </select>
+                <select id="filtro-faturas-pagas" class="form-select form-select-sm q-sel-filtro" onchange="page=1;carregarDashboard()" title="Quantidade de faturas pagas/fechadas">
+                    <option value="">Faturas pagas</option>
+                    <option value="0">0/10</option>
+                    <option value="1">1/10</option>
+                    <option value="2">2/10</option>
+                    <option value="3">3/10</option>
+                    <option value="4">4/10</option>
+                    <option value="5">5/10</option>
+                    <option value="6">6/10</option>
+                    <option value="7">7/10</option>
+                    <option value="8">8/10</option>
+                    <option value="9">9/10</option>
+                    <option value="10">10/10</option>
+                </select>
+                <select id="filtro-status-tratamento" class="form-select form-select-sm q-sel-filtro" onchange="page=1;carregarDashboard()" title="Status tratamento">
+                    <option value="">Status trat.</option>
+                    <option value="sem">Sem status</option>
+                </select>
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-mais-filtros" onclick="toggleMaisFiltrosQualidade()" title="Mais filtros">
+                    <i class="bi bi-sliders"></i> Mais
+                </button>
+                <button class="btn btn-primary btn-sm" type="button" onclick="page=1;carregarDashboard()" title="Aplicar filtros"><i class="bi bi-funnel"></i></button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" onclick="limparFiltrosQualidade()" title="Limpar filtros">
+                    <i class="bi bi-x-circle"></i>
+                </button>
+                <span class="qualidade-chip-ativos" id="filtros-ativos-resumo"></span>
+            </div>
+            <div class="qualidade-mais-filtros" id="qualidade-mais-filtros">
+                <select id="filtro-conferencia-fpd" class="form-select form-select-sm q-sel-filtro" onchange="page=1;carregarDashboard()" title="Conferência FPD">
+                    <option value="">Conf. FPD</option>
+                    <option value="AGUARDANDO">Aguardando FPD</option>
+                    <option value="CONFIRMADO">Confirmado FPD</option>
+                    <option value="DIVERGENTE">Divergente FPD</option>
+                </select>
+                <select id="filtro-status" class="form-select form-select-sm q-sel-status" onchange="page=1;carregarDashboard()" title="Status contrato">
+                    <option value="">Status contrato</option>
+                    <option value="ATIVO">Ativo</option>
+                    <option value="CANCELADO">Cancelado</option>
+                    <option value="DOWNGRADE">Downgrade</option>
+                </select>
+                <select id="filtro-elegivel" class="form-select form-select-sm q-sel-elegivel" onchange="page=1;carregarDashboard()" title="Elegibilidade">
+                    <option value="">Elegível</option>
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                </select>
+            </div>
         </div>
 
         </div><!-- /.qualidade-chrome -->
@@ -738,6 +800,40 @@
     }
     window.setFila = setFila;
 
+    window.toggleMaisFiltrosQualidade = function () {
+        const box = document.getElementById('qualidade-mais-filtros');
+        const btn = document.getElementById('btn-mais-filtros');
+        if (!box) return;
+        const open = box.classList.toggle('is-open');
+        if (btn) btn.classList.toggle('active', open);
+    };
+
+    function atualizarResumoFiltrosAtivos() {
+        const el = document.getElementById('filtros-ativos-resumo');
+        if (!el) return;
+        const chips = [];
+        const faixa = (document.getElementById('filtro-faixa-atraso') || {}).value || '';
+        const pagas = (document.getElementById('filtro-faturas-pagas') || {}).value || '';
+        const stTrat = (document.getElementById('filtro-status-tratamento') || {}).value || '';
+        const conf = (document.getElementById('filtro-conferencia-fpd') || {}).value || '';
+        const st = (document.getElementById('filtro-status') || {}).value || '';
+        const elig = (document.getElementById('filtro-elegivel') || {}).value || '';
+        const q = ((document.getElementById('filtro-q') || {}).value || '').trim();
+        if (q) chips.push('busca');
+        if (faixa) chips.push('atraso');
+        if (pagas !== '') chips.push(`${pagas}/10`);
+        if (stTrat) chips.push('status trat.');
+        if (conf) chips.push('conf. FPD');
+        if (st) chips.push('contrato');
+        if (elig) chips.push('elegível');
+        el.textContent = chips.length ? `Filtros: ${chips.join(' · ')}` : '';
+        // Abre "Mais" automaticamente se algum filtro avançado estiver ativo
+        if (conf || st || elig) {
+            const box = document.getElementById('qualidade-mais-filtros');
+            if (box && !box.classList.contains('is-open')) box.classList.add('is-open');
+        }
+    }
+
     window.limparFiltrosQualidade = function () {
         document.getElementById('filtro-q').value = '';
         document.getElementById('filtro-status').value = '';
@@ -746,6 +842,14 @@
         if (stTrat) stTrat.value = '';
         const confFpd = document.getElementById('filtro-conferencia-fpd');
         if (confFpd) confFpd.value = '';
+        const faixa = document.getElementById('filtro-faixa-atraso');
+        if (faixa) faixa.value = '';
+        const pagas = document.getElementById('filtro-faturas-pagas');
+        if (pagas) pagas.value = '';
+        const mais = document.getElementById('qualidade-mais-filtros');
+        if (mais) mais.classList.remove('is-open');
+        const btnMais = document.getElementById('btn-mais-filtros');
+        if (btnMais) btnMais.classList.remove('active');
         if (abaPrincipal === 'tratamento') {
             fila = 'atrasados';
             document.getElementById('fila-atrasados').checked = true;
@@ -943,6 +1047,9 @@
         const el = document.getElementById('filtro-elegivel').value;
         const stTrat = (document.getElementById('filtro-status-tratamento') || {}).value || '';
         const confFpd = (document.getElementById('filtro-conferencia-fpd') || {}).value || '';
+        const faixaAtraso = (document.getElementById('filtro-faixa-atraso') || {}).value || '';
+        const faturasPagas = (document.getElementById('filtro-faturas-pagas') || {}).value || '';
+        atualizarResumoFiltrosAtivos();
         const params = new URLSearchParams({
             lente,
             mes: mesAtual,
@@ -956,6 +1063,8 @@
         if (stTrat === 'sem') params.set('status_tratamento_id', 'sem');
         else if (stTrat) params.set('status_tratamento_id', stTrat);
         if (confFpd) params.set('conferencia_fpd', confFpd);
+        if (faixaAtraso) params.set('faixa_atraso', faixaAtraso);
+        if (faturasPagas !== '') params.set('faturas_pagas', faturasPagas);
 
         const tbody = document.getElementById('tbody-contratos');
         tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Carregando…</td></tr>';
