@@ -43,6 +43,42 @@ def _fatura_esta_fechada(status: Optional[str]) -> bool:
     return (status or '').upper() in STATUS_FATURA_FECHADA
 
 
+def _fatura1_fechada_na_planilha(fatura: Optional[FaturaM10]) -> bool:
+    """True se a 1ª fatura está FECHADA na visão Dashboard FPD (planilha)."""
+    if fatura is None:
+        return False
+    st = (fatura.status or '').upper()
+    conf = (fatura.conferencia_fpd or '').upper()
+    if st == 'OUTROS':
+        return True
+    if st == 'PAGO' and conf not in ('AGUARDANDO', 'DIVERGENTE'):
+        return True
+    return False
+
+
+def _status_fatura1_exibicao_fila(
+    f1: Optional[FaturaM10],
+    contrato: ContratoM10,
+    status_display_map: dict[str, str],
+    hoje: date,
+) -> tuple[Optional[str], str]:
+    """Status da 1ª fatura na lista, alinhado às filas (planilha FPD).
+
+    Se o BO marcou PAGO e ainda aguarda/diverge da planilha, exibe Atrasado/Não Pago
+    (fila) e o badge de conferência continua mostrando o tratamento.
+    """
+    if f1 is None:
+        raw = contrato.status_fatura_fpd or None
+        return raw, (raw or '-')
+    st = (f1.status or '').upper()
+    conf = (f1.conferencia_fpd or '').upper()
+    if st == 'PAGO' and conf in ('AGUARDANDO', 'DIVERGENTE'):
+        if f1.data_vencimento and f1.data_vencimento < hoje:
+            return 'ATRASADO', status_display_map.get('ATRASADO', 'Atrasado')
+        return 'NAO_PAGO', status_display_map.get('NAO_PAGO', 'Não Pago')
+    return st or None, status_display_map.get(st, f1.status or '-')
+
+
 # ---------------------------------------------------------------------------
 # HistoricoEnvioQualidade (quando existir no models.py):
 #   contrato = FK(ContratoM10, related_name='historico_envios_qualidade')
@@ -366,36 +402,67 @@ def _aplicar_filtros_contratos(
     return queryset
 
 
-def _q_fatura1_atrasada(hoje: date) -> Q:
-    """1ª fatura em débito vencido (ABERTA na planilha FPD).
+def _q_fatura1_pago_pendente_conferencia() -> Q:
+    """PAGO só no tratamento, ainda não confirmado/fechado na planilha FPD.
 
-    OUTROS (ex.: Cancelada/FECHADA) não entra aqui — vai para Pagas/fechadas.
+    Mantém o contrato nas filas ABERTA do Dashboard FPD (atrasados/em aberto)
+    até a importação confirmar — alinha Tratamento ↔ planilha.
     """
-    return Q(faturas__numero_fatura=1) & (
+    return (
+        Q(faturas__status='PAGO')
+        & Q(faturas__conferencia_fpd__in=['AGUARDANDO', 'DIVERGENTE'])
+    )
+
+
+def _q_fatura1_atrasada(hoje: date) -> Q:
+    """1ª fatura em débito vencido — alinhado a ABERTA na planilha FPD.
+
+    Inclui marcado PAGO no tratamento com conferência pendente/divergente.
+    OUTROS (Cancelada/FECHADA) não entra — vai para Pagas.
+    """
+    aberta_operacional = (
         Q(faturas__status='ATRASADO')
         | (
             Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO'])
             & Q(faturas__data_vencimento__lt=hoje)
         )
     )
+    pago_pendente_vencido = (
+        _q_fatura1_pago_pendente_conferencia()
+        & Q(faturas__data_vencimento__lt=hoje)
+    )
+    return Q(faturas__numero_fatura=1) & (aberta_operacional | pago_pendente_vencido)
 
 
 def _q_fatura1_em_aberto(hoje: date) -> Q:
-    """1ª fatura em aberto ainda no prazo (ABERTA na planilha, vencimento >= hoje)."""
-    return (
-        Q(faturas__numero_fatura=1)
-        & Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO'])
+    """1ª fatura em aberto no prazo — alinhado a ABERTA na planilha FPD."""
+    aberta_operacional = (
+        Q(faturas__status__in=['NAO_PAGO', 'AGUARDANDO'])
         & Q(faturas__data_vencimento__gte=hoje)
     )
+    pago_pendente_no_prazo = (
+        _q_fatura1_pago_pendente_conferencia()
+        & (
+            Q(faturas__data_vencimento__gte=hoje)
+            | Q(faturas__data_vencimento__isnull=True)
+        )
+    )
+    return Q(faturas__numero_fatura=1) & (aberta_operacional | pago_pendente_no_prazo)
 
 
 def _q_fatura1_paga() -> Q:
-    """1ª fatura fechada/paga na visão FPD (PAGO + OUTROS/Cancelada).
+    """1ª fatura FECHADA na planilha FPD (Dashboard: FATURA PAGA).
 
-    Espelha a linha FATURA PAGA / DS_SIT_FATURA=FECHADA da planilha.
-    Mantém status OUTROS no registro; só a fila/contagem trata como paga.
+    PAGO marcado só no tratamento (AGUARDANDO/DIVERGENTE) não conta como paga
+    até a planilha confirmar — evita Δ entre Tratamento e Dashboard FPD.
     """
-    return Q(faturas__numero_fatura=1) & Q(faturas__status__in=STATUS_FATURA_FECHADA)
+    return Q(faturas__numero_fatura=1) & (
+        Q(faturas__status='OUTROS')
+        | (
+            Q(faturas__status='PAGO')
+            & ~Q(faturas__conferencia_fpd__in=['AGUARDANDO', 'DIVERGENTE'])
+        )
+    )
 
 
 def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet[ContratoM10]:
@@ -592,7 +659,14 @@ def dashboard_qualidade(
         f1_ids = [faturas1_map[c.id].id for c in contratos_list if c.id in faturas1_map]
         f1_qs = FaturaM10.objects.filter(id__in=f1_ids) if f1_ids else FaturaM10.objects.none()
         total_f1 = f1_qs.count()
-        pagas_f1 = f1_qs.filter(status__in=STATUS_FATURA_FECHADA).count()
+        # Alinha KPI ao Dashboard FPD: PAGO pendente de conferência conta como aberta
+        pagas_f1 = f1_qs.filter(
+            Q(status='OUTROS')
+            | (
+                Q(status='PAGO')
+                & ~Q(conferencia_fpd__in=['AGUARDANDO', 'DIVERGENTE'])
+            )
+        ).count()
         abertas_f1 = total_f1 - pagas_f1
         taxa = round((abertas_f1 / total_f1 * 100) if total_f1 > 0 else 0, 1)
         kpis: dict[str, Any] = {
@@ -634,9 +708,8 @@ def dashboard_qualidade(
     for c in contratos_list[start:end]:
         is_elegivel = _contrato_elegivel_dinamico(c)
         f1 = faturas1_map.get(c.id)
-        status_fatura1 = f1.status if f1 else (c.status_fatura_fpd or None)
-        status_fatura1_display = (
-            status_display_map.get(f1.status, f1.status) if f1 else (c.status_fatura_fpd or '-')
+        status_fatura1, status_fatura1_display = _status_fatura1_exibicao_fila(
+            f1, c, status_display_map, timezone.localdate()
         )
         orfao = _eh_orfao(c)
         contato = enriquecer_contato_contrato(c)
@@ -807,7 +880,14 @@ def _q_faixa_atraso_fatura1(faixa_chave: str, hoje: date) -> Q:
     if not limites:
         return Q()
     lo, hi = limites
-    base = Q(faturas__numero_fatura=1) & ~Q(faturas__status__in=STATUS_FATURA_FECHADA)
+    # Aberta na planilha: inclui PAGO ainda aguardando/divergente da FPD
+    base = Q(faturas__numero_fatura=1) & (
+        ~Q(faturas__status__in=STATUS_FATURA_FECHADA)
+        | (
+            Q(faturas__status='PAGO')
+            & Q(faturas__conferencia_fpd__in=['AGUARDANDO', 'DIVERGENTE'])
+        )
+    )
 
     por_dias = Q(faturas__dias_atraso__gte=lo)
     if hi is not None:
