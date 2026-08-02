@@ -657,7 +657,7 @@
                         <tbody id="tbody-faturas"></tbody>
                     </table>
                 </div>
-                <div class="text-muted small">Altere e clique em Salvar. Ícones PIX / código de barras: clique copia; se vazio (ou Shift+clique), permite informar. Status alterado no tratamento fica <strong>Aguardando FPD</strong> — a fila (Atrasados/Pagas) continua alinhada à planilha até a importação confirmar.</div>
+                <div class="text-muted small">Altere e clique em Salvar. Ícones PIX / código de barras: clique copia; se vazio (ou Shift+clique), permite informar. Status alterado no tratamento fica <strong>Aguardando FPD</strong> e já conta como paga no Tratamento e no Dashboard FPD até a planilha confirmar.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
@@ -950,16 +950,20 @@
         box.classList.remove('d-none', 'alert-light', 'alert-success', 'alert-warning');
         box.classList.add(bate ? 'alert-success' : 'alert-warning');
         const diffTotal = rec.diferenca_total ?? rec.diferenca ?? 0;
+        const aguard = rec.painel_aguard_fpd ?? 0;
         txt.innerHTML = [
             `<strong>Reconciliação FPD (${escapeHtml(rec.mes || '')}):</strong>`,
             `planilha total = <strong>${rec.fpd_total_planilha ?? '—'}</strong>`,
             `(pagas ${rec.fpd_fechadas_planilha ?? '—'} · abertas ${rec.fpd_abertas_planilha ?? '—'})`,
             `· painel = <strong>${rec.painel_total ?? ((rec.painel_atrasados||0)+(rec.painel_abertos||0)+(rec.painel_pagas||0))}</strong>`,
             `(atrasados ${rec.painel_atrasados ?? '—'} · abertos ${rec.painel_abertos ?? '—'} · pagas ${rec.painel_pagas ?? '—'})`,
+            aguard ? `· aguard. conf. FPD = <strong>${aguard}</strong>` : '',
             `· Δ total = <strong>${diffTotal}</strong>`,
             `· faltam CRM = <strong>${rec.faltam_crm_fpd ?? 0}</strong>`,
-            bate ? '· <span class="text-success">números batem</span>' : '· <span class="text-danger">não bate — conferir vencimentos / Faltam no CRM</span>',
-        ].join(' ');
+            bate
+                ? '· <span class="text-success">alinhado ao tratamento</span>'
+                : '· <span class="text-danger">não bate — conferir vencimentos / Faltam no CRM</span>',
+        ].filter(Boolean).join(' ');
         const badgeF = document.getElementById('badge-faltam');
         if (badgeF) badgeF.textContent = String(rec.faltam_crm_fpd ?? 0);
     }
@@ -1376,12 +1380,15 @@
             // MÊS FATURA
             html += '<tr class="nio-row-header"><td>MÊS FATURA</td>' +
                 cols.map(c => cell(c.mes_fatura)).join('') + '</tr>';
-            // FATURA PAGA
+            // FATURA PAGA (inclui PAGO do tratamento / aguard. FPD)
             html += '<tr><td>FATURA PAGA</td>' +
                 cols.map(c => cell(c.fatura_paga)).join('') + '</tr>';
-            // FATURA ABERTA (em aberto = base do % ABERTO / faixas de atraso)
+            // FATURA ABERTA
             html += '<tr><td>FATURA ABERTA</td>' +
                 cols.map(c => cell(c.fatura_aberta ?? c.abertas ?? 0)).join('') + '</tr>';
+            // AGUARD. CONF. FPD (subset das pagas marcadas pelo BO)
+            html += '<tr><td>AGUARD. CONF. FPD</td>' +
+                cols.map(c => cell(c.aguard_fpd ?? 0)).join('') + '</tr>';
             // TOTAL
             html += '<tr><td>TOTAL FATURA</td>' +
                 cols.map(c => cell(c.total_fatura)).join('') + '</tr>';
