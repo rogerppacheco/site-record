@@ -69,6 +69,8 @@
 .qualidade-tabs .nav-link .badge { font-size: 0.62rem; vertical-align: middle; }
 .qualidade-toolbar-acoes { margin-left: auto; }
 .qualidade-toolbar-acoes .btn { font-size: 0.72rem; padding: 0.18rem 0.4rem; }
+.qualidade-acoes-menu .dropdown-item { font-size: 0.78rem; }
+.qualidade-acoes-menu .dropdown-item i { width: 1.1rem; }
 .qualidade-chrome { flex-shrink: 0; }
 .qualidade-toolbar {
     flex-shrink: 0;
@@ -95,7 +97,7 @@
 .qualidade-toolbar .q-sel-filtro {
     width: auto;
     min-width: 7.5rem;
-    max-width: 11rem;
+    max-width: 13rem;
     font-size: 0.78rem;
 }
 .qualidade-toolbar .q-sel-status,
@@ -120,14 +122,135 @@
     font-size: 0.72rem;
     padding: 0.15rem 0.3rem;
 }
-.qualidade-filas .btn { font-size: 0.72rem; padding: 0.18rem 0.5rem; }
-.qualidade-filas .btn .badge {
-    font-size: 0.62rem; margin-left: 2px;
-    background: color-mix(in srgb, currentColor 18%, transparent);
-    color: inherit;
+.qualidade-filas {
+    border-radius: 0.45rem;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent);
 }
-.qualidade-filas .btn-check:checked + .btn .badge { background: rgba(255,255,255,.25); color: #fff; }
+.qualidade-filas .btn {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.22rem 0.55rem;
+    border: none !important;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+.qualidade-filas .btn .badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    margin-left: 0.2rem;
+    padding: 0.12em 0.4em;
+    border-radius: 0.3rem;
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    color: inherit;
+    vertical-align: baseline;
+}
+.qualidade-filas .btn-check:checked + .btn .badge {
+    background: rgba(255,255,255,.28);
+    color: #fff;
+}
+.qualidade-filas .btn-outline-danger:not(.btn-check:checked + .btn) { color: #c62828; }
+.qualidade-filas .btn-outline-warning:not(.btn-check:checked + .btn) { color: #b86e00; }
+.qualidade-filas .btn-outline-success:not(.btn-check:checked + .btn) { color: #2e7d32; }
+.qualidade-pct-fpd {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 0.4rem;
+    white-space: nowrap;
+    line-height: 1.2;
+    /* Default / > 15%: vermelho */
+    background: color-mix(in srgb, #c62828 10%, transparent);
+    border: 1px solid color-mix(in srgb, #c62828 28%, transparent);
+}
+.qualidade-pct-fpd .q-pct-val {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #c62828;
+    font-variant-numeric: tabular-nums;
+}
+.qualidade-pct-fpd .q-pct-lbl {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+}
+/* ≤ 10%: verde */
+.qualidade-pct-fpd.is-ok {
+    background: color-mix(in srgb, #2e7d32 10%, transparent);
+    border-color: color-mix(in srgb, #2e7d32 28%, transparent);
+}
+.qualidade-pct-fpd.is-ok .q-pct-val { color: #2e7d32; }
+/* > 10% e ≤ 15%: âmbar */
+.qualidade-pct-fpd.is-warn {
+    background: color-mix(in srgb, #f0ad4e 22%, transparent);
+    border-color: color-mix(in srgb, #e0a800 40%, transparent);
+}
+.qualidade-pct-fpd.is-warn .q-pct-val { color: #b86e00; }
+/* > 15%: vermelho (classe explícita; mesmo visual do default) */
+.qualidade-pct-fpd.is-danger {
+    background: color-mix(in srgb, #c62828 10%, transparent);
+    border-color: color-mix(in srgb, #c62828 28%, transparent);
+}
+.qualidade-pct-fpd.is-danger .q-pct-val { color: #c62828; }
 .qualidade-kpi-mini { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; }
+.q-reconc-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.q-reconc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.18rem 0.5rem;
+    border-radius: 0.4rem;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+.q-reconc-chip.is-ok {
+    color: #1b5e20;
+    background: color-mix(in srgb, #2e7d32 12%, transparent);
+    border-color: color-mix(in srgb, #2e7d32 30%, transparent);
+}
+.q-reconc-chip.is-warn {
+    color: #8a5e00;
+    background: color-mix(in srgb, #f0ad4e 22%, transparent);
+    border-color: color-mix(in srgb, #e0a800 40%, transparent);
+}
+.q-reconc-details {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 40;
+    min-width: 17rem;
+    max-width: min(22rem, 92vw);
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.5rem;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border-color, #dee2e6);
+    box-shadow: 0 6px 20px rgba(0,0,0,.12);
+    font-size: 0.72rem;
+    line-height: 1.45;
+}
+.q-reconc-details.is-open { display: block; }
+.q-reconc-details dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.15rem 0.65rem;
+    margin: 0.35rem 0 0;
+}
+.q-reconc-details dt { color: var(--text-secondary); font-weight: 500; }
+.q-reconc-details dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.q-reconc-details .q-reconc-title { font-weight: 700; margin: 0; }
 
 /* Dashboard FPD estilo Nio */
 .nio-fpd-wrap { padding: 0.25rem 0.15rem 0.5rem; }
@@ -357,20 +480,24 @@
                     Instalação
                 </button>
             </div>
-            <div class="d-flex flex-wrap gap-1 qualidade-toolbar-acoes">
-                <a href="/importar-fpd/" class="btn btn-outline-primary btn-sm" title="Importar FPD"><i class="bi bi-upload"></i></a>
-                <a href="/importacoes/" class="btn btn-outline-secondary btn-sm" title="Importações"><i class="bi bi-cloud-upload"></i></a>
-                <button class="btn btn-outline-secondary btn-sm" onclick="sincronizarFaltantes()" title="Sincronizar faltantes"><i class="bi bi-arrow-repeat"></i></button>
-                <button class="btn btn-outline-secondary btn-sm" onclick="buscarNio()" title="Buscar Nio"><i class="bi bi-search"></i></button>
+            <div class="d-flex flex-wrap gap-1 qualidade-toolbar-acoes align-items-center">
                 <button class="btn btn-success btn-sm" onclick="exportarDados()" title="Exportar"><i class="bi bi-download"></i></button>
-                <button class="btn btn-outline-dark btn-sm" onclick="carregarOrfaos()" title="Órfãos"><i class="bi bi-exclamation-diamond"></i></button>
+                <div class="dropdown qualidade-acoes-menu">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Mais ações">
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/importar-fpd/"><i class="bi bi-upload"></i> Importar FPD</a></li>
+                        <li><a class="dropdown-item" href="/importacoes/"><i class="bi bi-cloud-upload"></i> Importações</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item" type="button" onclick="sincronizarFaltantes()"><i class="bi bi-arrow-repeat"></i> Sincronizar faltantes</button></li>
+                        <li><button class="dropdown-item" type="button" onclick="buscarNio()"><i class="bi bi-search"></i> Buscar Nio</button></li>
+                        <li><button class="dropdown-item" type="button" onclick="carregarOrfaos()"><i class="bi bi-exclamation-diamond"></i> Órfãos</button></li>
+                    </ul>
+                </div>
             </div>
         </div>
         <p class="q-sub q-painel-only mb-2">1ª fatura (FPD), 2ª (SPD), 3ª (TPD) e acompanhamento das 10 faturas / bônus</p>
-
-        <div id="reconciliacao-fpd" class="alert alert-light border py-2 px-3 mb-2 d-none" role="status">
-            <small id="reconciliacao-fpd-texto"></small>
-        </div>
 
         <div id="periodos-cards" class="qualidade-cards q-painel-only" aria-label="Meses"></div>
 
@@ -405,7 +532,20 @@
                         Total <span class="badge" id="cnt-todos">0</span>
                     </label>
                 </div>
-                <span class="qualidade-kpi-mini ms-auto" id="kpi-mini"></span>
+                <span class="qualidade-pct-fpd d-none" id="pct-fpd" title="(Atrasados + Em aberto) ÷ Total">
+                    <span class="q-pct-val" id="pct-fpd-val">—</span>
+                    <span class="q-pct-lbl">% FPD</span>
+                </span>
+                <div class="q-reconc-wrap ms-auto d-none" id="reconciliacao-fpd">
+                    <button type="button" class="q-reconc-chip" id="reconciliacao-fpd-chip"
+                        aria-expanded="false" aria-controls="reconciliacao-fpd-detalhes"
+                        onclick="toggleReconciliacaoDetalhes(event)" title="Ver detalhe da reconciliação">
+                        <i class="bi" id="reconciliacao-fpd-icon"></i>
+                        <span id="reconciliacao-fpd-resumo"></span>
+                    </button>
+                    <div class="q-reconc-details" id="reconciliacao-fpd-detalhes" role="status"></div>
+                </div>
+                <span class="qualidade-kpi-mini q-painel-only" id="kpi-mini"></span>
             </div>
             <div class="qualidade-toolbar-row">
                 <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="Buscar O.S., cliente ou CPF" onkeydown="if(event.key==='Enter'){page=1;carregarDashboard()}">
@@ -937,35 +1077,170 @@
         if (cntPagas) cntPagas.textContent = pag;
         document.getElementById('cnt-todos').textContent = tod;
         document.getElementById('badge-tratar').textContent = atr + abe;
+
+        const pctEl = document.getElementById('pct-fpd');
+        const pctVal = document.getElementById('pct-fpd-val');
+        if (pctEl && pctVal) {
+            const pct = f.pct_fpd != null
+                ? Number(f.pct_fpd)
+                : (tod > 0 ? Math.round(((atr + abe) / tod) * 1000) / 10 : 0);
+            pctVal.textContent = `${pct.toLocaleString('pt-BR', { minimumFractionDigits: pct % 1 ? 1 : 0, maximumFractionDigits: 1 })}%`;
+            pctEl.classList.toggle('d-none', false);
+            // Limiares: ≤10% ok · ≤15% atenção · >15% crítico
+            pctEl.classList.remove('is-ok', 'is-warn', 'is-danger');
+            if (pct <= 10) pctEl.classList.add('is-ok');
+            else if (pct <= 15) pctEl.classList.add('is-warn');
+            else pctEl.classList.add('is-danger');
+            pctEl.title = `(Atrasados ${atr} + Em aberto ${abe}) ÷ Total ${tod} = ${pct}% FPD`;
+        }
     }
 
+    function formatMesCurto(mes) {
+        if (!mes || !/^\d{4}-\d{2}$/.test(mes)) return mes || '';
+        const [y, m] = mes.split('-');
+        const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+        return `${nomes[Number(m) - 1]}/${y.slice(2)}`;
+    }
+
+    window.toggleReconciliacaoDetalhes = function (ev) {
+        if (ev) ev.stopPropagation();
+        const box = document.getElementById('reconciliacao-fpd-detalhes');
+        const chip = document.getElementById('reconciliacao-fpd-chip');
+        if (!box || !chip) return;
+        const open = box.classList.toggle('is-open');
+        chip.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    document.addEventListener('click', function (ev) {
+        const wrap = document.getElementById('reconciliacao-fpd');
+        const box = document.getElementById('reconciliacao-fpd-detalhes');
+        if (!wrap || !box || !box.classList.contains('is-open')) return;
+        if (!wrap.contains(ev.target)) {
+            box.classList.remove('is-open');
+            const chip = document.getElementById('reconciliacao-fpd-chip');
+            if (chip) chip.setAttribute('aria-expanded', 'false');
+        }
+    });
+
     function atualizarReconciliacao(rec) {
-        const box = document.getElementById('reconciliacao-fpd');
-        const txt = document.getElementById('reconciliacao-fpd-texto');
-        if (!box || !txt || !rec) {
-            if (box) box.classList.add('d-none');
+        const wrap = document.getElementById('reconciliacao-fpd');
+        const chip = document.getElementById('reconciliacao-fpd-chip');
+        const icon = document.getElementById('reconciliacao-fpd-icon');
+        const resumo = document.getElementById('reconciliacao-fpd-resumo');
+        const detalhes = document.getElementById('reconciliacao-fpd-detalhes');
+        if (!wrap || !chip || !resumo || !detalhes || !rec) {
+            if (wrap) wrap.classList.add('d-none');
             return;
         }
         const bate = !!(rec.bate_total ?? rec.bate);
-        box.classList.remove('d-none', 'alert-light', 'alert-success', 'alert-warning');
-        box.classList.add(bate ? 'alert-success' : 'alert-warning');
         const diffTotal = rec.diferenca_total ?? rec.diferenca ?? 0;
         const aguard = rec.painel_aguard_fpd ?? 0;
-        txt.innerHTML = [
-            `<strong>Reconciliação FPD (${escapeHtml(rec.mes || '')}):</strong>`,
-            `planilha total = <strong>${rec.fpd_total_planilha ?? '—'}</strong>`,
-            `(pagas ${rec.fpd_fechadas_planilha ?? '—'} · abertas ${rec.fpd_abertas_planilha ?? '—'})`,
-            `· painel = <strong>${rec.painel_total ?? ((rec.painel_atrasados||0)+(rec.painel_abertos||0)+(rec.painel_pagas||0))}</strong>`,
-            `(atrasados ${rec.painel_atrasados ?? '—'} · abertos ${rec.painel_abertos ?? '—'} · pagas ${rec.painel_pagas ?? '—'})`,
-            aguard ? `· aguard. conf. FPD = <strong>${aguard}</strong>` : '',
-            `· Δ total = <strong>${diffTotal}</strong>`,
-            `· faltam CRM = <strong>${rec.faltam_crm_fpd ?? 0}</strong>`,
-            bate
-                ? '· <span class="text-success">alinhado ao tratamento</span>'
-                : '· <span class="text-danger">não bate — conferir vencimentos / Faltam no CRM</span>',
-        ].filter(Boolean).join(' ');
+        const faltam = rec.faltam_crm_fpd ?? 0;
+        const mesCurto = formatMesCurto(rec.mes || '');
+
+        wrap.classList.remove('d-none');
+        chip.classList.toggle('is-ok', bate);
+        chip.classList.toggle('is-warn', !bate);
+        if (icon) {
+            icon.className = 'bi ' + (bate ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill');
+        }
+
+        if (bate) {
+            resumo.textContent = `Reconc. ✓ · ${mesCurto}`;
+        } else {
+            const parts = [`Δ ${diffTotal}`];
+            if (faltam) parts.push(`faltam ${faltam}`);
+            if (aguard) parts.push(`aguard. ${aguard}`);
+            resumo.textContent = `Reconc. ⚠ · ${parts.join(' · ')}`;
+        }
+
+        const painelTotal = rec.painel_total ?? (
+            (rec.painel_atrasados || 0) + (rec.painel_abertos || 0) + (rec.painel_pagas || 0)
+        );
+        detalhes.innerHTML = `
+            <p class="q-reconc-title">Reconciliação FPD (${escapeHtml(mesCurto || rec.mes || '')})</p>
+            <dl>
+                <dt>Planilha</dt><dd>${rec.fpd_total_planilha ?? '—'} <span class="text-muted fw-normal">(pagas ${rec.fpd_fechadas_planilha ?? '—'} · abertas ${rec.fpd_abertas_planilha ?? '—'})</span></dd>
+                <dt>Painel</dt><dd>${painelTotal} <span class="text-muted fw-normal">(atr. ${rec.painel_atrasados ?? '—'} · ab. ${rec.painel_abertos ?? '—'} · pagas ${rec.painel_pagas ?? '—'})</span></dd>
+                <dt>Aguard. conf.</dt><dd>${aguard}</dd>
+                <dt>Δ total</dt><dd>${diffTotal}</dd>
+                <dt>Faltam CRM</dt><dd>${faltam}</dd>
+            </dl>
+            <div class="mt-1 ${bate ? 'text-success' : 'text-danger'}">
+                ${bate ? 'Alinhado ao tratamento' : 'Não bate — conferir vencimentos / Faltam no CRM'}
+            </div>`;
+        detalhes.classList.remove('is-open');
+        chip.setAttribute('aria-expanded', 'false');
+
         const badgeF = document.getElementById('badge-faltam');
-        if (badgeF) badgeF.textContent = String(rec.faltam_crm_fpd ?? 0);
+        if (badgeF) badgeF.textContent = String(faltam);
+    }
+
+    const FAIXA_ATRASO_LABELS = {
+        d10_15: '10 a 15 dias',
+        d15_30: '15 a 30 dias',
+        d30_45: '30 a 45 dias',
+        d45_59: '45 a 59 dias',
+        d61: '≥ 60 dias',
+    };
+
+    function labelComContagem(base, n) {
+        if (n == null || n === '') return base;
+        return `${base} (${n})`;
+    }
+
+    function atualizarContagensFiltros(contagens, statusOpcoes) {
+        const c = contagens || {};
+        const faixas = c.faixa_atraso || {};
+        const selFaixa = document.getElementById('filtro-faixa-atraso');
+        if (selFaixa) {
+            const atual = selFaixa.value;
+            selFaixa.innerHTML = '<option value="">Atraso (dias)</option>' +
+                Object.entries(FAIXA_ATRASO_LABELS).map(([k, lab]) =>
+                    `<option value="${k}">${labelComContagem(lab, faixas[k])}</option>`
+                ).join('');
+            if ([...selFaixa.options].some(o => o.value === atual)) selFaixa.value = atual;
+        }
+
+        const pagasMap = c.faturas_pagas || {};
+        const selPagas = document.getElementById('filtro-faturas-pagas');
+        if (selPagas) {
+            const atual = selPagas.value;
+            selPagas.innerHTML = '<option value="">Faturas pagas</option>' +
+                Array.from({ length: 11 }, (_, n) =>
+                    `<option value="${n}">${labelComContagem(`${n}/10`, pagasMap[String(n)])}</option>`
+                ).join('');
+            if ([...selPagas.options].some(o => o.value === atual)) selPagas.value = atual;
+        }
+
+        const confMap = c.conferencia_fpd || {};
+        const selConf = document.getElementById('filtro-conferencia-fpd');
+        if (selConf) {
+            const atual = selConf.value;
+            const confOpts = [
+                ['AGUARDANDO', 'Aguardando FPD'],
+                ['CONFIRMADO', 'Confirmado FPD'],
+                ['DIVERGENTE', 'Divergente FPD'],
+            ];
+            selConf.innerHTML = '<option value="">Conf. FPD</option>' +
+                confOpts.map(([v, lab]) =>
+                    `<option value="${v}">${labelComContagem(lab, confMap[v])}</option>`
+                ).join('');
+            if ([...selConf.options].some(o => o.value === atual)) selConf.value = atual;
+        }
+
+        const stMap = c.status_tratamento || {};
+        const selSt = document.getElementById('filtro-status-tratamento');
+        if (selSt) {
+            const atual = selSt.value;
+            const opcoes = statusOpcoes || statusTratamentoOpcoes || [];
+            selSt.innerHTML = '<option value="">Status trat.</option>' +
+                `<option value="sem">${labelComContagem('Sem status', stMap.sem)}</option>` +
+                opcoes.map(o =>
+                    `<option value="${o.id}">${labelComContagem(escapeHtml(o.nome), stMap[String(o.id)])}</option>`
+                ).join('');
+            if ([...selSt.options].some(o => o.value === atual)) selSt.value = atual;
+        }
     }
 
     function formatDataBr(iso) {
@@ -1080,14 +1355,18 @@
             renderKpis(data.kpis || {});
             atualizarContagensFilas(data.filas);
             atualizarReconciliacao(data.reconciliacao);
-            popularFiltroStatusTratamento(data.status_tratamento_opcoes || []);
+            statusTratamentoOpcoes = data.status_tratamento_opcoes || [];
+            atualizarContagensFiltros(data.contagens_filtros, statusTratamentoOpcoes);
             document.getElementById('th-bonus').style.display = podeVerBonus ? '' : 'none';
             document.getElementById('kpi-bonus-wrap').style.display = podeVerBonus ? '' : 'none';
 
             const k = data.kpis || {};
-            document.getElementById('kpi-mini').textContent = lente === 'vencimento'
-                ? `${k.abertas ?? 0} em aberto · ${k.pagas ?? 0} pagas`
-                : `${k.elegiveis ?? 0} elegíveis · ${k.ativos ?? 0} ativos`;
+            const kpiMini = document.getElementById('kpi-mini');
+            if (kpiMini) {
+                kpiMini.textContent = lente === 'vencimento'
+                    ? `${k.abertas ?? 0} em aberto · ${k.pagas ?? 0} pagas`
+                    : `${k.elegiveis ?? 0} elegíveis · ${k.ativos ?? 0} ativos`;
+            }
 
             const rows = data.contratos || [];
             if (!rows.length) {

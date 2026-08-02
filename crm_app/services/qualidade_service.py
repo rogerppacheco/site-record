@@ -429,6 +429,65 @@ def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, int
         # Total operacional = soma das filas (bate com planilha quando vencimentos estão corretos)
         'todos': atrasados + abertos + pagas,
         'base': queryset.count(),
+        # % FPD = (atrasados + em aberto) / total — inadimplência da 1ª fatura no mês
+        'pct_fpd': round(
+            ((atrasados + abertos) / (atrasados + abertos + pagas) * 100)
+            if (atrasados + abertos + pagas) > 0
+            else 0.0,
+            1,
+        ),
+    }
+
+
+# Filtros cujas opções exibem contagem — excluídos da base de contagem
+_FILTROS_OPCAO_CONTAGEM: frozenset[str] = frozenset({
+    'faixa_atraso',
+    'faixa',
+    'faturas_pagas',
+    'faturas_pagas_n',
+    'conferencia_fpd',
+    'status_tratamento_id',
+    'status_tratamento',
+})
+
+
+def contagens_opcoes_filtros(queryset: QuerySet[ContratoM10]) -> dict[str, Any]:
+    """Contagens por opção de filtro no contexto atual (mês + fila + demais filtros).
+
+    O queryset deve já estar anotado com ``faturas_pagas`` e sem os filtros
+    dimensionais listados em ``_FILTROS_OPCAO_CONTAGEM``.
+    """
+    hoje = timezone.localdate()
+    faixas: dict[str, int] = {}
+    for chave, _label in FAIXAS_NIO_ORDEM:
+        faixas[chave] = queryset.filter(
+            _q_faixa_atraso_fatura1(chave, hoje)
+        ).distinct().count()
+
+    faturas_pagas: dict[str, int] = {}
+    for n in range(0, 11):
+        faturas_pagas[str(n)] = queryset.filter(faturas_pagas=n).count()
+
+    conferencia: dict[str, int] = {}
+    for conf in ('AGUARDANDO', 'CONFIRMADO', 'DIVERGENTE'):
+        conferencia[conf] = queryset.filter(
+            faturas__numero_fatura=1,
+            faturas__conferencia_fpd=conf,
+        ).distinct().count()
+
+    status_trat: dict[str, int] = {}
+    for row in (
+        queryset.values('status_tratamento_id')
+        .annotate(c=Count('id', distinct=True))
+    ):
+        key = 'sem' if row['status_tratamento_id'] is None else str(row['status_tratamento_id'])
+        status_trat[key] = int(row['c'] or 0)
+
+    return {
+        'faixa_atraso': faixas,
+        'faturas_pagas': faturas_pagas,
+        'conferencia_fpd': conferencia,
+        'status_tratamento': status_trat,
     }
 
 
@@ -538,6 +597,27 @@ def dashboard_qualidade(
     if filtros.get('orfao') in (None, '') and _contrato_tem_campo('orfao'):
         queryset = queryset.filter(orfao=False)
 
+    # Base para contagens das opções de filtro (sem faixa/status trat./conf./N-10)
+    filtros_contagem = {
+        k: v for k, v in filtros.items() if k not in _FILTROS_OPCAO_CONTAGEM
+    }
+    qs_base_annot = (
+        _aplicar_filtros_contratos(queryset, filtros_contagem)
+        .annotate(
+            total_faturas=Count('faturas', distinct=True),
+            faturas_pagas=Count(
+                'faturas',
+                filter=Q(faturas__status__in=STATUS_FATURA_FECHADA),
+                distinct=True,
+            ),
+        )
+    )
+
+    fila = (filtros.get('fila') or 'todos').strip().lower()
+    qs_para_opcoes = _aplicar_filtro_fila(qs_base_annot, fila) if fila else qs_base_annot
+    contagens_filtros = contagens_opcoes_filtros(qs_para_opcoes)
+
+    # QS completo (todos os filtros dimensionais) — filas usam o QS sem filtro de fila
     queryset = (
         _aplicar_filtros_contratos(queryset, filtros)
         .select_related('vendedor', 'venda', 'venda__cliente', 'status_tratamento')
@@ -564,7 +644,6 @@ def dashboard_qualidade(
 
     filas = contagens_filas_tratamento(queryset)
     reconciliacao = reconciliar_fpd_com_painel(mes, filas, lente=lente_norm)
-    fila = (filtros.get('fila') or 'todos').strip().lower()
     if fila:
         queryset = _aplicar_filtro_fila(queryset, fila)
 
@@ -682,6 +761,7 @@ def dashboard_qualidade(
         'label': _label_mes(mes),
         'kpis': kpis,
         'filas': filas,
+        'contagens_filtros': contagens_filtros,
         'reconciliacao': reconciliacao,
         'fila': fila if fila else 'todos',
         'status_tratamento_opcoes': listar_status_tratamento_qualidade(),
