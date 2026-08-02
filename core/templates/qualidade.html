@@ -279,12 +279,33 @@
     min-width: 8.5rem;
 }
 .table-nio-fpd .nio-num { text-decoration: underline; text-underline-offset: 2px; }
-.table-nio-fpd .nio-faixa-d10_15 { background: #fff59d; }
-.table-nio-fpd .nio-faixa-d15_30 { background: #ffe082; }
-.table-nio-fpd .nio-faixa-d30_45 { background: #ef9a9a; }
-.table-nio-fpd .nio-faixa-d45_59 { background: #e57373; color: #fff; }
-.table-nio-fpd .nio-faixa-d61 { background: #b71c1c; color: #fff; }
-.table-nio-fpd .nio-row-header td { background: #fff; }
+/* Faixas: mesma cor na 1ª coluna (sticky) + contraste legível */
+.table-nio-fpd tr.nio-faixa-d10_15 > td,
+.table-nio-fpd tr.nio-faixa-d10_15 > td:first-child {
+    background: #fff59d;
+    color: #1a1a1a;
+}
+.table-nio-fpd tr.nio-faixa-d15_30 > td,
+.table-nio-fpd tr.nio-faixa-d15_30 > td:first-child {
+    background: #ffe082;
+    color: #1a1a1a;
+}
+.table-nio-fpd tr.nio-faixa-d30_45 > td,
+.table-nio-fpd tr.nio-faixa-d30_45 > td:first-child {
+    background: #ef9a9a;
+    color: #1a1a1a;
+}
+.table-nio-fpd tr.nio-faixa-d45_59 > td,
+.table-nio-fpd tr.nio-faixa-d45_59 > td:first-child {
+    background: #c62828;
+    color: #ffffff;
+}
+.table-nio-fpd tr.nio-faixa-d61 > td,
+.table-nio-fpd tr.nio-faixa-d61 > td:first-child {
+    background: #7f0000;
+    color: #ffffff;
+}
+.table-nio-fpd .nio-row-header td { background: #fff; color: #222; }
 .qualidade-page.modo-tratamento .qualidade-shell { padding: 0.3rem 0.4rem !important; }
 .qualidade-page.modo-tratamento .qualidade-lente { margin-bottom: 0.2rem !important; }
 .qualidade-page.modo-tratamento .q-titulo-bloco { display: none; }
