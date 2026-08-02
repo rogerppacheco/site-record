@@ -150,10 +150,34 @@ def montar_mensagem_reagendamento_pendencia_cliente(
 
 def _enviar_whatsapp_pendencia_cliente(telefone: str, venda, usuario) -> tuple[bool, str]:
     """
-    Tenta enviar com botão URL (WhatsApp do parceiro); se falhar, envia só texto.
+    Prefere template Meta (nio_pendencia_reagendamento_v1); se falhar/desabilitado,
+    tenta botão URL (BackOffice) e por fim texto livre.
     Retorna (sucesso, mensagem_final_enviada).
     """
+    from crm_app.services.whatsapp.nio_templates import (
+        enviar_pendencia_reagendamento,
+        templates_habilitados,
+    )
     from crm_app.whatsapp_service import WhatsAppService
+
+    nome_cliente = ''
+    if getattr(venda, 'cliente', None):
+        nome_cliente = (venda.cliente.nome_razao_social or '').strip()
+
+    mensagem_txt = montar_mensagem_reagendamento_pendencia_cliente(
+        venda, usuario, usar_botao_parceiro=False,
+    )
+
+    if templates_habilitados():
+        ok, _resp, canal = enviar_pendencia_reagendamento(
+            telefone, nome_cliente, mensagem_txt,
+        )
+        if ok and canal == 'template':
+            return True, (
+                f'[template nio_pendencia_reagendamento_v1]\n{mensagem_txt}'
+            )
+        if ok:
+            return True, mensagem_txt
 
     svc = WhatsAppService.para_cliente()
     botoes = montar_botoes_pendencia_cliente(venda)
@@ -165,9 +189,6 @@ def _enviar_whatsapp_pendencia_cliente(telefone: str, venda, usuario) -> tuple[b
         if ok:
             return True, mensagem_btn + '\n\n[Botão: Dúvidas (BackOffice)]'
 
-    mensagem_txt = montar_mensagem_reagendamento_pendencia_cliente(
-        venda, usuario, usar_botao_parceiro=False,
-    )
     ok, _ = svc.enviar_mensagem_texto(telefone, mensagem_txt)
     return bool(ok), mensagem_txt
 

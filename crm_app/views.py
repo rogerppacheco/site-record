@@ -296,6 +296,30 @@ def _resolver_flag_enviar_whatsapp(request, *, default: bool = True) -> bool:
     return True
 
 
+def _resolver_flag_enviar_whatsapp_cliente(request, *, default: bool = False) -> bool:
+    """Flag do modal «Enviar WhatsApp ao cliente?» na pendência.
+
+    Qualquer perfil autenticado pode escolher Sim/Não. Default False evita
+    envio automático quando a chave não vier no body (ex.: edição genérica).
+    """
+    if 'enviar_whatsapp_cliente' not in getattr(request, 'data', {}):
+        return bool(default)
+    opcao = request.data.get('enviar_whatsapp_cliente')
+    if isinstance(opcao, str):
+        return opcao.strip().lower() not in ('false', '0', 'no', 'nao', 'não', 'off', '')
+    return bool(opcao)
+
+
+def _resolver_flag_enviar_boas_vindas(request, *, default: bool = True) -> bool:
+    """Flag «Enviar boas-vindas?» ao marcar INSTALADA (default: sim / automático)."""
+    if 'enviar_boas_vindas' not in getattr(request, 'data', {}):
+        return bool(default)
+    opcao = request.data.get('enviar_boas_vindas')
+    if isinstance(opcao, str):
+        return opcao.strip().lower() not in ('false', '0', 'no', 'nao', 'não', 'off', '')
+    return bool(opcao)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def duplicar_venda(request):
@@ -3129,9 +3153,42 @@ class VendaViewSet(viewsets.ModelViewSet):
                     except Exception as e:
                         logger.error(f"Erro ao enviar Zap Esteira: {e}")
 
-        # WhatsApp ao cliente: pendência tipo CLIENTE (reagendamento via canal oficial Nio)
+        # Boas-vindas ao cliente: ao virar INSTALADA (automático, com opção de não enviar)
+        status_antes_nome = (getattr(status_esteira_antes, 'nome', '') or '').upper()
+        status_depois_nome = (
+            (getattr(venda_atualizada.status_esteira, 'nome', '') or '').upper()
+            if venda_atualizada.status_esteira else ''
+        )
+        virou_instalada = (
+            'INSTALADA' in status_depois_nome
+            and 'CANCEL' not in status_depois_nome
+            and 'INSTALADA' not in status_antes_nome
+        )
+        if virou_instalada:
+            enviar_bv = _resolver_flag_enviar_boas_vindas(self.request, default=True)
+            try:
+                from crm_app.services.boas_vindas_envio_service import tentar_agendar_ao_instalar
+
+                res_bv = tentar_agendar_ao_instalar(
+                    venda_atualizada,
+                    usuario=self.request.user,
+                    enviar=enviar_bv,
+                )
+                if res_bv.get('agendado'):
+                    logger.info(
+                        'Boas-vindas agendada venda #%s: %s',
+                        venda_atualizada.id,
+                        res_bv.get('detail'),
+                    )
+            except Exception:
+                logger.exception('Erro ao agendar boas-vindas venda #%s', venda_atualizada.id)
+
+        # WhatsApp ao cliente: pendência tipo CLIENTE — só com confirmação explícita no modal
         motivo_mudou = motivo_pendencia_antes != venda_atualizada.motivo_pendencia
-        if motivo_mudou and venda_atualizada.motivo_pendencia and enviar_whatsapp:
+        enviar_whatsapp_cliente = _resolver_flag_enviar_whatsapp_cliente(
+            self.request, default=False,
+        )
+        if motivo_mudou and venda_atualizada.motivo_pendencia and enviar_whatsapp_cliente:
             try:
                 from crm_app.esteira_pendencia_cliente_service import tentar_enviar_msg_pendencia_cliente
 
@@ -15011,10 +15068,8 @@ class EnviarBoasVindasView(APIView):
     def post(self, request):
         import time
         import random
-        from django.utils import timezone
         from datetime import datetime
-        from crm_app.whatsapp_service import WhatsAppService
-        from crm_app.models import BoasVindasEnviado
+        from crm_app.services.boas_vindas_envio_service import enviar_boas_vindas_venda
 
         data_str = request.data.get('data')
         if not data_str:
@@ -15043,49 +15098,21 @@ class EnviarBoasVindasView(APIView):
         random.shuffle(vendas)  # ordem de envio aleatória dentro do lote
 
         primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
-        agora = timezone.now()
-        saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
-        despedida = 'boa tarde!' if agora.hour >= 12 else 'bom dia!'
-
-        msg_base = (
-            f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
-            f"Me chamo {primeiro_nome}, sou especialista de qualidade do Record PAP, parceiro Oficial da Nio Fibra.\n\n"
-            "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
-            "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
-            "Você também pode acompanhar sua conta através do app Nio.\n"
-            "Instale o aplicativo no seu aparelho celular.\n\n"
-            "Disponível para Android e iOS:\n"
-            "Google Play Store (Android)\n"
-            "https://play.google.com/store/apps/details?id=br.com.niointernet.app\n\n"
-            "Apple Store (iOS):\n"
-            "https://apps.apple.com/br/app/nio-internet/id6746278488\n\n"
-            "Você ainda pode realizar contato pelos canais de comunicação oficiais da Nio:\n"
-            "SAC:0800 001 1000\n"
-            "WhatsApp: 21-3605-1000\n\n"
-            f"Obrigado e tenha um {despedida}"
-        )
-
         enviados = 0
         erros = []
-        svc = WhatsAppService.para_cliente()
 
         for i, venda in enumerate(vendas):
             if i > 0:
                 delay = random.randint(min_intervalo, max_intervalo)
                 time.sleep(delay)
-            nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
-            mensagem = msg_base.format(nome_cliente=nome_cliente)
             try:
-                ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
-                if ok:
+                res = enviar_boas_vindas_venda(
+                    venda, usuario=request.user, especialista=primeiro_nome,
+                )
+                if res.get('enviado'):
                     enviados += 1
-                    venda.boas_vindas_enviado_em = timezone.now()
-                    venda.save(update_fields=['boas_vindas_enviado_em'])
-                    tel_chave = _normalizar_telefone_chave(venda.telefone1)
-                    if tel_chave:
-                        BoasVindasEnviado.objects.create(telefone=tel_chave, venda=venda)
-                else:
-                    erros.append(f"Venda #{venda.id} ({venda.telefone1})")
+                elif not res.get('ok') or 'já enviad' not in (res.get('detail') or '').lower():
+                    erros.append(f"Venda #{venda.id}: {res.get('detail') or 'falha'}")
             except Exception as e:
                 erros.append(f"Venda #{venda.id}: {str(e)}")
 
@@ -15279,7 +15306,6 @@ class BoasVindasEnviarGestaoView(APIView):
         import time
         import random
         from datetime import datetime
-        from crm_app.whatsapp_service import WhatsAppService
 
         data_str = request.data.get('data')
         if not data_str:
@@ -15308,49 +15334,23 @@ class BoasVindasEnviarGestaoView(APIView):
         random.shuffle(vendas)
 
         primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
-        agora = timezone.now()
-        saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
-        despedida = 'boa tarde!' if agora.hour >= 12 else 'bom dia!'
-
-        msg_base = (
-            f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
-            f"Me chamo {primeiro_nome}, sou especialista de qualidade do Record PAP, parceiro Oficial da Nio Fibra.\n\n"
-            "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
-            "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
-            "Você também pode acompanhar sua conta através do app Nio.\n"
-            "Instale o aplicativo no seu aparelho celular.\n\n"
-            "Disponível para Android e iOS:\n"
-            "Google Play Store (Android)\n"
-            "https://play.google.com/store/apps/details?id=br.com.niointernet.app\n\n"
-            "Apple Store (iOS):\n"
-            "https://apps.apple.com/br/app/nio-internet/id6746278488\n\n"
-            "Você ainda pode realizar contato pelos canais de comunicação oficiais da Nio:\n"
-            "SAC:0800 001 1000\n"
-            "WhatsApp: 21-3605-1000\n\n"
-            f"Obrigado e tenha um {despedida}"
-        )
-
         enviados = 0
         erros = []
-        svc = WhatsAppService.para_cliente()
+
+        from crm_app.services.boas_vindas_envio_service import enviar_boas_vindas_venda
 
         for i, venda in enumerate(vendas):
             if i > 0:
                 delay = random.randint(min_intervalo, max_intervalo)
                 time.sleep(delay)
-            nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
-            mensagem = msg_base.format(nome_cliente=nome_cliente)
             try:
-                ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
-                if ok:
+                res = enviar_boas_vindas_venda(
+                    venda, usuario=request.user, especialista=primeiro_nome,
+                )
+                if res.get('enviado'):
                     enviados += 1
-                    venda.boas_vindas_enviado_em = timezone.now()
-                    venda.save(update_fields=['boas_vindas_enviado_em'])
-                    tel_chave = _normalizar_telefone_chave(venda.telefone1)
-                    if tel_chave:
-                        BoasVindasEnviado.objects.create(telefone=tel_chave, venda=venda)
-                else:
-                    erros.append(f"Venda #{venda.id} ({venda.telefone1})")
+                elif not res.get('ok') or 'já enviad' not in (res.get('detail') or '').lower():
+                    erros.append(f"Venda #{venda.id}: {res.get('detail') or 'falha'}")
             except Exception as e:
                 erros.append(f"Venda #{venda.id}: {str(e)}")
 
@@ -15494,6 +15494,18 @@ class BoasVindasFilaStatusView(APIView):
             'com_erro': com_erro,
             'total_fila': pendentes + enviados,
         })
+
+
+class WhatsAppCustosOficiaisView(APIView):
+    """GET: custo estimado por msg (Número B) + total gasto até então."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Qualidade', 'Auditoria']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        from crm_app.services.whatsapp.custo_oficial import resumo_custos
+
+        return Response(resumo_custos())
 
 
 # --- Antecipar Instalação (solicitação ao GC Nio) ---

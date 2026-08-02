@@ -218,6 +218,44 @@ T6 = [
     "SAC: 0800 001 1000 | WhatsApp: 21 3605-1000",
 ]
 
+T7 = [
+    "Olá, {{1}}!",
+    "",
+    "{{2}},",
+    "",
+    "Parceiro oficial da Nio Fibra.",
+    "Identificamos uma pendência no agendamento",
+    "da sua instalação Nio Fibra.",
+    "Na maioria dos casos isso não depende de você.",
+    "",
+    "Para reagendar, entre em contato pelo",
+    "WhatsApp oficial da Nio: {{3}}.",
+    "",
+    "Toque em um dos botões abaixo se precisar",
+    "de ajuda com o reagendamento ou tiver dúvidas.",
+    "",
+    "Obrigado por escolher a Nio Fibra.",
+    "SAC: 0800 001 1000",
+]
+
+T8 = [
+    "Olá, {{1}}!",
+    "",
+    "{{2}},",
+    "",
+    "Parceiro oficial da Nio Fibra.",
+    "Sua instalação Nio Fibra foi concluída.",
+    "Seja bem-vindo(a)!",
+    "",
+    "Guarde este WhatsApp para suporte e",
+    "dúvidas sobre sua conexão.",
+    "",
+    "SAC: 0800 001 1000 | WhatsApp: 21 3605-1000",
+    "",
+    "Toque em um dos botões abaixo se precisar",
+    "de ajuda agora.",
+]
+
 
 def main() -> None:
     doc = Document()
@@ -235,7 +273,7 @@ def main() -> None:
     st.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _font(
         st.add_run(
-            "UTILITY · Botões Quick Reply · Confirmação · Instalação · Cobrança"
+            "UTILITY · Botões Quick Reply · Confirmação · Instalação · Pendência · Boas-vindas · Cobrança"
         ),
         size=11,
         color=RGBColor(0x5B, 0x6B, 0x7D),
@@ -431,6 +469,46 @@ def main() -> None:
     _p(doc, "• D+12, D+19, D+26…: template 6 (recorrente), até pagar ou atingir limite")
     _p(doc, "• Clique em “Quero a 2ª via” (ou qualquer resposta): janela 24h → enviar PIX/barras/PDF")
 
+    _h(doc, "Pendência e boas-vindas (esteira)", 1)
+
+    _template(
+        doc,
+        titulo="7. Pendência de agendamento (tipo Cliente)",
+        nome="nio_pendencia_reagendamento_v1",
+        finalidade="Avisar pendência + orientar reagendamento no canal oficial Nio",
+        body=T7,
+        botoes=["Reagendar", "Falar com atendente", "Entendi"],
+        variaveis=[
+            "{{1}} saudação",
+            "{{2}} primeiro nome",
+            "{{3}} WhatsApp oficial Nio (ex.: 21 3605-1000)",
+        ],
+        notas=[
+            "Disparo CRM: esteira, ao registrar pendência tipo CLIENTE, "
+            "somente após modal «Enviar WhatsApp ao cliente?» = Sim.",
+            "CRM: Reagendar → coleta intenção / orienta canal Nio; "
+            "Falar com atendente → fila humana; Entendi → encerra ok.",
+            "Não culpar o cliente; tom UTILITY (atualização de status do pedido).",
+        ],
+    )
+
+    _template(
+        doc,
+        titulo="8. Boas-vindas pós-instalação",
+        nome="nio_boas_vindas_v1",
+        finalidade="Boas-vindas ao concluir instalação (Esteira / status INSTALADA)",
+        body=T8,
+        botoes=["Entendi", "Falar com atendente", "Suporte"],
+        variaveis=[
+            "{{1}} saudação",
+            "{{2}} primeiro nome",
+        ],
+        notas=[
+            "Disparo CRM: ao virar INSTALADA (automático), com opção de não enviar.",
+            "CRM: Entendi → ok; Falar com atendente / Suporte → fila humana.",
+        ],
+    )
+
     _h(doc, "Mapa rápido — texto do botão → ação CRM", 1)
     for row in [
         "CORRETO → avança pedido",
@@ -446,7 +524,10 @@ def main() -> None:
     _h(doc, "Checklist de submissão", 1)
     for item in [
         "Categoria = UTILITY em todos",
-        "Buttons = Quick reply (3 botões) em todos os 6 templates",
+        "Buttons = Quick reply (3 botões) em todos os templates",
+        "Incluir templates 7 (pendência) e 8 (boas-vindas) junto dos 6 já aprovados",
+        "Idioma pt_BR · sem marketing/oferta",
+        "Após aprovação na WABA (#194), validar envio no CRM (esteira + scheduler)",
         "Corpo pede “Toque no(s) botão(ões)” — sem “digite X”",
         "Todos com Olá, {{1}}! + {{2}} primeiro nome",
         "Sem Sr(a). / sem tom promocional ou ameaçador",

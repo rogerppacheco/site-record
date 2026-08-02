@@ -67,14 +67,28 @@ class WhatsAppService:
                     mensagem = aplicar_variacao(mensagem, chance_substituir=0.5)
         except Exception as e:
             logger.debug("[WhatsAppService] Variacao nao aplicada: %s", e)
-        return self._provider.enviar_mensagem_texto_raw(telefone, mensagem)
+        ok, resp = self._provider.enviar_mensagem_texto_raw(telefone, mensagem)
+        self._registrar_custo_oficial(
+            telefone=telefone,
+            tipo_envio="TEXTO",
+            sucesso=bool(ok),
+            resposta=resp,
+        )
+        return ok, resp
 
     def enviar_mensagem_com_botoes_reply(
         self, telefone, mensagem, button_actions, title=None, footer=None
     ):
-        return self._provider.enviar_mensagem_com_botoes_reply(
+        ok, resp = self._provider.enviar_mensagem_com_botoes_reply(
             telefone, mensagem, button_actions, title=title, footer=footer
         )
+        self._registrar_custo_oficial(
+            telefone=telefone,
+            tipo_envio="BOTOES",
+            sucesso=bool(ok),
+            resposta=resp,
+        )
+        return ok, resp
 
     def enviar_lista_opcoes(
         self,
@@ -87,13 +101,20 @@ class WhatsAppService:
         fn = getattr(self._provider, "enviar_lista_opcoes", None)
         if not callable(fn):
             return False, None
-        return fn(
+        ok, resp = fn(
             telefone,
             mensagem,
             opcoes,
             titulo_lista=titulo_lista,
             botao_label=botao_label,
         )
+        self._registrar_custo_oficial(
+            telefone=telefone,
+            tipo_envio="BOTOES",
+            sucesso=bool(ok),
+            resposta=resp,
+        )
+        return ok, resp
 
     def enviar_resumo_pap_com_botao_confirmar(self, telefone, resumo, texto_extra=""):
         message = f"{resumo}{texto_extra}".strip()
@@ -122,13 +143,47 @@ class WhatsAppService:
                 type(self._provider).__name__,
             )
             return False, "Provider sem suporte a templates Meta"
-        return fn(
+        ok, resp = fn(
             telefone,
             template_name,
             language_code=language_code,
             body_params=body_params,
             template_params=template_params,
         )
+        self._registrar_custo_oficial(
+            telefone=telefone,
+            tipo_envio="TEMPLATE",
+            sucesso=bool(ok),
+            resposta=resp,
+            template_name=template_name or "",
+        )
+        return ok, resp
+
+    def _registrar_custo_oficial(
+        self,
+        *,
+        telefone,
+        tipo_envio: str,
+        sucesso: bool,
+        resposta=None,
+        template_name: str = "",
+    ) -> None:
+        if self.purpose != PURPOSE_CLIENTE:
+            return
+        try:
+            from crm_app.services.whatsapp.custo_oficial import registrar_envio_oficial
+
+            registrar_envio_oficial(
+                telefone=str(telefone or ""),
+                tipo_envio=tipo_envio,
+                sucesso=sucesso,
+                resposta=resposta,
+                template_name=template_name,
+                origem=f"purpose={self.purpose}",
+                erro="" if sucesso else str(resposta)[:500],
+            )
+        except Exception as exc:
+            logger.debug("[WhatsAppService] Custo não registrado: %s", exc)
 
     def listar_templates(self):
         fn = getattr(self._provider, "listar_templates", None)

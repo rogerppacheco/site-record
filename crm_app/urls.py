@@ -178,6 +178,7 @@ from .views import (
     BoasVindasEnviarGestaoView,
     BoasVindasAgendarView,
     BoasVindasFilaStatusView,
+    WhatsAppCustosOficiaisView,
     page_bonus_m10,
     NioDividasView,
     BuscarAnteciparInstalacaoView,
@@ -249,6 +250,7 @@ urlpatterns = [
     path('boas-vindas/enviar/', BoasVindasEnviarGestaoView.as_view(), name='boas-vindas-enviar'),
     path('boas-vindas/agendar/', BoasVindasAgendarView.as_view(), name='boas-vindas-agendar'),
     path('boas-vindas/fila-status/', BoasVindasFilaStatusView.as_view(), name='boas-vindas-fila-status'),
+    path('whatsapp-oficial/custos/', WhatsAppCustosOficiaisView.as_view(), name='whatsapp-oficial-custos'),
     # Consulta CNPJ na Receita (antes do router — evita 404 se a action não estiver registrada)
     path(
         'clientes/dados-cnpj/',

@@ -29,6 +29,14 @@
         <h2 class="mb-3"><i class="bi bi-chat-heart-fill text-success"></i> Boas Vindas</h2>
         <p class="text-muted mb-4">Instalações do dia anterior e envio de boas-vindas. Retornos dos clientes para tratamento pelo BO.</p>
 
+        <div class="row g-2 mb-4" id="painel-custos-wa">
+            <div class="col-md-3"><div class="p-3 bg-light rounded"><div class="small text-muted">Custo / msg Utility</div><div class="stat-mini" id="custo-utility">—</div></div></div>
+            <div class="col-md-3"><div class="p-3 bg-light rounded"><div class="small text-muted">Gasto hoje</div><div class="stat-mini" id="custo-hoje">—</div></div></div>
+            <div class="col-md-3"><div class="p-3 bg-light rounded"><div class="small text-muted">Gasto no mês</div><div class="stat-mini" id="custo-mes">—</div></div></div>
+            <div class="col-md-3"><div class="p-3 bg-success bg-opacity-25 rounded"><div class="small text-muted">Total gasto (Número B)</div><div class="stat-mini" id="custo-total">—</div></div></div>
+            <div class="col-12"><p class="small text-muted mb-0" id="custo-nota"></p></div>
+        </div>
+
         <ul class="nav nav-tabs mb-4" id="tab-main" role="tablist">
             <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-instalacoes" type="button"><i class="bi bi-calendar-check"></i> Instalações</button></li>
             <li class="nav-item"><button class="nav-link" id="btn-tab-retornos" data-bs-toggle="tab" data-bs-target="#tab-retornos" type="button"><i class="bi bi-chat-dots"></i> Retornos</button></li>
@@ -302,6 +310,29 @@
         };
 
         document.getElementById('btn-tab-retornos').addEventListener('shown.bs.tab', () => carregarRetornos());
+
+        function fmtBrl(v) {
+            const n = Number(v);
+            if (Number.isNaN(n)) return '—';
+            return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+        async function carregarCustosWa() {
+            try {
+                const r = await apiFetch('/whatsapp-oficial/custos/');
+                document.getElementById('custo-utility').textContent = fmtBrl(r.custo_por_msg_utility_brl);
+                document.getElementById('custo-hoje').textContent =
+                    fmtBrl(r.hoje_gasto_brl) + ` (${r.hoje_mensagens || 0} msgs)`;
+                document.getElementById('custo-mes').textContent =
+                    fmtBrl(r.mes_gasto_brl) + ` (${r.mes_mensagens || 0} msgs)`;
+                document.getElementById('custo-total').textContent =
+                    fmtBrl(r.total_gasto_brl) + ` (${r.total_mensagens || 0} msgs)`;
+                document.getElementById('custo-nota').textContent = r.nota || '';
+            } catch (e) {
+                document.getElementById('custo-nota').textContent =
+                    'Custos indisponíveis: ' + (e.message || e);
+            }
+        }
+        carregarCustosWa();
         document.getElementById('btn-carregar-instalacoes').click();
     </script>
 {% endblock %}

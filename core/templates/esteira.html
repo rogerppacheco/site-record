@@ -1616,6 +1616,13 @@ min-width: 100%;
                     <form id="form-instalacao">
                         <div class="mb-3"><label class="form-label fw-bold">Data da Instalação *</label><input type="date" class="form-control" id="instalacao-data" required></div>
                         <div class="mb-3"><label class="form-label fw-bold">Houve Antecipação? *</label><select class="form-select" id="instalacao-antecipou" required><option value="false">Não</option><option value="true">Sim</option></select></div>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="instalacao-enviar-boas-vindas" checked>
+                            <label class="form-check-label fw-bold" for="instalacao-enviar-boas-vindas">
+                                Enviar WhatsApp de boas-vindas ao cliente
+                            </label>
+                            <div class="form-text">Desmarque para registrar INSTALADA sem agendar o template de boas-vindas.</div>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-success" onclick="salvarInstalacao()">Confirmar Instalação</button></div>
@@ -1675,6 +1682,27 @@ min-width: 100%;
         </div>
     </div>
 
+    <div class="modal fade" id="modal-enviar-wpp-cliente" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-whatsapp"></i> WhatsApp ao cliente</h5>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1 fw-bold">Enviar WhatsApp ao cliente?</p>
+                    <p class="small text-muted mb-0">
+                        Motivo tipo <strong>Cliente</strong>: avisa sobre a pendência e orienta reagendamento pelo canal oficial da Nio.
+                        Você pode registrar a pendência sem enviar a mensagem.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="btn-wpp-cliente-cancelar">Cancelar</button>
+                    <button type="button" class="btn btn-outline-danger" id="btn-wpp-cliente-nao">Não</button>
+                    <button type="button" class="btn btn-success" id="btn-wpp-cliente-sim">Sim, enviar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="modal-config-esteira" tabindex="-1">
         <div class="modal-dialog">
@@ -2702,7 +2730,8 @@ min-width: 100%;
                 if (select) {
                     select.innerHTML = '<option value="">Selecione o motivo...</option>';
                     _motivosPendenciaCache.forEach(m => {
-                        select.innerHTML += `<option value="${m.id}">${m.nome}</option>`;
+                        const tipo = (m.tipo_pendencia || '').replace(/"/g, '&quot;');
+                        select.innerHTML += `<option value="${m.id}" data-tipo="${tipo}">${m.nome}</option>`;
                     });
                 }
             } catch (e) { /* erro ao carregar motivos, já tratado */ }
@@ -5574,6 +5603,8 @@ min-width: 100%;
                 document.getElementById('form-instalacao').reset();
                 document.getElementById('instalacao-data').valueAsDate = new Date();
                 document.getElementById('instalacao-antecipou').checked = false;
+                const chkBv = document.getElementById('instalacao-enviar-boas-vindas');
+                if (chkBv) chkBv.checked = true;
                 
                 if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
                     try {
@@ -5630,8 +5661,64 @@ min-width: 100%;
         }
 
         async function salvarInstalacao() {
-            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, data_instalacao: getVal('instalacao-data'), antecipou_instalacao: (getVal('instalacao-antecipou') === 'true') });
+            const enviarBoas = !!document.getElementById('instalacao-enviar-boas-vindas')?.checked;
+            await salvarStatusNoBanco(tempVendaId, {
+                status_esteira: tempStatusId,
+                data_instalacao: getVal('instalacao-data'),
+                antecipou_instalacao: (getVal('instalacao-antecipou') === 'true'),
+                enviar_boas_vindas: enviarBoas,
+            });
             modalInstalacao.hide();
+        }
+
+        function motivoPendenciaSelecionadoEhCliente() {
+            const id = getVal('pendencia-motivo');
+            const m = (_motivosPendenciaCache || []).find(x => String(x.id) === String(id));
+            if (m) return motivoCorrespondeTipoFiltro(m, 'CLIENTE');
+            const opt = document.querySelector('#pendencia-motivo option:checked');
+            const tipo = opt && opt.getAttribute('data-tipo');
+            return motivoCorrespondeTipoFiltro({ tipo_pendencia: tipo || '' }, 'CLIENTE');
+        }
+
+        let _resolverWppClienteModal = null;
+        function perguntarEnviarWhatsappCliente() {
+            return new Promise((resolve) => {
+                const el = document.getElementById('modal-enviar-wpp-cliente');
+                if (!el || typeof bootstrap === 'undefined') {
+                    const r = window.confirm('Enviar WhatsApp ao cliente sobre esta pendência?');
+                    resolve(r);
+                    return;
+                }
+                const modal = bootstrap.Modal.getOrCreateInstance(el);
+                const limpar = () => {
+                    document.getElementById('btn-wpp-cliente-sim')?.removeEventListener('click', onSim);
+                    document.getElementById('btn-wpp-cliente-nao')?.removeEventListener('click', onNao);
+                    document.getElementById('btn-wpp-cliente-cancelar')?.removeEventListener('click', onCancel);
+                    el.removeEventListener('hidden.bs.modal', onHidden);
+                    _resolverWppClienteModal = null;
+                };
+                const fechar = (valor) => {
+                    if (_resolverWppClienteModal !== resolve) return;
+                    limpar();
+                    resolve(valor);
+                    modal.hide();
+                };
+                const onSim = () => fechar(true);
+                const onNao = () => fechar(false);
+                const onCancel = () => fechar(null);
+                const onHidden = () => {
+                    if (_resolverWppClienteModal === resolve) {
+                        limpar();
+                        resolve(null);
+                    }
+                };
+                _resolverWppClienteModal = resolve;
+                document.getElementById('btn-wpp-cliente-sim')?.addEventListener('click', onSim);
+                document.getElementById('btn-wpp-cliente-nao')?.addEventListener('click', onNao);
+                document.getElementById('btn-wpp-cliente-cancelar')?.addEventListener('click', onCancel);
+                el.addEventListener('hidden.bs.modal', onHidden);
+                modal.show();
+            });
         }
 
         async function salvarPendencia() {
@@ -5646,10 +5733,17 @@ min-width: 100%;
                     if (!files || !files.length) { alert('Com evidência marcada, anexe ao menos um arquivo.'); return; }
                 }
             }
+            let enviarWhatsappCliente = false;
+            if (motivoPendenciaSelecionadoEhCliente()) {
+                const resposta = await perguntarEnviarWhatsappCliente();
+                if (resposta === null) return;
+                enviarWhatsappCliente = !!resposta;
+            }
             const payload = {
                 status_esteira: tempStatusId,
                 motivo_pendencia: getVal('pendencia-motivo'),
                 observacoes: getVal('pendencia-obs'),
+                enviar_whatsapp_cliente: enviarWhatsappCliente,
             };
             if (podeBloquearOsab) payload.bloquear_atualizacao_status_osab = !!document.getElementById('pendencia-bloquear-osab')?.checked;
             await salvarStatusNoBanco(tempVendaId, payload);

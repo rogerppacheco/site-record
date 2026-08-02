@@ -9,6 +9,7 @@ from .models import (
     FunilVendaWppTentativa, FunilVendaWppEvento,
     HistoricoAtendimentoIACliente,
     SessaoTratamento, RelatorioTratamentoConfig,
+    WhatsAppTarifaOficial, HistoricoCustoWhatsAppOficial,
 )
 
 
@@ -405,3 +406,33 @@ class RelatorioTratamentoConfigAdmin(admin.ModelAdmin):
         'timeout_ociosidade_minutos',
         'atualizado_em',
     )
+
+
+@admin.register(WhatsAppTarifaOficial)
+class WhatsAppTarifaOficialAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'utility_brl',
+        'marketing_brl',
+        'authentication_brl',
+        'service_brl',
+        'atualizado_em',
+    )
+
+
+@admin.register(HistoricoCustoWhatsAppOficial)
+class HistoricoCustoWhatsAppOficialAdmin(admin.ModelAdmin):
+    list_display = (
+        'criado_em',
+        'tipo_envio',
+        'categoria',
+        'template_name',
+        'custo_estimado_brl',
+        'sucesso',
+        'telefone',
+        'origem',
+    )
+    list_filter = ('categoria', 'tipo_envio', 'sucesso')
+    search_fields = ('telefone', 'template_name', 'message_id')
+    date_hierarchy = 'criado_em'
+    ordering = ('-criado_em',)

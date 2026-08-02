@@ -24,6 +24,10 @@ TEMPLATE_INSTALACAO_CONFIRMADA = "nio_instalacao_confirmada_v1_2"
 TEMPLATE_FATURA_LEMBRETE_5D = "nio_fatura_lembrete_5d_antes_v1"
 TEMPLATE_FATURA_VENCIDA_5D = "nio_fatura_vencida_5d_v1"
 TEMPLATE_FATURA_RECORRENTE = "nio_fatura_cobranca_recorrente_v1"
+TEMPLATE_PENDENCIA_REAGENDAMENTO = "nio_pendencia_reagendamento_v1"
+TEMPLATE_BOAS_VINDAS = "nio_boas_vindas_v1"
+
+NIO_WHATSAPP_OFICIAL_EXIBICAO = "21 3605-1000"
 
 LANGUAGE_PT_BR = "pt_BR"
 
@@ -303,6 +307,20 @@ def body_params_instalacao_confirmada(data_agendamento: Any, periodo: str) -> Li
     return [_fmt_data(data_agendamento), janela]
 
 
+def body_params_pendencia_reagendamento(nome_cliente: str) -> List[str]:
+    """nio_pendencia_reagendamento_v1: {{1}} saudação, {{2}} nome, {{3}} WhatsApp Nio."""
+    return [
+        saudacao_meta(),
+        primeiro_nome(nome_cliente),
+        NIO_WHATSAPP_OFICIAL_EXIBICAO,
+    ]
+
+
+def body_params_boas_vindas(nome_cliente: str) -> List[str]:
+    """nio_boas_vindas_v1: {{1}} saudação, {{2}} nome (rascunho até aprovação Meta)."""
+    return [saudacao_meta(), primeiro_nome(nome_cliente)]
+
+
 def body_params_fatura(
     nome_cliente: str,
     referencia: str,
@@ -466,3 +484,27 @@ def enviar_template_fatura(
         dias_atraso=dias,
     )
     return tentar_enviar_ou_texto(telefone, template_name, params, fallback_texto)
+
+
+def enviar_pendencia_reagendamento(
+    telefone: str,
+    nome_cliente: str,
+    fallback_texto: str,
+) -> Tuple[bool, Any, str]:
+    """Template Meta de pendência; fallback = texto livre da esteira."""
+    params = body_params_pendencia_reagendamento(nome_cliente)
+    return tentar_enviar_ou_texto(
+        telefone, TEMPLATE_PENDENCIA_REAGENDAMENTO, params, fallback_texto
+    )
+
+
+def enviar_boas_vindas(
+    telefone: str,
+    nome_cliente: str,
+    fallback_texto: str,
+) -> Tuple[bool, Any, str]:
+    """Template Meta nio_boas_vindas_v1; fallback = texto livre legado."""
+    params = body_params_boas_vindas(nome_cliente)
+    return tentar_enviar_ou_texto(
+        telefone, TEMPLATE_BOAS_VINDAS, params, fallback_texto
+    )

@@ -888,6 +888,54 @@ class FilaEnvioBoasVindas(models.Model):
         ordering = ['agendado_para']
 
 
+class WhatsAppTarifaOficial(models.Model):
+    """Singleton (pk=1): tarifas BRL por categoria para estimativa de custo Número B."""
+    utility_brl = models.DecimalField(max_digits=10, decimal_places=4, default=0.0350)
+    marketing_brl = models.DecimalField(max_digits=10, decimal_places=4, default=0.3217)
+    authentication_brl = models.DecimalField(max_digits=10, decimal_places=4, default=0.0350)
+    service_brl = models.DecimalField(max_digits=10, decimal_places=4, default=0.0000)
+    observacao = models.TextField(blank=True, default='')
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_whatsapp_tarifa_oficial'
+        verbose_name = 'Tarifa WhatsApp oficial'
+        verbose_name_plural = 'Tarifas WhatsApp oficial'
+
+    def __str__(self) -> str:
+        return f'Tarifas WA oficial (utility={self.utility_brl})'
+
+
+class HistoricoCustoWhatsAppOficial(models.Model):
+    """Log de envios do Número B com custo estimado por mensagem."""
+    telefone = models.CharField(max_length=30, db_index=True)
+    tipo_envio = models.CharField(max_length=20, db_index=True)
+    template_name = models.CharField(max_length=120, blank=True, default='')
+    categoria = models.CharField(max_length=30, db_index=True)
+    custo_estimado_brl = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    sucesso = models.BooleanField(default=True, db_index=True)
+    message_id = models.CharField(max_length=120, blank=True, default='')
+    origem = models.CharField(max_length=60, blank=True, default='')
+    erro = models.TextField(blank=True, default='')
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_historico_custo_whatsapp_oficial'
+        verbose_name = 'Histórico custo WhatsApp oficial'
+        verbose_name_plural = 'Históricos custo WhatsApp oficial'
+        ordering = ['-criado_em']
+        indexes = [
+            models.Index(fields=['criado_em', 'sucesso']),
+            models.Index(fields=['categoria', 'criado_em']),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f'{self.tipo_envio} {self.categoria} R${self.custo_estimado_brl} '
+            f'({self.criado_em:%d/%m/%Y %H:%M})'
+        )
+
+
 class PagamentoComissao(models.Model):
     referencia_ano = models.IntegerField()
     referencia_mes = models.IntegerField()
