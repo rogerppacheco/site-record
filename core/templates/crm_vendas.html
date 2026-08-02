@@ -235,9 +235,17 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                     <div class="crm-painel-filtros-shell shadow-sm" id="crm-vendas-filtros-shell">
                         <div class="crm-painel-filtros-bar">
                             <span class="small text-secondary fw-semibold text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.06em;">Filtros</span>
-                            <button type="button" id="btn-toggle-crm-filtros" class="btn btn-sm btn-outline-secondary" onclick="toggleCrmVendasFiltros()" aria-expanded="false" title="Mostrar ou ocultar filtros">
-                                <i class="bi bi-chevron-down" id="crm-filtros-chevron"></i><span class="ms-1" id="crm-filtros-toggle-label">Mostrar filtros</span>
-                            </button>
+                            <div class="d-flex align-items-center gap-2 ms-auto">
+                                <div id="wrap-toggle-wpp-crm" class="d-none form-check form-switch mb-0" title="Só Diretoria/Admin: silencia WhatsApp ao corrigir/reemitir">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="toggle-wpp-crm" checked onchange="toggleEnvioWhatsappCrm(this.checked)">
+                                    <label class="form-check-label small fw-semibold" for="toggle-wpp-crm">
+                                        <i class="bi bi-whatsapp text-success"></i> WhatsApp: <span id="label-wpp-crm">ON</span>
+                                    </label>
+                                </div>
+                                <button type="button" id="btn-toggle-crm-filtros" class="btn btn-sm btn-outline-secondary" onclick="toggleCrmVendasFiltros()" aria-expanded="false" title="Mostrar ou ocultar filtros">
+                                    <i class="bi bi-chevron-down" id="crm-filtros-chevron"></i><span class="ms-1" id="crm-filtros-toggle-label">Mostrar filtros</span>
+                                </button>
+                            </div>
                         </div>
                         <div id="crm-vendas-filtros-corpo" class="crm-painel-filtros-corpo" style="display: none;">
                             <div class="filter-bar mb-0 shadow-sm" id="barra-filtros">
@@ -459,6 +467,12 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="reemissao-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                         </div>
                         <div class="mb-3"><label class="form-label">Observação</label><textarea class="form-control" id="reemissao-observacao" rows="2" oninput="this.value = this.value.toUpperCase()" placeholder="Digite a observação..."></textarea></div>
+                        <div class="form-check form-switch d-none" id="container-wpp-modal-reemissao">
+                            <input class="form-check-input" type="checkbox" id="checkbox-wpp-modal-reemissao" checked onchange="syncEnvioWhatsappCrm(this.checked)">
+                            <label class="form-check-label fw-bold" for="checkbox-wpp-modal-reemissao">
+                                <i class="bi bi-whatsapp text-success"></i> Enviar WhatsApp nesta reemissão
+                            </label>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarReemissao()">Cancelar</button><button type="button" class="btn btn-warning" onclick="salvarReemissao()">Confirmar Reemissão</button></div>
@@ -559,6 +573,15 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                                     <label class="form-check-label fw-bold text-warning" for="checkbox-reemissao">Reemissão</label>
                                 </div>
                             </div>
+                            <div class="col-12 d-none" id="container-wpp-modal-venda">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="checkbox-wpp-modal-venda" checked onchange="syncEnvioWhatsappCrm(this.checked)">
+                                    <label class="form-check-label fw-bold" for="checkbox-wpp-modal-venda">
+                                        <i class="bi bi-whatsapp text-success"></i> Enviar WhatsApp (atualização / reemissão)
+                                    </label>
+                                    <div class="form-text">Desligue para corrigir sem notificar o vendedor. Só Diretoria/Admin.</div>
+                                </div>
+                            </div>
                             <div class="col-12"><label>Observações</label><textarea class="form-control" name="observacoes" id="input-observacoes" rows="2" oninput="this.value = this.value.toUpperCase()"></textarea></div>
                         </div>
                         
@@ -637,6 +660,43 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
         let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep, modalReemissao;
         let vendaReemissaoId = null;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
+        let envioWhatsappAtivo = true;
+        const podeSilenciarWhatsapp = () => ['Diretoria', 'Admin'].includes(userProfile);
+
+        function syncEnvioWhatsappCrm(ativo) {
+            envioWhatsappAtivo = !!ativo;
+            const toggle = document.getElementById('toggle-wpp-crm');
+            const label = document.getElementById('label-wpp-crm');
+            const ckVenda = document.getElementById('checkbox-wpp-modal-venda');
+            const ckReem = document.getElementById('checkbox-wpp-modal-reemissao');
+            if (toggle && toggle.checked !== envioWhatsappAtivo) toggle.checked = envioWhatsappAtivo;
+            if (ckVenda && ckVenda.checked !== envioWhatsappAtivo) ckVenda.checked = envioWhatsappAtivo;
+            if (ckReem && ckReem.checked !== envioWhatsappAtivo) ckReem.checked = envioWhatsappAtivo;
+            if (label) {
+                label.textContent = envioWhatsappAtivo ? 'ON' : 'OFF';
+                label.classList.toggle('text-danger', !envioWhatsappAtivo);
+                label.classList.toggle('text-success', envioWhatsappAtivo);
+            }
+            if (toggle) {
+                toggle.title = envioWhatsappAtivo
+                    ? 'WhatsApp ON: envia atualização/reemissão'
+                    : 'WhatsApp OFF: corrige sem notificar o vendedor';
+            }
+        }
+        function toggleEnvioWhatsappCrm(ativo) {
+            syncEnvioWhatsappCrm(ativo);
+        }
+        function atualizarVisibilidadeToggleWpp() {
+            const show = podeSilenciarWhatsapp();
+            const wrap = document.getElementById('wrap-toggle-wpp-crm');
+            const boxVenda = document.getElementById('container-wpp-modal-venda');
+            const boxReem = document.getElementById('container-wpp-modal-reemissao');
+            if (wrap) wrap.classList.toggle('d-none', !show);
+            if (boxVenda) boxVenda.classList.toggle('d-none', !show);
+            if (boxReem) boxReem.classList.toggle('d-none', !show);
+            if (!show) syncEnvioWhatsappCrm(true);
+            else syncEnvioWhatsappCrm(envioWhatsappAtivo);
+        }
         let crmVendasScrollSyncing = false;
 
         function toggleCrmVendasFiltros() {
@@ -1886,6 +1946,7 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                     const btnRazao = document.getElementById('btn-corrigir-razao-cnpj');
                     if (btnRazao) btnRazao.classList.remove('d-none');
                 }
+                atualizarVisibilidadeToggleWpp();
             } catch(e) {}
         }
 
@@ -2525,6 +2586,7 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                 if(divNomeMae) divNomeMae.style.display = 'block';
                 if(divDataNasc) divDataNasc.style.display = 'block';
                 if(divEmail) divEmail.style.display = 'block';
+                syncEnvioWhatsappCrm();
                 modalNovaVenda.show();
             } catch (e) { console.error(e); alert("Erro ao carregar dados para edição."); }
         }
@@ -2583,6 +2645,13 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                 data.reemissao = checkboxReemissao.checked;
             } else {
                 data.reemissao = false;
+            }
+
+            // Diretoria/Admin podem silenciar WhatsApp ao corrigir
+            if (idEdicao && podeSilenciarWhatsapp()) {
+                const ckWpp = document.getElementById('checkbox-wpp-modal-venda');
+                if (ckWpp) syncEnvioWhatsappCrm(ckWpp.checked);
+                data.enviar_whatsapp = envioWhatsappAtivo;
             }
             
             // Converter tem_fixo para boolean
@@ -2670,6 +2739,8 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
             document.getElementById('form-reemissao').reset();
             document.getElementById('reemissao-os-feedback').textContent = '';
             document.getElementById('reemissao-os').classList.remove('is-invalid');
+            syncEnvioWhatsappCrm(envioWhatsappAtivo);
+            atualizarVisibilidadeToggleWpp();
             modalReemissao.show();
         }
         
@@ -2705,6 +2776,8 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
             
             try {
                 // Duplicar venda (criar nova venda)
+                const ckWppReem = document.getElementById('checkbox-wpp-modal-reemissao');
+                if (ckWppReem && podeSilenciarWhatsapp()) syncEnvioWhatsappCrm(ckWppReem.checked);
                 const resultado = await apiFetch('/crm/duplicar-venda/', {
                     method: 'POST',
                     body: JSON.stringify({
@@ -2712,7 +2785,8 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                         nova_os: os,
                         nova_data_agendamento: data,
                         novo_turno: turno,
-                        nova_observacao: observacao
+                        nova_observacao: observacao,
+                        enviar_whatsapp: podeSilenciarWhatsapp() ? envioWhatsappAtivo : true,
                     })
                 });
                 

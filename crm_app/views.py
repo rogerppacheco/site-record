@@ -277,6 +277,25 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import Venda
 
+
+def _resolver_flag_enviar_whatsapp(request, *, default: bool = True) -> bool:
+    """Interpreta ``enviar_whatsapp`` do body.
+
+    Apenas Diretoria/Admin podem silenciar (False). Demais perfis sempre enviam.
+    """
+    from crm_app.utils import is_member as _is_member
+
+    opcao = request.data.get('enviar_whatsapp', default)
+    if isinstance(opcao, str):
+        opcao = opcao.lower() not in ('false', '0', 'no', 'nao', 'off')
+    opcao = bool(opcao)
+    if opcao:
+        return True
+    if _is_member(request.user, ['Diretoria', 'Admin']):
+        return False
+    return True
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def duplicar_venda(request):
@@ -302,12 +321,13 @@ def duplicar_venda(request):
             duplicar as reemissao_duplicar,
         )
 
+        flag_wpp = _resolver_flag_enviar_whatsapp(request, default=True)
         venda_nova = reemissao_duplicar(
             id_venda=int(id_venda),
             nova_os=str(nova_os).strip(),
             nova_data=nova_data,
             novo_turno=str(novo_turno).strip(),
-            enviar_whatsapp=True,
+            enviar_whatsapp=flag_wpp,
         )
         return Response(
             {
@@ -3044,10 +3064,8 @@ class VendaViewSet(viewsets.ModelViewSet):
             (motivo_pendencia_antes != venda_atualizada.motivo_pendencia)
         )
 
-        enviar_whatsapp = self.request.data.get('enviar_whatsapp', True)
-        if isinstance(enviar_whatsapp, str):
-            enviar_whatsapp = enviar_whatsapp.lower() not in ['false', '0', 'no', 'nao', 'off']
-        
+        enviar_whatsapp = _resolver_flag_enviar_whatsapp(self.request, default=True)
+
         if enviar_whatsapp and venda_atualizada.status_esteira and (status_mudou or dados_mudaram):
             novo_status_nome = venda_atualizada.status_esteira.nome.upper()
             
