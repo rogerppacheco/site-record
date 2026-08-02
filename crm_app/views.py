@@ -4252,6 +4252,20 @@ class DashboardResumoView(APIView):
         mix_velocidade = defaultdict(int)
         mix_pagamento = defaultdict(int)
 
+        ctx_faixas_comissao = None
+        matriz_cache_comissao = None
+        if exibir_comissao:
+            from crm_app.comissao_folha_service import estimar_comissao_instaladas_vendedor
+            from crm_app.performance_helpers import carregar_contexto_faixas_comissao
+            from crm_app.services.comissao_matriz_service import MatrizComissaoCache
+
+            ctx_faixas_comissao = carregar_contexto_faixas_comissao(
+                data_inicio.year, data_inicio.month
+            )
+            matriz_cache_comissao = MatrizComissaoCache.carregar(
+                config_ids=[c.id for c in ctx_faixas_comissao['configs'].values()]
+            )
+
         for vendedor in usuarios_para_calcular:
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
             meta_display += float(meta_individual)
@@ -4262,7 +4276,6 @@ class DashboardResumoView(APIView):
             ).select_related('cliente', 'status_esteira')
             
             qtd_registradas = vendas_registro.count()
-            bateu_meta = qtd_registradas >= float(meta_individual)
 
             for v in vendas_registro:
                 nome_status = v.status_esteira.nome.upper() if v.status_esteira else 'AGUARDANDO'
@@ -4319,23 +4332,12 @@ class DashboardResumoView(APIView):
                         faturamento_operadora_real += valor_venda
 
             if exibir_comissao:
-                regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
-                comissao_vendedor = 0.0
-                for v in vendas_instaladas:
-                    valor_item = 0.0 
-                    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
-
-                    tipo_cliente_venda = tipo_cliente_comissao(v)
-                    
-                    regra_encontrada = None
-                    for r in regras:
-                        canal_vendedor = getattr(vendedor, 'canal', 'PAP') or 'PAP'
-                        if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
-                            regra_encontrada = r
-                            break
-                    if regra_encontrada:
-                        valor_item = float(regra_encontrada.valor_acelerado if bateu_meta else regra_encontrada.valor_base)
-                    comissao_vendedor += valor_item
+                comissao_vendedor = estimar_comissao_instaladas_vendedor(
+                    vendedor,
+                    vendas_instaladas,
+                    ctx_faixas=ctx_faixas_comissao,
+                    matriz_cache=matriz_cache_comissao,
+                )
                 comissao_total_geral += comissao_vendedor
 
             total_registradas_geral += qtd_registradas

@@ -3,7 +3,13 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from crm_app.comissao_folha_service import resolver_valor_comissao_venda
+from crm_app.comissao_folha_service import (
+    _banda_legado_comissao,
+    estimar_comissao_instaladas_vendedor,
+    plano_tipo_to_chave,
+    resolver_valor_comissao_venda,
+)
+from crm_app.services.comissao_matriz_service import _legacy_valores_faixa_banda
 
 
 class ComissaoMatrizPlanoTest(SimpleTestCase):
@@ -37,3 +43,64 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
                 chave='1GB_PAP',
             )
         self.assertEqual(valor, 220.0)
+
+    def test_banda_transicao_600_800(self) -> None:
+        self.assertEqual(_banda_legado_comissao('600MB'), '500MB')
+        self.assertEqual(_banda_legado_comissao('800MB'), '700MB')
+        self.assertEqual(_banda_legado_comissao('500MB'), '500MB')
+
+    def test_chave_excel_planos_transicao(self) -> None:
+        self.assertEqual(plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF'), '500MB_PAP')
+        self.assertEqual(plano_tipo_to_chave('NIO FIBRA SUPER 800MB', 'CNPJ'), '700MB_CNPJ')
+
+    def test_legacy_faixa_herda_valores_600_e_800(self) -> None:
+        faixa = MagicMock(
+            valor_500mb_pap=Decimal('150'),
+            valor_500mb_cnpj=Decimal('250'),
+            valor_700mb_pap=Decimal('190'),
+            valor_700mb_cnpj=Decimal('280'),
+            valor_1gb_pap=Decimal('220'),
+            valor_1gb_cnpj=Decimal('300'),
+        )
+        self.assertEqual(
+            _legacy_valores_faixa_banda(faixa, '600MB'),
+            (Decimal('150'), Decimal('250')),
+        )
+        self.assertEqual(
+            _legacy_valores_faixa_banda(faixa, '800MB'),
+            (Decimal('190'), Decimal('280')),
+        )
+
+    def test_estimar_comissao_inclui_plano_sem_regra_legado(self) -> None:
+        vendedor = MagicMock(id=1)
+        plano_600 = MagicMock(id=6, nome='NIO FIBRA ESSENCIAL 600MB')
+        venda = MagicMock(plano=plano_600, plano_id=6)
+        faixa = MagicMock(id=10, min_vendas=1, max_vendas=20, perfil='Vendedor')
+        ctx = {
+            'configs': {},
+            'regras_perfil': [faixa],
+            'regras_vendedor': {},
+        }
+
+        with (
+            patch(
+                'crm_app.performance_helpers.perfil_comissao_do_consultor',
+                return_value='Vendedor',
+            ),
+            patch(
+                'crm_app.services.cnpj_mei_service.tipo_cliente_comissao',
+                return_value='CPF',
+            ),
+            patch(
+                'crm_app.services.comissao_matriz_service.get_valor_faixa_plano',
+                return_value=150.0,
+            ),
+        ):
+            total = estimar_comissao_instaladas_vendedor(
+                vendedor,
+                [venda],
+                ctx_faixas=ctx,
+                matriz_cache=None,
+            )
+
+        self.assertEqual(total, 150.0)

@@ -30,17 +30,82 @@ def _plano_nome_to_banda(nome):
     return None
 
 
+def _banda_legado_comissao(banda: str | None) -> str | None:
+    """
+    Normaliza banda para colunas legadas das faixas (500/700/1GB).
+    600MB e 800MB são planos de transição: herdam a tabela do degrau anterior.
+    """
+    if not banda:
+        return None
+    if banda == '600MB':
+        return '500MB'
+    if banda == '800MB':
+        return '700MB'
+    return banda
+
+
 def plano_tipo_to_chave(plano_nome, tipo_cliente):
     """
     Retorna a chave do Excel (ex: 500MB_PAP, 1GB_CNPJ) a partir do nome do plano e CPF/CNPJ.
     tipo_cliente: 'CPF' ou 'CNPJ'. PAP = CPF no Excel.
+    600MB→500MB e 800MB→700MB (mesma regra de transição da matriz legada).
     """
-    banda = _plano_nome_to_banda(plano_nome)
+    banda = _banda_legado_comissao(_plano_nome_to_banda(plano_nome))
     if not banda:
         return None
     sufixo = 'PAP' if tipo_cliente == 'CPF' else 'CNPJ'
     chave = f"{banda}_{sufixo}"
     return chave if chave in CHAVES_PLANO else None
+
+
+def estimar_comissao_instaladas_vendedor(
+    vendedor,
+    vendas_instaladas,
+    *,
+    ctx_faixas: dict,
+    matriz_cache=None,
+) -> float:
+    """
+    Estimativa de comissão do dashboard CRM, baseada nas instalações.
+
+    Usa a mesma fonte da folha (faixa × plano / valores manuais), e não a
+    tabela legado RegraComissao — que omitia planos novos e canais fora de PAP/TELAG.
+    """
+    from crm_app.performance_helpers import (
+        _regras_aplicaveis_vendedor,
+        encontrar_faixa_regra,
+        perfil_comissao_do_consultor,
+    )
+    from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.services.plano_comissao_service import get_valor_comissao_plano
+
+    vendas = list(vendas_instaladas)
+    config = (ctx_faixas.get('configs') or {}).get(getattr(vendedor, 'id', None))
+    perfil = perfil_comissao_do_consultor(vendedor, config)
+    regras = _regras_aplicaveis_vendedor(ctx_faixas, getattr(vendedor, 'id', None), perfil)
+    faixa_regra = encontrar_faixa_regra(regras, len(vendas))
+    usar_manual = bool(config and getattr(config, 'usar_valor_manual', False))
+
+    total = 0.0
+    for venda in vendas:
+        plano = getattr(venda, 'plano', None)
+        if not plano:
+            continue
+        tipo_cliente = tipo_cliente_comissao(venda)
+        chave = plano_tipo_to_chave(getattr(plano, 'nome', None), tipo_cliente)
+        valor = resolver_valor_comissao_venda(
+            plano,
+            tipo_cliente,
+            faixa_regra=faixa_regra,
+            config=config,
+            usar_manual=usar_manual,
+            chave=chave,
+            matriz_cache=matriz_cache,
+        )
+        if valor is None:
+            valor = get_valor_comissao_plano(plano, tipo_cliente)
+        total += float(valor or 0)
+    return total
 
 
 def get_valor_from_faixa(regra_faixa, chave):

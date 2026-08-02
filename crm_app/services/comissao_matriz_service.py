@@ -61,11 +61,14 @@ def _decimal_or_none(val: Any) -> Decimal | None:
 
 
 def _legacy_valores_faixa_banda(faixa: RegraComissaoFaixa, banda: str) -> tuple[Decimal | None, Decimal | None]:
-    if banda == '500MB':
+    from crm_app.comissao_folha_service import _banda_legado_comissao
+
+    banda_ref = _banda_legado_comissao(banda)
+    if banda_ref == '500MB':
         return faixa.valor_500mb_pap, faixa.valor_500mb_cnpj
-    if banda == '700MB':
+    if banda_ref == '700MB':
         return faixa.valor_700mb_pap, faixa.valor_700mb_cnpj
-    if banda == '1GB':
+    if banda_ref == '1GB':
         return faixa.valor_1gb_pap, faixa.valor_1gb_cnpj
     return None, None
 
