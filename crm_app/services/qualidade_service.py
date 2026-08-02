@@ -867,6 +867,36 @@ FAIXA_ATRASO_RANGES: dict[str, tuple[int, Optional[int]]] = {
 }
 
 
+def _faixa_por_dias_vivos(dias_atraso: int) -> str:
+    """Categoriza dias de atraso (calculados ao vivo) nas chaves do dashboard."""
+    try:
+        d = int(dias_atraso or 0)
+    except (TypeError, ValueError):
+        d = 0
+    if d < 0:
+        d = 0
+    if d <= 15:
+        return 'd10_15'
+    if d <= 30:
+        return 'd15_30'
+    if d <= 45:
+        return 'd30_45'
+    if d <= 59:
+        return 'd45_59'
+    return 'd61'
+
+
+def _dias_atraso_por_vencimento(vencimento: Optional[date], hoje: Optional[date] = None) -> int:
+    """Dias em aberto desde o vencimento (0 se ainda não venceu)."""
+    if not vencimento:
+        return 0
+    ref = hoje or timezone.localdate()
+    try:
+        return max(0, (ref - vencimento).days)
+    except Exception:
+        return 0
+
+
 def _normalizar_faixa_nio(faixa: str, dias_atraso: int = 0) -> str:
     """Mapeia FAIXA da planilha (ou dias) para chave do dashboard estilo Nio."""
     f = (faixa or '').strip().upper().replace('Á', 'A')
@@ -884,50 +914,26 @@ def _normalizar_faixa_nio(faixa: str, dias_atraso: int = 0) -> str:
     if '>60' in f or '>=' in f or '61' in f or 'MAIS DE 60' in f:
         return 'd61'
 
-    # Fallback por NR_DIAS_ATRASO
-    try:
-        d = int(dias_atraso or 0)
-    except (TypeError, ValueError):
-        d = 0
-    if d <= 15:
-        return 'd10_15'
-    if d <= 30:
-        return 'd15_30'
-    if d <= 45:
-        return 'd30_45'
-    if d <= 59:
-        return 'd45_59'
-    return 'd61'
+    return _faixa_por_dias_vivos(dias_atraso)
 
 
 def _q_faixa_atraso_fatura1(faixa_chave: str, hoje: date) -> Q:
-    """Filtro de contratos pela faixa de atraso da 1ª fatura."""
+    """Filtro de contratos pela faixa de atraso da 1ª fatura (ao vivo pelo vencimento)."""
     chave = (faixa_chave or '').strip().lower()
     limites = FAIXA_ATRASO_RANGES.get(chave)
     if not limites:
         return Q()
     lo, hi = limites
-    base = Q(faturas__numero_fatura=1) & ~Q(faturas__status__in=STATUS_FATURA_FECHADA)
-
-    por_dias = Q(faturas__dias_atraso__gte=lo)
-    if hi is not None:
-        por_dias &= Q(faturas__dias_atraso__lte=hi)
-
-    # Fallback quando dias_atraso não veio da planilha: calcula pelo vencimento
     from datetime import timedelta
 
+    base = Q(faturas__numero_fatura=1) & ~Q(faturas__status__in=STATUS_FATURA_FECHADA)
+    # Sempre calcula pela data de vencimento (não depende de dias_atraso congelado da planilha)
     if hi is None:
-        por_venc = Q(
-            faturas__dias_atraso__isnull=True,
-            faturas__data_vencimento__lte=hoje - timedelta(days=lo),
-        )
-    else:
-        por_venc = Q(
-            faturas__dias_atraso__isnull=True,
-            faturas__data_vencimento__gte=hoje - timedelta(days=hi),
-            faturas__data_vencimento__lte=hoje - timedelta(days=lo),
-        )
-    return base & (por_dias | por_venc)
+        return base & Q(faturas__data_vencimento__lte=hoje - timedelta(days=lo))
+    return base & Q(
+        faturas__data_vencimento__gte=hoje - timedelta(days=hi),
+        faturas__data_vencimento__lte=hoje - timedelta(days=lo),
+    )
 
 
 def dashboard_fpd_estilo_nio(
@@ -938,8 +944,10 @@ def dashboard_fpd_estilo_nio(
     """Monta tabela no formato do dashboard Nio (colunas = meses de vencimento).
 
     Base: linhas da ``ImportacaoFPD`` (universo da planilha).
-    Status pago/aberto: prioriza o tratamento do BO em ``FaturaM10``
-    (inclui PAGO aguardando confirmação FPD). Sem vínculo no CRM, usa a planilha.
+    Status pago/aberto: prioriza o tratamento do BO em ``FaturaM10``.
+    Faixas de atraso: **ao vivo** pela data de vencimento
+    (CRM ``FaturaM10.data_vencimento`` se houver; senão ``dt_venc_orig`` da planilha).
+    A faixa/dias da planilha entram só no confronto (divergências).
     """
     ind = (indicador or 'FPD').strip().upper()
     if ind not in ('FPD', 'SPD', 'TPD'):
@@ -949,6 +957,8 @@ def dashboard_fpd_estilo_nio(
         n_meses = max(1, min(12, int(meses or 6)))
     except (TypeError, ValueError):
         n_meses = 6
+
+    hoje = timezone.localdate()
 
     qs = list(
         ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
@@ -967,20 +977,23 @@ def dashboard_fpd_estilo_nio(
         for row in qs
         if row.get('contrato_m10_id')
     }
-    # status + conferência da fatura N no CRM (tratamento)
+    # status + conferência + vencimento da fatura N no CRM (tratamento)
     fatura_crm: dict[int, dict[str, Any]] = {}
     if contrato_ids:
-        for cid, st, conf in FaturaM10.objects.filter(
+        for cid, st, conf, venc in FaturaM10.objects.filter(
             contrato_id__in=contrato_ids,
             numero_fatura=numero_fatura,
-        ).values_list('contrato_id', 'status', 'conferencia_fpd'):
+        ).values_list('contrato_id', 'status', 'conferencia_fpd', 'data_vencimento'):
             fatura_crm[cid] = {
                 'status': (st or '').upper(),
                 'conferencia_fpd': (conf or '').upper(),
+                'data_vencimento': venc,
             }
 
     # Agrupa por YYYYMM
     por_mes: dict[str, dict[str, Any]] = {}
+    abertas_total = 0
+    divergencias_faixa = 0
     for row in qs:
         dt = row['dt_venc_orig']
         if not dt:
@@ -996,6 +1009,7 @@ def dashboard_fpd_estilo_nio(
                 'aguard_fpd': 0,
                 'total_fatura': 0,
                 'faixas': {k: 0 for k, _ in FAIXAS_NIO_ORDEM},
+                'divergencias_faixa': 0,
             },
         )
         bucket['total_fatura'] += 1
@@ -1004,6 +1018,7 @@ def dashboard_fpd_estilo_nio(
         crm = fatura_crm.get(cid) if cid else None
         sit = (row['ds_sit_fatura'] or '').strip().upper()
 
+        esta_aberta = False
         if crm:
             st_crm = crm['status']
             conf = crm['conferencia_fpd']
@@ -1012,21 +1027,39 @@ def dashboard_fpd_estilo_nio(
                 if st_crm == 'PAGO' and conf in ('AGUARDANDO', 'DIVERGENTE'):
                     bucket['aguard_fpd'] += 1
             else:
-                fk = _normalizar_faixa_nio(
-                    row.get('faixa') or '', row.get('nr_dias_atraso') or 0
-                )
-                bucket['faixas'][fk] = bucket['faixas'].get(fk, 0) + 1
+                esta_aberta = True
         elif sit == 'FECHADA':
             bucket['fatura_paga'] += 1
         elif sit == 'ABERTA':
-            fk = _normalizar_faixa_nio(row.get('faixa') or '', row.get('nr_dias_atraso') or 0)
-            bucket['faixas'][fk] = bucket['faixas'].get(fk, 0) + 1
+            esta_aberta = True
         else:
             if (row.get('nr_dias_atraso') or 0) <= 0 and not (row.get('faixa') or '').strip():
                 bucket['fatura_paga'] += 1
             else:
-                fk = _normalizar_faixa_nio(row.get('faixa') or '', row.get('nr_dias_atraso') or 0)
-                bucket['faixas'][fk] = bucket['faixas'].get(fk, 0) + 1
+                esta_aberta = True
+
+        if not esta_aberta:
+            continue
+
+        # Vencimento preferencial: CRM; fallback planilha
+        venc_vivo = None
+        if crm and crm.get('data_vencimento'):
+            venc_vivo = crm['data_vencimento']
+        else:
+            venc_vivo = dt
+
+        dias_vivos = _dias_atraso_por_vencimento(venc_vivo, hoje)
+        fk = _faixa_por_dias_vivos(dias_vivos)
+        bucket['faixas'][fk] = bucket['faixas'].get(fk, 0) + 1
+        abertas_total += 1
+
+        # Confronto com faixa/dias da planilha (snapshot da importação)
+        fk_planilha = _normalizar_faixa_nio(
+            row.get('faixa') or '', row.get('nr_dias_atraso') or 0
+        )
+        if fk_planilha != fk:
+            bucket['divergencias_faixa'] += 1
+            divergencias_faixa += 1
 
     # Ordena e limita aos N meses mais recentes
     meses_ord = sorted(por_mes.keys())[-n_meses:]
@@ -1047,6 +1080,7 @@ def dashboard_fpd_estilo_nio(
             'pct_aberto': pct,
             'abertas': abertas,
             'faixas': b['faixas'],
+            'divergencias_faixa_planilha': b['divergencias_faixa'],
         })
 
     linhas = [
@@ -1065,7 +1099,14 @@ def dashboard_fpd_estilo_nio(
         'colunas': colunas,
         'linhas': linhas,
         'faixas_ordem': [{'chave': k, 'label': lbl} for k, lbl in FAIXAS_NIO_ORDEM],
-        'fonte': 'Tratamento (FaturaM10) + universo ImportacaoFPD',
+        'fonte': (
+            'Faixas ao vivo (vencimento CRM/planilha) · '
+            'pago/aberto = Tratamento · universo = ImportacaoFPD'
+        ),
+        'faixas_ao_vivo': True,
+        'referencia_dias': hoje.isoformat(),
+        'abertas_total': abertas_total,
+        'divergencias_faixa_planilha': divergencias_faixa,
     }
 
 

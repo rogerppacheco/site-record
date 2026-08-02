@@ -1662,7 +1662,14 @@
             const cols = data.colunas || [];
             const fonte = document.getElementById('nio-fpd-fonte');
             if (fonte) {
-                fonte.textContent = `${data.fonte || 'Planilha FPD'} · ${indicador} · ${cols.length} mês(es)`;
+                const partes = [data.fonte || 'Planilha FPD', `${indicador}`, `${cols.length} mês(es)`];
+                if (data.faixas_ao_vivo) {
+                    partes.push(`ref. ${data.referencia_dias || 'hoje'}`);
+                }
+                if (data.divergencias_faixa_planilha != null) {
+                    partes.push(`Δ faixa planilha: ${data.divergencias_faixa_planilha}`);
+                }
+                fonte.textContent = partes.join(' · ');
             }
             if (!cols.length) {
                 tbody.innerHTML = '<tr><td class="text-muted">Sem dados importados. Importe a planilha FPD.</td></tr>';
