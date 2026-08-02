@@ -847,6 +847,7 @@ def dashboard_fpd_estilo_nio(
             'mes': b['mes'],
             'label': b['label'],
             'fatura_paga': b['fatura_paga'],
+            'fatura_aberta': abertas,
             'total_fatura': total,
             'pct_aberto': pct,
             'abertas': abertas,
@@ -856,6 +857,7 @@ def dashboard_fpd_estilo_nio(
     linhas = [
         {'chave': 'mes_fatura', 'label': 'MÊS FATURA', 'tipo': 'header'},
         {'chave': 'fatura_paga', 'label': 'FATURA PAGA', 'tipo': 'metric'},
+        {'chave': 'fatura_aberta', 'label': 'FATURA ABERTA', 'tipo': 'metric'},
         {'chave': 'total_fatura', 'label': 'TOTAL FATURA', 'tipo': 'metric'},
         {'chave': 'pct_aberto', 'label': '% ABERTO', 'tipo': 'pct'},
     ]

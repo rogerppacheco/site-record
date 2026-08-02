@@ -1270,6 +1270,9 @@
             // FATURA PAGA
             html += '<tr><td>FATURA PAGA</td>' +
                 cols.map(c => cell(c.fatura_paga)).join('') + '</tr>';
+            // FATURA ABERTA (em aberto = base do % ABERTO / faixas de atraso)
+            html += '<tr><td>FATURA ABERTA</td>' +
+                cols.map(c => cell(c.fatura_aberta ?? c.abertas ?? 0)).join('') + '</tr>';
             // TOTAL
             html += '<tr><td>TOTAL FATURA</td>' +
                 cols.map(c => cell(c.total_fatura)).join('') + '</tr>';
