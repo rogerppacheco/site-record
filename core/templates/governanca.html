@@ -464,7 +464,25 @@
                             <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
                         </div>
                         <div id="formasPagamento" class="tab-content" style="display:none;"><div class="input-group mb-3"><input type="text" id="nova-forma-pagamento-nome" placeholder="Nova Forma (Ex: PIX)" class="form-control"><button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button></div><ul id="lista-formas-pagamento" class="list-group"></ul></div>
-                        <div id="status" class="tab-content" style="display:none;"><form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="status_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option><option value="Qualidade">Qualidade</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div><div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><p class="small text-muted mb-3">Tipo <strong>Qualidade</strong> aparece na coluna “Status tratamento” do módulo Qualidade (BO).</p><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table></div>
+                        <div id="status" class="tab-content" style="display:none;">
+                            <form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
+                                <input type="hidden" id="status_id">
+                                <div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required maxlength="100"></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option><option value="Qualidade">Qualidade</option></select></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div>
+                                <div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div>
+                            </form>
+                            <p class="small text-muted mb-2">Tipo <strong>Qualidade</strong> aparece na coluna “Status tratamento” do módulo Qualidade (BO). Tipo <strong>Esteira</strong> / <strong>Tratamento</strong> são usados na esteira comercial.</p>
+                            <div class="row g-2 mb-3 align-items-end">
+                                <div class="col-md-5"><label class="form-label small mb-0">Buscar na lista</label><input type="search" id="filtro-status-nome" class="form-control form-control-sm" placeholder="Nome (ex: 7090, VENDA INDEVIDA)" oninput="renderListaStatus()"></div>
+                                <div class="col-md-3"><label class="form-label small mb-0">Filtrar tipo</label><select id="filtro-status-tipo" class="form-select form-select-sm" onchange="renderListaStatus()"><option value="">Todos</option><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option><option value="Qualidade">Qualidade</option></select></div>
+                                <div class="col-md-4"><span class="small text-muted" id="status-lista-contagem"></span></div>
+                            </div>
+                            <div class="table-responsive" style="max-height:55vh;overflow:auto;">
+                                <table class="table table-hover align-middle"><thead class="table-light sticky-top"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table>
+                            </div>
+                        </div>
                         <div id="statusAgendamento" class="tab-content" style="display:none;">
                             <form id="form-status-agendamento" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
                                 <input type="hidden" id="status_agendamento_id">
@@ -2893,12 +2911,43 @@
     window.excluirFormaPagamento = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`, {method:'DELETE'}); carregarFormasPagamento(); } };
 
     let listaStatusGlobal = [];
+    function renderListaStatus() {
+        const tbody = document.getElementById('lista-status');
+        const contagem = document.getElementById('status-lista-contagem');
+        if (!tbody) return;
+        const q = ((document.getElementById('filtro-status-nome') || {}).value || '').trim().toLowerCase();
+        const tipoFiltro = ((document.getElementById('filtro-status-tipo') || {}).value || '').trim();
+        const filtrada = listaStatusGlobal.filter(s => {
+            if (tipoFiltro && String(s.tipo || '') !== tipoFiltro) return false;
+            if (!q) return true;
+            const blob = `${s.nome || ''} ${s.tipo || ''} ${s.estado || ''}`.toLowerCase();
+            return blob.includes(q);
+        });
+        tbody.innerHTML = filtrada.map(s => `<tr>
+            <td>${escapeHtmlStatus(s.nome)}</td>
+            <td><span class="badge text-bg-secondary">${escapeHtmlStatus(s.tipo)}</span></td>
+            <td>${escapeHtmlStatus(s.estado || '-')}</td>
+            <td><span class="badge" style="background:${escapeHtmlStatus(s.cor || '#fff')};color:#000">${escapeHtmlStatus(s.cor || '')}</span></td>
+            <td class="text-end"><div class="btn-icon-group justify-content-end">
+                <button class="btn btn-icon btn-icon-primary" onclick="editarStatus(${s.id})" title="Editar" aria-label="Editar"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                <button class="btn btn-icon btn-icon-danger" onclick="excluirStatus(${s.id})" title="Excluir" aria-label="Excluir"><i class="bi bi-trash" aria-hidden="true"></i></button>
+            </div></td>
+        </tr>`).join('') || '<tr><td colspan="5" class="text-muted text-center">Nenhum status neste filtro</td></tr>';
+        if (contagem) {
+            contagem.textContent = `Exibindo ${filtrada.length} de ${listaStatusGlobal.length} status`;
+        }
+    }
+    function escapeHtmlStatus(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    window.renderListaStatus = renderListaStatus;
     async function carregarStatus() {
         const res = await apiFetch('/crm/status/');
         const lista = Array.isArray(res) ? res : (res?.results || []);
         listaStatusGlobal = lista;
-        const tbody = document.getElementById('lista-status'); tbody.innerHTML = '';
-        lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td class="text-end"><div class="btn-icon-group justify-content-end"><button class="btn btn-icon btn-icon-primary" onclick="editarStatus(${s.id})" title="Editar" aria-label="Editar"><i class="bi bi-pencil" aria-hidden="true"></i></button><button class="btn btn-icon btn-icon-danger" onclick="excluirStatus(${s.id})" title="Excluir" aria-label="Excluir"><i class="bi bi-trash" aria-hidden="true"></i></button></div></td></tr>`);
+        renderListaStatus();
     }
     window.editarStatus = (id) => {
         const s = listaStatusGlobal.find(item => item.id === id);
@@ -2907,7 +2956,7 @@
         document.getElementById('status_nome').value = s.nome;
         document.getElementById('status_tipo').value = s.tipo;
         document.getElementById('status_estado').value = s.estado || '';
-        document.getElementById('status_cor').value = s.cor;
+        document.getElementById('status_cor').value = s.cor || '#FFFFFF';
         document.getElementById('status').scrollIntoView({behavior:'smooth'});
     };
     var formStatus = document.getElementById('form-status');
@@ -2919,9 +2968,7 @@
             if (id) { await apiFetch(`/crm/status/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); } else { await apiFetch('/crm/status/', { method: 'POST', body: JSON.stringify(body) }); }
             document.getElementById('form-status').reset(); document.getElementById('status_id').value = ''; carregarStatus();
         } catch (err) {
-            const msg = err.message || '';
-            if (msg.includes('nome') || msg.includes('tipo') || msg.includes('Já existe')) alert(msg);
-            else alert('Erro ao salvar status: ' + (msg || 'Tente novamente.'));
+            alert('Erro ao salvar status: ' + (err.message || 'Tente novamente.'));
         }
     };
     window.excluirStatus = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`, {method:'DELETE'}); carregarStatus(); } };

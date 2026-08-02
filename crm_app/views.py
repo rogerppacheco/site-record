@@ -788,12 +788,20 @@ class StatusCRMListCreateView(generics.ListCreateAPIView):
         return StatusCRM.objects.none()
 
     def perform_create(self, serializer):
-        """Evita 500 por IntegrityError (nome+tipo duplicado); retorna 400 com mensagem."""
+        """Evita 500 por IntegrityError; distingue PK/sequência vs nome+tipo."""
         from rest_framework.exceptions import ValidationError as DRFValidationError
         try:
             serializer.save()
         except IntegrityError as e:
-            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+            err = str(e).lower()
+            if 'pkey' in err or 'statuscrm_pkey' in err or '(id)=' in err:
+                raise DRFValidationError({
+                    'detail': (
+                        'Falha ao gerar ID do status (sequência do banco dessincronizada). '
+                        'Avise o suporte técnico.'
+                    )
+                })
+            if 'unique' in err or 'duplicate' in err:
                 raise DRFValidationError(
                     {'nome': 'Já existe um status com este nome e tipo.'}
                 )
@@ -806,12 +814,20 @@ class StatusCRMDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'statuscrm'
 
     def perform_update(self, serializer):
-        """Evita 500 por IntegrityError (nome+tipo duplicado) no PATCH."""
+        """Evita 500 por IntegrityError; distingue PK/sequência vs nome+tipo."""
         from rest_framework.exceptions import ValidationError as DRFValidationError
         try:
             serializer.save()
         except IntegrityError as e:
-            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+            err = str(e).lower()
+            if 'pkey' in err or 'statuscrm_pkey' in err or '(id)=' in err:
+                raise DRFValidationError({
+                    'detail': (
+                        'Falha ao gerar ID do status (sequência do banco dessincronizada). '
+                        'Avise o suporte técnico.'
+                    )
+                })
+            if 'unique' in err or 'duplicate' in err:
                 raise DRFValidationError(
                     {'nome': 'Já existe um status com este nome e tipo.'}
                 )
