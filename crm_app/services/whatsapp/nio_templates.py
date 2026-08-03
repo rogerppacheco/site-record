@@ -45,12 +45,17 @@ BTN_FALAR_SUPORTE = "FALAR COM SUPORTE"
 
 
 def templates_habilitados() -> bool:
-    """Usa templates Meta quando o provedor é WhatsAtende (ou flag explícita)."""
+    """Usa templates Meta quando o canal cliente é Cloud API (WhatsAtende B / hybrid)."""
     flag = getattr(settings, "WHATSAPP_USE_NIO_TEMPLATES", None)
     if flag is not None:
         return bool(flag)
-    provider = (getattr(settings, "WHATSAPP_PROVIDER", "") or "").strip().lower()
-    return provider == "whatsatende"
+    try:
+        from crm_app.services.whatsapp_config_service import cliente_usa_cloud_api
+
+        return cliente_usa_cloud_api()
+    except Exception:
+        provider = (getattr(settings, "WHATSAPP_PROVIDER", "") or "").strip().lower()
+        return provider in ("whatsatende", "hybrid")
 
 
 def saudacao_meta(agora: Optional[datetime] = None) -> str:

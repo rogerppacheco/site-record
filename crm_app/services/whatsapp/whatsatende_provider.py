@@ -33,36 +33,22 @@ class WhatsAtendeProvider(WhatsAppProvider):
         ).rstrip("/")
         self.role = (role or "interno").strip().lower()
         if self.role == "cliente":
-            token_b = (
+            # Nunca cair no Número A: envio a cliente deve falhar se B não estiver pronto.
+            self.token = (
                 getattr(settings, "WHATSATENDE_TOKEN_B", None)
                 or os.environ.get("WHATSATENDE_TOKEN_B")
                 or ""
             ).strip()
-            id_b = str(
+            self.whatsapp_id = str(
                 getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", None)
                 or os.environ.get("WHATSATENDE_WHATSAPP_ID_B")
                 or ""
             ).strip()
-            if token_b:
-                self.token = token_b
-                self.whatsapp_id = id_b
-            else:
-                # Evita silenciar push a cliente se B ainda não estiver no env.
-                logger.warning(
+            if not self.token:
+                logger.error(
                     "[WhatsAtende] WHATSATENDE_TOKEN_B ausente — "
-                    "usando conexão A (interno) para role=cliente"
+                    "role=cliente abortará envios (sem fallback para A)."
                 )
-                self.token = (
-                    getattr(settings, "WHATSATENDE_TOKEN", None)
-                    or os.environ.get("WHATSATENDE_TOKEN")
-                    or ""
-                ).strip()
-                self.whatsapp_id = str(
-                    getattr(settings, "WHATSATENDE_WHATSAPP_ID", None)
-                    or os.environ.get("WHATSATENDE_WHATSAPP_ID")
-                    or ""
-                ).strip()
-                self.role = "interno"
         else:
             self.token = (
                 getattr(settings, "WHATSATENDE_TOKEN", None)

@@ -47,6 +47,7 @@ def _backend_conexao(request) -> str:
     """
     Qual backend usar para status/QR/disconnect.
     Query ?backend=evolution|whatsatende ou provedor ativo.
+    Em hybrid o QR do Número A fica na Z-API (painel externo).
     """
     q = (request.query_params.get("backend") or "").strip().lower()
     if q in ("evolution", "whatsatende"):
@@ -55,6 +56,9 @@ def _backend_conexao(request) -> str:
     if provider == WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE:
         return "whatsatende"
     if provider == WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION:
+        return "evolution"
+    if provider == WhatsAppIntegracaoConfig.PROVIDER_HYBRID:
+        # Número A = Z-API (sem QR aqui); QR WhatsAtende A não é necessário.
         return "evolution"
     # Z-API ativo: preferir WhatsAtende se já tiver ID+token (setup paralelo)
     if _whatsatende_conexao_disponivel():
@@ -78,10 +82,18 @@ def whatsapp_config_api(request):
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     payload = build_whatsapp_config_payload()
-    payload["message"] = (
-        "Provedor alterado. Confirme que o webhook inbound aponta para "
-        "/api/crm/webhook-whatsapp/ no provedor escolhido."
-    )
+    if payload.get("provider") == WhatsAppIntegracaoConfig.PROVIDER_HYBRID:
+        payload["message"] = (
+            "Modo híbrido ativo: Número A (equipe/grupos) via Z-API; "
+            "Número B (cliente/templates) via WhatsAtende. "
+            "Mantenha webhooks dos dois provedores apontando para "
+            "/api/crm/webhook-whatsapp/ (WhatsAtende com token no path)."
+        )
+    else:
+        payload["message"] = (
+            "Provedor alterado. Confirme que o webhook inbound aponta para "
+            "/api/crm/webhook-whatsapp/ no provedor escolhido."
+        )
     return Response(payload)
 
 

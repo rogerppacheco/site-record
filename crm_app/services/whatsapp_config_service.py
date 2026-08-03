@@ -13,6 +13,14 @@ _PROVIDERS_VALIDOS = frozenset(
         WhatsAppIntegracaoConfig.PROVIDER_ZAPI,
         WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION,
         WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE,
+        WhatsAppIntegracaoConfig.PROVIDER_HYBRID,
+    }
+)
+
+_PROVIDERS_CLIENTE_CLOUD = frozenset(
+    {
+        WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE,
+        WhatsAppIntegracaoConfig.PROVIDER_HYBRID,
     }
 )
 
@@ -32,6 +40,11 @@ def get_active_whatsapp_provider_name() -> str:
         or "zapi"
     )
     return str(fallback).strip().lower()
+
+
+def cliente_usa_cloud_api() -> bool:
+    """True quando envios a cliente final passam pela WhatsAtende (Número B)."""
+    return get_active_whatsapp_provider_name() in _PROVIDERS_CLIENTE_CLOUD
 
 
 def clear_whatsapp_provider_cache() -> None:
@@ -80,6 +93,33 @@ def _credenciais_n8n_ok() -> bool:
     return False
 
 
+def _validar_credenciais_provedor(provider: str) -> None:
+    """Garante pré-requisitos mínimos antes de ativar o modo."""
+    if provider == WhatsAppIntegracaoConfig.PROVIDER_HYBRID:
+        faltando = []
+        if not _credenciais_zapi_ok():
+            faltando.append("Z-API (ZAPI_INSTANCE_ID / ZAPI_TOKEN)")
+        if not _credenciais_whatsatende_cliente_ok():
+            faltando.append(
+                "WhatsAtende B (WHATSATENDE_TOKEN_B / WHATSATENDE_WHATSAPP_ID_B)"
+            )
+        if faltando:
+            raise ValueError(
+                "Modo híbrido exige credenciais de: " + "; ".join(faltando)
+            )
+    elif provider == WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE:
+        if not _credenciais_whatsatende_ok() and not _credenciais_whatsatende_cliente_ok():
+            raise ValueError(
+                "WhatsAtende exige WHATSATENDE_TOKEN (A) e/ou TOKEN_B (cliente)."
+            )
+    elif provider == WhatsAppIntegracaoConfig.PROVIDER_ZAPI:
+        if not _credenciais_zapi_ok():
+            raise ValueError("Z-API exige ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor.")
+    elif provider == WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION:
+        if not _credenciais_evolution_ok():
+            raise ValueError("Evolution exige EVOLUTION_API_URL e EVOLUTION_API_KEY.")
+
+
 def build_whatsapp_config_payload() -> Dict[str, Any]:
     env_default = (
         getattr(settings, "WHATSAPP_PROVIDER", None)
@@ -125,10 +165,15 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         "whatsatendeWebhookTokenConfigured": bool(
             (getattr(settings, "WHATSATENDE_WEBHOOK_TOKEN", "") or "").strip()
         ),
+        "hybridReady": _credenciais_zapi_ok() and _credenciais_whatsatende_cliente_ok(),
         "n8nConfigured": _credenciais_n8n_ok(),
         "envDefaultProvider": env_default,
         "atualizadoEm": atualizado_em,
         "atualizadoPor": atualizado_por,
+        "mapaHybrid": {
+            "interno": "zapi",
+            "cliente": "whatsatende_b",
+        },
     }
     try:
         from crm_app.services.whatsapp.webhook_token import (
@@ -154,6 +199,7 @@ def set_whatsapp_provider(provider: str, user) -> WhatsAppIntegracaoConfig:
     normalized = (provider or "").strip().lower()
     if normalized not in _PROVIDERS_VALIDOS:
         raise ValueError(f"Provedor inválido: {provider}")
+    _validar_credenciais_provedor(normalized)
     cfg = WhatsAppIntegracaoConfig.load()
     cfg.provider = normalized
     cfg.atualizado_por = user

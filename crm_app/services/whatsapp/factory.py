@@ -1,4 +1,4 @@
-"""Factory do provider WhatsApp (zapi | evolution híbrido n8n | whatsatende)."""
+"""Factory do provider WhatsApp (zapi | evolution | whatsatende | hybrid)."""
 from __future__ import annotations
 
 from typing import Dict, Tuple
@@ -11,7 +11,7 @@ from crm_app.services.whatsapp.zapi_provider import ZapiProvider
 PURPOSE_INTERNO = "interno"
 PURPOSE_CLIENTE = "cliente"
 
-_cached_providers: Dict[Tuple[str, str], WhatsAppProvider] = {}
+_cached_providers: Dict[Tuple[str, str, str], WhatsAppProvider] = {}
 
 
 def clear_whatsapp_provider_cache() -> None:
@@ -19,33 +19,53 @@ def clear_whatsapp_provider_cache() -> None:
     _cached_providers.clear()
 
 
-def get_whatsapp_provider(purpose: str = PURPOSE_INTERNO) -> WhatsAppProvider:
+def resolve_backend_for_purpose(provider_name: str, purpose: str) -> Tuple[str, str]:
     """
-    Resolve o provider ativo consultando o banco a cada chamada.
+    Mapeia (provedor global, purpose) → (backend efetivo, role WhatsAtende).
 
-    purpose=interno → bot/equipe (Número A na WhatsAtende).
-    purpose=cliente → cliente final (Número B / oficial na WhatsAtende).
-    Z-API e Evolution ignoram purpose (uma conexão só).
+    hybrid: interno → Z-API; cliente → WhatsAtende Número B.
+    whatsatende: dual A/B na mesma plataforma.
+    zapi/evolution: um backend só (ignoram purpose).
     """
-    from crm_app.services.whatsapp_config_service import get_active_whatsapp_provider_name
-
-    provider_name = get_active_whatsapp_provider_name()
+    name = (provider_name or "").strip().lower()
     role = (
         PURPOSE_CLIENTE
         if (purpose or "").strip().lower() == PURPOSE_CLIENTE
         else PURPOSE_INTERNO
     )
-    # Só WhatsAtende tem dual A/B; demais provedores compartilham a mesma instância.
-    cache_role = role if provider_name == "whatsatende" else PURPOSE_INTERNO
-    key = (provider_name, cache_role)
+    if name == "hybrid":
+        if role == PURPOSE_CLIENTE:
+            return "whatsatende", PURPOSE_CLIENTE
+        return "zapi", PURPOSE_INTERNO
+    if name == "whatsatende":
+        return "whatsatende", role
+    if name == "evolution":
+        return "evolution", PURPOSE_INTERNO
+    return "zapi", PURPOSE_INTERNO
+
+
+def get_whatsapp_provider(purpose: str = PURPOSE_INTERNO) -> WhatsAppProvider:
+    """
+    Resolve o provider efetivo consultando o banco a cada chamada.
+
+    purpose=interno → bot/equipe/grupos (Número A).
+    purpose=cliente → cliente final / Cloud API (Número B).
+
+    Modo hybrid: Z-API (interno) + WhatsAtende B (cliente).
+    """
+    from crm_app.services.whatsapp_config_service import get_active_whatsapp_provider_name
+
+    provider_name = get_active_whatsapp_provider_name()
+    backend, role = resolve_backend_for_purpose(provider_name, purpose)
+    key = (provider_name, backend, role)
     cached = _cached_providers.get(key)
     if cached is not None:
         return cached
 
-    if provider_name == "evolution":
+    if backend == "evolution":
         inst: WhatsAppProvider = N8nOutboundProvider()
-    elif provider_name == "whatsatende":
-        inst = WhatsAtendeProvider(role=cache_role)
+    elif backend == "whatsatende":
+        inst = WhatsAtendeProvider(role=role)
     else:
         inst = ZapiProvider()
     _cached_providers[key] = inst

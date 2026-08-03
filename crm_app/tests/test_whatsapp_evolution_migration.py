@@ -228,6 +228,39 @@ class TestProviderFactory(SimpleTestCase):
         self.assertEqual(cliente.whatsapp_id, "194")
         self.assertIsNot(interno, cliente)
 
+    @override_settings(
+        ZAPI_INSTANCE_ID="inst",
+        ZAPI_TOKEN="z-tok",
+        WHATSATENDE_TOKEN_B="tok-b",
+        WHATSATENDE_WHATSAPP_ID_B="194",
+        WHATSATENDE_TOKEN="tok-a-unused",
+        WHATSATENDE_WHATSAPP_ID="196",
+    )
+    @patch(
+        "crm_app.services.whatsapp_config_service.get_active_whatsapp_provider_name",
+        return_value="hybrid",
+    )
+    def test_factory_hybrid_zapi_interno_whatsatende_cliente(
+        self, _mock_provider: object
+    ) -> None:
+        from crm_app.services.whatsapp.factory import PURPOSE_CLIENTE
+
+        clear_whatsapp_provider_cache()
+        interno = get_whatsapp_provider()
+        cliente = get_whatsapp_provider(purpose=PURPOSE_CLIENTE)
+        self.assertIsInstance(interno, ZapiProvider)
+        self.assertIsInstance(cliente, WhatsAtendeProvider)
+        self.assertEqual(cliente.role, "cliente")
+        self.assertEqual(cliente.token, "tok-b")
+        self.assertEqual(cliente.whatsapp_id, "194")
+
+    @override_settings(WHATSATENDE_TOKEN="tok-a", WHATSATENDE_WHATSAPP_ID="196")
+    def test_whatsatende_cliente_sem_token_b_nao_fallback_para_a(self) -> None:
+        provider = WhatsAtendeProvider(role="cliente")
+        self.assertEqual(provider.role, "cliente")
+        self.assertEqual(provider.token, "")
+        self.assertEqual(provider.whatsapp_id, "")
+
     @patch(
         "crm_app.services.whatsapp_config_service.get_active_whatsapp_provider_name",
         side_effect=["zapi", "evolution"],

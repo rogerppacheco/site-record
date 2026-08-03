@@ -2314,9 +2314,10 @@ class VendaViewSet(viewsets.ModelViewSet):
                 zaap_id,
             )
 
-            # WhatsAtende oficial não expõe ACK de entrega; só aguarda em provedores com callback.
-            provider_name = (getattr(settings, "WHATSAPP_PROVIDER", "") or "").strip().lower()
-            if provider_name != "whatsatende" and canal != "template":
+            # Cloud API (WhatsAtende B / hybrid) não expõe ACK Z-API; só aguarda em provedores com callback.
+            from crm_app.services.whatsapp_config_service import cliente_usa_cloud_api
+
+            if not cliente_usa_cloud_api() and canal != "template":
                 from crm_app.services.whatsapp.delivery_tracker import aguardar_entrega
 
                 entregue, detalhe_entrega = aguardar_entrega(message_id, zaap_id)
