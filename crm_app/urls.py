@@ -79,7 +79,7 @@ from .views import (
     HistoricoPagamentoDetalheView,
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
-    ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView, ReverterImportacaoOSABView, AnaliseComparacaoOSABView, LimparImportacaoOSABView,
+    ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView, ReverterImportacaoOSABView, AnaliseComparacaoOSABView, LimparImportacaoOSABView, LimparBaseDFVView, LimparBaseCNPJView,
     ControleTTsAPIView, ControleTTTratadoAPIView, ControleTTsProximoAPIView,
     ImportacaoChurnView, ImportacaoChurnDetailView,
     ImportacaoCicloPagamentoView,
@@ -426,6 +426,8 @@ urlpatterns = [
     path('logs-osab/<int:log_id>/cancelar/', CancelarImportacaoOSABView.as_view(), name='logs-osab-cancelar'),
     path('logs-osab/<int:log_id>/reverter/', ReverterImportacaoOSABView.as_view(), name='logs-osab-reverter'),
     path('import/osab/limpar/', LimparImportacaoOSABView.as_view(), name='limpar-osab'),
+    path('import/dfv/limpar/', LimparBaseDFVView.as_view(), name='limpar-dfv'),
+    path('import/cnpj/limpar/', LimparBaseCNPJView.as_view(), name='limpar-cnpj'),
     path('logs-dfv/', LogsImportacaoDFVView.as_view(), name='logs-dfv'),
     path('logs-recompra/', LogsImportacaoRecompraView.as_view(), name='logs-recompra'),
     

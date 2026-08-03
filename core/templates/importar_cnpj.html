@@ -70,6 +70,18 @@
             </div>
         </div>
 
+        <div class="alert alert-warning border-0 shadow-sm" id="statusBaseCNPJ" role="status">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <strong><i class="bi bi-database"></i> Base local CNPJ no banco</strong>
+                    <div class="small text-muted mt-1" id="statusBaseCNPJTexto">Carregando quantidade de registros...</div>
+                </div>
+                <button type="button" class="btn btn-outline-danger" id="btnExcluirBaseCNPJ" disabled>
+                    <i class="bi bi-trash"></i> Excluir base do banco
+                </button>
+            </div>
+        </div>
+
         <!-- Filtros opcionais -->
         <div class="filter-card card-modern">
             <h6 class="fw-bold mb-2"><i class="bi bi-funnel"></i> Filtros opcionais (reduz volume)</h6>
@@ -120,6 +132,8 @@
                 <i class="bi bi-arrow-left"></i> Voltar
             </a>
         </div>
+
+        <div id="resultadoLimpezaCNPJ" class="mt-3" style="display: none;"></div>
 
         <div class="progress-container card-modern mt-4" id="progressContainer" style="display: none;">
             <div class="progress" style="height: 25px;">
@@ -179,7 +193,118 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             carregarHistorico();
+            carregarStatusBaseCNPJ();
             refreshIntervalId = setInterval(carregarHistorico, 3000);
+        });
+
+        function formatarNumeroBR(valor) {
+            return Number(valor || 0).toLocaleString('pt-BR');
+        }
+
+        async function carregarStatusBaseCNPJ() {
+            const texto = document.getElementById('statusBaseCNPJTexto');
+            const btn = document.getElementById('btnExcluirBaseCNPJ');
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch('/api/crm/import/cnpj/limpar/', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    texto.textContent = data.error || 'Sem permissão para ver o tamanho da base (apenas Admin/Diretoria).';
+                    btn.disabled = true;
+                    return;
+                }
+
+                const total = data.total_registros || 0;
+                const logs = data.total_logs || 0;
+                let msg = `${formatarNumeroBR(total)} registros na tabela CNPJ`;
+                if (logs > 0) {
+                    msg += ` · ${formatarNumeroBR(logs)} logs de importação`;
+                }
+                if (data.importacao_em_andamento) {
+                    msg += ' · importação em andamento (exclusão bloqueada)';
+                }
+                texto.textContent = msg;
+                btn.disabled = (total === 0 && logs === 0) || data.importacao_em_andamento;
+            } catch (error) {
+                texto.textContent = 'Não foi possível carregar o status da base.';
+                btn.disabled = true;
+            }
+        }
+
+        document.getElementById('btnExcluirBaseCNPJ').addEventListener('click', async () => {
+            const btn = document.getElementById('btnExcluirBaseCNPJ');
+            const resultado = document.getElementById('resultadoLimpezaCNPJ');
+
+            const ok1 = confirm(
+                'Isso vai APAGAR permanentemente toda a base local CNPJ (ESTABELE) do banco de dados.\n\n' +
+                'Consultas pontuais de CNPJ continuam via API.\n\n' +
+                'A aba "CNPJ por Cidade/Bairro" do CDOI deixa de ter dados locais.\n\nDeseja continuar?'
+            );
+            if (!ok1) return;
+
+            const confirmacao = prompt(
+                'Digite exatamente EXCLUIR CNPJ para confirmar a exclusão da base no banco:'
+            );
+            if (confirmacao !== 'EXCLUIR CNPJ') {
+                alert('Exclusão cancelada. Confirmação inválida.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Excluindo...';
+
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch('/api/crm/import/cnpj/limpar/', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        confirmacao: 'EXCLUIR CNPJ',
+                        incluir_logs: true,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (response.ok) {
+                    resultado.innerHTML = `
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <h5><i class="bi bi-check-circle"></i> Base excluída</h5>
+                            <p class="mb-0">${data.mensagem || 'Base CNPJ removida com sucesso.'}</p>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    carregarHistorico();
+                    carregarStatusBaseCNPJ();
+                } else {
+                    resultado.innerHTML = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <h5><i class="bi bi-x-circle"></i> Erro ao excluir</h5>
+                            <p class="mb-0">${data.error || 'Falha ao excluir a base CNPJ.'}</p>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    carregarStatusBaseCNPJ();
+                }
+                resultado.style.display = 'block';
+            } catch (error) {
+                resultado.innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <h5><i class="bi bi-x-circle"></i> Erro ao conectar</h5>
+                        <p class="mb-0">${error.message}</p>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+                resultado.style.display = 'block';
+                carregarStatusBaseCNPJ();
+            } finally {
+                btn.innerHTML = '<i class="bi bi-trash"></i> Excluir base do banco';
+            }
         });
 
         async function carregarHistorico() {

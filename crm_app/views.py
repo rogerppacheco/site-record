@@ -13832,6 +13832,212 @@ class LimparImportacaoOSABView(APIView):
             return Response({'error': f'Erro ao limpar tabela: {str(e)}'}, status=500)
 
 
+class LimparBaseDFVView(APIView):
+    """
+    Consulta e remove a base local DFV (fachadas) do banco.
+
+    A consulta de fachada no WhatsApp já usa Power BI; esta tabela local
+    só consome armazenamento. TRUNCATE é usado para liberar espaço rápido
+    em volumes grandes (milhões de linhas).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from crm_app.models import DFV, LogImportacaoDFV
+
+        if not request.user.is_staff and not is_member(request.user, ['Admin', 'Diretoria']):
+            return Response(
+                {'error': 'Apenas administradores podem consultar o tamanho da base DFV.'},
+                status=403,
+            )
+
+        em_andamento = LogImportacaoDFV.objects.filter(status='PROCESSANDO').exists()
+        return Response({
+            'success': True,
+            'total_registros': DFV.objects.count(),
+            'total_logs': LogImportacaoDFV.objects.count(),
+            'importacao_em_andamento': em_andamento,
+        })
+
+    def post(self, request):
+        from django.db import connection
+        from crm_app.models import DFV, LogImportacaoDFV
+
+        if not request.user.is_staff and not is_member(request.user, ['Admin', 'Diretoria']):
+            return Response(
+                {'error': 'Apenas administradores podem excluir a base DFV.'},
+                status=403,
+            )
+
+        confirmacao = str(request.data.get('confirmacao', '')).strip().upper()
+        if confirmacao != 'EXCLUIR DFV':
+            return Response(
+                {
+                    'error': 'Confirmação inválida. Envie confirmacao="EXCLUIR DFV" para prosseguir.',
+                },
+                status=400,
+            )
+
+        if LogImportacaoDFV.objects.filter(status='PROCESSANDO').exists():
+            return Response(
+                {
+                    'error': (
+                        'Há uma importação DFV em andamento. '
+                        'Aguarde concluir ou cancele antes de excluir a base.'
+                    ),
+                },
+                status=409,
+            )
+
+        incluir_logs = bool(request.data.get('incluir_logs', True))
+        total_dfv = DFV.objects.count()
+        total_logs = LogImportacaoDFV.objects.count() if incluir_logs else 0
+
+        if total_dfv == 0 and (not incluir_logs or total_logs == 0):
+            return Response({
+                'success': True,
+                'mensagem': 'A base DFV já está vazia.',
+                'registros_removidos': 0,
+                'logs_removidos': 0,
+            })
+
+        try:
+            # TRUNCATE evita delete linha a linha (muito lento e caro em I/O).
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    'TRUNCATE TABLE {} RESTART IDENTITY'.format(
+                        connection.ops.quote_name(DFV._meta.db_table)
+                    )
+                )
+                if incluir_logs:
+                    cursor.execute(
+                        'TRUNCATE TABLE {} RESTART IDENTITY'.format(
+                            connection.ops.quote_name(LogImportacaoDFV._meta.db_table)
+                        )
+                    )
+
+            return Response({
+                'success': True,
+                'mensagem': (
+                    f'Base DFV excluída com sucesso. '
+                    f'{total_dfv:,} registros removidos'
+                    + (f' e {total_logs:,} logs' if incluir_logs else '')
+                    + '. Para reduzir o armazenamento faturado no provedor, '
+                    'pode ser necessário um VACUUM FULL na tabela (operação de DBA).'
+                ),
+                'registros_removidos': total_dfv,
+                'logs_removidos': total_logs if incluir_logs else 0,
+            })
+        except Exception as e:
+            return Response({'error': f'Erro ao excluir base DFV: {str(e)}'}, status=500)
+
+
+class LimparBaseCNPJView(APIView):
+    """
+    Consulta e remove a base local de estabelecimentos CNPJ (Receita Federal).
+
+    Consultas pontuais de CNPJ já usam API externa (ex.: BrasilAPI);
+    esta tabela ESTABELE importada só consome armazenamento.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from crm_app.models import (
+            ImportacaoEstabelecimentoCNPJ,
+            LogImportacaoEstabelecimentoCNPJ,
+        )
+
+        if not request.user.is_staff and not is_member(request.user, ['Admin', 'Diretoria']):
+            return Response(
+                {'error': 'Apenas administradores podem consultar o tamanho da base CNPJ.'},
+                status=403,
+            )
+
+        em_andamento = LogImportacaoEstabelecimentoCNPJ.objects.filter(
+            status='PROCESSANDO'
+        ).exists()
+        return Response({
+            'success': True,
+            'total_registros': ImportacaoEstabelecimentoCNPJ.objects.count(),
+            'total_logs': LogImportacaoEstabelecimentoCNPJ.objects.count(),
+            'importacao_em_andamento': em_andamento,
+        })
+
+    def post(self, request):
+        from django.db import connection
+        from crm_app.models import (
+            ImportacaoEstabelecimentoCNPJ,
+            LogImportacaoEstabelecimentoCNPJ,
+        )
+
+        if not request.user.is_staff and not is_member(request.user, ['Admin', 'Diretoria']):
+            return Response(
+                {'error': 'Apenas administradores podem excluir a base CNPJ.'},
+                status=403,
+            )
+
+        confirmacao = str(request.data.get('confirmacao', '')).strip().upper()
+        if confirmacao != 'EXCLUIR CNPJ':
+            return Response(
+                {
+                    'error': 'Confirmação inválida. Envie confirmacao="EXCLUIR CNPJ" para prosseguir.',
+                },
+                status=400,
+            )
+
+        if LogImportacaoEstabelecimentoCNPJ.objects.filter(status='PROCESSANDO').exists():
+            return Response(
+                {
+                    'error': (
+                        'Há uma importação CNPJ em andamento. '
+                        'Aguarde concluir antes de excluir a base.'
+                    ),
+                },
+                status=409,
+            )
+
+        incluir_logs = bool(request.data.get('incluir_logs', True))
+        total_cnpj = ImportacaoEstabelecimentoCNPJ.objects.count()
+        total_logs = LogImportacaoEstabelecimentoCNPJ.objects.count() if incluir_logs else 0
+
+        if total_cnpj == 0 and (not incluir_logs or total_logs == 0):
+            return Response({
+                'success': True,
+                'mensagem': 'A base CNPJ já está vazia.',
+                'registros_removidos': 0,
+                'logs_removidos': 0,
+            })
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    'TRUNCATE TABLE {} RESTART IDENTITY'.format(
+                        connection.ops.quote_name(ImportacaoEstabelecimentoCNPJ._meta.db_table)
+                    )
+                )
+                if incluir_logs:
+                    cursor.execute(
+                        'TRUNCATE TABLE {} RESTART IDENTITY'.format(
+                            connection.ops.quote_name(LogImportacaoEstabelecimentoCNPJ._meta.db_table)
+                        )
+                    )
+
+            return Response({
+                'success': True,
+                'mensagem': (
+                    f'Base CNPJ excluída com sucesso. '
+                    f'{total_cnpj:,} registros removidos'
+                    + (f' e {total_logs:,} logs' if incluir_logs else '')
+                    + '. Para reduzir o armazenamento faturado no provedor, '
+                    'pode ser necessário um VACUUM FULL na tabela (operação de DBA).'
+                ),
+                'registros_removidos': total_cnpj,
+                'logs_removidos': total_logs if incluir_logs else 0,
+            })
+        except Exception as e:
+            return Response({'error': f'Erro ao excluir base CNPJ: {str(e)}'}, status=500)
+
+
 class CancelarImportacaoOSABView(APIView):
     """Cancela uma importação OSAB em processamento."""
     permission_classes = [permissions.IsAuthenticated]
