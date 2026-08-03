@@ -7061,6 +7061,10 @@ _BTN_ZAPI_ID_PARA_COMANDO = {
     "cdoe_uf_MG": "MG",
     "cdoe_uf_ES": "ES",
     "cdoe_uf_RJ": "RJ",
+    "cdoe_uf_SP": "SP",
+    "cdoe_uf_PR": "PR",
+    "cdoe_uf_SC": "SC",
+    "cdoe_uf_RS": "RS",
 }
 
 
@@ -8453,7 +8457,7 @@ def processar_webhook_whatsapp(data, request=None):
             _registrar_estatistica(telefone_formatado, 'DFV')
             resposta = (
                 "Por favor, digite o *CEP* para consultar fachadas no Power BI ao vivo "
-                "(apenas números; hífen é aceito):"
+                "(Sudeste, SP e Sul — apenas números; hífen é aceito):"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
@@ -8475,7 +8479,7 @@ def processar_webhook_whatsapp(data, request=None):
             _registrar_estatistica(telefone_formatado, 'CDOE')
 
             if codigo_inline:
-                from crm_app.services.dfv_powerbi_service import limpar_codigo_cdo
+                from crm_app.services.dfv_powerbi_service import CDOE_UFS, limpar_codigo_cdo
 
                 codigo_limpo = limpar_codigo_cdo(codigo_inline)
                 if not codigo_limpo:
@@ -8490,25 +8494,30 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = (
                     f"Código *{codigo_limpo}* anotado.\n"
                     "Agora escolha o *estado (UF)* da consulta:\n"
-                    "• *MG*  • *ES*  • *RJ*\n\n"
+                    f"• {'  • '.join(f'*{uf}*' for uf in CDOE_UFS)}\n\n"
                     "Ou *CANCELAR* para sair."
                 )
                 texto_uf = _com_prefixo_primeira_mensagem(resposta)
                 try:
-                    ok_btn, _ = whatsapp_service.enviar_mensagem_com_botoes_reply(
+                    opcoes_uf = [
+                        {
+                            "id": f"cdoe_uf_{uf}",
+                            "title": uf,
+                            "description": f"Consultar CDOE em {uf}",
+                        }
+                        for uf in CDOE_UFS
+                    ]
+                    ok_lista, _ = whatsapp_service.enviar_lista_opcoes(
                         telefone_formatado,
                         texto_uf,
-                        [
-                            {"id": "cdoe_uf_MG", "type": "REPLY", "label": "MG"},
-                            {"id": "cdoe_uf_ES", "type": "REPLY", "label": "ES"},
-                            {"id": "cdoe_uf_RJ", "type": "REPLY", "label": "RJ"},
-                        ],
-                        title="CDOE — UF",
+                        opcoes_uf,
+                        titulo_lista="Estados (UF)",
+                        botao_label="Escolher UF",
                     )
-                    if ok_btn:
+                    if ok_lista:
                         return {'status': 'ok', 'mensagem': resposta}
                 except Exception:
-                    logger.debug("[Webhook] Falha botões UF CDOE", exc_info=True)
+                    logger.debug("[Webhook] Falha lista UF CDOE", exc_info=True)
                 return _enviar_resposta_e_retornar(texto_uf)
             else:
                 sessao.etapa = 'cdoe_codigo'
@@ -8892,27 +8901,32 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta_uf = (
                     f"Código *{codigo_ref}* anotado.\n"
                     "Agora escolha o *estado (UF)* da consulta:\n"
-                    "• *MG*  • *ES*  • *RJ*\n\n"
+                    f"• {'  • '.join(f'*{uf}*' for uf in CDOE_UFS)}\n\n"
                     "Ou *CANCELAR* para sair."
                 )
                 texto_uf = (
                     _com_prefixo_primeira_mensagem(resposta_uf) if prefixar else resposta_uf
                 )
                 try:
-                    ok_btn, _ = whatsapp_service.enviar_mensagem_com_botoes_reply(
+                    opcoes_uf = [
+                        {
+                            "id": f"cdoe_uf_{uf}",
+                            "title": uf,
+                            "description": f"Consultar CDOE em {uf}",
+                        }
+                        for uf in CDOE_UFS
+                    ]
+                    ok_lista, _ = whatsapp_service.enviar_lista_opcoes(
                         telefone_formatado,
                         texto_uf,
-                        [
-                            {"id": "cdoe_uf_MG", "type": "REPLY", "label": "MG"},
-                            {"id": "cdoe_uf_ES", "type": "REPLY", "label": "ES"},
-                            {"id": "cdoe_uf_RJ", "type": "REPLY", "label": "RJ"},
-                        ],
-                        title="CDOE — UF",
+                        opcoes_uf,
+                        titulo_lista="Estados (UF)",
+                        botao_label="Escolher UF",
                     )
-                    if ok_btn:
+                    if ok_lista:
                         return {'status': 'ok', 'mensagem': resposta_uf}
                 except Exception:
-                    logger.debug("[Webhook] Falha botões UF CDOE", exc_info=True)
+                    logger.debug("[Webhook] Falha lista UF CDOE", exc_info=True)
                 return _enviar_resposta_e_retornar(texto_uf)
 
             def _apos_consulta_cdoe(codigo_encontrado: str, uf_val: str, registros):
@@ -9046,8 +9060,8 @@ def processar_webhook_whatsapp(data, request=None):
             uf_limpo = limpar_uf(mensagem_limpa or mensagem_texto)
             if not uf_limpo:
                 resposta = (
-                    "❌ UF inválida. Escolha *MG*, *ES* ou *RJ* "
-                    f"(cobertura: {', '.join(CDOE_UFS)}), ou *CANCELAR*."
+                    "❌ UF inválida. Escolha uma destas: "
+                    f"*{', '.join(CDOE_UFS)}*, ou *CANCELAR*."
                 )
                 return _enviar_resposta_e_retornar(resposta)
 

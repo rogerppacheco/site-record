@@ -324,6 +324,17 @@ DFV_POWERBI_CLUSTER = config(
     default='https://wabi-brazil-south-b-primary-api.analysis.windows.net',
 )
 DFV_POWERBI_MODEL_ID = config('DFV_POWERBI_MODEL_ID', default=6061538, cast=int)
+# DFV SP / Sul (mesmo cluster; resource keys dos links públicos Nio)
+DFV_POWERBI_SP_RESOURCE_KEY = config(
+    'DFV_POWERBI_SP_RESOURCE_KEY',
+    default='81e95c1a-e770-44e3-9646-19df8443756c',
+)
+DFV_POWERBI_SP_MODEL_ID = config('DFV_POWERBI_SP_MODEL_ID', default=7340452, cast=int)
+DFV_POWERBI_SUL_RESOURCE_KEY = config(
+    'DFV_POWERBI_SUL_RESOURCE_KEY',
+    default='cc212c25-1b6a-4301-877b-703e2c7aa788',
+)
+DFV_POWERBI_SUL_MODEL_ID = config('DFV_POWERBI_SUL_MODEL_ID', default=6062850, cast=int)
 DFV_POWERBI_TIMEOUT_SECONDS = config('DFV_POWERBI_TIMEOUT_SECONDS', default=18, cast=float)
 DFV_POWERBI_CACHE_TTL_SECONDS = config('DFV_POWERBI_CACHE_TTL_SECONDS', default=600, cast=int)
 DFV_POWERBI_WINDOW_COUNT = config('DFV_POWERBI_WINDOW_COUNT', default=5000, cast=int)

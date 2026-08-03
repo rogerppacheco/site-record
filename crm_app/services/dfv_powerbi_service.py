@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Consulta ao vivo de fachadas no Power BI público (DFV_SUDESTE).
+Consulta ao vivo de fachadas no Power BI público (multi-região).
+
+Regiões: DFV_SUDESTE (MG/ES/RJ), DFV_SP e DFV_SUL (PR/SC/RS).
 
 Comandos WhatsApp:
-- DFV: filtro por CEP
-- CDOE: filtro por CODIGO_CDO (resumo por rua → números)
+- DFV: filtro por CEP (consulta as 3 bases em paralelo)
+- CDOE: filtro por CODIGO_CDO (roteia pela UF → região)
 
 Independente da base local `crm_app.models.DFV` (legado; comando Fachada desativado).
 """
@@ -17,6 +19,8 @@ import threading
 import time
 import unicodedata
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Any, Optional
 
 import requests
@@ -46,6 +50,41 @@ CACHE_KEY_PREFIX = "dfv_pbi:cep:"
 CACHE_KEY_PREFIX_CDO = "dfv_pbi:cdo:"
 _local_cache_lock = threading.Lock()
 _local_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+@dataclass(frozen=True)
+class DfvRegionConfig:
+    """Configuração de um relatório Power BI regional (DFV)."""
+
+    code: str
+    label: str
+    resource_key: str
+    model_id: int
+    ufs: tuple[str, ...]
+
+
+# Defaults alinhados aos links públicos Nio (tenant comum)
+_DEFAULT_REGION_SUDESTE = DfvRegionConfig(
+    code="SUDESTE",
+    label="Sudeste",
+    resource_key="8a9db8f9-7cf1-4db5-90d2-5259ad149eba",
+    model_id=6061538,
+    ufs=("MG", "ES", "RJ"),
+)
+_DEFAULT_REGION_SP = DfvRegionConfig(
+    code="SP",
+    label="SP",
+    resource_key="81e95c1a-e770-44e3-9646-19df8443756c",
+    model_id=7340452,
+    ufs=("SP",),
+)
+_DEFAULT_REGION_SUL = DfvRegionConfig(
+    code="SUL",
+    label="Sul",
+    resource_key="cc212c25-1b6a-4301-877b-703e2c7aa788",
+    model_id=6062850,
+    ufs=("PR", "SC", "RS"),
+)
 
 
 class DfvPowerBiError(Exception):
@@ -119,17 +158,20 @@ def variantes_codigo_cdo(codigo: str) -> list[str]:
     return ordered
 
 
+# Ordem exibida no WhatsApp (Sudeste → SP → Sul)
+CDOE_UFS: tuple[str, ...] = ("MG", "ES", "RJ", "SP", "PR", "SC", "RS")
+
+COBERTURA_DFV_TXT = "MG/ES/RJ, SP e Sul (PR/SC/RS)"
+
+
 def limpar_uf(uf: str) -> str:
-    """Normaliza UF (MG/ES/RJ). Aceita texto ou id de botão cdoe_uf_MG."""
+    """Normaliza UF coberta pelo DFV multi-região. Aceita texto ou id cdoe_uf_XX."""
     texto = str(uf or "").strip().upper()
     texto = texto.replace("CDOE_UF_", "").replace("UF_", "")
     texto = re.sub(r"[^A-Z]", "", texto)
     if len(texto) >= 2:
         texto = texto[:2]
-    return texto if texto in ("MG", "ES", "RJ") else ""
-
-
-CDOE_UFS: tuple[str, ...] = ("MG", "ES", "RJ")
+    return texto if texto in CDOE_UFS else ""
 
 
 def _cfg(name: str, default: Any = None) -> Any:
@@ -138,6 +180,65 @@ def _cfg(name: str, default: Any = None) -> Any:
 
 def _feature_enabled() -> bool:
     return bool(_cfg("DFV_POWERBI_ENABLED", True))
+
+
+def listar_regioes_dfv() -> list[DfvRegionConfig]:
+    """
+    Retorna regiões DFV habilitadas (com resource_key e model_id válidos).
+
+    Mantém compatibilidade com DFV_POWERBI_RESOURCE_KEY / MODEL_ID (Sudeste)
+    e aceita overrides DFV_POWERBI_SP_* / DFV_POWERBI_SUL_*.
+    """
+    sudeste_key = str(
+        _cfg("DFV_POWERBI_RESOURCE_KEY", _DEFAULT_REGION_SUDESTE.resource_key) or ""
+    ).strip()
+    sudeste_model = int(
+        _cfg("DFV_POWERBI_MODEL_ID", _DEFAULT_REGION_SUDESTE.model_id) or 0
+    )
+    sp_key = str(
+        _cfg("DFV_POWERBI_SP_RESOURCE_KEY", _DEFAULT_REGION_SP.resource_key) or ""
+    ).strip()
+    sp_model = int(_cfg("DFV_POWERBI_SP_MODEL_ID", _DEFAULT_REGION_SP.model_id) or 0)
+    sul_key = str(
+        _cfg("DFV_POWERBI_SUL_RESOURCE_KEY", _DEFAULT_REGION_SUL.resource_key) or ""
+    ).strip()
+    sul_model = int(_cfg("DFV_POWERBI_SUL_MODEL_ID", _DEFAULT_REGION_SUL.model_id) or 0)
+
+    candidatas = [
+        DfvRegionConfig(
+            code="SUDESTE",
+            label="Sudeste",
+            resource_key=sudeste_key,
+            model_id=sudeste_model,
+            ufs=_DEFAULT_REGION_SUDESTE.ufs,
+        ),
+        DfvRegionConfig(
+            code="SP",
+            label="SP",
+            resource_key=sp_key,
+            model_id=sp_model,
+            ufs=_DEFAULT_REGION_SP.ufs,
+        ),
+        DfvRegionConfig(
+            code="SUL",
+            label="Sul",
+            resource_key=sul_key,
+            model_id=sul_model,
+            ufs=_DEFAULT_REGION_SUL.ufs,
+        ),
+    ]
+    return [r for r in candidatas if r.resource_key and r.model_id > 0]
+
+
+def regiao_por_uf(uf: str) -> Optional[DfvRegionConfig]:
+    """Localiza a região DFV que cobre a UF informada."""
+    uf_limpo = limpar_uf(uf)
+    if not uf_limpo:
+        return None
+    for regiao in listar_regioes_dfv():
+        if uf_limpo in regiao.ufs:
+            return regiao
+    return None
 
 
 def _sem_acentos(texto: str) -> str:
@@ -165,8 +266,7 @@ def _montar_complemento(row: dict[str, Any]) -> str:
     return " | ".join(partes)
 
 
-def _headers() -> dict[str, str]:
-    resource_key = str(_cfg("DFV_POWERBI_RESOURCE_KEY", "") or "")
+def _headers(resource_key: str) -> dict[str, str]:
     return {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -328,24 +428,23 @@ def _build_cmd(
     }
 
 
-def _query_page(cmd: dict[str, Any]) -> dict[str, Any]:
+def _query_page(cmd: dict[str, Any], region: DfvRegionConfig) -> dict[str, Any]:
     cluster = str(_cfg("DFV_POWERBI_CLUSTER", "") or "").rstrip("/")
-    model_id = int(_cfg("DFV_POWERBI_MODEL_ID", 0) or 0)
     timeout = float(_cfg("DFV_POWERBI_TIMEOUT_SECONDS", 18) or 18)
-    if not cluster or not model_id:
+    if not cluster or not region.model_id:
         raise DfvPowerBiError("Configuração Power BI incompleta (cluster/model id).")
 
     payload = {
         "version": "1.0.0",
         "queries": [{"Query": {"Commands": [cmd]}}],
         "cancelQueries": [],
-        "modelId": model_id,
+        "modelId": region.model_id,
     }
     url = f"{cluster}/public/reports/querydata?synchronous=true"
     try:
         response = requests.post(
             url,
-            headers=_headers(),
+            headers=_headers(region.resource_key),
             data=json.dumps(payload),
             timeout=timeout,
         )
@@ -425,14 +524,16 @@ def _consultar_por_filtro(
     filters: list[tuple[str, str]],
     cache_key: str,
     log_label: str,
+    region: DfvRegionConfig,
 ) -> list[dict[str, Any]]:
-    """Consulta paginada genérica no Power BI com cache."""
+    """Consulta paginada genérica no Power BI com cache (uma região)."""
     if not _feature_enabled():
         raise DfvPowerBiDisabled("Consulta DFV Power BI desabilitada.")
 
-    resource_key = str(_cfg("DFV_POWERBI_RESOURCE_KEY", "") or "")
-    if not resource_key:
-        raise DfvPowerBiError("DFV_POWERBI_RESOURCE_KEY não configurada.")
+    if not region.resource_key:
+        raise DfvPowerBiError(
+            f"Resource key não configurada para região {region.code}."
+        )
 
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -448,9 +549,16 @@ def _consultar_por_filtro(
     try:
         while page < max_pages:
             page += 1
-            data = _query_page(_build_cmd(filters, restart_tokens=restart))
+            data = _query_page(
+                _build_cmd(filters, restart_tokens=restart),
+                region=region,
+            )
             rows, incomplete, rt = parse_dsr_rows(data, len(SELECT_COLS))
-            all_rows.extend(_rows_to_dicts(rows))
+            dicts = _rows_to_dicts(rows)
+            for item in dicts:
+                item["_fonte_regiao"] = region.code
+                item["_fonte_label"] = region.label
+            all_rows.extend(dicts)
             logger.info(
                 "[DFV-PBI] %s page=%s +%s total=%s incomplete=%s",
                 log_label,
@@ -479,25 +587,91 @@ def _consultar_por_filtro(
     return all_rows
 
 
+def _consultar_em_regioes(
+    filters: list[tuple[str, str]],
+    cache_key_base: str,
+    log_label: str,
+    regions: Optional[list[DfvRegionConfig]] = None,
+) -> list[dict[str, Any]]:
+    """
+    Consulta uma ou mais regiões em paralelo e une os resultados.
+
+    Se todas as regiões falharem, propaga o primeiro erro.
+    Sucesso parcial (alguma região OK) devolve o que for encontrado.
+    """
+    if not _feature_enabled():
+        raise DfvPowerBiDisabled("Consulta DFV Power BI desabilitada.")
+
+    alvos = list(regions) if regions is not None else listar_regioes_dfv()
+    if not alvos:
+        raise DfvPowerBiError("Nenhuma região DFV Power BI configurada.")
+
+    if len(alvos) == 1:
+        regiao = alvos[0]
+        return _consultar_por_filtro(
+            filters=filters,
+            cache_key=f"{cache_key_base}:reg:{regiao.code.lower()}",
+            log_label=f"{log_label}|{regiao.code}",
+            region=regiao,
+        )
+
+    resultados: list[list[dict[str, Any]]] = []
+    erros: list[Exception] = []
+
+    def _job(regiao: DfvRegionConfig) -> list[dict[str, Any]]:
+        return _consultar_por_filtro(
+            filters=filters,
+            cache_key=f"{cache_key_base}:reg:{regiao.code.lower()}",
+            log_label=f"{log_label}|{regiao.code}",
+            region=regiao,
+        )
+
+    max_workers = min(len(alvos), 3)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futuros = {executor.submit(_job, r): r for r in alvos}
+        for futuro in as_completed(futuros):
+            regiao = futuros[futuro]
+            try:
+                resultados.append(futuro.result())
+            except Exception as exc:
+                logger.warning(
+                    "[DFV-PBI] falha região %s em %s: %s",
+                    regiao.code,
+                    log_label,
+                    exc,
+                )
+                erros.append(exc)
+
+    if resultados:
+        merged: list[dict[str, Any]] = []
+        for bloco in resultados:
+            merged.extend(bloco)
+        return merged
+
+    if erros:
+        raise erros[0]
+    return []
+
+
 def consultar_fachadas_por_cep(cep: str) -> list[dict[str, Any]]:
     """
-    Consulta fachadas do CEP diretamente na API pública do Power BI.
+    Consulta fachadas do CEP nas bases DFV (Sudeste, SP e Sul) em paralelo.
 
     Returns:
-        Lista de dicts com as colunas de SELECT_COLS.
+        Lista de dicts com as colunas de SELECT_COLS (+ metadados de região).
 
     Raises:
         DfvPowerBiDisabled: feature flag desligada
-        DfvPowerBiTimeout: timeout HTTP
+        DfvPowerBiTimeout: timeout HTTP em todas as regiões
         DfvPowerBiError: demais falhas (sem fallback para base local)
     """
     cep_limpo = limpar_cep(cep)
     if len(cep_limpo) != 8:
         raise DfvPowerBiError("CEP inválido.")
 
-    return _consultar_por_filtro(
+    return _consultar_em_regioes(
         filters=[("CEP", cep_limpo)],
-        cache_key=f"{CACHE_KEY_PREFIX}{cep_limpo}",
+        cache_key_base=f"{CACHE_KEY_PREFIX}{cep_limpo}",
         log_label=f"CEP={cep_limpo}",
     )
 
@@ -522,8 +696,8 @@ def consultar_fachadas_por_cdo(
     """
     Consulta fachadas pelo CODIGO_CDO no Power BI (comando CDOE).
 
-    Tenta variantes (ex.: 28005 → CDOE-28005). Se UF for informada, filtra no
-    Power BI e, se necessário, em memória.
+    Com UF, consulta só a região correspondente. Sem UF, consulta todas.
+    Tenta variantes (ex.: 28005 → CDOE-28005).
 
     Returns:
         (registros, codigo_encontrado)
@@ -533,6 +707,13 @@ def consultar_fachadas_por_cdo(
         raise DfvPowerBiError("Código CDO inválido.")
 
     uf_limpo = limpar_uf(uf) if uf else ""
+    regions: Optional[list[DfvRegionConfig]] = None
+    if uf_limpo:
+        regiao = regiao_por_uf(uf_limpo)
+        if regiao is None:
+            raise DfvPowerBiError(f"UF {uf_limpo} sem região DFV configurada.")
+        regions = [regiao]
+
     last_error: Optional[Exception] = None
 
     for variante in variantes:
@@ -545,10 +726,11 @@ def consultar_fachadas_por_cdo(
             log_label = f"{log_label}|UF={uf_limpo}"
 
         try:
-            regs = _consultar_por_filtro(
+            regs = _consultar_em_regioes(
                 filters=filters,
-                cache_key=cache_key,
+                cache_key_base=cache_key,
                 log_label=log_label,
+                regions=regions,
             )
         except DfvPowerBiError as exc:
             last_error = exc
@@ -560,22 +742,18 @@ def consultar_fachadas_por_cdo(
         if regs:
             return regs, variante
 
-        # Sem UF no filtro Power BI: tenta variante sem UF e filtra depois
-        # (já tentamos com UF no Where; se vazio, próxima variante)
-
     if last_error and not isinstance(last_error, DfvPowerBiDisabled):
-        # Se todas falharam por erro de API, propaga o último
-        # Mas variantes sem resultado não são erro — retorna vazio
         pass
 
-    # Última tentativa: só código sem UF no Where (se UF pedida e Where UF falhou)
-    if uf_limpo:
+    # Fallback: código sem UF no Where (quando o filtro UF não retornou linhas)
+    if uf_limpo and regions:
         for variante in variantes:
             try:
-                regs = _consultar_por_filtro(
+                regs = _consultar_em_regioes(
                     filters=[("CODIGO_CDO", variante)],
-                    cache_key=f"{CACHE_KEY_PREFIX_CDO}{variante}",
+                    cache_key_base=f"{CACHE_KEY_PREFIX_CDO}{variante}",
                     log_label=f"CODIGO_CDO={variante}",
+                    regions=regions,
                 )
             except DfvPowerBiError:
                 continue
@@ -583,7 +761,6 @@ def consultar_fachadas_por_cdo(
             if filtrados:
                 return filtrados, variante
             if regs and not filtrados:
-                # Código existe, mas não neste UF
                 return [], variante
 
     return [], variantes[0]
@@ -674,7 +851,7 @@ def formatar_resposta_dfv_powerbi(
             (
                 f"❌ *NENHUMA FACHADA ENCONTRADA (Power BI)*\n\n"
                 f"Não encontramos fachadas para o CEP *{cep_limpo}* no DFV ao vivo "
-                f"(cobertura ES/MG/RJ).\n"
+                f"(cobertura {COBERTURA_DFV_TXT}).\n"
                 f"Tente *Viabilidade* ou *CDOE* se souber o código do CDO."
             )
         ]
@@ -686,6 +863,17 @@ def formatar_resposta_dfv_powerbi(
     municipio = str(primeiro.get("MUNICIPIO") or "—").strip() or "—"
     uf = str(primeiro.get("UF") or "").strip()
     cidade_uf = f"{municipio}/{uf}" if uf else municipio
+    fonte_label = str(primeiro.get("_fonte_label") or "").strip()
+    fontes = sorted(
+        {
+            str(r.get("_fonte_label") or "").strip()
+            for r in filtrados
+            if r.get("_fonte_label")
+        }
+    )
+    if len(fontes) > 1:
+        fonte_label = " / ".join(fontes)
+    titulo_fonte = f" — {fonte_label}" if fonte_label else ""
 
     cdos = sorted(
         {
@@ -715,7 +903,7 @@ def formatar_resposta_dfv_powerbi(
         )
 
     cabecalho = (
-        f"🏢 *DFV (Power BI ao vivo)*\n\n"
+        f"🏢 *DFV (Power BI ao vivo{titulo_fonte})*\n\n"
         f"📍 *Endereço:* {logradouro}\n"
         f"🏙️ *Bairro:* {bairro} | *Cidade/UF:* {cidade_uf}\n"
         f"📡 *CDO(s):* {cdos_str}\n"
@@ -856,7 +1044,7 @@ def formatar_resumo_cdoe(codigo_cdo: str, grupos: list[dict[str, Any]]) -> list[
             (
                 f"❌ *NENHUM ENDEREÇO ENCONTRADO (CDOE)*\n\n"
                 f"Não encontramos fachadas para o código *{codigo}* no Power BI "
-                f"(cobertura ES/MG/RJ).\n"
+                f"(cobertura {COBERTURA_DFV_TXT}).\n"
                 f"Confira o código (ex.: *CDOE-28005* ou *28005*) e tente novamente, "
                 f"ou use *DFV* com o CEP."
             )

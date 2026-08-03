@@ -57,7 +57,9 @@ class LimparCodigoCdoTest(SimpleTestCase):
     def test_limpar_uf(self):
         self.assertEqual(limpar_uf("mg"), "MG")
         self.assertEqual(limpar_uf("cdoe_uf_RJ"), "RJ")
-        self.assertEqual(limpar_uf("SP"), "")
+        self.assertEqual(limpar_uf("SP"), "SP")
+        self.assertEqual(limpar_uf("PR"), "PR")
+        self.assertEqual(limpar_uf("XX"), "")
 
 
 class MontarComplementoTest(SimpleTestCase):
@@ -312,9 +314,13 @@ class CdoeFormatacaoTest(SimpleTestCase):
 
 @override_settings(
     DFV_POWERBI_ENABLED=True,
-    DFV_POWERBI_RESOURCE_KEY="test-key",
+    DFV_POWERBI_RESOURCE_KEY="test-key-sudeste",
     DFV_POWERBI_CLUSTER="https://example.invalid",
     DFV_POWERBI_MODEL_ID=1,
+    DFV_POWERBI_SP_RESOURCE_KEY="test-key-sp",
+    DFV_POWERBI_SP_MODEL_ID=2,
+    DFV_POWERBI_SUL_RESOURCE_KEY="test-key-sul",
+    DFV_POWERBI_SUL_MODEL_ID=3,
     DFV_POWERBI_TIMEOUT_SECONDS=5,
     DFV_POWERBI_CACHE_TTL_SECONDS=0,
 )
@@ -340,84 +346,16 @@ class ConsultarPowerBiTest(SimpleTestCase):
         with self.assertRaises(DfvPowerBiTimeout):
             consultar_fachadas_por_cep("30130000")
 
-    @patch("crm_app.services.dfv_powerbi_service.requests.post")
-    def test_sucesso_mock(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "results": [
-                {
-                    "result": {
-                        "data": {
-                            "dsr": {
-                                "DS": [
-                                    {
-                                        "ValueDicts": {
-                                            "D0": ["30130000", "RUA X", "Y", "BH", "MG", "Viável", "CDO-1"]
-                                        },
-                                        "IC": True,
-                                        "PH": [
-                                            {
-                                                "DM0": [
-                                                    {
-                                                        "S": [
-                                                            {"N": "G0", "DN": "D0"},  # CEP
-                                                            {"N": "G1"},  # NO_FACHADA
-                                                            {"N": "G2"},  # C1
-                                                            {"N": "G3"},  # C2
-                                                            {"N": "G4"},  # C3
-                                                            {"N": "G5", "DN": "D0"},  # LOGRADOURO
-                                                            {"N": "G6", "DN": "D0"},  # BAIRRO
-                                                            {"N": "G7", "DN": "D0"},  # MUNICIPIO
-                                                            {"N": "G8", "DN": "D0"},  # UF
-                                                            {"N": "G9", "DN": "D0"},  # VIAB
-                                                            {"N": "G10", "DN": "D0"},  # CDO
-                                                        ],
-                                                        "C": [0, 10, 1, 2, 3, 4, 5, 6],
-                                                        "\u00d8": (1 << 2) | (1 << 3) | (1 << 4),
-                                                    }
-                                                ]
-                                            }
-                                        ],
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            ]
-        }
-        mock_post.return_value = mock_resp
-        regs = consultar_fachadas_por_cep("30130000")
-        self.assertEqual(len(regs), 1)
-        self.assertEqual(regs[0]["NO_FACHADA"], 10)
-        self.assertEqual(regs[0]["LOGRADOURO"], "RUA X")
-
-    @patch("crm_app.services.dfv_powerbi_service.requests.post")
-    def test_consulta_por_cdo_tenta_variante_cdoe(self, mock_post):
-        import json
-
-        # 1ª chamada (28005) vazia; 2ª (CDOE-28005) com 1 registro
-        vazia = {
-            "results": [
-                {
-                    "result": {
-                        "data": {
-                            "dsr": {
-                                "DS": [
-                                    {
-                                        "ValueDicts": {},
-                                        "IC": True,
-                                        "PH": [{"DM0": []}],
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            ]
-        }
-        com_dado = {
+    def _payload_uma_fachada(
+        self,
+        cep: str = "30130000",
+        logradouro: str = "RUA X",
+        municipio: str = "BH",
+        uf: str = "MG",
+        cdo: str = "CDO-1",
+        num: int = 10,
+    ) -> dict:
+        return {
             "results": [
                 {
                     "result": {
@@ -427,13 +365,13 @@ class ConsultarPowerBiTest(SimpleTestCase):
                                     {
                                         "ValueDicts": {
                                             "D0": [
-                                                "31930470",
-                                                "RUA X",
+                                                cep,
+                                                logradouro,
                                                 "Y",
-                                                "BELO HORIZONTE",
-                                                "MG",
+                                                municipio,
+                                                uf,
                                                 "Viável",
-                                                "CDOE-28005",
+                                                cdo,
                                             ]
                                         },
                                         "IC": True,
@@ -454,7 +392,7 @@ class ConsultarPowerBiTest(SimpleTestCase):
                                                             {"N": "G9", "DN": "D0"},
                                                             {"N": "G10", "DN": "D0"},
                                                         ],
-                                                        "C": [0, 10, 1, 2, 3, 4, 5, 6],
+                                                        "C": [0, num, 1, 2, 3, 4, 5, 6],
                                                         "\u00d8": (1 << 2) | (1 << 3) | (1 << 4),
                                                     }
                                                 ]
@@ -468,6 +406,95 @@ class ConsultarPowerBiTest(SimpleTestCase):
                 }
             ]
         }
+
+    def _payload_vazio(self) -> dict:
+        return {
+            "results": [
+                {
+                    "result": {
+                        "data": {
+                            "dsr": {
+                                "DS": [
+                                    {
+                                        "ValueDicts": {},
+                                        "IC": True,
+                                        "PH": [{"DM0": []}],
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+
+    @patch("crm_app.services.dfv_powerbi_service.requests.post")
+    def test_sucesso_mock(self, mock_post):
+        import json
+
+        vazia = self._payload_vazio()
+        com_dado = self._payload_uma_fachada()
+
+        def _side_effect(*args, **kwargs):
+            body = json.loads(kwargs.get("data") or "{}")
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = (
+                com_dado if body.get("modelId") == 1 else vazia
+            )
+            return mock_resp
+
+        mock_post.side_effect = _side_effect
+        regs = consultar_fachadas_por_cep("30130000")
+        self.assertEqual(len(regs), 1)
+        self.assertEqual(regs[0]["NO_FACHADA"], 10)
+        self.assertEqual(regs[0]["LOGRADOURO"], "RUA X")
+        self.assertEqual(regs[0]["_fonte_regiao"], "SUDESTE")
+        self.assertGreaterEqual(mock_post.call_count, 3)
+
+    @patch("crm_app.services.dfv_powerbi_service.requests.post")
+    def test_consulta_cep_achada_na_regiao_sp(self, mock_post):
+        """DFV consulta as 3 regiões; devolve o hit de SP e ignora as vazias."""
+        import json
+
+        vazia = self._payload_vazio()
+        sp_dado = self._payload_uma_fachada(
+            cep="01310100",
+            logradouro="AVENIDA PAULISTA",
+            municipio="SAO PAULO",
+            uf="SP",
+            cdo="CDOI-601",
+            num=778,
+        )
+
+        def _side_effect(*args, **kwargs):
+            body = json.loads(kwargs.get("data") or "{}")
+            model_id = body.get("modelId")
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = sp_dado if model_id == 2 else vazia
+            return mock_resp
+
+        mock_post.side_effect = _side_effect
+        regs = consultar_fachadas_por_cep("01310100")
+        self.assertEqual(len(regs), 1)
+        self.assertEqual(regs[0]["UF"], "SP")
+        self.assertEqual(regs[0]["_fonte_regiao"], "SP")
+        self.assertGreaterEqual(mock_post.call_count, 3)
+
+    @patch("crm_app.services.dfv_powerbi_service.requests.post")
+    def test_consulta_por_cdo_tenta_variante_cdoe(self, mock_post):
+        import json
+
+        vazia = self._payload_vazio()
+        com_dado = self._payload_uma_fachada(
+            cep="31930470",
+            logradouro="RUA X",
+            municipio="BELO HORIZONTE",
+            uf="MG",
+            cdo="CDOE-28005",
+            num=10,
+        )
 
         def _side_effect(*args, **kwargs):
             raw = kwargs.get("data") or (args[1] if len(args) > 1 else None)
@@ -488,6 +515,14 @@ class ConsultarPowerBiTest(SimpleTestCase):
         self.assertEqual(codigo, "CDOE-28005")
         self.assertEqual(len(regs), 1)
         self.assertEqual(regs[0]["MUNICIPIO"], "BELO HORIZONTE")
+        # Com UF, consulta só a região Sudeste (1 model)
+        model_ids = set()
+        for call in mock_post.call_args_list:
+            raw = call.kwargs.get("data") or ""
+            body = json.loads(raw) if isinstance(raw, str) else {}
+            if "modelId" in body:
+                model_ids.add(body["modelId"])
+        self.assertEqual(model_ids, {1})
 
 
 class MenuEFluxoWebhookTest(SimpleTestCase):
