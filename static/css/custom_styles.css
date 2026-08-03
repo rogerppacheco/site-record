@@ -559,23 +559,28 @@ html[data-theme="dark"] .theme-toggle-btn:hover,
         transform: rotate(-45deg) translate(7px, -7px);
     }
 
-    /* Menu Lateral Simples e Limpo */
+    /* Menu Lateral: flex-start evita empurrar itens para baixo (herança do desktop) */
     .main-nav {
         position: fixed; 
         top: 0; 
         right: 0;
         width: 85%; 
         max-width: 320px; 
-        height: 100vh;
+        height: 100%;
+        height: 100dvh;
+        max-height: 100dvh;
         background-color: var(--bg-surface);
-        padding: 100px 1.5rem 2rem;
+        padding: 72px 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
         flex-direction: column; 
-        align-items: flex-start;
+        align-items: stretch;
+        justify-content: flex-start;
         transform: translateX(100%); 
         transition: transform 0.3s ease;
         box-shadow: -4px 0 20px rgba(0,0,0,0.1);
         z-index: 1025;
+        overflow-x: hidden;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         border-radius: 24px 0 0 24px;
     }
     
@@ -585,16 +590,19 @@ html[data-theme="dark"] .theme-toggle-btn:hover,
     
     .main-nav > ul { 
         flex-direction: column; 
+        align-items: stretch;
         width: 100%; 
-        gap: 8px; 
+        gap: 6px;
+        flex: 0 0 auto;
+        margin: 0;
     }
     
     .main-nav a { 
         display: block; 
         width: 100%; 
-        padding: 16px 20px; 
+        padding: 12px 16px; 
         border-radius: 12px;
-        font-size: 1rem;
+        font-size: 0.95rem;
         font-weight: 600;
         color: var(--text-main);
         background-color: var(--bg-secondary);
@@ -631,11 +639,11 @@ html[data-theme="dark"] .theme-toggle-btn:hover,
     /* Botões no Menu Mobile */
     .main-nav .nav-button { 
         width: 100%; 
-        margin-top: 20px; 
+        margin-top: 10px; 
         text-align: center; 
-        padding: 16px 24px;
+        padding: 12px 20px;
         border-radius: 50px;
-        font-size: 1rem;
+        font-size: 0.95rem;
         font-weight: 700;
         border: none;
         box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
