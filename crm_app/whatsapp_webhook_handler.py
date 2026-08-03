@@ -236,6 +236,122 @@ def limpar_texto_cep_cpf(texto):
     return re.sub(r'[\s.\-/]', '', str(texto))
 
 
+def classificar_identificador_status(texto: str) -> tuple[Optional[str], str, str]:
+    """
+    Detecta se a entrada do fluxo Status é CPF/CNPJ ou O.S.
+
+    Padrões conhecidos do CRM:
+    - CPF: 11 dígitos (aceita máscara)
+    - CNPJ: 14 dígitos (mesmo fluxo de CPF na consulta)
+    - O.S: 8 dígitos (ex: 08907507) ou X-12dígitos (ex: 4-212051254235)
+
+    Retorna: (tipo ('CPF'|'OS')|None, valor_normalizado, mensagem_erro).
+    """
+    bruto = (texto or '').strip()
+    msg_ajuda = (
+        "❌ Não identifiquei se é *CPF* ou *O.S*.\n\n"
+        "• CPF: 11 dígitos (ex: 12345678901)\n"
+        "• CNPJ: 14 dígitos\n"
+        "• O.S: 8 dígitos (ex: 08907507) ou formato X-12dígitos "
+        "(ex: 4-212051254235)\n\n"
+        "Digite novamente ou *CANCELAR* para sair:"
+    )
+    if not bruto:
+        return None, '', (
+            "❌ Informe o *CPF* ou a *O.S* do cliente.\n\n"
+            "• CPF: 11 dígitos\n"
+            "• O.S: 8 dígitos (ex: 08907507) ou X-12dígitos "
+            "(ex: 4-212051254235)\n\n"
+            "Digite novamente ou *CANCELAR* para sair:"
+        )
+
+    # Formato O.S com hífen (mantém como cadastrado no CRM)
+    if re.fullmatch(r'\d-\d{12}', bruto):
+        return 'OS', bruto, ''
+
+    digitos = re.sub(r'\D', '', bruto)
+    if len(digitos) == 11:
+        return 'CPF', digitos, ''
+    if len(digitos) == 14:
+        return 'CPF', digitos, ''
+    if len(digitos) == 8:
+        return 'OS', digitos, ''
+    # O.S digitada sem hífen: 1 + 12 dígitos
+    if len(digitos) == 13:
+        return 'OS', f'{digitos[0]}-{digitos[1:]}', ''
+
+    return None, bruto, msg_ajuda
+
+
+def _consultar_status_e_disparar_online(
+    sessao: Any,
+    telefone_formatado: str,
+    tipo: str,
+    valor: str,
+    etapa_retry: str = 'status_documento',
+) -> str:
+    """Consulta status no CRM e, se houver CPF válido, dispara consulta online no PAP."""
+    from crm_app.utils import consultar_status_venda_com_decisao
+
+    label = 'CPF' if tipo == 'CPF' else 'O.S'
+    logger.info('[Webhook] Consultando status por %s: %s', tipo, valor)
+    try:
+        resultado_status, fazer_consulta_online, cpf_para_consulta = (
+            consultar_status_venda_com_decisao(tipo, valor)
+        )
+    except Exception as e:
+        logger.exception('[Webhook] Erro ao consultar status por %s: %s', tipo, e)
+        sessao.etapa = etapa_retry
+        sessao.save(update_fields=['etapa'])
+        return '❌ Erro ao consultar status. Tente novamente em instantes.'
+
+    resposta = f'🔎 Buscando pedido por {label}...\n\n{resultado_status}'
+    os_filtro = valor if tipo == 'OS' else None
+
+    if fazer_consulta_online and cpf_para_consulta:
+        run_id = str(int(time.time() * 1000))
+        dados: dict[str, Any] = {
+            'status_online_run_id': run_id,
+            'status_online_started_at': time.time(),
+        }
+        if os_filtro:
+            dados['os_filtro'] = os_filtro
+        sessao.etapa = 'status_aguardando_online'
+        sessao.dados_temp = dados
+        sessao.save()
+        from crm_app.services.pap_dispatcher import despachar_pap
+
+        despachar_pap(
+            'status_online',
+            telefone_formatado,
+            {
+                'telefone': telefone_formatado,
+                'cpf': cpf_para_consulta,
+                'os_filtro': os_filtro,
+                'run_id': run_id,
+            },
+            _executar_consulta_status_online_background,
+            (telefone_formatado, cpf_para_consulta, os_filtro, run_id),
+            prioridade=1,
+        )
+        resposta += '\n\n⏳ Consultando também no PAP (status online)... Aguarde.'
+    else:
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+    return resposta
+
+
+_MSG_STATUS_PEDIR_IDENTIFICADOR = (
+    "Para consultar o status do pedido, digite o *CPF* ou o número da *O.S* "
+    "do cliente:\n\n"
+    "• CPF: 11 dígitos (ex: 12345678901)\n"
+    "• O.S: 8 dígitos (ex: 08907507) ou formato X-12dígitos "
+    "(ex: 4-212051254235)\n\n"
+    "Ou digite *CANCELAR* para sair."
+)
+
+
 def _normalizar_celular_digitos(celular: str) -> str:
     """Retorna apenas os dígitos do celular (para comparar com lista de rejeitados)."""
     if not celular:
@@ -8423,12 +8539,11 @@ def processar_webhook_whatsapp(data, request=None):
                     return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
             except Exception:
                 pass
-            sessao.etapa = 'status_tipo'
+            sessao.etapa = 'status_documento'
             sessao.dados_temp = {}
             sessao.save()
             _registrar_estatistica(telefone_formatado, 'STATUS')
-            resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
-                        "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
+            resposta = _MSG_STATUS_PEDIR_IDENTIFICADOR
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         # FACHADA desativada: redireciona para DFV (sem registrar estatística nem abrir fluxo)
         if etapa_atual == 'inicial' and ('FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa):
@@ -9773,20 +9888,43 @@ def processar_webhook_whatsapp(data, request=None):
                 )
                 return _enviar_resposta_e_retornar(resposta)
         
-        elif etapa_atual == 'status_tipo':
-            if mensagem_limpa in ['1', 'CPF']:
-                sessao.etapa = 'status_cpf'
-                sessao.dados_temp = {'tipo': 'CPF'}
+        elif etapa_atual in ('status_documento', 'status_tipo', 'status_cpf', 'status_os'):
+            # status_tipo/cpf/os: etapas antigas — ainda aceitas até a sessão expirar
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
                 sessao.save()
-                resposta = "Ok, digite o CPF do cliente (apenas números):"
-            elif mensagem_limpa in ['2', 'OS', 'O.S']:
-                sessao.etapa = 'status_os'
-                sessao.dados_temp = {'tipo': 'OS'}
+                resposta = "❌ Cancelado. Digite *STATUS* para consultar novamente."
+                return _enviar_resposta_e_retornar(resposta)
+
+            # Quem ainda está no menu 1/2 antigo: orienta a enviar o identificador direto
+            if mensagem_limpa in ['1', '2', 'CPF', 'OS', 'O.S']:
+                sessao.etapa = 'status_documento'
+                sessao.dados_temp = {}
                 sessao.save()
-                resposta = "Ok, digite o número da O.S (Ordem de Serviço):"
-            else:
-                resposta = "❌ Opção inválida. Por favor, digite 1 para CPF ou 2 para O.S:"
-        
+                resposta = (
+                    "Agora basta enviar o *CPF* ou a *O.S* diretamente "
+                    "(sem escolher 1 ou 2).\n\n"
+                    f"{_MSG_STATUS_PEDIR_IDENTIFICADOR}"
+                )
+                return _enviar_resposta_e_retornar(resposta)
+
+            tipo_id, valor_id, erro_id = classificar_identificador_status(mensagem_texto)
+            if not tipo_id:
+                sessao.etapa = 'status_documento'
+                sessao.save(update_fields=['etapa'])
+                resposta = erro_id
+                return _enviar_resposta_e_retornar(resposta)
+
+            resposta = _consultar_status_e_disparar_online(
+                sessao,
+                telefone_formatado,
+                tipo_id,
+                valor_id,
+                etapa_retry='status_documento',
+            )
+            return _enviar_resposta_e_retornar(resposta)
+
         elif etapa_atual == 'status_aguardando_online':
             dados_online = dados_temp or {}
             started_at = float(dados_online.get('status_online_started_at') or 0)
@@ -9801,88 +9939,6 @@ def processar_webhook_whatsapp(data, request=None):
                 )
             else:
                 resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
-            return _enviar_resposta_e_retornar(resposta)
-
-        elif etapa_atual == 'status_cpf':
-            cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
-            if not cpf_limpo or len(cpf_limpo) < 11:
-                resposta = "❌ CPF inválido. Por favor, digite o CPF completo (apenas números):"
-            else:
-                logger.info(f"[Webhook] Consultando status por CPF: {cpf_limpo}")
-                try:
-                    resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('CPF', cpf_limpo)
-                except Exception as e:
-                    logger.exception("[Webhook] Erro ao consultar status por CPF: %s", e)
-                    resposta = "❌ Erro ao consultar status. Tente novamente em instantes."
-                    sessao.etapa = 'status_cpf'
-                    sessao.save()
-                    return _enviar_resposta_e_retornar(resposta)
-                resposta = f"🔎 Buscando pedido por CPF...\n\n{resultado_status}"
-                if fazer_consulta_online and cpf_para_consulta:
-                    run_id = str(int(time.time() * 1000))
-                    sessao.etapa = 'status_aguardando_online'
-                    sessao.dados_temp = {
-                        'status_online_run_id': run_id,
-                        'status_online_started_at': time.time(),
-                    }
-                    sessao.save()
-                    from crm_app.services.pap_dispatcher import despachar_pap
-                    despachar_pap(
-                        'status_online',
-                        telefone_formatado,
-                        {
-                            'telefone': telefone_formatado,
-                            'cpf': cpf_para_consulta,
-                            'os_filtro': None,
-                            'run_id': run_id,
-                        },
-                        _executar_consulta_status_online_background,
-                        (telefone_formatado, cpf_para_consulta, None, run_id),
-                        prioridade=1,
-                    )
-                    resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
-                else:
-                    sessao.etapa = 'inicial'
-                    sessao.dados_temp = {}
-                    sessao.save()
-            return _enviar_resposta_e_retornar(resposta)
-
-        elif etapa_atual == 'status_os':
-            os_limpo = mensagem_texto.strip()
-            if not os_limpo:
-                resposta = "❌ O.S inválida. Por favor, digite o número da O.S:"
-            else:
-                logger.info(f"[Webhook] Consultando status por OS: {os_limpo}")
-                resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('OS', os_limpo)
-                resposta = f"🔎 Buscando pedido por O.S...\n\n{resultado_status}"
-                if fazer_consulta_online and cpf_para_consulta:
-                    run_id = str(int(time.time() * 1000))
-                    sessao.etapa = 'status_aguardando_online'
-                    sessao.dados_temp = {
-                        'status_online_run_id': run_id,
-                        'status_online_started_at': time.time(),
-                        'os_filtro': os_limpo,
-                    }
-                    sessao.save()
-                    from crm_app.services.pap_dispatcher import despachar_pap
-                    despachar_pap(
-                        'status_online',
-                        telefone_formatado,
-                        {
-                            'telefone': telefone_formatado,
-                            'cpf': cpf_para_consulta,
-                            'os_filtro': os_limpo,
-                            'run_id': run_id,
-                        },
-                        _executar_consulta_status_online_background,
-                        (telefone_formatado, cpf_para_consulta, os_limpo, run_id),
-                        prioridade=1,
-                    )
-                    resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
-                else:
-                    sessao.etapa = 'inicial'
-                    sessao.dados_temp = {}
-                    sessao.save()
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'credito_aguardando':
