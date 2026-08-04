@@ -296,9 +296,10 @@ class QualidadeFaltamNoCrmView(APIView):
 
 
 class QualidadeDashboardFpdNioView(APIView):
-    """GET /api/qualidade/dashboard-fpd-nio/?indicador=FPD&meses=6
+    """GET /api/qualidade/dashboard-fpd-nio/?indicador=FPD&meses=6&vendedor_id=
 
     Tabela no formato do dashboard Nio (pagas / total / % aberto / faixas).
+    Com ``vendedor_id`` filtra pelo vendedor do CRM e usa visão resumida.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -311,6 +312,7 @@ class QualidadeDashboardFpdNioView(APIView):
             data = qs.dashboard_fpd_estilo_nio(
                 indicador=request.GET.get('indicador', 'FPD'),
                 meses=request.GET.get('meses', 6),
+                vendedor_id=request.GET.get('vendedor_id') or request.GET.get('vendedor'),
             )
             return Response(data)
         except Exception as e:

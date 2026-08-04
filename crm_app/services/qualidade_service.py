@@ -1106,6 +1106,7 @@ def dashboard_fpd_estilo_nio(
     *,
     indicador: str = 'FPD',
     meses: Optional[int] = 6,
+    vendedor_id: Optional[int] = None,
 ) -> dict[str, Any]:
     """Monta tabela no formato do dashboard Nio (colunas = meses de vencimento).
 
@@ -1114,6 +1115,9 @@ def dashboard_fpd_estilo_nio(
     Faixas de atraso: **ao vivo** pela data de vencimento
     (CRM ``FaturaM10.data_vencimento`` se houver; senão ``dt_venc_orig`` da planilha).
     A faixa/dias da planilha entram só no confronto (divergências).
+
+    ``vendedor_id`` filtra pelo vendedor do CRM (``ContratoM10.vendedor``).
+    Com filtro, a UI usa visão resumida (pagas/abertas/total/% aberto).
     """
     ind = (indicador or 'FPD').strip().upper()
     if ind not in ('FPD', 'SPD', 'TPD'):
@@ -1124,11 +1128,30 @@ def dashboard_fpd_estilo_nio(
     except (TypeError, ValueError):
         n_meses = 6
 
+    vend_id: Optional[int] = None
+    if vendedor_id not in (None, '', '0', 0, 'todos'):
+        try:
+            vend_id = int(vendedor_id)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            vend_id = None
+
     hoje = timezone.localdate()
 
+    qs_universo = ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
+    # Janela de meses alinhada ao universo (mesmo com filtro de vendedor)
+    meses_disponiveis = sorted({
+        d.strftime('%Y%m')
+        for d in qs_universo.dates('dt_venc_orig', 'month')
+        if d
+    })
+    meses_ord = meses_disponiveis[-n_meses:] if meses_disponiveis else []
+
+    qs_imp = qs_universo
+    if vend_id:
+        qs_imp = qs_imp.filter(contrato_m10__vendedor_id=vend_id)
+
     qs = list(
-        ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
-        .values(
+        qs_imp.values(
             'dt_venc_orig',
             'ds_sit_fatura',
             'faixa',
@@ -1156,8 +1179,22 @@ def dashboard_fpd_estilo_nio(
                 'data_vencimento': venc,
             }
 
-    # Agrupa por YYYYMM
+    # Pré-seed dos meses da janela (zeros quando o vendedor não tem volume no mês)
     por_mes: dict[str, dict[str, Any]] = {}
+    for chave in meses_ord:
+        ano, mes = int(chave[:4]), int(chave[4:6])
+        mes_iso = f'{ano:04d}-{mes:02d}'
+        por_mes[chave] = {
+            'mes_fatura': chave,
+            'mes': mes_iso,
+            'label': _label_mes(mes_iso),
+            'fatura_paga': 0,
+            'aguard_fpd': 0,
+            'total_fatura': 0,
+            'faixas': {k: 0 for k, _ in FAIXAS_NIO_ORDEM},
+            'divergencias_faixa': 0,
+        }
+
     abertas_total = 0
     divergencias_faixa = 0
     for row in qs:
@@ -1165,19 +1202,9 @@ def dashboard_fpd_estilo_nio(
         if not dt:
             continue
         chave = dt.strftime('%Y%m')
-        bucket = por_mes.setdefault(
-            chave,
-            {
-                'mes_fatura': chave,
-                'mes': dt.strftime('%Y-%m'),
-                'label': _label_mes(dt.strftime('%Y-%m')),
-                'fatura_paga': 0,
-                'aguard_fpd': 0,
-                'total_fatura': 0,
-                'faixas': {k: 0 for k, _ in FAIXAS_NIO_ORDEM},
-                'divergencias_faixa': 0,
-            },
-        )
+        if chave not in por_mes:
+            continue
+        bucket = por_mes[chave]
         bucket['total_fatura'] += 1
 
         cid = row.get('contrato_m10_id')
@@ -1227,8 +1254,6 @@ def dashboard_fpd_estilo_nio(
             bucket['divergencias_faixa'] += 1
             divergencias_faixa += 1
 
-    # Ordena e limita aos N meses mais recentes
-    meses_ord = sorted(por_mes.keys())[-n_meses:]
     colunas = []
     for chave in meses_ord:
         b = por_mes[chave]
@@ -1249,31 +1274,96 @@ def dashboard_fpd_estilo_nio(
             'divergencias_faixa_planilha': b['divergencias_faixa'],
         })
 
+    # Visão por vendedor: resumo objetivo (pagas / abertas / total / %)
+    modo_resumo = bool(vend_id)
+
     linhas = [
         {'chave': 'mes_fatura', 'label': 'MÊS FATURA', 'tipo': 'header'},
         {'chave': 'fatura_paga', 'label': 'FATURA PAGA', 'tipo': 'metric'},
         {'chave': 'fatura_aberta', 'label': 'FATURA ABERTA', 'tipo': 'metric'},
-        {'chave': 'aguard_fpd', 'label': 'AGUARD. CONF. FPD', 'tipo': 'metric'},
+    ]
+    if not modo_resumo:
+        linhas.append({'chave': 'aguard_fpd', 'label': 'AGUARD. CONF. FPD', 'tipo': 'metric'})
+    linhas.extend([
         {'chave': 'total_fatura', 'label': 'TOTAL FATURA', 'tipo': 'metric'},
         {'chave': 'pct_aberto', 'label': '% ABERTO', 'tipo': 'pct'},
-    ]
-    for fk, label in FAIXAS_NIO_ORDEM:
-        linhas.append({'chave': fk, 'label': label, 'tipo': 'faixa'})
+    ])
+    if not modo_resumo:
+        for fk, label in FAIXAS_NIO_ORDEM:
+            linhas.append({'chave': fk, 'label': label, 'tipo': 'faixa'})
+
+    vendedores = _listar_vendedores_dashboard_fpd(ind)
+    vend_sel = None
+    if vend_id:
+        for v in vendedores:
+            if v['id'] == vend_id:
+                vend_sel = v
+                break
+        if not vend_sel:
+            vend_sel = {'id': vend_id, 'nome': f'Vendedor #{vend_id}'}
 
     return {
         'indicador': ind,
         'colunas': colunas,
         'linhas': linhas,
-        'faixas_ordem': [{'chave': k, 'label': lbl} for k, lbl in FAIXAS_NIO_ORDEM],
+        'faixas_ordem': (
+            [] if modo_resumo
+            else [{'chave': k, 'label': lbl} for k, lbl in FAIXAS_NIO_ORDEM]
+        ),
         'fonte': (
             'Faixas ao vivo (vencimento CRM/planilha) · '
             'pago/aberto = Tratamento · universo = ImportacaoFPD'
+            + (f' · vendedor CRM: {vend_sel["nome"]}' if vend_sel else '')
         ),
         'faixas_ao_vivo': True,
         'referencia_dias': hoje.isoformat(),
         'abertas_total': abertas_total,
         'divergencias_faixa_planilha': divergencias_faixa,
+        'modo_resumo': modo_resumo,
+        'vendedor_id': vend_id,
+        'vendedor': vend_sel,
+        'vendedores': vendedores,
     }
+
+
+def _listar_vendedores_dashboard_fpd(indicador: str) -> list[dict[str, Any]]:
+    """Vendedores do CRM com contrato linkado em ImportacaoFPD do indicador."""
+    vend_ids = (
+        ImportacaoFPD.objects.filter(
+            indicador=indicador,
+            dt_venc_orig__isnull=False,
+            contrato_m10__vendedor_id__isnull=False,
+        )
+        .values_list('contrato_m10__vendedor_id', flat=True)
+        .distinct()
+    )
+    usuarios = (
+        ContratoM10.objects.filter(vendedor_id__in=vend_ids)
+        .select_related('vendedor')
+        .values(
+            'vendedor_id',
+            'vendedor__username',
+            'vendedor__first_name',
+            'vendedor__last_name',
+        )
+        .distinct()
+    )
+    out: list[dict[str, Any]] = []
+    vistos: set[int] = set()
+    for row in usuarios:
+        vid = row['vendedor_id']
+        if not vid or vid in vistos:
+            continue
+        vistos.add(vid)
+        nome = (
+            f"{(row.get('vendedor__first_name') or '').strip()} "
+            f"{(row.get('vendedor__last_name') or '').strip()}"
+        ).strip()
+        if not nome:
+            nome = (row.get('vendedor__username') or f'#{vid}').strip()
+        out.append({'id': vid, 'nome': nome})
+    out.sort(key=lambda x: x['nome'].lower())
+    return out
 
 
 def listar_faltam_no_crm(

@@ -799,6 +799,9 @@
                             <option value="8">8 meses</option>
                             <option value="12">12 meses</option>
                         </select>
+                        <select id="filtro-vendedor-nio" class="form-select form-select-sm" style="width:auto; min-width:11rem; max-width:16rem" onchange="carregarDashboardFpdNio()" title="Vendedor do CRM">
+                            <option value="">Todos os vendedores</option>
+                        </select>
                         <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarDashboardFpdNio()">
                             <i class="bi bi-arrow-clockwise"></i> Atualizar
                         </button>
@@ -2527,20 +2530,40 @@
         tbody.innerHTML = '<tr><td class="text-muted">Carregando…</td></tr>';
         const indicador = (document.getElementById('filtro-indicador-nio') || {}).value || 'FPD';
         const meses = (document.getElementById('filtro-meses-nio') || {}).value || '6';
+        const vendedorId = (document.getElementById('filtro-vendedor-nio') || {}).value || '';
         const params = new URLSearchParams({ indicador, meses });
+        if (vendedorId) params.set('vendedor_id', vendedorId);
         try {
             const r = await fetch(`${API}/api/qualidade/dashboard-fpd-nio/?${params}`, { headers: authHeaders() });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'Falha ao carregar dashboard FPD');
+
+            // Popula select de vendedores preservando seleção
+            const selVend = document.getElementById('filtro-vendedor-nio');
+            if (selVend && Array.isArray(data.vendedores)) {
+                const atual = selVend.value || String(data.vendedor_id || '');
+                const opts = ['<option value="">Todos os vendedores</option>'].concat(
+                    data.vendedores.map((v) =>
+                        `<option value="${v.id}"${String(v.id) === String(atual) ? ' selected' : ''}>${escapeHtml(v.nome)}</option>`
+                    )
+                );
+                selVend.innerHTML = opts.join('');
+                if (atual) selVend.value = atual;
+            }
+
             const cols = data.colunas || [];
+            const modoResumo = !!data.modo_resumo;
             const fonte = document.getElementById('nio-fpd-fonte');
             if (fonte) {
                 const partes = [data.fonte || 'Planilha FPD', `${indicador}`, `${cols.length} mês(es)`];
-                if (data.faixas_ao_vivo) {
+                if (data.faixas_ao_vivo && !modoResumo) {
                     partes.push(`ref. ${data.referencia_dias || 'hoje'}`);
                 }
-                if (data.divergencias_faixa_planilha != null) {
+                if (!modoResumo && data.divergencias_faixa_planilha != null) {
                     partes.push(`Δ faixa planilha: ${data.divergencias_faixa_planilha}`);
+                }
+                if (modoResumo && data.vendedor && data.vendedor.nome) {
+                    partes.push(`visão: ${data.vendedor.nome}`);
                 }
                 fonte.textContent = partes.join(' · ');
             }
@@ -2557,32 +2580,29 @@
                 `<td class="${cls}"><span class="nio-num">${escapeHtml(String(val))}</span></td>`;
 
             let html = '';
-            // MÊS FATURA
             html += '<tr class="nio-row-header"><td>MÊS FATURA</td>' +
                 cols.map(c => cell(c.mes_fatura)).join('') + '</tr>';
-            // FATURA PAGA (inclui PAGO do tratamento / aguard. FPD)
             html += '<tr><td>FATURA PAGA</td>' +
                 cols.map(c => cell(c.fatura_paga)).join('') + '</tr>';
-            // FATURA ABERTA
             html += '<tr><td>FATURA ABERTA</td>' +
                 cols.map(c => cell(c.fatura_aberta ?? c.abertas ?? 0)).join('') + '</tr>';
-            // AGUARD. CONF. FPD (subset das pagas marcadas pelo BO)
-            html += '<tr><td>AGUARD. CONF. FPD</td>' +
-                cols.map(c => cell(c.aguard_fpd ?? 0)).join('') + '</tr>';
-            // TOTAL
+            if (!modoResumo) {
+                html += '<tr><td>AGUARD. CONF. FPD</td>' +
+                    cols.map(c => cell(c.aguard_fpd ?? 0)).join('') + '</tr>';
+            }
             html += '<tr><td>TOTAL FATURA</td>' +
                 cols.map(c => cell(c.total_fatura)).join('') + '</tr>';
-            // % ABERTO
             html += '<tr><td>% ABERTO</td>' +
                 cols.map(c => cell(fmtPct(c.pct_aberto))).join('') + '</tr>';
-            // Faixas
-            (data.faixas_ordem || []).forEach(fx => {
-                html += `<tr class="nio-faixa-${fx.chave}"><td>${escapeHtml(fx.label)}</td>` +
-                    cols.map(c => {
-                        const v = (c.faixas && c.faixas[fx.chave]) || 0;
-                        return cell(v, `nio-faixa-${fx.chave}`);
-                    }).join('') + '</tr>';
-            });
+            if (!modoResumo) {
+                (data.faixas_ordem || []).forEach(fx => {
+                    html += `<tr class="nio-faixa-${fx.chave}"><td>${escapeHtml(fx.label)}</td>` +
+                        cols.map(c => {
+                            const v = (c.faixas && c.faixas[fx.chave]) || 0;
+                            return cell(v, `nio-faixa-${fx.chave}`);
+                        }).join('') + '</tr>';
+                });
+            }
             tbody.innerHTML = html;
         } catch (e) {
             tbody.innerHTML = `<tr><td class="text-danger">${escapeHtml(e.message)}</td></tr>`;
