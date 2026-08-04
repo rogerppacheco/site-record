@@ -791,6 +791,7 @@ def dashboard_qualidade(
             'venda_id': c.venda_id,
             'ordem_servico': c.ordem_servico or '-',
             'cliente_nome': c.cliente_nome,
+            'cpf_cliente': (c.cpf_cliente or '').strip(),
             'vendedor_nome': _vendedor_nome(c),
             'status_contrato': c.status_contrato,
             'status_fatura1': status_fatura1,

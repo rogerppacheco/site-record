@@ -355,6 +355,13 @@
     max-width: 14rem;
     line-height: 1.2;
 }
+.table-qualidade .cliente-nome {
+    font-weight: 600;
+}
+.table-qualidade .cliente-cpf {
+    font-size: 0.72rem;
+    margin-top: 0.1rem;
+}
 .row-orfao { opacity: 0.75; }
 .badge-orfao { background: #6c757d; font-size: 0.65rem; }
 .badge-atrasado { background: #dc3545; font-size: 0.65rem; }
@@ -642,7 +649,7 @@
                             <th>Status trat.</th>
                             <th>Pagas</th>
                             <th>Elegível</th>
-                            <th id="th-bonus">R$</th>
+                            <th id="th-bonus" title="Bônus M10 (R$ 150) apenas se elegível">Bônus</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -1316,6 +1323,17 @@
         return `${m[3]}/${m[2]}/${m[1]}`;
     }
 
+    function formatarCpfCnpj(raw) {
+        const d = String(raw || '').replace(/\D/g, '');
+        if (d.length === 11) {
+            return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        }
+        if (d.length === 14) {
+            return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+        }
+        return String(raw || '').trim();
+    }
+
     function badgeConferenciaFpd(conf) {
         const c = (conf || '').toUpperCase();
         if (c === 'AGUARDANDO') return '<span class="badge badge-conf-aguardando" title="Aguardando confirmação na planilha FPD">Aguard. FPD</span>';
@@ -1442,7 +1460,7 @@
             } else {
                 tbody.innerHTML = rows.map(c => {
                     const bonusCell = podeVerBonus
-                        ? `<td>${c.elegivel ? ('R$ ' + Number(c.valor_bonus || 0).toFixed(2)) : '—'}</td>`
+                        ? `<td title="Bônus M10 — só para elegíveis">${c.elegivel ? ('R$ ' + Number(c.valor_bonus || 0).toFixed(2)) : '—'}</td>`
                         : '';
                     const orfaoBadge = c.orfao ? ' <span class="badge badge-orfao">órfão</span>' : '';
                     const disabled = c.pode_tratar ? '' : 'disabled title="Precisa CPF/vínculo"';
@@ -1451,9 +1469,13 @@
                         ? 'WhatsApp'
                         : escapeAttr(c.motivo_bloqueio_envio || 'Dados incompletos para cobrança');
                     const disabledLigar = (c.venda_id && c.pode_tratar) ? '' : 'disabled title="Sem venda vinculada"';
+                    const cpfFmt = formatarCpfCnpj(c.cpf_cliente);
+                    const cpfHtml = cpfFmt
+                        ? `<div class="cliente-cpf text-muted">${escapeHtml(cpfFmt)}</div>`
+                        : '<div class="cliente-cpf text-muted">CPF —</div>';
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
-                        <td class="col-cliente">${escapeHtml(c.cliente_nome || '-')}</td>
+                        <td class="col-cliente"><div class="cliente-nome">${escapeHtml(c.cliente_nome || '-')}</div>${cpfHtml}</td>
                         <td>${escapeHtml(c.vendedor_nome || '-')}</td>
                         <td>${escapeHtml(c.status_contrato || '-')}</td>
                         <td>${badgeFatura(c.status_fatura1, c.status_fatura1_display)} ${badgeConferenciaFpd(c.conferencia_fpd)}</td>
