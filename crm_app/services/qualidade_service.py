@@ -1107,6 +1107,7 @@ def dashboard_fpd_estilo_nio(
     indicador: str = 'FPD',
     meses: Optional[int] = 6,
     vendedor_id: Optional[int] = None,
+    modo: str = 'geral',
 ) -> dict[str, Any]:
     """Monta tabela no formato do dashboard Nio (colunas = meses de vencimento).
 
@@ -1118,7 +1119,17 @@ def dashboard_fpd_estilo_nio(
 
     ``vendedor_id`` filtra pelo vendedor do CRM (``ContratoM10.vendedor``).
     Com filtro, a UI usa visão resumida (pagas/abertas/total/% aberto).
+
+    ``modo=por_vendedor``: linhas = vendedores; cada mês com total/pagas/abertas;
+    coluna % Aberto no período.
     """
+    modo_eff = (modo or 'geral').strip().lower()
+    if modo_eff in ('por_vendedor', 'vendedores', 'vendedor'):
+        return dashboard_fpd_por_vendedor(
+            indicador=indicador,
+            meses=meses,
+        )
+
     ind = (indicador or 'FPD').strip().upper()
     if ind not in ('FPD', 'SPD', 'TPD'):
         ind = 'FPD'
@@ -1303,6 +1314,7 @@ def dashboard_fpd_estilo_nio(
             vend_sel = {'id': vend_id, 'nome': f'Vendedor #{vend_id}'}
 
     return {
+        'modo': 'geral',
         'indicador': ind,
         'colunas': colunas,
         'linhas': linhas,
@@ -1323,6 +1335,232 @@ def dashboard_fpd_estilo_nio(
         'vendedor_id': vend_id,
         'vendedor': vend_sel,
         'vendedores': vendedores,
+    }
+
+
+def _classificar_pago_aberto_fpd(
+    *,
+    crm: Optional[dict[str, Any]],
+    sit_planilha: str,
+    nr_dias_atraso: Any = 0,
+    faixa_planilha: str = '',
+) -> tuple[bool, bool]:
+    """
+    Retorna (esta_aberta, contou_paga).
+    Prioriza CRM; fallback situação da planilha.
+    """
+    if crm:
+        st_crm = (crm.get('status') or '').upper()
+        if st_crm in STATUS_FATURA_FECHADA:
+            return False, True
+        return True, False
+
+    sit = (sit_planilha or '').strip().upper()
+    if sit == 'FECHADA':
+        return False, True
+    if sit == 'ABERTA':
+        return True, False
+    if (nr_dias_atraso or 0) <= 0 and not (faixa_planilha or '').strip():
+        return False, True
+    return True, False
+
+
+def _nome_vendedor_de_row(row: dict[str, Any]) -> tuple[Optional[int], str]:
+    vid = row.get('contrato_m10__vendedor_id') or row.get('vendedor_id')
+    if not vid:
+        return None, 'Sem vendedor CRM'
+    nome = (
+        f"{(row.get('contrato_m10__vendedor__first_name') or '').strip()} "
+        f"{(row.get('contrato_m10__vendedor__last_name') or '').strip()}"
+    ).strip()
+    if not nome:
+        nome = (row.get('contrato_m10__vendedor__username') or f'#{vid}').strip()
+    return int(vid), nome
+
+
+def dashboard_fpd_por_vendedor(
+    *,
+    indicador: str = 'FPD',
+    meses: Optional[int] = 6,
+) -> dict[str, Any]:
+    """Matriz: linhas = vendedores CRM; colunas = meses (total / pagas / abertas).
+
+    Inclui coluna % Aberto (FPD) no período selecionado.
+    Ordena do maior % aberto para o menor.
+    """
+    ind = (indicador or 'FPD').strip().upper()
+    if ind not in ('FPD', 'SPD', 'TPD'):
+        ind = 'FPD'
+    numero_fatura = INDICADOR_PARA_NUMERO_FATURA.get(ind, 1)
+    try:
+        n_meses = max(1, min(12, int(meses or 6)))
+    except (TypeError, ValueError):
+        n_meses = 6
+
+    qs_universo = ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
+    meses_disponiveis = sorted({
+        d.strftime('%Y%m')
+        for d in qs_universo.dates('dt_venc_orig', 'month')
+        if d
+    })
+    meses_ord = meses_disponiveis[-n_meses:] if meses_disponiveis else []
+
+    colunas_meta = []
+    for chave in meses_ord:
+        ano, mes = int(chave[:4]), int(chave[4:6])
+        mes_iso = f'{ano:04d}-{mes:02d}'
+        colunas_meta.append({
+            'mes_fatura': chave,
+            'mes': mes_iso,
+            'label': _label_mes(mes_iso),
+        })
+
+    qs = list(
+        qs_universo.values(
+            'dt_venc_orig',
+            'ds_sit_fatura',
+            'faixa',
+            'nr_dias_atraso',
+            'contrato_m10_id',
+            'contrato_m10__vendedor_id',
+            'contrato_m10__vendedor__username',
+            'contrato_m10__vendedor__first_name',
+            'contrato_m10__vendedor__last_name',
+        )
+    )
+
+    contrato_ids = {
+        row['contrato_m10_id']
+        for row in qs
+        if row.get('contrato_m10_id')
+    }
+    fatura_crm: dict[int, dict[str, Any]] = {}
+    if contrato_ids:
+        for cid, st, conf, venc in FaturaM10.objects.filter(
+            contrato_id__in=contrato_ids,
+            numero_fatura=numero_fatura,
+        ).values_list('contrato_id', 'status', 'conferencia_fpd', 'data_vencimento'):
+            fatura_crm[cid] = {
+                'status': (st or '').upper(),
+                'conferencia_fpd': (conf or '').upper(),
+                'data_vencimento': venc,
+            }
+
+    def _bucket_vazio() -> dict[str, int]:
+        return {'total': 0, 'pagas': 0, 'abertas': 0}
+
+    # vendedor_key -> { nome, meses: {YYYYMM: bucket}, totais }
+    por_vend: dict[str, dict[str, Any]] = {}
+
+    for row in qs:
+        dt = row.get('dt_venc_orig')
+        if not dt:
+            continue
+        chave_mes = dt.strftime('%Y%m')
+        if chave_mes not in meses_ord:
+            continue
+
+        vid, nome = _nome_vendedor_de_row(row)
+        key = str(vid) if vid is not None else 'sem'
+        block = por_vend.setdefault(
+            key,
+            {
+                'vendedor_id': vid,
+                'vendedor_nome': nome,
+                'meses': {m: _bucket_vazio() for m in meses_ord},
+                'total': 0,
+                'pagas': 0,
+                'abertas': 0,
+            },
+        )
+
+        cid = row.get('contrato_m10_id')
+        crm = fatura_crm.get(cid) if cid else None
+        esta_aberta, contou_paga = _classificar_pago_aberto_fpd(
+            crm=crm,
+            sit_planilha=row.get('ds_sit_fatura') or '',
+            nr_dias_atraso=row.get('nr_dias_atraso') or 0,
+            faixa_planilha=row.get('faixa') or '',
+        )
+
+        m_bucket = block['meses'][chave_mes]
+        m_bucket['total'] += 1
+        block['total'] += 1
+        if esta_aberta:
+            m_bucket['abertas'] += 1
+            block['abertas'] += 1
+        elif contou_paga:
+            m_bucket['pagas'] += 1
+            block['pagas'] += 1
+
+    linhas: list[dict[str, Any]] = []
+    tot_geral = _bucket_vazio()
+    totais_mes = {m: _bucket_vazio() for m in meses_ord}
+
+    for block in por_vend.values():
+        total = int(block['total'])
+        abertas = int(block['abertas'])
+        pct = round((abertas / total * 100), 2) if total else 0.0
+        meses_out = {}
+        for m in meses_ord:
+            b = block['meses'][m]
+            meses_out[m] = {
+                'total': b['total'],
+                'pagas': b['pagas'],
+                'abertas': b['abertas'],
+            }
+            totais_mes[m]['total'] += b['total']
+            totais_mes[m]['pagas'] += b['pagas']
+            totais_mes[m]['abertas'] += b['abertas']
+        tot_geral['total'] += total
+        tot_geral['pagas'] += int(block['pagas'])
+        tot_geral['abertas'] += abertas
+        linhas.append({
+            'vendedor_id': block['vendedor_id'],
+            'vendedor_nome': block['vendedor_nome'],
+            'meses': meses_out,
+            'total': total,
+            'pagas': int(block['pagas']),
+            'abertas': abertas,
+            'pct_aberto': pct,
+        })
+
+    # Maior FPD (pior) primeiro; depois nome
+    linhas.sort(key=lambda x: (-x['pct_aberto'], x['vendedor_nome'].lower()))
+
+    pct_geral = (
+        round((tot_geral['abertas'] / tot_geral['total'] * 100), 2)
+        if tot_geral['total']
+        else 0.0
+    )
+
+    return {
+        'modo': 'por_vendedor',
+        'indicador': ind,
+        'colunas': colunas_meta,
+        'linhas_vendedores': linhas,
+        'totais': {
+            'meses': totais_mes,
+            'total': tot_geral['total'],
+            'pagas': tot_geral['pagas'],
+            'abertas': tot_geral['abertas'],
+            'pct_aberto': pct_geral,
+        },
+        'legenda_celula': 'T = total · P = pagas · A = abertas',
+        'fonte': (
+            'Visão por vendedor CRM · pago/aberto = Tratamento · '
+            'universo = ImportacaoFPD · % Aberto = abertas ÷ total do período'
+        ),
+        'vendedores': _listar_vendedores_dashboard_fpd(ind),
+        'modo_resumo': False,
+        'vendedor_id': None,
+        'vendedor': None,
+        # Compat: UI geral espera colunas/linhas vazias se não usadas
+        'linhas': [],
+        'faixas_ordem': [],
+        'faixas_ao_vivo': False,
+        'abertas_total': tot_geral['abertas'],
+        'divergencias_faixa_planilha': 0,
     }
 
 

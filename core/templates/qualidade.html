@@ -348,6 +348,55 @@
     color: #ffffff;
 }
 .table-nio-fpd .nio-row-header td { background: #fff; color: #222; }
+.table-nio-fpd.is-por-vendedor th,
+.table-nio-fpd.is-por-vendedor td {
+    font-size: 0.72rem;
+    padding: 0.35rem 0.4rem;
+    vertical-align: middle;
+}
+.table-nio-fpd.is-por-vendedor th:first-child,
+.table-nio-fpd.is-por-vendedor td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #fff;
+    min-width: 9rem;
+    max-width: 12rem;
+    text-align: left;
+    font-weight: 600;
+}
+.table-nio-fpd .nio-cell-tri {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.15rem;
+    min-width: 5.5rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+}
+.table-nio-fpd .nio-cell-tri .t { color: var(--text-primary); font-weight: 700; }
+.table-nio-fpd .nio-cell-tri .p { color: #059669; }
+.table-nio-fpd .nio-cell-tri .a { color: #dc2626; font-weight: 600; }
+.table-nio-fpd .nio-pct {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.table-nio-fpd .nio-pct.is-alto { color: #dc2626; }
+.table-nio-fpd .nio-pct.is-medio { color: #d97706; }
+.table-nio-fpd .nio-pct.is-baixo { color: #059669; }
+.table-nio-fpd tr.nio-total-row td {
+    font-weight: 700;
+    border-top: 2px solid var(--border-color);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+}
+.nio-modo-toggle .btn { font-size: 0.72rem; padding: 0.18rem 0.45rem; }
+.nio-legenda-tpa {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+}
+.nio-legenda-tpa .t { font-weight: 700; }
+.nio-legenda-tpa .p { color: #059669; font-weight: 600; }
+.nio-legenda-tpa .a { color: #dc2626; font-weight: 600; }
 .qualidade-page.modo-tratamento .qualidade-shell { padding: 0.3rem 0.4rem !important; }
 .qualidade-page.modo-tratamento .qualidade-lente { margin-bottom: 0.2rem !important; }
 .qualidade-page.modo-tratamento .q-titulo-bloco { display: none; }
@@ -788,6 +837,10 @@
             <div id="wrap-dash-nio" class="qualidade-table-wrap d-none">
                 <div class="nio-fpd-wrap">
                     <div class="nio-fpd-toolbar">
+                        <div class="btn-group nio-modo-toggle" role="group" aria-label="Modo dashboard">
+                            <button type="button" class="btn btn-primary" id="btn-modo-geral" onclick="setModoDashNio('geral')">Geral</button>
+                            <button type="button" class="btn btn-outline-primary" id="btn-modo-vendedor" onclick="setModoDashNio('por_vendedor')">Por vendedor</button>
+                        </div>
                         <select id="filtro-indicador-nio" class="form-select form-select-sm" style="width:auto" onchange="carregarDashboardFpdNio()">
                             <option value="FPD" selected>FPD (1ª fatura)</option>
                             <option value="SPD">SPD (2ª fatura)</option>
@@ -805,6 +858,9 @@
                         <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarDashboardFpdNio()">
                             <i class="bi bi-arrow-clockwise"></i> Atualizar
                         </button>
+                        <span class="nio-legenda-tpa d-none" id="nio-legenda-tpa" title="Legenda por mês">
+                            Em cada mês: <span class="t">T</span>otal · <span class="p">P</span>agas · <span class="a">A</span>bertas
+                        </span>
                         <small class="text-muted" id="nio-fpd-fonte">Fonte: planilha FPD importada</small>
                     </div>
                     <div class="table-responsive">
@@ -2524,23 +2580,112 @@
         }
     };
 
+    let modoDashNio = 'geral';
+
+    window.setModoDashNio = function (modo) {
+        modoDashNio = modo === 'por_vendedor' ? 'por_vendedor' : 'geral';
+        const btnG = document.getElementById('btn-modo-geral');
+        const btnV = document.getElementById('btn-modo-vendedor');
+        if (btnG && btnV) {
+            btnG.classList.toggle('btn-primary', modoDashNio === 'geral');
+            btnG.classList.toggle('btn-outline-primary', modoDashNio !== 'geral');
+            btnV.classList.toggle('btn-primary', modoDashNio === 'por_vendedor');
+            btnV.classList.toggle('btn-outline-primary', modoDashNio !== 'por_vendedor');
+        }
+        const selVend = document.getElementById('filtro-vendedor-nio');
+        if (selVend) selVend.style.display = modoDashNio === 'por_vendedor' ? 'none' : '';
+        const leg = document.getElementById('nio-legenda-tpa');
+        if (leg) leg.classList.toggle('d-none', modoDashNio !== 'por_vendedor');
+        carregarDashboardFpdNio();
+    };
+
+    function _cellTriNio(m) {
+        const t = Number((m && m.total) || 0);
+        const p = Number((m && m.pagas) || 0);
+        const a = Number((m && m.abertas) || 0);
+        return `<td title="Total ${t} · Pagas ${p} · Abertas ${a}">
+            <div class="nio-cell-tri">
+                <span class="t">${t}</span>
+                <span class="p">${p}</span>
+                <span class="a">${a}</span>
+            </div>
+        </td>`;
+    }
+
+    function _pctClassNio(pct) {
+        const n = Number(pct || 0);
+        if (n >= 50) return 'is-alto';
+        if (n >= 25) return 'is-medio';
+        return 'is-baixo';
+    }
+
+    function renderDashNioPorVendedor(data) {
+        const tbody = document.getElementById('tbody-nio-fpd');
+        const table = document.getElementById('table-nio-fpd');
+        if (table) table.classList.add('is-por-vendedor');
+        const cols = data.colunas || [];
+        const linhas = data.linhas_vendedores || [];
+        const totais = data.totais || {};
+        if (!cols.length) {
+            tbody.innerHTML = '<tr><td class="text-muted">Sem dados importados. Importe a planilha FPD.</td></tr>';
+            return;
+        }
+        const fmtPct = (v) => Number(v || 0).toLocaleString('pt-BR', {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        }) + '%';
+
+        let html = '<tr class="nio-row-header"><td>VENDEDOR</td>';
+        cols.forEach((c) => {
+            html += `<td title="${escapeHtml(c.label || c.mes_fatura)}"><div>${escapeHtml(c.mes_fatura)}</div>
+                <div class="nio-legenda-tpa" style="font-weight:500"><span class="t">T</span>/<span class="p">P</span>/<span class="a">A</span></div></td>`;
+        });
+        html += '<td>% ABERTO<br><small style="font-weight:500">(período)</small></td></tr>';
+
+        if (!linhas.length) {
+            html += `<tr><td colspan="${cols.length + 2}" class="text-muted">Nenhum vendedor com volume neste filtro</td></tr>`;
+            tbody.innerHTML = html;
+            return;
+        }
+
+        linhas.forEach((row) => {
+            const pct = Number(row.pct_aberto || 0);
+            html += `<tr><td title="Total ${row.total} · Pagas ${row.pagas} · Abertas ${row.abertas}">${escapeHtml(row.vendedor_nome || '—')}</td>`;
+            cols.forEach((c) => {
+                const m = (row.meses && row.meses[c.mes_fatura]) || {};
+                html += _cellTriNio(m);
+            });
+            html += `<td><span class="nio-pct ${_pctClassNio(pct)}">${fmtPct(pct)}</span></td></tr>`;
+        });
+
+        const tm = totais.meses || {};
+        const pctG = Number(totais.pct_aberto || 0);
+        html += `<tr class="nio-total-row"><td>TOTAL</td>`;
+        cols.forEach((c) => {
+            html += _cellTriNio(tm[c.mes_fatura] || {});
+        });
+        html += `<td><span class="nio-pct ${_pctClassNio(pctG)}">${fmtPct(pctG)}</span></td></tr>`;
+        tbody.innerHTML = html;
+    }
+
     window.carregarDashboardFpdNio = async function () {
         const tbody = document.getElementById('tbody-nio-fpd');
+        const table = document.getElementById('table-nio-fpd');
         if (!tbody) return;
         tbody.innerHTML = '<tr><td class="text-muted">Carregando…</td></tr>';
+        if (table) table.classList.remove('is-por-vendedor');
         const indicador = (document.getElementById('filtro-indicador-nio') || {}).value || 'FPD';
         const meses = (document.getElementById('filtro-meses-nio') || {}).value || '6';
         const vendedorId = (document.getElementById('filtro-vendedor-nio') || {}).value || '';
-        const params = new URLSearchParams({ indicador, meses });
-        if (vendedorId) params.set('vendedor_id', vendedorId);
+        const params = new URLSearchParams({ indicador, meses, modo: modoDashNio });
+        if (modoDashNio === 'geral' && vendedorId) params.set('vendedor_id', vendedorId);
         try {
             const r = await fetch(`${API}/api/qualidade/dashboard-fpd-nio/?${params}`, { headers: authHeaders() });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'Falha ao carregar dashboard FPD');
 
-            // Popula select de vendedores preservando seleção
+            // Popula select de vendedores (modo geral)
             const selVend = document.getElementById('filtro-vendedor-nio');
-            if (selVend && Array.isArray(data.vendedores)) {
+            if (selVend && Array.isArray(data.vendedores) && modoDashNio === 'geral') {
                 const atual = selVend.value || String(data.vendedor_id || '');
                 const opts = ['<option value="">Todos os vendedores</option>'].concat(
                     data.vendedores.map((v) =>
@@ -2551,22 +2696,28 @@
                 if (atual) selVend.value = atual;
             }
 
-            const cols = data.colunas || [];
-            const modoResumo = !!data.modo_resumo;
             const fonte = document.getElementById('nio-fpd-fonte');
             if (fonte) {
+                const cols = data.colunas || [];
                 const partes = [data.fonte || 'Planilha FPD', `${indicador}`, `${cols.length} mês(es)`];
-                if (data.faixas_ao_vivo && !modoResumo) {
+                if (data.modo === 'por_vendedor') {
+                    partes.push(`${(data.linhas_vendedores || []).length} vendedor(es)`);
+                } else if (data.faixas_ao_vivo && !data.modo_resumo) {
                     partes.push(`ref. ${data.referencia_dias || 'hoje'}`);
-                }
-                if (!modoResumo && data.divergencias_faixa_planilha != null) {
-                    partes.push(`Δ faixa planilha: ${data.divergencias_faixa_planilha}`);
-                }
-                if (modoResumo && data.vendedor && data.vendedor.nome) {
-                    partes.push(`visão: ${data.vendedor.nome}`);
+                    if (data.divergencias_faixa_planilha != null) {
+                        partes.push(`Δ faixa planilha: ${data.divergencias_faixa_planilha}`);
+                    }
                 }
                 fonte.textContent = partes.join(' · ');
             }
+
+            if (data.modo === 'por_vendedor' || modoDashNio === 'por_vendedor') {
+                renderDashNioPorVendedor(data);
+                return;
+            }
+
+            const cols = data.colunas || [];
+            const modoResumo = !!data.modo_resumo;
             if (!cols.length) {
                 tbody.innerHTML = '<tr><td class="text-muted">Sem dados importados. Importe a planilha FPD.</td></tr>';
                 return;

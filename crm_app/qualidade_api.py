@@ -313,6 +313,7 @@ class QualidadeDashboardFpdNioView(APIView):
                 indicador=request.GET.get('indicador', 'FPD'),
                 meses=request.GET.get('meses', 6),
                 vendedor_id=request.GET.get('vendedor_id') or request.GET.get('vendedor'),
+                modo=request.GET.get('modo', 'geral'),
             )
             return Response(data)
         except Exception as e:
