@@ -1662,14 +1662,25 @@ def _registrar_historico_envio(
     user: Any,
     sucesso: bool,
     erro: Optional[str] = None,
+    origem: Optional[str] = None,
+    template_nome: str = '',
 ) -> None:
     if HistoricoEnvioQualidade is None:
         return
+    # AUTO = job sem usuário; MANUAL = tela; SISTEMA = webhook/botões
+    if origem:
+        origem_eff = origem
+    elif getattr(user, 'pk', None):
+        origem_eff = 'MANUAL'
+    else:
+        origem_eff = 'AUTO'
     try:
         HistoricoEnvioQualidade.objects.create(
             contrato=contrato,
             fatura=fatura,
             canal=canal,
+            origem=origem_eff,
+            template_nome=(template_nome or '')[:120],
             destinatario=destinatario,
             mensagem=mensagem,
             enviado_por=user if getattr(user, 'pk', None) else None,
@@ -1753,6 +1764,7 @@ def registrar_resposta_cliente_qualidade(
             contrato=contrato,
             fatura=fatura,
             canal='RESPOSTA',
+            origem='SISTEMA',
             destinatario=(telefone or '')[:255] or '—',
             mensagem=(prefixo + msg)[:5000],
             enviado_por=None,
@@ -1908,6 +1920,7 @@ def enviar_cobranca_whatsapp(
     )
 
     canal = 'roteiro1'
+    template_usado = ''
     ok = False
     resp: Any = None
     try:
@@ -1926,6 +1939,7 @@ def enviar_cobranca_whatsapp(
             else:
                 tpl = TEMPLATE_FATURA_RECORRENTE
                 incluir_atraso = True
+            template_usado = tpl
             ok, resp, canal = enviar_template_fatura(
                 telefone,
                 tpl,
@@ -1950,6 +1964,7 @@ def enviar_cobranca_whatsapp(
             user=user,
             sucesso=False,
             erro=str(exc),
+            template_nome=template_usado,
         )
         return {'ok': False, 'erro': str(exc)}
 
@@ -1962,6 +1977,7 @@ def enviar_cobranca_whatsapp(
         user=user,
         sucesso=bool(ok),
         erro=None if ok else str(resp),
+        template_nome=template_usado or (canal if canal != 'roteiro1' else ''),
     )
     return {
         'ok': bool(ok),
@@ -1969,6 +1985,7 @@ def enviar_cobranca_whatsapp(
         'fatura_id': fatura.id,
         'mensagem': mensagem,
         'canal': canal,
+        'template_nome': template_usado,
         'resposta': resp,
         'detail': (
             f'Cobrança enviada via {canal}.'
@@ -2504,4 +2521,331 @@ def aplicar_opcao_nio_fatura(
         'fatura_id': fatura.id,
         'pdf_url': fatura.pdf_url or '',
         'detalhe': detalhe_contrato_faturas(contrato_id),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Gestão de cobrança automática (preview + logs)
+# ---------------------------------------------------------------------------
+
+TIPO_COBRANCA_LABELS = {
+    'd5_antes': 'Lembrete D−5',
+    'd5_depois': 'Vencida D+5',
+    'recorrente': 'Recorrente',
+}
+
+
+def _qs_faturas_abertas_cobranca() -> QuerySet:
+    return (
+        FaturaM10.objects.filter(status__in=['NAO_PAGO', 'ATRASADO', 'AGUARDANDO'])
+        .exclude(status='PAGO')
+        .select_related('contrato')
+        .order_by('id')
+    )
+
+
+def ja_enviou_template_cobranca_hoje(fatura: FaturaM10, *, dia: Optional[date] = None) -> bool:
+    """Dedup do job automático: WhatsApp sucesso com template no dia local."""
+    if HistoricoEnvioQualidade is None:
+        return False
+    alvo = dia or timezone.localdate()
+    return HistoricoEnvioQualidade.objects.filter(
+        fatura=fatura,
+        canal='WHATSAPP',
+        sucesso=True,
+        criado_em__date=alvo,
+    ).filter(
+        Q(template_nome__gt='')
+        | Q(mensagem__icontains='template')
+        | Q(mensagem__startswith='[')
+        | Q(origem='AUTO')
+    ).exists()
+
+
+def listar_alvos_cobranca_templates(
+    *,
+    hoje: Optional[date] = None,
+    apenas: str = 'todos',
+) -> list[tuple[str, FaturaM10]]:
+    """
+    Seleciona faturas-alvo do job (D−5, D+5, recorrente D+12/19…).
+    Não aplica limite nem pode_tratar — a prévia/gestão filtram depois.
+    """
+    from datetime import timedelta
+
+    dia = hoje or timezone.localdate()
+    alvos: list[tuple[str, FaturaM10]] = []
+    base = _qs_faturas_abertas_cobranca()
+
+    if apenas in ('d5_antes', 'todos'):
+        qs = base.filter(data_vencimento=dia + timedelta(days=5))
+        for f in qs:
+            alvos.append(('d5_antes', f))
+
+    if apenas in ('d5_depois', 'todos'):
+        qs = base.filter(data_vencimento=dia - timedelta(days=5))
+        for f in qs:
+            alvos.append(('d5_depois', f))
+
+    if apenas in ('recorrente', 'todos'):
+        for k in range(1, 8):
+            dias = 5 + 7 * k
+            qs = base.filter(data_vencimento=dia - timedelta(days=dias))
+            for f in qs:
+                alvos.append(('recorrente', f))
+
+    return alvos
+
+
+def preview_cobranca_templates_dia(
+    *,
+    data_ref: Optional[date] = None,
+    limite_job: int = 80,
+) -> dict[str, Any]:
+    """
+    Contadores objetivos para gestão do disparo automático das 10:00.
+
+    Critérios (iguais ao management command):
+    - fatura aberta com vencimento em D−5 / D+5 / D+12,19…
+    - contrato tratável (não órfão / com CPF)
+    - valor > 0 e vencimento preenchido
+    - ainda sem WhatsApp template sucesso no dia
+    """
+    from crm_app.services.whatsapp.nio_templates import templates_habilitados
+
+    dia = data_ref or timezone.localdate()
+    por_tipo_bruto = {'d5_antes': 0, 'd5_depois': 0, 'recorrente': 0}
+    por_tipo_elegivel = {'d5_antes': 0, 'd5_depois': 0, 'recorrente': 0}
+    por_tipo_faltam = {'d5_antes': 0, 'd5_depois': 0, 'recorrente': 0}
+
+    total_bruto = 0
+    elegiveis = 0
+    enviados = 0
+    bloqueados = 0
+    faltam = 0
+    vistos: set[int] = set()
+    exemplos_bloqueio: list[dict[str, Any]] = []
+
+    for tipo, fatura in listar_alvos_cobranca_templates(hoje=dia):
+        if fatura.id in vistos:
+            continue
+        vistos.add(fatura.id)
+        total_bruto += 1
+        por_tipo_bruto[tipo] = por_tipo_bruto.get(tipo, 0) + 1
+
+        contrato = fatura.contrato
+        ok_tratar = pode_tratar_contrato(contrato)
+        ok_dados, motivo = validar_fatura_para_envio_cobranca(fatura)
+        if not ok_tratar or not ok_dados:
+            bloqueados += 1
+            if len(exemplos_bloqueio) < 8:
+                exemplos_bloqueio.append({
+                    'fatura_id': fatura.id,
+                    'contrato_id': contrato.id,
+                    'os': getattr(contrato, 'ordem_servico', '') or '',
+                    'cliente': (contrato.cliente_nome or '')[:60],
+                    'motivo': (
+                        'Órfão / sem CPF'
+                        if not ok_tratar
+                        else motivo
+                    ),
+                })
+            continue
+
+        elegiveis += 1
+        por_tipo_elegivel[tipo] = por_tipo_elegivel.get(tipo, 0) + 1
+
+        if ja_enviou_template_cobranca_hoje(fatura, dia=dia):
+            enviados += 1
+            continue
+
+        faltam += 1
+        por_tipo_faltam[tipo] = por_tipo_faltam.get(tipo, 0) + 1
+
+    proximos_no_job = min(faltam, max(1, int(limite_job)))
+
+    return {
+        'data': dia.isoformat(),
+        'horario_automatico': '10:00',
+        'timezone': 'America/Sao_Paulo',
+        'templates_habilitados': bool(templates_habilitados()),
+        'limite_job': limite_job,
+        'total_criterio': total_bruto,
+        'elegiveis': elegiveis,
+        'ja_enviados_hoje': enviados,
+        'faltam': faltam,
+        'bloqueados': bloqueados,
+        'proximos_no_job': proximos_no_job,
+        'por_tipo': {
+            'criterio': por_tipo_bruto,
+            'elegiveis': por_tipo_elegivel,
+            'faltam': por_tipo_faltam,
+        },
+        'labels_tipo': TIPO_COBRANCA_LABELS,
+        'criterios': [
+            'Fatura NAO_PAGO / ATRASADO / AGUARDANDO',
+            'Vencimento em D−5, D+5 ou D+12/19/26…',
+            'Contrato tratável (não órfão, com CPF)',
+            'Valor > 0 e vencimento preenchidos',
+            'Sem WhatsApp template com sucesso no dia',
+            f'Job diário às 10:00 (limite {limite_job}/execução)',
+        ],
+        'exemplos_bloqueio': exemplos_bloqueio,
+    }
+
+
+def status_busca_nio(log_id: int) -> dict[str, Any]:
+    """Progresso de HistoricoBuscaFatura (Buscar Nio bulk)."""
+    from crm_app.models import HistoricoBuscaFatura
+
+    try:
+        h = HistoricoBuscaFatura.objects.select_related('usuario').get(pk=log_id)
+    except HistoricoBuscaFatura.DoesNotExist as exc:
+        raise ValueError(f'Busca Nio #{log_id} não encontrada.') from exc
+
+    logs = h.logs if isinstance(h.logs, dict) else {}
+    progresso = logs.get('progresso') if isinstance(logs.get('progresso'), dict) else {}
+    contratos_feitos = int(progresso.get('contratos_feitos') or 0)
+    contratos_total = int(progresso.get('contratos_total') or h.total_contratos or 0)
+    ultimo = progresso.get('ultimo_contrato') or ''
+    detalhes = logs.get('detalhes') if isinstance(logs.get('detalhes'), list) else []
+    recentes = detalhes[-12:] if detalhes else []
+
+    pct = 0.0
+    if h.status in ('CONCLUIDA', 'ERRO', 'CANCELADA'):
+        pct = 100.0
+    elif contratos_total > 0:
+        pct = min(99.0, round(100.0 * contratos_feitos / contratos_total, 1))
+
+    duracao = None
+    if h.inicio_em:
+        fim = h.termino_em or timezone.now()
+        duracao = round((fim - h.inicio_em).total_seconds(), 1)
+
+    return {
+        'id': h.id,
+        'status': h.status,
+        'tipo_busca': h.tipo_busca,
+        'safra': h.safra or '',
+        'mensagem': h.mensagem or '',
+        'inicio_em': _iso_dt_local(h.inicio_em),
+        'termino_em': _iso_dt_local(h.termino_em),
+        'duracao_segundos': float(h.duracao_segundos) if h.duracao_segundos is not None else duracao,
+        'total_contratos': h.total_contratos or contratos_total,
+        'contratos_feitos': contratos_feitos,
+        'total_faturas': h.total_faturas or 0,
+        'faturas_sucesso': h.faturas_sucesso or 0,
+        'faturas_erro': h.faturas_erro or 0,
+        'faturas_nao_disponiveis': h.faturas_nao_disponiveis or 0,
+        'ultimo_contrato': ultimo,
+        'percentual': pct,
+        'em_andamento': h.status == 'EM_ANDAMENTO',
+        'recentes': recentes,
+    }
+
+
+def listar_gestao_envios_qualidade(
+    *,
+    data_ref: Optional[date] = None,
+    origem: str = '',
+    sucesso: Optional[bool] = None,
+    canal: str = 'WHATSAPP',
+    q: str = '',
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, Any]:
+    """Painel de logs/gestão de envios (dia + filtros)."""
+    if HistoricoEnvioQualidade is None:
+        return {
+            'resumo': {},
+            'itens': [],
+            'page': 1,
+            'page_size': page_size,
+            'total': 0,
+            'preview': preview_cobranca_templates_dia(data_ref=data_ref),
+        }
+
+    dia = data_ref or timezone.localdate()
+    qs = (
+        HistoricoEnvioQualidade.objects.filter(criado_em__date=dia)
+        .select_related('contrato', 'fatura', 'enviado_por')
+        .order_by('-criado_em')
+    )
+    if canal:
+        qs = qs.filter(canal=canal.upper())
+    if origem:
+        qs = qs.filter(origem=origem.upper())
+    if sucesso is not None:
+        qs = qs.filter(sucesso=sucesso)
+    q = (q or '').strip()
+    if q:
+        qs = qs.filter(
+            Q(contrato__ordem_servico__icontains=q)
+            | Q(contrato__cliente_nome__icontains=q)
+            | Q(contrato__numero_contrato__icontains=q)
+            | Q(destinatario__icontains=q)
+            | Q(template_nome__icontains=q)
+        )
+
+    # Resumo do dia (WhatsApp) independente dos filtros de listagem, exceto data
+    base_dia = HistoricoEnvioQualidade.objects.filter(
+        criado_em__date=dia,
+        canal='WHATSAPP',
+    )
+    resumo = {
+        'data': dia.isoformat(),
+        'whatsapp_total': base_dia.count(),
+        'whatsapp_sucesso': base_dia.filter(sucesso=True).count(),
+        'whatsapp_erro': base_dia.filter(sucesso=False).count(),
+        'auto_sucesso': base_dia.filter(origem='AUTO', sucesso=True).count(),
+        'manual_sucesso': base_dia.filter(origem='MANUAL', sucesso=True).count(),
+        # Legado sem origem/template: conta como auto se sem usuário
+        'sem_usuario_sucesso': base_dia.filter(
+            enviado_por__isnull=True, sucesso=True
+        ).count(),
+    }
+
+    total = qs.count()
+    page = max(1, int(page or 1))
+    page_size = max(1, min(200, int(page_size or 50)))
+    offset = (page - 1) * page_size
+    itens: list[dict[str, Any]] = []
+    for h in qs[offset : offset + page_size]:
+        origem_exibida = h.origem or (
+            'AUTO' if not h.enviado_por_id else 'MANUAL'
+        )
+        itens.append({
+            'id': h.id,
+            'criado_em': _iso_dt_local(h.criado_em),
+            'canal': h.canal,
+            'origem': origem_exibida,
+            'template_nome': h.template_nome or '',
+            'sucesso': bool(h.sucesso),
+            'erro': (h.erro or '')[:300],
+            'destinatario': h.destinatario or '',
+            'mensagem': (h.mensagem or '')[:180],
+            'contrato_id': h.contrato_id,
+            'os': getattr(h.contrato, 'ordem_servico', '') or '',
+            'cliente': (h.contrato.cliente_nome or '')[:80],
+            'fatura_id': h.fatura_id,
+            'valor': float(h.fatura.valor) if h.fatura_id and h.fatura and h.fatura.valor is not None else None,
+            'vencimento': (
+                h.fatura.data_vencimento.isoformat()
+                if h.fatura_id and h.fatura and h.fatura.data_vencimento
+                else None
+            ),
+            'enviado_por': (
+                (h.enviado_por.get_full_name() or h.enviado_por.username)
+                if h.enviado_por_id
+                else None
+            ),
+        })
+
+    return {
+        'resumo': resumo,
+        'itens': itens,
+        'page': page,
+        'page_size': page_size,
+        'total': total,
+        'preview': preview_cobranca_templates_dia(data_ref=dia),
     }

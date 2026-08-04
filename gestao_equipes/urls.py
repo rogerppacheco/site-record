@@ -75,6 +75,9 @@ from crm_app.qualidade_api import (
     QualidadeAplicarNioOpcaoView,
     QualidadeStatusTratamentoView,
     QualidadeAtualizarStatusTratamentoView,
+    QualidadeBuscaNioStatusView,
+    QualidadeCobrancaPreviewView,
+    QualidadeGestaoEnviosView,
 )
 
 # --- CONFIGURAÇÃO DO ROUTER PARA REGRAS DE AUTOMAÇÃO ---
@@ -216,6 +219,9 @@ urlpatterns = [
     path('api/qualidade/contratos/<int:pk>/aplicar-nio/', QualidadeAplicarNioOpcaoView.as_view(), name='api-qualidade-aplicar-nio'),
     path('api/qualidade/status-tratamento/', QualidadeStatusTratamentoView.as_view(), name='api-qualidade-status-tratamento'),
     path('api/qualidade/contratos/<int:pk>/status-tratamento/', QualidadeAtualizarStatusTratamentoView.as_view(), name='api-qualidade-atualizar-status-tratamento'),
+    path('api/qualidade/busca-nio/<int:pk>/', QualidadeBuscaNioStatusView.as_view(), name='api-qualidade-busca-nio-status'),
+    path('api/qualidade/cobranca/preview/', QualidadeCobrancaPreviewView.as_view(), name='api-qualidade-cobranca-preview'),
+    path('api/qualidade/cobranca/envios/', QualidadeGestaoEnviosView.as_view(), name='api-qualidade-cobranca-envios'),
 ]
 
 if settings.DEBUG:

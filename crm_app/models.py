@@ -3104,6 +3104,11 @@ class HistoricoEnvioQualidade(models.Model):
         ('LIGACAO', 'Ligação'),
         ('RESPOSTA', 'Resposta do cliente'),
     ]
+    ORIGEM_CHOICES = [
+        ('AUTO', 'Automático'),
+        ('MANUAL', 'Manual'),
+        ('SISTEMA', 'Sistema'),
+    ]
 
     contrato = models.ForeignKey(
         ContratoM10,
@@ -3118,6 +3123,19 @@ class HistoricoEnvioQualidade(models.Model):
         related_name='historico_envios_qualidade',
     )
     canal = models.CharField(max_length=20, choices=CANAL_CHOICES)
+    origem = models.CharField(
+        max_length=20,
+        choices=ORIGEM_CHOICES,
+        default='MANUAL',
+        blank=True,
+        help_text='AUTO = job 10:00; MANUAL = tela Qualidade; SISTEMA = webhook/botões',
+    )
+    template_nome = models.CharField(
+        max_length=120,
+        blank=True,
+        default='',
+        help_text='Nome do template Meta quando canal WhatsApp usa template',
+    )
     destinatario = models.CharField(max_length=255)
     mensagem = models.TextField(blank=True, default='')
     enviado_por = models.ForeignKey(
@@ -3137,6 +3155,7 @@ class HistoricoEnvioQualidade(models.Model):
         ordering = ['-criado_em']
         indexes = [
             models.Index(fields=['contrato', 'canal', '-criado_em']),
+            models.Index(fields=['-criado_em', 'canal', 'origem']),
         ]
 
     def __str__(self) -> str:

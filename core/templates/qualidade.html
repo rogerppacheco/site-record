@@ -67,6 +67,48 @@
     border-color: var(--accent-color) !important;
 }
 .qualidade-tabs .nav-link .badge { font-size: 0.62rem; vertical-align: middle; }
+.q-chip-cobranca {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.72rem; font-weight: 600; padding: 0.22rem 0.55rem;
+    border-radius: 999px; border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    color: var(--text-primary); cursor: pointer; white-space: nowrap;
+}
+.q-chip-cobranca:hover { border-color: var(--accent-color); }
+.q-chip-cobranca .q-chip-num { font-variant-numeric: tabular-nums; }
+.q-chip-cobranca.is-warn {
+    background: color-mix(in srgb, #d97706 16%, transparent);
+    border-color: color-mix(in srgb, #d97706 45%, transparent);
+}
+.q-chip-cobranca.is-ok {
+    background: color-mix(in srgb, #059669 14%, transparent);
+    border-color: color-mix(in srgb, #059669 40%, transparent);
+}
+.gestao-envios-kpis {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px; margin-bottom: 0.75rem;
+}
+.gestao-envios-kpis .kpi-item .kpi-val { font-size: 1.2rem; }
+.gestao-criterios {
+    font-size: 0.75rem; color: var(--text-secondary);
+    margin: 0 0 0.75rem; padding-left: 1.1rem;
+}
+.gestao-envios-filtros {
+    display: flex; flex-wrap: wrap; gap: 0.35rem 0.45rem;
+    align-items: center; margin-bottom: 0.65rem;
+}
+.gestao-envios-filtros .form-control,
+.gestao-envios-filtros .form-select { font-size: 0.78rem; max-width: 11rem; }
+.busca-nio-progress .progress { height: 0.65rem; }
+.busca-nio-log {
+    max-height: 220px; overflow: auto; font-size: 0.75rem;
+    background: color-mix(in srgb, var(--bg-secondary, #f1f3f5) 90%, transparent);
+    border-radius: 8px; padding: 0.45rem 0.6rem;
+}
+.busca-nio-log .ln { padding: 0.12rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent); }
+.badge-origem-auto { background: #0ea5e9; }
+.badge-origem-manual { background: #64748b; }
+.badge-origem-sistema { background: #0f766e; }
 .qualidade-toolbar-acoes { margin-left: auto; }
 .qualidade-toolbar-acoes .btn { font-size: 0.72rem; padding: 0.18rem 0.4rem; }
 .qualidade-acoes-menu .dropdown-item { font-size: 0.78rem; }
@@ -533,6 +575,12 @@
                         <span class="badge rounded-pill text-bg-warning" id="badge-faltam">0</span>
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-envios" type="button" onclick="setAbaPrincipal('envios')">
+                        <i class="bi bi-send-check"></i> Envios
+                        <span class="badge rounded-pill text-bg-info" id="badge-envios-faltam" title="Faltam enviar hoje">0</span>
+                    </button>
+                </li>
             </ul>
             <div class="qualidade-lente btn-group" role="group" aria-label="Lente">
                 <button type="button" class="btn btn-primary" id="btn-lente-vencimento" onclick="setLente('vencimento')" title="Vencimento 1ª fatura">
@@ -543,6 +591,11 @@
                 </button>
             </div>
             <div class="d-flex flex-wrap gap-1 qualidade-toolbar-acoes align-items-center">
+                <button type="button" class="q-chip-cobranca" id="chip-cobranca-hoje" onclick="setAbaPrincipal('envios')" title="Clique para abrir gestão de envios">
+                    <i class="bi bi-whatsapp"></i>
+                    <span>Cobrança hoje:</span>
+                    <span class="q-chip-num" id="chip-cobranca-txt">— / —</span>
+                </button>
                 <button class="btn btn-success btn-sm" onclick="exportarDados()" title="Exportar"><i class="bi bi-download"></i></button>
                 <div class="dropdown qualidade-acoes-menu">
                     <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Mais ações">
@@ -760,6 +813,70 @@
                     </div>
                 </div>
             </div>
+            <div id="wrap-gestao-envios" class="qualidade-table-wrap d-none px-1">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                    <div>
+                        <h2 class="h6 mb-1"><i class="bi bi-send-check"></i> Gestão de envios automáticos</h2>
+                        <p class="small text-muted mb-0">Critérios iguais ao job das <strong>10:00</strong> (D−5 · D+5 · recorrente). Contador: <em>faltam / elegíveis</em>.</p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="carregarGestaoEnvios()">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                    </button>
+                </div>
+                <div class="gestao-envios-kpis" id="gestao-kpis">
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-faltam">—</div><div class="kpi-lbl">Faltam enviar</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-elegiveis">—</div><div class="kpi-lbl">Elegíveis hoje</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-enviados">—</div><div class="kpi-lbl">Já enviados (dia)</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-bloqueados">—</div><div class="kpi-lbl">Bloqueados</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-job">—</div><div class="kpi-lbl">Próx. job (máx.)</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-ok">—</div><div class="kpi-lbl">WA ok hoje</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-erro">—</div><div class="kpi-lbl">WA erro hoje</div></div>
+                </div>
+                <ul class="gestao-criterios" id="gestao-criterios"></ul>
+                <div class="small mb-2" id="gestao-tipos"></div>
+                <div class="gestao-envios-filtros">
+                    <input type="date" class="form-control form-control-sm" id="gestao-data" onchange="gestaoPage=1;carregarGestaoEnvios()">
+                    <select class="form-select form-select-sm" id="gestao-origem" onchange="gestaoPage=1;carregarGestaoEnvios()">
+                        <option value="">Origem (todas)</option>
+                        <option value="AUTO">Automático</option>
+                        <option value="MANUAL">Manual</option>
+                        <option value="SISTEMA">Sistema</option>
+                    </select>
+                    <select class="form-select form-select-sm" id="gestao-sucesso" onchange="gestaoPage=1;carregarGestaoEnvios()">
+                        <option value="">Status (todos)</option>
+                        <option value="true">Sucesso</option>
+                        <option value="false">Erro</option>
+                    </select>
+                    <input type="search" class="form-control form-control-sm" id="gestao-q" placeholder="O.S., cliente, telefone…" onkeydown="if(event.key==='Enter'){gestaoPage=1;carregarGestaoEnvios()}">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="gestaoPage=1;carregarGestaoEnvios()"><i class="bi bi-funnel"></i></button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Quando</th>
+                                <th>Origem</th>
+                                <th>O.S.</th>
+                                <th>Cliente</th>
+                                <th>Destino</th>
+                                <th>Template</th>
+                                <th>Resultado</th>
+                                <th>Por</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-gestao-envios">
+                            <tr><td colspan="8" class="text-muted text-center py-3">Carregando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="gestao-paginacao-info"></small>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary" type="button" onclick="mudarPaginaGestao(-1)">Anterior</button>
+                        <button class="btn btn-outline-secondary" type="button" onclick="mudarPaginaGestao(1)">Próxima</button>
+                    </div>
+                </div>
+            </div>
             <div class="d-flex justify-content-between align-items-center qualidade-paginacao">
                 <small class="text-muted" id="paginacao-info"></small>
                 <div class="btn-group btn-group-sm">
@@ -867,6 +984,40 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal progresso Buscar Nio -->
+<div class="modal fade" id="modalBuscaNio" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0"><i class="bi bi-cloud-download"></i> Buscar Nio</h5>
+                    <small class="text-muted" id="busca-nio-subtitulo">Atualizando valor, PIX e barras por contrato</small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" id="btn-busca-nio-fechar-x"></button>
+            </div>
+            <div class="modal-body busca-nio-progress">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong id="busca-nio-status-txt">Iniciando…</strong>
+                    <span class="text-muted small" id="busca-nio-pct">0%</span>
+                </div>
+                <div class="progress mb-2">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="busca-nio-bar" role="progressbar" style="width:0%"></div>
+                </div>
+                <div class="row g-2 small mb-2">
+                    <div class="col-4"><span class="text-muted">Contratos</span><br><strong id="busca-nio-contratos">—</strong></div>
+                    <div class="col-4"><span class="text-muted">Faturas ok</span><br><strong id="busca-nio-ok">0</strong></div>
+                    <div class="col-4"><span class="text-muted">Erros</span><br><strong id="busca-nio-erros">0</strong></div>
+                </div>
+                <div class="small text-muted mb-2" id="busca-nio-atual">—</div>
+                <div class="busca-nio-log" id="busca-nio-log"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btn-busca-nio-fechar">Fechar em segundo plano</button>
             </div>
         </div>
     </div>
@@ -1004,20 +1155,25 @@
     function setAbaPrincipal(aba) {
         abaPrincipal = aba;
         const pageEl = document.getElementById('qualidade-page');
-        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento' || aba === 'faltam' || aba === 'dash_nio');
+        pageEl.classList.toggle('modo-tratamento', aba === 'tratamento' || aba === 'faltam' || aba === 'dash_nio' || aba === 'envios');
         document.getElementById('tab-painel').classList.toggle('active', aba === 'painel');
         document.getElementById('tab-tratamento').classList.toggle('active', aba === 'tratamento');
         document.getElementById('tab-faltam').classList.toggle('active', aba === 'faltam');
         const tabNio = document.getElementById('tab-dash-nio');
         if (tabNio) tabNio.classList.toggle('active', aba === 'dash_nio');
+        const tabEnvios = document.getElementById('tab-envios');
+        if (tabEnvios) tabEnvios.classList.toggle('active', aba === 'envios');
 
         const toolbar = document.getElementById('qualidade-toolbar');
         const filasEl = document.getElementById('filas-tratamento');
         const wrapContratos = document.getElementById('wrap-tabela-contratos');
         const wrapFaltam = document.getElementById('wrap-tabela-faltam');
         const wrapNio = document.getElementById('wrap-dash-nio');
+        const wrapEnvios = document.getElementById('wrap-gestao-envios');
         const paginacao = document.querySelector('.qualidade-paginacao');
         const reconc = document.getElementById('reconciliacao-fpd');
+
+        if (wrapEnvios) wrapEnvios.classList.add('d-none');
 
         if (aba === 'dash_nio') {
             if (toolbar) toolbar.style.display = 'none';
@@ -1027,6 +1183,18 @@
             if (paginacao) paginacao.classList.add('d-none');
             if (reconc) reconc.classList.add('d-none');
             carregarDashboardFpdNio();
+            return;
+        }
+
+        if (aba === 'envios') {
+            if (toolbar) toolbar.style.display = 'none';
+            if (wrapContratos) wrapContratos.classList.add('d-none');
+            if (wrapFaltam) wrapFaltam.classList.add('d-none');
+            if (wrapNio) wrapNio.classList.add('d-none');
+            if (wrapEnvios) wrapEnvios.classList.remove('d-none');
+            if (paginacao) paginacao.classList.add('d-none');
+            if (reconc) reconc.classList.add('d-none');
+            carregarGestaoEnvios();
             return;
         }
 
@@ -1870,6 +2038,7 @@
             alert(data.detail || 'Cobrança enviada com sucesso.');
             modalEnvio.hide();
             if (typeof carregarDashboard === 'function') carregarDashboard();
+            if (typeof carregarPreviewCobranca === 'function') carregarPreviewCobranca();
         } catch (e) {
             setEnvioLoading(false, 'Falhou: ' + (e.message || 'erro'));
             const alerta = document.getElementById('envio-alerta-dados');
@@ -2066,10 +2235,196 @@
             });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || data.message || 'Falha na busca Nio');
-            alert(data.message || data.mensagem || 'Busca iniciada');
+            const logId = data.log_id;
+            if (!logId) {
+                alert(data.message || 'Busca iniciada');
+                return;
+            }
+            abrirModalBuscaNio(logId, mesAtual);
         } catch (e) {
             alert(e.message);
         }
+    };
+
+    let _buscaNioTimer = null;
+    let modalBuscaNio = null;
+
+    function abrirModalBuscaNio(logId, safra) {
+        document.getElementById('busca-nio-subtitulo').textContent =
+            `Safra ${safra} · atualizando valor, PIX e barras (#${logId})`;
+        document.getElementById('busca-nio-status-txt').textContent = 'Iniciando…';
+        document.getElementById('busca-nio-pct').textContent = '0%';
+        document.getElementById('busca-nio-bar').style.width = '0%';
+        document.getElementById('busca-nio-bar').classList.add('progress-bar-animated');
+        document.getElementById('busca-nio-contratos').textContent = '—';
+        document.getElementById('busca-nio-ok').textContent = '0';
+        document.getElementById('busca-nio-erros').textContent = '0';
+        document.getElementById('busca-nio-atual').textContent = 'Aguardando primeiro contrato…';
+        document.getElementById('busca-nio-log').innerHTML = '';
+        if (!modalBuscaNio) modalBuscaNio = new bootstrap.Modal(document.getElementById('modalBuscaNio'));
+        modalBuscaNio.show();
+        if (_buscaNioTimer) clearInterval(_buscaNioTimer);
+        pollBuscaNio(logId);
+        _buscaNioTimer = setInterval(() => pollBuscaNio(logId), 2000);
+    }
+
+    async function pollBuscaNio(logId) {
+        try {
+            const r = await fetch(`${API}/api/qualidade/busca-nio/${logId}/`, { headers: authHeaders() });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Falha ao consultar progresso');
+            const pct = Number(d.percentual || 0);
+            const bar = document.getElementById('busca-nio-bar');
+            bar.style.width = `${pct}%`;
+            document.getElementById('busca-nio-pct').textContent = `${pct}%`;
+            document.getElementById('busca-nio-status-txt').textContent = d.mensagem || d.status || '—';
+            document.getElementById('busca-nio-contratos').textContent =
+                `${d.contratos_feitos || 0} / ${d.total_contratos || 0}`;
+            document.getElementById('busca-nio-ok').textContent = String(d.faturas_sucesso || 0);
+            document.getElementById('busca-nio-erros').textContent = String(d.faturas_erro || 0);
+            document.getElementById('busca-nio-atual').textContent = d.ultimo_contrato
+                ? `Último contrato: ${d.ultimo_contrato}`
+                : (d.em_andamento ? 'Processando…' : (d.mensagem || '—'));
+            const logEl = document.getElementById('busca-nio-log');
+            const recentes = d.recentes || [];
+            if (recentes.length) {
+                logEl.innerHTML = recentes.slice().reverse().map((x) => {
+                    const st = escapeHtml(x.status || '');
+                    const c = escapeHtml(x.contrato || '');
+                    const m = escapeHtml(x.mensagem || '');
+                    const alt = (x.alteracoes || []).join(', ');
+                    return `<div class="ln"><strong>${c}</strong> · ${st}${alt ? ' · ' + escapeHtml(alt) : ''}${m ? ' — ' + m : ''}</div>`;
+                }).join('');
+            }
+            if (!d.em_andamento) {
+                if (_buscaNioTimer) { clearInterval(_buscaNioTimer); _buscaNioTimer = null; }
+                bar.classList.remove('progress-bar-animated');
+                bar.style.width = '100%';
+                document.getElementById('busca-nio-pct').textContent = '100%';
+                if (d.status === 'CONCLUIDA') carregarDashboard();
+            }
+        } catch (e) {
+            document.getElementById('busca-nio-status-txt').textContent = e.message || 'Erro no poll';
+        }
+    }
+
+    let gestaoPage = 1;
+    let gestaoTotalPages = 1;
+
+    function aplicarPreviewCobranca(p) {
+        if (!p) return;
+        const faltam = p.faltam ?? 0;
+        const eleg = p.elegiveis ?? 0;
+        const chip = document.getElementById('chip-cobranca-hoje');
+        const txt = document.getElementById('chip-cobranca-txt');
+        const badge = document.getElementById('badge-envios-faltam');
+        if (txt) txt.textContent = `${faltam} / ${eleg}`;
+        if (badge) badge.textContent = String(faltam);
+        if (chip) {
+            chip.classList.remove('is-warn', 'is-ok');
+            if (!p.templates_habilitados) chip.title = 'Templates Meta desabilitados (WHATSAPP_USE_NIO_TEMPLATES)';
+            else if (faltam > 0) chip.classList.add('is-warn');
+            else chip.classList.add('is-ok');
+            chip.title = [
+                `Faltam ${faltam} de ${eleg} elegíveis`,
+                `Já enviados: ${p.ja_enviados_hoje || 0}`,
+                `Bloqueados: ${p.bloqueados || 0}`,
+                `Job 10:00 · limite ${p.limite_job || 80}`,
+                p.templates_habilitados ? 'Templates ON' : 'Templates OFF',
+            ].join(' · ');
+        }
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+        set('g-kpi-faltam', faltam);
+        set('g-kpi-elegiveis', eleg);
+        set('g-kpi-enviados', p.ja_enviados_hoje ?? '—');
+        set('g-kpi-bloqueados', p.bloqueados ?? '—');
+        set('g-kpi-job', p.proximos_no_job ?? '—');
+        const crit = document.getElementById('gestao-criterios');
+        if (crit && Array.isArray(p.criterios)) {
+            crit.innerHTML = p.criterios.map((c) => `<li>${escapeHtml(c)}</li>`).join('');
+        }
+        const tipos = document.getElementById('gestao-tipos');
+        if (tipos && p.por_tipo && p.labels_tipo) {
+            const f = p.por_tipo.faltam || {};
+            tipos.innerHTML = Object.keys(p.labels_tipo).map((k) =>
+                `<span class="badge text-bg-light border me-1">${escapeHtml(p.labels_tipo[k])}: <strong>${f[k] || 0}</strong> faltam</span>`
+            ).join('');
+        }
+    }
+
+    window.carregarPreviewCobranca = async function () {
+        try {
+            const r = await fetch(`${API}/api/qualidade/cobranca/preview/`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha preview');
+            aplicarPreviewCobranca(data);
+        } catch (_) { /* silencioso na toolbar */ }
+    };
+
+    window.carregarGestaoEnvios = async function () {
+        const tbody = document.getElementById('tbody-gestao-envios');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Carregando…</td></tr>';
+        const dataEl = document.getElementById('gestao-data');
+        if (dataEl && !dataEl.value) {
+            const hoje = new Date();
+            dataEl.value = hoje.toISOString().slice(0, 10);
+        }
+        const params = new URLSearchParams({
+            page: String(gestaoPage),
+            page_size: '40',
+            canal: 'WHATSAPP',
+        });
+        if (dataEl && dataEl.value) params.set('data', dataEl.value);
+        const origem = (document.getElementById('gestao-origem') || {}).value || '';
+        const sucesso = (document.getElementById('gestao-sucesso') || {}).value || '';
+        const q = ((document.getElementById('gestao-q') || {}).value || '').trim();
+        if (origem) params.set('origem', origem);
+        if (sucesso) params.set('sucesso', sucesso);
+        if (q) params.set('q', q);
+        try {
+            const r = await fetch(`${API}/api/qualidade/cobranca/envios/?${params}`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao carregar envios');
+            if (data.preview) aplicarPreviewCobranca(data.preview);
+            const resumo = data.resumo || {};
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+            set('g-kpi-ok', resumo.whatsapp_sucesso ?? '—');
+            set('g-kpi-erro', resumo.whatsapp_erro ?? '—');
+            const itens = data.itens || [];
+            if (!tbody) return;
+            tbody.innerHTML = itens.length ? itens.map((h) => {
+                const origemCls = h.origem === 'AUTO' ? 'badge-origem-auto'
+                    : (h.origem === 'SISTEMA' ? 'badge-origem-sistema' : 'badge-origem-manual');
+                const quando = (h.criado_em || '').replace('T', ' ').slice(0, 16);
+                const result = h.sucesso
+                    ? '<span class="text-success">OK</span>'
+                    : `<span class="text-danger" title="${escapeHtml(h.erro || '')}">Erro</span>`;
+                return `<tr>
+                    <td class="small">${escapeHtml(quando)}</td>
+                    <td><span class="badge ${origemCls}">${escapeHtml(h.origem || '—')}</span></td>
+                    <td>${escapeHtml(h.os || '—')}</td>
+                    <td class="small">${escapeHtml(h.cliente || '—')}</td>
+                    <td class="small">${escapeHtml(h.destinatario || '—')}</td>
+                    <td class="small">${escapeHtml(h.template_nome || '—')}</td>
+                    <td>${result}</td>
+                    <td class="small">${escapeHtml(h.enviado_por || 'job')}</td>
+                </tr>`;
+            }).join('') : '<tr><td colspan="8" class="text-muted text-center py-3">Nenhum envio neste filtro</td></tr>';
+            const total = data.total || 0;
+            const ps = data.page_size || 40;
+            gestaoTotalPages = Math.max(1, Math.ceil(total / ps));
+            const info = document.getElementById('gestao-paginacao-info');
+            if (info) info.textContent = `${total} registro(s) · página ${gestaoPage}/${gestaoTotalPages}`;
+        } catch (e) {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">${escapeHtml(e.message)}</td></tr>`;
+        }
+    };
+
+    window.mudarPaginaGestao = function (delta) {
+        const next = gestaoPage + delta;
+        if (next < 1 || next > gestaoTotalPages) return;
+        gestaoPage = next;
+        carregarGestaoEnvios();
     };
 
     window.exportarDados = async function () {
@@ -2639,6 +2994,8 @@
         const tb = document.getElementById('qualidade-toolbar');
         if (tb) tb.style.display = '';
         carregarPeriodos();
+        carregarPreviewCobranca();
+        setInterval(carregarPreviewCobranca, 60000);
     });
 })();
 </script>

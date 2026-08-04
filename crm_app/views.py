@@ -17500,7 +17500,41 @@ def _run_buscar_faturas_safra_background(historico_id, param, numero_fatura_filt
             'sem_cpf': 0,
             'detalhes': []
         }
-        for contrato in contratos:
+        total_contratos = len(contratos)
+
+        def _persistir_progresso(contratos_feitos: int, ultimo: str = '') -> None:
+            """Atualiza HistoricoBuscaFatura durante a execução (poll da UI)."""
+            try:
+                historico.refresh_from_db(fields=['status'])
+                if historico.status != 'EM_ANDAMENTO':
+                    return
+                historico.total_faturas = resultados['processados']
+                historico.faturas_sucesso = resultados['sucesso']
+                historico.faturas_erro = resultados['erros']
+                historico.mensagem = (
+                    f"Processando {contratos_feitos}/{total_contratos} contratos"
+                    + (f" · {ultimo}" if ultimo else "")
+                )
+                historico.logs = {
+                    'progresso': {
+                        'contratos_feitos': contratos_feitos,
+                        'contratos_total': total_contratos,
+                        'ultimo_contrato': ultimo,
+                        'processados': resultados['processados'],
+                        'sucesso': resultados['sucesso'],
+                        'erros': resultados['erros'],
+                    },
+                    'detalhes': resultados['detalhes'][-80:],
+                }
+                historico.save(update_fields=[
+                    'total_faturas', 'faturas_sucesso', 'faturas_erro',
+                    'mensagem', 'logs',
+                ])
+            except Exception:
+                pass
+
+        for idx, contrato in enumerate(contratos, start=1):
+            try:
                 if not contrato.cpf_cliente:
                     resultados['sem_cpf'] += 1
                     resultados['detalhes'].append({
@@ -17644,6 +17678,10 @@ def _run_buscar_faturas_safra_background(historico_id, param, numero_fatura_filt
                         'status': 'erro',
                         'mensagem': str(e)
                     })
+            finally:
+                if idx == 1 or idx % 3 == 0 or idx == total_contratos:
+                    _persistir_progresso(idx, ultimo=str(contrato.numero_contrato or ''))
+
         # Atualiza histórico ao concluir
         termino = timezone.now()
         historico.termino_em = termino
@@ -17653,8 +17691,21 @@ def _run_buscar_faturas_safra_background(historico_id, param, numero_fatura_filt
         historico.faturas_erro = resultados['erros']
         historico.faturas_nao_disponiveis = resultados.get('nao_disponiveis', 0)
         historico.status = 'CONCLUIDA'
-        historico.mensagem = f"Processados {resultados['processados']}, sucesso: {resultados['sucesso']}, erros: {resultados['erros']}"
-        historico.logs = {'detalhes': resultados['detalhes'][:200]}
+        historico.mensagem = (
+            f"Processados {resultados['processados']}, "
+            f"sucesso: {resultados['sucesso']}, erros: {resultados['erros']}"
+        )
+        historico.logs = {
+            'progresso': {
+                'contratos_feitos': total_contratos,
+                'contratos_total': total_contratos,
+                'ultimo_contrato': '',
+                'processados': resultados['processados'],
+                'sucesso': resultados['sucesso'],
+                'erros': resultados['erros'],
+            },
+            'detalhes': resultados['detalhes'][:200],
+        }
         historico.save()
     except Exception as e:
         try:
@@ -17699,9 +17750,18 @@ class BuscarFaturasSafraView(APIView):
             historico = HistoricoBuscaFatura.objects.create(
                 tipo_busca='SAFRA',
                 safra=safra_display,
-                usuario=None,
+                usuario=request.user if getattr(request.user, 'is_authenticated', False) else None,
                 status='EM_ANDAMENTO',
                 total_contratos=contratos.count(),
+                mensagem=f'Iniciando busca safra {safra_display}…',
+                logs={
+                    'progresso': {
+                        'contratos_feitos': 0,
+                        'contratos_total': contratos.count(),
+                        'ultimo_contrato': '',
+                    },
+                    'detalhes': [],
+                },
             )
             thread = threading.Thread(
                 target=_run_buscar_faturas_safra_background,

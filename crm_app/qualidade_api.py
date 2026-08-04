@@ -526,3 +526,96 @@ class QualidadeAtualizarStatusTratamentoView(APIView):
         except Exception as e:
             logger.exception('Erro ao atualizar status tratamento Qualidade')
             return Response({'error': str(e)}, status=500)
+
+
+class QualidadeBuscaNioStatusView(APIView):
+    """GET /api/qualidade/busca-nio/<id>/ — progresso da busca bulk Nio."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk: int):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        try:
+            return Response(qs.status_busca_nio(pk))
+        except ValueError as e:
+            return Response({'error': str(e)}, status=404)
+        except Exception as e:
+            logger.exception('Erro status busca Nio Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+
+class QualidadeCobrancaPreviewView(APIView):
+    """GET /api/qualidade/cobranca/preview/?data=YYYY-MM-DD — contadores do dia."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        data_str = (request.GET.get('data') or '').strip()
+        data_ref = None
+        if data_str:
+            try:
+                from datetime import date as date_cls
+                data_ref = date_cls.fromisoformat(data_str)
+            except ValueError:
+                return Response({'error': 'data inválida (use YYYY-MM-DD)'}, status=400)
+        try:
+            limite = int(request.GET.get('limite') or 80)
+        except (TypeError, ValueError):
+            limite = 80
+        try:
+            return Response(qs.preview_cobranca_templates_dia(data_ref=data_ref, limite_job=limite))
+        except Exception as e:
+            logger.exception('Erro preview cobrança Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+
+class QualidadeGestaoEnviosView(APIView):
+    """GET /api/qualidade/cobranca/envios/ — painel de logs + preview do dia."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        data_str = (request.GET.get('data') or '').strip()
+        data_ref = None
+        if data_str:
+            try:
+                from datetime import date as date_cls
+                data_ref = date_cls.fromisoformat(data_str)
+            except ValueError:
+                return Response({'error': 'data inválida (use YYYY-MM-DD)'}, status=400)
+
+        sucesso_param = (request.GET.get('sucesso') or '').strip().lower()
+        sucesso: Optional[bool] = None
+        if sucesso_param in ('1', 'true', 'sim'):
+            sucesso = True
+        elif sucesso_param in ('0', 'false', 'nao', 'não'):
+            sucesso = False
+
+        try:
+            page = int(request.GET.get('page') or 1)
+            page_size = int(request.GET.get('page_size') or 50)
+        except (TypeError, ValueError):
+            page, page_size = 1, 50
+
+        try:
+            data = qs.listar_gestao_envios_qualidade(
+                data_ref=data_ref,
+                origem=(request.GET.get('origem') or '').strip(),
+                sucesso=sucesso,
+                canal=(request.GET.get('canal') or 'WHATSAPP').strip(),
+                q=(request.GET.get('q') or '').strip(),
+                page=page,
+                page_size=page_size,
+            )
+            return Response(data)
+        except Exception as e:
+            logger.exception('Erro gestão envios Qualidade')
+            return Response({'error': str(e)}, status=500)
