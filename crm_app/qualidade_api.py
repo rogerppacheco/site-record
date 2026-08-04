@@ -131,6 +131,35 @@ class QualidadeAtualizarContatoView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+class QualidadeRegistrarLigacaoView(APIView):
+    """POST /api/qualidade/contratos/<id>/registrar-ligacao/
+    body: { destino?, sucesso?, detalhe? }
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk: int):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        try:
+            sucesso_raw = request.data.get('sucesso', True)
+            sucesso = str(sucesso_raw).lower() not in ('0', 'false', 'no', 'nao', 'não')
+            resultado = qs.registrar_ligacao_qualidade(
+                pk,
+                request.user,
+                destino=request.data.get('destino') or '',
+                sucesso=sucesso,
+                detalhe=request.data.get('detalhe') or '',
+            )
+            return Response(resultado)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        except Exception as e:
+            logger.exception('Erro ao registrar ligação Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+
 class QualidadeEnviarCobrancaView(APIView):
     """POST /api/qualidade/contratos/<id>/enviar/
     body: { canal: whatsapp|email, fatura_id?, telefone?, email? }

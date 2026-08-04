@@ -362,6 +362,29 @@
     font-size: 0.72rem;
     margin-top: 0.1rem;
 }
+.contato-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    align-items: center;
+    max-width: 7.5rem;
+}
+.contato-badges .badge-contato {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.15rem 0.3rem;
+    border-radius: 0.25rem;
+    opacity: 0.35;
+    cursor: default;
+}
+.contato-badges .badge-contato.ativo {
+    opacity: 1;
+}
+.contato-badges .badge-wpp.ativo { background: #198754; color: #fff; }
+.contato-badges .badge-email.ativo { background: #0d6efd; color: #fff; }
+.contato-badges .badge-ligar.ativo { background: #0dcaf0; color: #033; }
+.contato-badges .badge-resp.ativo { background: #6f42c1; color: #fff; }
+.contato-badges .badge-contato:not(.ativo) { background: #495057; color: #ced4da; }
 .row-orfao { opacity: 0.75; }
 .badge-orfao { background: #6c757d; font-size: 0.65rem; }
 .badge-atrasado { background: #dc3545; font-size: 0.65rem; }
@@ -649,12 +672,13 @@
                             <th>Status trat.</th>
                             <th>Pagas</th>
                             <th>Elegível</th>
-                            <th id="th-bonus" title="Bônus M10 (R$ 150) apenas se elegível">Bônus</th>
+                            <th id="th-valor-coluna" title="">Bônus</th>
+                            <th id="th-contatos" title="Histórico de WhatsApp, e-mail e ligação">Contato</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-contratos">
-                        <tr><td colspan="11" class="text-center text-muted py-4">Selecione um mês</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted py-4">Selecione um mês</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -788,6 +812,7 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="ligacao-venda-id">
+                <input type="hidden" id="ligacao-contrato-id">
                 <p class="small text-muted mb-2" id="ligacao-cliente-nome">—</p>
                 <div class="mb-3" id="ligacao-botoes-tels"></div>
                 <div class="mb-3">
@@ -1334,6 +1359,33 @@
         return String(raw || '').trim();
     }
 
+    function formatDataHoraBr(iso) {
+        if (!iso) return '';
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return String(iso);
+        return dt.toLocaleString('pt-BR');
+    }
+
+    function renderBadgesContato(contatos) {
+        const w = contatos.whatsapp || {};
+        const e = contatos.email || {};
+        const l = contatos.ligacao || {};
+        const r = contatos.resposta || {};
+        const tip = (label, item, extra) => {
+            const n = Number(item.count || 0);
+            if (!n) return `${label}: nenhum registro`;
+            const quando = formatDataHoraBr(item.ultimo_em);
+            const ok = item.sucesso === false ? ' (falhou)' : '';
+            return `${label}: ${n}x · último ${quando || '—'}${ok}${extra || ''}`;
+        };
+        return `<div class="contato-badges">
+            <span class="badge-contato badge-wpp ${w.count ? 'ativo' : ''}" title="${escapeAttr(tip('WhatsApp', w))}"><i class="bi bi-whatsapp"></i>${w.count ? ' ' + w.count : ''}</span>
+            <span class="badge-contato badge-email ${e.count ? 'ativo' : ''}" title="${escapeAttr(tip('E-mail', e))}"><i class="bi bi-envelope"></i>${e.count ? ' ' + e.count : ''}</span>
+            <span class="badge-contato badge-ligar ${l.count ? 'ativo' : ''}" title="${escapeAttr(tip('Ligação', l))}"><i class="bi bi-telephone"></i>${l.count ? ' ' + l.count : ''}</span>
+            <span class="badge-contato badge-resp ${r.count ? 'ativo' : ''}" title="${escapeAttr(tip('Resposta cliente', r, r.texto ? ' · ' + r.texto : ''))}"><i class="bi bi-chat-dots"></i>${r.count ? ' ' + r.count : ''}</span>
+        </div>`;
+    }
+
     function badgeConferenciaFpd(conf) {
         const c = (conf || '').toUpperCase();
         if (c === 'AGUARDANDO') return '<span class="badge badge-conf-aguardando" title="Aguardando confirmação na planilha FPD">Aguard. FPD</span>';
@@ -1430,7 +1482,7 @@
         if (faturasPagas !== '') params.set('faturas_pagas', faturasPagas);
 
         const tbody = document.getElementById('tbody-contratos');
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Carregando…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Carregando…</td></tr>';
         try {
             const r = await fetch(`${API}/api/qualidade/dashboard/?${params}`, { headers: authHeaders() });
             const data = await r.json();
@@ -1441,7 +1493,16 @@
             atualizarReconciliacao(data.reconciliacao);
             statusTratamentoOpcoes = data.status_tratamento_opcoes || [];
             atualizarContagensFiltros(data.contagens_filtros, statusTratamentoOpcoes);
-            document.getElementById('th-bonus').style.display = podeVerBonus ? '' : 'none';
+            const thValor = document.getElementById('th-valor-coluna');
+            if (thValor) {
+                if (podeVerBonus) {
+                    thValor.textContent = 'Bônus';
+                    thValor.title = 'Bônus M10 (R$ 150) — apenas se elegível (Diretoria/Admin)';
+                } else {
+                    thValor.textContent = 'Valor 1ª';
+                    thValor.title = 'Valor da 1ª fatura do contrato';
+                }
+            }
             document.getElementById('kpi-bonus-wrap').style.display = podeVerBonus ? '' : 'none';
 
             const k = data.kpis || {};
@@ -1456,12 +1517,12 @@
             window._qualidadeContratos = window._qualidadeContratos || {};
             rows.forEach((c) => { window._qualidadeContratos[c.id] = c; });
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Nenhum contrato nesta fila</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">Nenhum contrato nesta fila</td></tr>';
             } else {
                 tbody.innerHTML = rows.map(c => {
                     const bonusCell = podeVerBonus
                         ? `<td title="Bônus M10 — só para elegíveis">${c.elegivel ? ('R$ ' + Number(c.valor_bonus || 0).toFixed(2)) : '—'}</td>`
-                        : '';
+                        : `<td title="Valor da 1ª fatura">${c.valor_fatura1 != null ? formatMoney(c.valor_fatura1) : '—'}</td>`;
                     const orfaoBadge = c.orfao ? ' <span class="badge badge-orfao">órfão</span>' : '';
                     const disabled = c.pode_tratar ? '' : 'disabled title="Precisa CPF/vínculo"';
                     const corBord = c.status_tratamento_cor ? `style="border-color:${escapeAttr(c.status_tratamento_cor)}"` : '';
@@ -1473,6 +1534,7 @@
                     const cpfHtml = cpfFmt
                         ? `<div class="cliente-cpf text-muted">${escapeHtml(cpfFmt)}</div>`
                         : '<div class="cliente-cpf text-muted">CPF —</div>';
+                    const contatosHtml = renderBadgesContato(c.contatos || {});
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
                         <td class="col-cliente"><div class="cliente-nome">${escapeHtml(c.cliente_nome || '-')}</div>${cpfHtml}</td>
@@ -1489,6 +1551,7 @@
                         <td><span class="link-faturas" onclick="abrirFaturas(${c.id})" title="Abrir faturas">${c.faturas_pagas || 0}/${c.total_faturas || 0}</span></td>
                         <td>${c.elegivel ? 'Sim' : 'Não'}</td>
                         ${bonusCell}
+                        <td>${contatosHtml}</td>
                         <td class="acoes-btns">
                             <button class="btn btn-outline-secondary" title="Faturas" onclick="abrirFaturas(${c.id})"><i class="bi bi-receipt"></i></button>
                             <button class="btn btn-success" ${disabled} title="${titleWpp}" onclick="abrirEnvioFromId(${c.id}, 'whatsapp')"><i class="bi bi-whatsapp"></i></button>
@@ -1505,7 +1568,7 @@
             document.getElementById('btn-prev').disabled = page <= 1;
             document.getElementById('btn-next').disabled = page >= totalPages;
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="11" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="12" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
         }
     }
     window.carregarDashboard = carregarDashboard;
@@ -1574,6 +1637,7 @@
             return;
         }
         abrirLigacaoQualidade({
+            contratoId: c.id,
             vendaId: c.venda_id || null,
             clienteNome: c.cliente_nome || '',
             telefone: c.telefone || '',
@@ -1769,6 +1833,7 @@
             return;
         }
         document.getElementById('ligacao-venda-id').value = opts.vendaId;
+        document.getElementById('ligacao-contrato-id').value = opts.contratoId || '';
         document.getElementById('ligacao-cliente-nome').textContent = opts.clienteNome || 'Cliente';
         const dest = opts.telefone || opts.telefone2 || '';
         document.getElementById('ligacao-destino').value = dest;
@@ -1824,6 +1889,7 @@
         }
         btn.disabled = true;
         feedback.textContent = 'Iniciando ligação…';
+        const contratoId = document.getElementById('ligacao-contrato-id').value;
         try {
             const r = await fetch(`${API}/api/crm/auditoria/ligacoes/${vendaId}/iniciar/`, {
                 method: 'POST',
@@ -1834,8 +1900,37 @@
             if (!r.ok) throw new Error(data.detail || data.error || 'Falha ao iniciar ligação');
             feedback.textContent = data.detail || 'Ligação iniciada.';
             if (data.warning) feedback.textContent += ' ' + data.warning;
+            if (contratoId) {
+                try {
+                    await fetch(`${API}/api/qualidade/contratos/${contratoId}/registrar-ligacao/`, {
+                        method: 'POST',
+                        headers: authHeaders(),
+                        body: JSON.stringify({
+                            destino,
+                            sucesso: true,
+                            detalhe: data.provider_call_id
+                                ? `Ligação Sonax id=${data.provider_call_id}`
+                                : 'Ligação iniciada pela Qualidade',
+                        }),
+                    });
+                    if (typeof carregarDashboard === 'function') carregarDashboard();
+                } catch (errHist) {
+                    console.warn('Histórico ligação Qualidade', errHist);
+                }
+            }
         } catch (e) {
             feedback.textContent = e.message || 'Erro na ligação';
+            if (contratoId) {
+                fetch(`${API}/api/qualidade/contratos/${contratoId}/registrar-ligacao/`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({
+                        destino,
+                        sucesso: false,
+                        detalhe: e.message || 'Falha ao iniciar',
+                    }),
+                }).catch(() => {});
+            }
         } finally {
             btn.disabled = false;
         }

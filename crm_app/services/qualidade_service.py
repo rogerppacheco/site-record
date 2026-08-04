@@ -541,6 +541,98 @@ def validar_fatura_para_envio_cobranca(fatura: FaturaM10) -> tuple[bool, str]:
     return True, ''
 
 
+def _iso_dt_local(dt: Any) -> Optional[str]:
+    if not dt:
+        return None
+    try:
+        if timezone.is_aware(dt):
+            dt = timezone.localtime(dt)
+        return dt.isoformat()
+    except Exception:
+        return str(dt)
+
+
+def montar_resumo_contatos_por_contrato(
+    contratos: list[ContratoM10],
+) -> dict[int, dict[str, Any]]:
+    """
+    Resumo de contatos por contrato para badges na lista:
+    whatsapp / email / ligacao (+ resposta se já houver).
+    """
+    vazio_canal = {'count': 0, 'ultimo_em': None, 'sucesso': None}
+    out: dict[int, dict[str, Any]] = {}
+    for c in contratos:
+        out[c.id] = {
+            'whatsapp': dict(vazio_canal),
+            'email': dict(vazio_canal),
+            'ligacao': dict(vazio_canal),
+            'resposta': {'count': 0, 'ultimo_em': None, 'texto': ''},
+        }
+    if not contratos or HistoricoEnvioQualidade is None:
+        return out
+
+    ids = [c.id for c in contratos]
+    mapa_venda_para_contrato = {c.venda_id: c.id for c in contratos if c.venda_id}
+    canal_map = {
+        'WHATSAPP': 'whatsapp',
+        'EMAIL': 'email',
+        'LIGACAO': 'ligacao',
+        'RESPOSTA': 'resposta',
+    }
+
+    qs = (
+        HistoricoEnvioQualidade.objects.filter(contrato_id__in=ids)
+        .order_by('-criado_em')
+        .only('contrato_id', 'canal', 'sucesso', 'criado_em', 'mensagem')
+    )
+    for h in qs.iterator(chunk_size=500):
+        bucket = out.get(h.contrato_id)
+        if not bucket:
+            continue
+        key = canal_map.get((h.canal or '').upper())
+        if not key:
+            continue
+        item = bucket[key]
+        item['count'] = int(item.get('count') or 0) + 1
+        if item.get('ultimo_em') is None:
+            item['ultimo_em'] = _iso_dt_local(h.criado_em)
+            if key != 'resposta':
+                item['sucesso'] = bool(h.sucesso)
+            else:
+                item['texto'] = (h.mensagem or '')[:120]
+
+    # Ligações da API Sonax ainda não espelhadas no histórico Qualidade
+    venda_ids_sem_hist = [
+        vid
+        for vid, cid in mapa_venda_para_contrato.items()
+        if out[cid]['ligacao']['count'] == 0
+    ]
+    if venda_ids_sem_hist:
+        try:
+            from django.db.models import Count, Max
+
+            from crm_app.models import AuditoriaLigacao
+
+            agregados = (
+                AuditoriaLigacao.objects.filter(venda_id__in=venda_ids_sem_hist)
+                .values('venda_id')
+                .annotate(n=Count('id'), ultimo=Max('criado_em'))
+            )
+            for row in agregados:
+                cid = mapa_venda_para_contrato.get(row['venda_id'])
+                if not cid:
+                    continue
+                out[cid]['ligacao'] = {
+                    'count': int(row['n'] or 0),
+                    'ultimo_em': _iso_dt_local(row['ultimo']),
+                    'sucesso': True,
+                }
+        except Exception:
+            logger.exception('[Qualidade] Falha ao agregar ligações AuditoriaLigacao')
+
+    return out
+
+
 def _vendedor_nome(contrato: ContratoM10) -> str:
     """Exibe o nickname (username) do vendedor — padrão operacional do time."""
     if not contrato.vendedor:
@@ -749,7 +841,9 @@ def dashboard_qualidade(
     total_pages = (total + page_size - 1) // page_size if total else 0
 
     contratos_data: list[dict[str, Any]] = []
-    for c in contratos_list[start:end]:
+    pagina_contratos = contratos_list[start:end]
+    resumo_contatos = montar_resumo_contatos_por_contrato(pagina_contratos)
+    for c in pagina_contratos:
         is_elegivel = _contrato_elegivel_dinamico(c)
         f1 = faturas1_map.get(c.id)
         status_fatura1 = f1.status if f1 else (c.status_fatura_fpd or None)
@@ -765,6 +859,12 @@ def dashboard_qualidade(
             valor_bonus = VALOR_BONUS_M10 if is_elegivel else 0
 
         data_venc_f1 = f1.data_vencimento.isoformat() if f1 and f1.data_vencimento else None
+        valor_fatura1: Optional[float] = None
+        if f1 is not None and f1.valor is not None:
+            try:
+                valor_fatura1 = float(f1.valor)
+            except (TypeError, ValueError):
+                valor_fatura1 = None
         st = getattr(c, 'status_tratamento', None)
         fatura_envio = _resolver_fatura_envio(c, faturas_por_contrato)
         valor_envio: Optional[float] = None
@@ -800,6 +900,7 @@ def dashboard_qualidade(
             'status_origem': (f1.status_origem if f1 else '') or '',
             'ds_status_fatura_fpd': (f1.ds_status_fatura_fpd if f1 else '') or '',
             'data_vencimento_f1': data_venc_f1,
+            'valor_fatura1': valor_fatura1,
             'status_tratamento_id': st.id if st else None,
             'status_tratamento_nome': st.nome if st else None,
             'status_tratamento_cor': st.cor if st else None,
@@ -817,6 +918,7 @@ def dashboard_qualidade(
             'vencimento_envio': venc_envio,
             'pode_enviar_cobranca': pode_enviar_cobranca,
             'motivo_bloqueio_envio': motivo_bloqueio_envio if not pode_enviar_cobranca else '',
+            'contatos': resumo_contatos.get(c.id) or {},
         })
 
     return {
@@ -1576,6 +1678,38 @@ def _registrar_historico_envio(
         )
     except Exception:
         logger.exception('[Qualidade] Falha ao registrar HistoricoEnvioQualidade')
+
+
+def registrar_ligacao_qualidade(
+    contrato_id: int,
+    user: Any,
+    *,
+    destino: str = '',
+    sucesso: bool = True,
+    detalhe: str = '',
+) -> dict[str, Any]:
+    """Espelha ligação iniciada na Qualidade no HistoricoEnvioQualidade."""
+    try:
+        contrato = ContratoM10.objects.get(pk=contrato_id)
+    except ContratoM10.DoesNotExist as exc:
+        raise ValueError(f'Contrato {contrato_id} não encontrado.') from exc
+
+    telefone = (destino or '').strip()
+    if not telefone:
+        contato = enriquecer_contato_contrato(contrato)
+        telefone = (contato.get('telefone') or contato.get('telefone1') or '').strip() or '—'
+
+    _registrar_historico_envio(
+        contrato=contrato,
+        fatura=None,
+        canal='LIGACAO',
+        destinatario=telefone,
+        mensagem=(detalhe or 'Ligação iniciada pela Qualidade')[:2000],
+        user=user,
+        sucesso=sucesso,
+        erro=None if sucesso else (detalhe or 'Falha na ligação'),
+    )
+    return {'ok': True, 'contrato_id': contrato_id, 'destino': telefone}
 
 
 def enviar_cobranca_whatsapp(

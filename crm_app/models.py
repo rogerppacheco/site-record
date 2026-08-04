@@ -3097,10 +3097,12 @@ class FaturaM10(models.Model):
 
 
 class HistoricoEnvioQualidade(models.Model):
-    """Log de envios de cobrança (WhatsApp/e-mail) do módulo Qualidade."""
+    """Log de envios/contatos do módulo Qualidade (WhatsApp, e-mail, ligação)."""
     CANAL_CHOICES = [
         ('WHATSAPP', 'WhatsApp'),
         ('EMAIL', 'E-mail'),
+        ('LIGACAO', 'Ligação'),
+        ('RESPOSTA', 'Resposta do cliente'),
     ]
 
     contrato = models.ForeignKey(
@@ -3133,6 +3135,9 @@ class HistoricoEnvioQualidade(models.Model):
         verbose_name = "Histórico de Envio Qualidade"
         verbose_name_plural = "Históricos de Envio Qualidade"
         ordering = ['-criado_em']
+        indexes = [
+            models.Index(fields=['contrato', 'canal', '-criado_em']),
+        ]
 
     def __str__(self) -> str:
         return f"{self.canal} → {self.destinatario} ({self.criado_em:%d/%m/%Y %H:%M})"

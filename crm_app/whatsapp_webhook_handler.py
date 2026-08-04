@@ -8050,12 +8050,36 @@ def processar_webhook_whatsapp(data, request=None):
                     break
 
             if botao_meta == BTN_FALAR_SUPORTE:
+                if contrato_ctx:
+                    try:
+                        HistoricoEnvioQualidade.objects.create(
+                            contrato=contrato_ctx,
+                            fatura=fatura_ctx,
+                            canal="RESPOSTA",
+                            destinatario=telefone_formatado,
+                            mensagem=f"Botão: {BTN_FALAR_SUPORTE}",
+                            sucesso=True,
+                        )
+                    except Exception:
+                        logger.debug("[Webhook] Histórico resposta cobrança (suporte) falhou", exc_info=True)
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado, "Em breve um especialista irá falar contigo."
                 )
                 return {"status": "ok", "mensagem": "Cobrança — suporte"}
 
             if botao_meta == BTN_JA_PAGUEI:
+                if contrato_ctx:
+                    try:
+                        HistoricoEnvioQualidade.objects.create(
+                            contrato=contrato_ctx,
+                            fatura=fatura_ctx,
+                            canal="RESPOSTA",
+                            destinatario=telefone_formatado,
+                            mensagem=f"Botão: {BTN_JA_PAGUEI}",
+                            sucesso=True,
+                        )
+                    except Exception:
+                        logger.debug("[Webhook] Histórico resposta cobrança (já paguei) falhou", exc_info=True)
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado,
                     "Obrigado! Se possível, envie o *comprovante de pagamento* nesta conversa "
@@ -8065,6 +8089,17 @@ def processar_webhook_whatsapp(data, request=None):
 
             # Quero a 2ª via
             if fatura_ctx and contrato_ctx:
+                try:
+                    HistoricoEnvioQualidade.objects.create(
+                        contrato=contrato_ctx,
+                        fatura=fatura_ctx,
+                        canal="RESPOSTA",
+                        destinatario=telefone_formatado,
+                        mensagem=f"Botão: {BTN_SEGUNDA_VIA}",
+                        sucesso=True,
+                    )
+                except Exception:
+                    logger.debug("[Webhook] Histórico resposta cobrança (2ª via) falhou", exc_info=True)
                 msg = montar_mensagem_cobranca_roteiro1(contrato_ctx, fatura_ctx)
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado, msg, variar=False
