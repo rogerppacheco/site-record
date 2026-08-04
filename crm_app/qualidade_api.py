@@ -131,6 +131,25 @@ class QualidadeAtualizarContatoView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+class QualidadeHistoricoContatoView(APIView):
+    """GET /api/qualidade/contratos/<id>/historico-contato/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk: int):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        try:
+            data = qs.listar_historico_contato_contrato(pk)
+            return Response(data)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=404)
+        except Exception as e:
+            logger.exception('Erro ao listar histórico contato Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+
 class QualidadeRegistrarLigacaoView(APIView):
     """POST /api/qualidade/contratos/<id>/registrar-ligacao/
     body: { destino?, sucesso?, detalhe? }

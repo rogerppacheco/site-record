@@ -8014,54 +8014,27 @@ def processar_webhook_whatsapp(data, request=None):
     # --- Botões de cobrança (template Meta fatura) ---
     if botao_meta in (BTN_SEGUNDA_VIA, BTN_JA_PAGUEI, BTN_FALAR_SUPORTE):
         try:
-            from datetime import timedelta as _td_cob
-            from crm_app.models import HistoricoEnvioQualidade
-            from crm_app.services.qualidade_service import montar_mensagem_cobranca_roteiro1
-
-            chave_cob = _chave_telefone(telefone_formatado_usuario)
-            chaves_cob = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave_cob]
-            digitos_set = set()
-            for c in chaves_cob:
-                d = "".join(filter(str.isdigit, str(c or "")))
-                if d:
-                    digitos_set.add(d)
-                    if d.startswith("55") and len(d) > 11:
-                        digitos_set.add(d[2:])
-                    elif not d.startswith("55") and len(d) >= 10:
-                        digitos_set.add("55" + d)
-
-            hist = (
-                HistoricoEnvioQualidade.objects.filter(
-                    canal="WHATSAPP",
-                    sucesso=True,
-                    criado_em__gte=timezone.now() - _td_cob(days=14),
-                    fatura_id__isnull=False,
-                )
-                .select_related("fatura", "contrato")
-                .order_by("-criado_em")[:40]
+            from crm_app.services.qualidade_service import (
+                montar_mensagem_cobranca_roteiro1,
+                registrar_resposta_cliente_qualidade,
+                resolver_contexto_cobranca_por_telefone,
             )
-            fatura_ctx = None
-            contrato_ctx = None
-            for h in hist:
-                dest = "".join(filter(str.isdigit, str(h.destinatario or "")))
-                if dest in digitos_set or any(dest.endswith(d[-11:]) for d in digitos_set if len(d) >= 11):
-                    fatura_ctx = h.fatura
-                    contrato_ctx = h.contrato
-                    break
+
+            ctx_cob = resolver_contexto_cobranca_por_telefone(
+                telefone_formatado_usuario, dias=14
+            )
+            fatura_ctx = (ctx_cob or {}).get("fatura")
+            contrato_ctx = (ctx_cob or {}).get("contrato")
 
             if botao_meta == BTN_FALAR_SUPORTE:
                 if contrato_ctx:
-                    try:
-                        HistoricoEnvioQualidade.objects.create(
-                            contrato=contrato_ctx,
-                            fatura=fatura_ctx,
-                            canal="RESPOSTA",
-                            destinatario=telefone_formatado,
-                            mensagem=f"Botão: {BTN_FALAR_SUPORTE}",
-                            sucesso=True,
-                        )
-                    except Exception:
-                        logger.debug("[Webhook] Histórico resposta cobrança (suporte) falhou", exc_info=True)
+                    registrar_resposta_cliente_qualidade(
+                        contrato=contrato_ctx,
+                        fatura=fatura_ctx,
+                        telefone=telefone_formatado,
+                        texto=BTN_FALAR_SUPORTE,
+                        origem="botao",
+                    )
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado, "Em breve um especialista irá falar contigo."
                 )
@@ -8069,17 +8042,13 @@ def processar_webhook_whatsapp(data, request=None):
 
             if botao_meta == BTN_JA_PAGUEI:
                 if contrato_ctx:
-                    try:
-                        HistoricoEnvioQualidade.objects.create(
-                            contrato=contrato_ctx,
-                            fatura=fatura_ctx,
-                            canal="RESPOSTA",
-                            destinatario=telefone_formatado,
-                            mensagem=f"Botão: {BTN_JA_PAGUEI}",
-                            sucesso=True,
-                        )
-                    except Exception:
-                        logger.debug("[Webhook] Histórico resposta cobrança (já paguei) falhou", exc_info=True)
+                    registrar_resposta_cliente_qualidade(
+                        contrato=contrato_ctx,
+                        fatura=fatura_ctx,
+                        telefone=telefone_formatado,
+                        texto=BTN_JA_PAGUEI,
+                        origem="botao",
+                    )
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado,
                     "Obrigado! Se possível, envie o *comprovante de pagamento* nesta conversa "
@@ -8089,17 +8058,13 @@ def processar_webhook_whatsapp(data, request=None):
 
             # Quero a 2ª via
             if fatura_ctx and contrato_ctx:
-                try:
-                    HistoricoEnvioQualidade.objects.create(
-                        contrato=contrato_ctx,
-                        fatura=fatura_ctx,
-                        canal="RESPOSTA",
-                        destinatario=telefone_formatado,
-                        mensagem=f"Botão: {BTN_SEGUNDA_VIA}",
-                        sucesso=True,
-                    )
-                except Exception:
-                    logger.debug("[Webhook] Histórico resposta cobrança (2ª via) falhou", exc_info=True)
+                registrar_resposta_cliente_qualidade(
+                    contrato=contrato_ctx,
+                    fatura=fatura_ctx,
+                    telefone=telefone_formatado,
+                    texto=BTN_SEGUNDA_VIA,
+                    origem="botao",
+                )
                 msg = montar_mensagem_cobranca_roteiro1(contrato_ctx, fatura_ctx)
                 WhatsAppService.para_cliente().enviar_mensagem_texto(
                     telefone_formatado, msg, variar=False
@@ -8113,7 +8078,39 @@ def processar_webhook_whatsapp(data, request=None):
             return {"status": "ok", "mensagem": "Cobrança — 2ª via sem contexto"}
         except Exception as e:
             logger.warning("[Webhook] Erro botão cobrança: %s", e, exc_info=True)
-    
+
+    # --- Texto livre do cliente após cobrança Qualidade (janela 14 dias) ---
+    try:
+        texto_livre_cob = (mensagem_texto or mensagem_limpa or "").strip()
+        if texto_livre_cob and botao_meta not in (
+            BTN_SEGUNDA_VIA,
+            BTN_JA_PAGUEI,
+            BTN_FALAR_SUPORTE,
+        ):
+            from crm_app.services.qualidade_service import (
+                registrar_resposta_cliente_qualidade,
+                resolver_contexto_cobranca_por_telefone,
+            )
+
+            ctx_txt = resolver_contexto_cobranca_por_telefone(
+                telefone_formatado_usuario, dias=14
+            )
+            if ctx_txt and ctx_txt.get("contrato"):
+                registrar_resposta_cliente_qualidade(
+                    contrato=ctx_txt["contrato"],
+                    fatura=ctx_txt.get("fatura"),
+                    telefone=telefone_formatado,
+                    texto=texto_livre_cob,
+                    origem="texto",
+                )
+                logger.info(
+                    "[Webhook] Texto livre cobrança gravado contrato=%s",
+                    getattr(ctx_txt["contrato"], "id", None),
+                )
+                # Não retorna: deixa outros fluxos (boas-vindas etc.) avaliarem.
+    except Exception as e:
+        logger.debug("[Webhook] Texto livre cobrança: %s", e, exc_info=True)
+
     # --- Resposta ao boas-vindas: gravar TODAS as mensagens do cliente (histórico completo) ---
     try:
         from datetime import timedelta as _td

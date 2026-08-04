@@ -1680,6 +1680,129 @@ def _registrar_historico_envio(
         logger.exception('[Qualidade] Falha ao registrar HistoricoEnvioQualidade')
 
 
+def _digitos_telefone_variantes(telefone: str) -> set[str]:
+    digitos_set: set[str] = set()
+    d = re.sub(r'\D', '', str(telefone or ''))
+    if not d:
+        return digitos_set
+    digitos_set.add(d)
+    if d.startswith('55') and len(d) > 11:
+        digitos_set.add(d[2:])
+    elif not d.startswith('55') and len(d) >= 10:
+        digitos_set.add('55' + d)
+    return digitos_set
+
+
+def resolver_contexto_cobranca_por_telefone(
+    telefone: str,
+    *,
+    dias: int = 14,
+) -> Optional[dict[str, Any]]:
+    """
+    Acha contrato/fatura a partir de envio WhatsApp recente de cobrança
+    (mesmo critério do webhook dos botões Meta).
+    """
+    if HistoricoEnvioQualidade is None:
+        return None
+    digitos_set = _digitos_telefone_variantes(telefone)
+    if not digitos_set:
+        return None
+    limite = timezone.now() - relativedelta(days=max(1, int(dias)))
+    hist = (
+        HistoricoEnvioQualidade.objects.filter(
+            canal='WHATSAPP',
+            sucesso=True,
+            criado_em__gte=limite,
+            fatura_id__isnull=False,
+        )
+        .select_related('fatura', 'contrato')
+        .order_by('-criado_em')[:60]
+    )
+    for h in hist:
+        dest = re.sub(r'\D', '', str(h.destinatario or ''))
+        if not dest:
+            continue
+        if dest in digitos_set or any(
+            dest.endswith(d[-11:]) for d in digitos_set if len(d) >= 11
+        ):
+            return {
+                'contrato': h.contrato,
+                'fatura': h.fatura,
+                'historico_envio': h,
+            }
+    return None
+
+
+def registrar_resposta_cliente_qualidade(
+    *,
+    contrato: ContratoM10,
+    fatura: Optional[FaturaM10],
+    telefone: str,
+    texto: str,
+    origem: str = 'texto',
+) -> Optional[Any]:
+    """Persiste clique de botão ou texto livre do cliente após cobrança."""
+    if HistoricoEnvioQualidade is None:
+        return None
+    msg = (texto or '').strip()
+    if not msg:
+        return None
+    prefixo = 'Botão: ' if origem == 'botao' else 'Texto: '
+    try:
+        return HistoricoEnvioQualidade.objects.create(
+            contrato=contrato,
+            fatura=fatura,
+            canal='RESPOSTA',
+            destinatario=(telefone or '')[:255] or '—',
+            mensagem=(prefixo + msg)[:5000],
+            enviado_por=None,
+            sucesso=True,
+        )
+    except Exception:
+        logger.exception('[Qualidade] Falha ao registrar resposta do cliente')
+        return None
+
+
+def listar_historico_contato_contrato(contrato_id: int, *, limite: int = 80) -> dict[str, Any]:
+    """Timeline de envios e respostas do contrato para o modal da Qualidade."""
+    try:
+        contrato = ContratoM10.objects.select_related('venda').get(pk=contrato_id)
+    except ContratoM10.DoesNotExist as exc:
+        raise ValueError(f'Contrato {contrato_id} não encontrado.') from exc
+
+    itens: list[dict[str, Any]] = []
+    if HistoricoEnvioQualidade is not None:
+        qs = (
+            HistoricoEnvioQualidade.objects.filter(contrato_id=contrato_id)
+            .select_related('enviado_por', 'fatura')
+            .order_by('-criado_em')[: max(1, min(200, limite))]
+        )
+        for h in qs:
+            itens.append({
+                'id': h.id,
+                'canal': h.canal,
+                'destinatario': h.destinatario,
+                'mensagem': h.mensagem or '',
+                'sucesso': bool(h.sucesso),
+                'erro': h.erro or '',
+                'criado_em': _iso_dt_local(h.criado_em),
+                'enviado_por': (
+                    (h.enviado_por.get_full_name() or h.enviado_por.username)
+                    if h.enviado_por_id
+                    else None
+                ),
+                'fatura_id': h.fatura_id,
+            })
+
+    return {
+        'contrato_id': contrato.id,
+        'cliente_nome': contrato.cliente_nome or '',
+        'cpf_cliente': (contrato.cpf_cliente or '').strip(),
+        'ordem_servico': contrato.ordem_servico or '',
+        'itens': itens,
+    }
+
+
 def registrar_ligacao_qualidade(
     contrato_id: int,
     user: Any,

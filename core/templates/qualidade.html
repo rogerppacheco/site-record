@@ -368,6 +368,17 @@
     gap: 0.2rem;
     align-items: center;
     max-width: 7.5rem;
+    cursor: pointer;
+}
+.historico-item-canal {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.historico-item-msg {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.86rem;
 }
 .contato-badges .badge-contato {
     font-size: 0.65rem;
@@ -834,6 +845,28 @@
                 <button type="button" class="btn btn-primary" id="btn-iniciar-ligacao" onclick="iniciarLigacaoQualidade()">
                     <i class="bi bi-telephone-outbound-fill"></i> Iniciar ligação
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal histórico de contatos / respostas do cliente -->
+<div class="modal fade" id="modalHistoricoContato" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0"><i class="bi bi-chat-left-text"></i> Histórico de contato</h5>
+                    <small class="text-muted" id="historico-contato-subtitulo"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="historico-contato-lista" class="list-group list-group-flush"></div>
+                <div class="text-muted small text-center py-3 d-none" id="historico-contato-vazio">Nenhum envio ou resposta registrada ainda.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>
@@ -1366,19 +1399,19 @@
         return dt.toLocaleString('pt-BR');
     }
 
-    function renderBadgesContato(contatos) {
+    function renderBadgesContato(contatos, contratoId) {
         const w = contatos.whatsapp || {};
         const e = contatos.email || {};
         const l = contatos.ligacao || {};
         const r = contatos.resposta || {};
         const tip = (label, item, extra) => {
             const n = Number(item.count || 0);
-            if (!n) return `${label}: nenhum registro`;
+            if (!n) return `${label}: nenhum registro — clique para ver histórico`;
             const quando = formatDataHoraBr(item.ultimo_em);
             const ok = item.sucesso === false ? ' (falhou)' : '';
-            return `${label}: ${n}x · último ${quando || '—'}${ok}${extra || ''}`;
+            return `${label}: ${n}x · último ${quando || '—'}${ok}${extra || ''} — clique para ver`;
         };
-        return `<div class="contato-badges">
+        return `<div class="contato-badges" role="button" onclick="abrirHistoricoContato(${contratoId})" title="Ver histórico completo">
             <span class="badge-contato badge-wpp ${w.count ? 'ativo' : ''}" title="${escapeAttr(tip('WhatsApp', w))}"><i class="bi bi-whatsapp"></i>${w.count ? ' ' + w.count : ''}</span>
             <span class="badge-contato badge-email ${e.count ? 'ativo' : ''}" title="${escapeAttr(tip('E-mail', e))}"><i class="bi bi-envelope"></i>${e.count ? ' ' + e.count : ''}</span>
             <span class="badge-contato badge-ligar ${l.count ? 'ativo' : ''}" title="${escapeAttr(tip('Ligação', l))}"><i class="bi bi-telephone"></i>${l.count ? ' ' + l.count : ''}</span>
@@ -1534,7 +1567,7 @@
                     const cpfHtml = cpfFmt
                         ? `<div class="cliente-cpf text-muted">${escapeHtml(cpfFmt)}</div>`
                         : '<div class="cliente-cpf text-muted">CPF —</div>';
-                    const contatosHtml = renderBadgesContato(c.contatos || {});
+                    const contatosHtml = renderBadgesContato(c.contatos || {}, c.id);
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
                         <td class="col-cliente"><div class="cliente-nome">${escapeHtml(c.cliente_nome || '-')}</div>${cpfHtml}</td>
@@ -1606,6 +1639,73 @@
             carregarFaltamNoCrm();
         } else {
             carregarDashboard();
+        }
+    };
+
+    let modalHistoricoContato = null;
+
+    window.abrirHistoricoContato = async function (contratoId) {
+        if (!modalHistoricoContato) {
+            modalHistoricoContato = new bootstrap.Modal(document.getElementById('modalHistoricoContato'));
+        }
+        const lista = document.getElementById('historico-contato-lista');
+        const vazio = document.getElementById('historico-contato-vazio');
+        const sub = document.getElementById('historico-contato-subtitulo');
+        lista.innerHTML = '<div class="text-muted small py-2">Carregando…</div>';
+        vazio.classList.add('d-none');
+        sub.textContent = '';
+        modalHistoricoContato.show();
+        try {
+            const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/historico-contato/`, {
+                headers: authHeaders(),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao carregar histórico');
+            sub.textContent = [
+                data.ordem_servico ? `O.S. ${data.ordem_servico}` : '',
+                data.cliente_nome || '',
+                data.cpf_cliente || '',
+            ].filter(Boolean).join(' · ');
+            const itens = data.itens || [];
+            if (!itens.length) {
+                lista.innerHTML = '';
+                vazio.classList.remove('d-none');
+                return;
+            }
+            const canalLabel = {
+                WHATSAPP: 'WhatsApp',
+                EMAIL: 'E-mail',
+                LIGACAO: 'Ligação',
+                RESPOSTA: 'Resposta cliente',
+            };
+            const canalClass = {
+                WHATSAPP: 'text-success',
+                EMAIL: 'text-primary',
+                LIGACAO: 'text-info',
+                RESPOSTA: 'text-warning',
+            };
+            lista.innerHTML = itens.map((it) => {
+                const canal = it.canal || '';
+                const title = canalLabel[canal] || canal;
+                const cls = canalClass[canal] || '';
+                const status = it.sucesso === false
+                    ? '<span class="badge bg-danger ms-1">falhou</span>'
+                    : '';
+                const erro = it.erro ? `<div class="small text-danger mt-1">${escapeHtml(it.erro)}</div>` : '';
+                const por = it.enviado_por ? `<div class="small text-muted">por ${escapeHtml(it.enviado_por)}</div>` : '';
+                return `<div class="list-group-item px-0">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <span class="historico-item-canal ${cls}">${escapeHtml(title)}</span>${status}
+                            <div class="historico-item-msg mt-1">${escapeHtml(it.mensagem || '—')}</div>
+                            ${por}${erro}
+                        </div>
+                        <small class="text-muted text-nowrap">${escapeHtml(formatDataHoraBr(it.criado_em) || '—')}</small>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            lista.innerHTML = `<div class="text-danger small">${escapeHtml(e.message || 'Erro')}</div>`;
         }
     };
 
@@ -2534,6 +2634,7 @@
         modalFaturas = new bootstrap.Modal(document.getElementById('modalFaturas'));
         modalNio = new bootstrap.Modal(document.getElementById('modalNioOpcoes'));
         modalLigacaoQualidade = new bootstrap.Modal(document.getElementById('modalLigacaoQualidade'));
+        modalHistoricoContato = new bootstrap.Modal(document.getElementById('modalHistoricoContato'));
         document.getElementById('qualidade-page').classList.add('modo-tratamento');
         const tb = document.getElementById('qualidade-toolbar');
         if (tb) tb.style.display = '';
