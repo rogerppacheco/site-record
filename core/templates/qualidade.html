@@ -302,56 +302,65 @@
     min-width: 100%;
     border-collapse: collapse;
     font-size: 0.82rem;
-    background: #fff;
-    color: #222;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
 }
-.table-nio-fpd th, .table-nio-fpd td {
-    border: 2px solid #c62828;
+.table-nio-fpd th,
+.table-nio-fpd td {
+    border: 2px solid #c62828 !important;
     padding: 0.35rem 0.65rem;
     text-align: center;
     font-weight: 700;
     white-space: nowrap;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
 }
-.table-nio-fpd th:first-child, .table-nio-fpd td:first-child {
+.table-nio-fpd th:first-child,
+.table-nio-fpd td:first-child {
     text-align: left;
-    background: #fff;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
     position: sticky;
     left: 0;
     z-index: 1;
     min-width: 8.5rem;
 }
-.table-nio-fpd .nio-num { text-decoration: underline; text-underline-offset: 2px; }
+.table-nio-fpd .nio-num {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    color: #1a1a1a !important;
+}
 /* Faixas: mesma cor na 1ª coluna (sticky) + contraste legível */
 .table-nio-fpd tr.nio-faixa-d10_15 > td,
 .table-nio-fpd tr.nio-faixa-d10_15 > td:first-child {
-    background: #fff59d;
-    color: #1a1a1a;
+    background: #fff59d !important;
+    color: #1a1a1a !important;
 }
 .table-nio-fpd tr.nio-faixa-d15_30 > td,
 .table-nio-fpd tr.nio-faixa-d15_30 > td:first-child {
-    background: #ffe082;
-    color: #1a1a1a;
+    background: #ffe082 !important;
+    color: #1a1a1a !important;
 }
 .table-nio-fpd tr.nio-faixa-d30_45 > td,
 .table-nio-fpd tr.nio-faixa-d30_45 > td:first-child {
-    background: #ef9a9a;
-    color: #1a1a1a;
+    background: #ef9a9a !important;
+    color: #1a1a1a !important;
 }
 .table-nio-fpd tr.nio-faixa-d45_59 > td,
 .table-nio-fpd tr.nio-faixa-d45_59 > td:first-child {
-    background: #c62828;
-    color: #ffffff;
+    background: #c62828 !important;
+    color: #ffffff !important;
 }
 .table-nio-fpd tr.nio-faixa-d61 > td,
 .table-nio-fpd tr.nio-faixa-d61 > td:first-child {
-    background: #7f0000;
-    color: #ffffff;
+    background: #7f0000 !important;
+    color: #ffffff !important;
 }
-.table-nio-fpd .nio-row-header td { background: #fff; color: #222; }
+.table-nio-fpd .nio-row-header td { background: #fff !important; color: #222 !important; }
 .table-nio-fpd.is-por-vendedor th,
 .table-nio-fpd.is-por-vendedor td {
     font-size: 0.72rem;
-    padding: 0.35rem 0.4rem;
+    padding: 0.4rem 0.45rem;
     vertical-align: middle;
 }
 .table-nio-fpd.is-por-vendedor th:first-child,
@@ -359,53 +368,53 @@
     position: sticky;
     left: 0;
     z-index: 1;
-    background: #fff;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
     min-width: 9rem;
     max-width: 12rem;
     text-align: left;
     font-weight: 600;
 }
-.table-nio-fpd .nio-cell-tri {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1.35fr;
-    gap: 0.12rem;
-    min-width: 7.2rem;
+/* Célula: T / P / A - % FPD (sempre legível no tema escuro) */
+.table-nio-fpd .nio-cell-tpa {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.2rem;
     font-variant-numeric: tabular-nums;
-    line-height: 1.15;
-    align-items: center;
-}
-.table-nio-fpd .nio-cell-tri .t { color: #222; font-weight: 700; }
-.table-nio-fpd .nio-cell-tri .p { color: #059669; }
-.table-nio-fpd .nio-cell-tri .a { color: #dc2626; font-weight: 600; }
-.table-nio-fpd .nio-cell-tri .pct {
-    font-weight: 700;
-    font-size: 0.68rem;
-}
-.nio-legenda-tpa .pct { font-weight: 700; }
-.table-nio-fpd .nio-pct {
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
+    font-size: 0.74rem;
+    line-height: 1.2;
     white-space: nowrap;
+    color: #1a1a1a !important;
 }
-.table-nio-fpd .nio-pct.is-alto { color: #dc2626; }
-.table-nio-fpd .nio-pct.is-medio { color: #d97706; }
-.table-nio-fpd .nio-pct.is-baixo { color: #059669; }
+.table-nio-fpd .nio-cell-tpa .t { color: #111827 !important; font-weight: 700; }
+.table-nio-fpd .nio-cell-tpa .p { color: #047857 !important; font-weight: 700; }
+.table-nio-fpd .nio-cell-tpa .a { color: #b91c1c !important; font-weight: 700; }
+.table-nio-fpd .nio-cell-tpa .sep { color: #6b7280 !important; font-weight: 600; }
+.table-nio-fpd .nio-cell-tpa .pct {
+    font-weight: 800;
+    margin-left: 0.05rem;
+}
+.table-nio-fpd .nio-pct.is-alto { color: #b91c1c !important; }
+.table-nio-fpd .nio-pct.is-medio { color: #b45309 !important; }
+.table-nio-fpd .nio-pct.is-baixo { color: #047857 !important; }
 .table-nio-fpd tr.nio-total-row td {
     font-weight: 700;
-    border-top: 2px solid var(--border-color);
-    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    border-top: 2px solid #c62828 !important;
+    background: #f3f4f6 !important;
+    color: #1a1a1a !important;
 }
 .nio-fpd-scroll {
     max-height: calc(100vh - 210px);
     overflow: auto;
     border-radius: 4px;
+    background: #ffffff;
 }
 .table-nio-fpd thead th {
     position: sticky;
     top: 0;
     z-index: 3;
-    background: #fff;
-    color: #222;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
     box-shadow: inset 0 -2px 0 #c62828;
 }
 .table-nio-fpd thead th.nio-sortable {
@@ -413,34 +422,37 @@
     user-select: none;
 }
 .table-nio-fpd thead th.nio-sortable:hover {
-    background: #f5f5f5;
+    background: #f3f4f6 !important;
 }
 .table-nio-fpd thead th .nio-sort-ico {
     margin-left: 0.2rem;
     font-size: 0.65rem;
-    opacity: 0.35;
+    opacity: 0.4;
     font-weight: 700;
+    color: #c62828 !important;
 }
 .table-nio-fpd thead th.is-sorted .nio-sort-ico {
     opacity: 1;
-    color: #c62828;
 }
 .table-nio-fpd.is-por-vendedor thead th:first-child {
     z-index: 4;
     left: 0;
     position: sticky;
+    background: #ffffff !important;
 }
 .table-nio-fpd.is-por-vendedor tbody td:first-child {
     z-index: 2;
 }
 .nio-modo-toggle .btn { font-size: 0.72rem; padding: 0.18rem 0.45rem; }
 .nio-legenda-tpa {
-    font-size: 0.68rem;
-    color: var(--text-secondary);
+    font-size: 0.66rem;
+    color: #4b5563 !important;
+    font-weight: 600;
 }
-.nio-legenda-tpa .t { font-weight: 700; }
-.nio-legenda-tpa .p { color: #059669; font-weight: 600; }
-.nio-legenda-tpa .a { color: #dc2626; font-weight: 600; }
+.nio-legenda-tpa .t { color: #111827 !important; font-weight: 700; }
+.nio-legenda-tpa .p { color: #047857 !important; font-weight: 700; }
+.nio-legenda-tpa .a { color: #b91c1c !important; font-weight: 700; }
+.nio-legenda-tpa .pct { color: #1d4ed8 !important; font-weight: 800; }
 .qualidade-page.modo-tratamento .qualidade-shell { padding: 0.3rem 0.4rem !important; }
 .qualidade-page.modo-tratamento .qualidade-lente { margin-bottom: 0.2rem !important; }
 .qualidade-page.modo-tratamento .q-titulo-bloco { display: none; }
@@ -903,7 +915,7 @@
                             <i class="bi bi-arrow-clockwise"></i> Atualizar
                         </button>
                         <span class="nio-legenda-tpa d-none" id="nio-legenda-tpa" title="Legenda por mês">
-                            Em cada mês: <span class="t">T</span>otal · <span class="p">P</span>agas · <span class="a">A</span>bertas · <span class="pct">%</span>
+                            Em cada mês: <span class="t">T</span> / <span class="p">P</span> / <span class="a">A</span> - <span class="pct">% FPD</span>
                         </span>
                         <small class="text-muted" id="nio-fpd-fonte">Fonte: planilha FPD importada</small>
                     </div>
@@ -2659,13 +2671,14 @@
             ? '—'
             : pctRaw.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 }) + '%';
         const pctCls = pctRaw == null ? '' : _pctClassNio(pctRaw);
-        return `<td title="Total ${t} · Pagas ${p} · Abertas ${a} · % Aberto ${pctTxt}">
-            <div class="nio-cell-tri">
-                <span class="t">${t}</span>
-                <span class="p">${p}</span>
+        return `<td title="Total ${t} · Pagas ${p} · Abertas ${a} · % FPD ${pctTxt}">
+            <span class="nio-cell-tpa">
+                <span class="t">${t}</span><span class="sep">/</span>
+                <span class="p">${p}</span><span class="sep">/</span>
                 <span class="a">${a}</span>
+                <span class="sep">-</span>
                 <span class="pct nio-pct ${pctCls}">${pctTxt}</span>
-            </div>
+            </span>
         </td>`;
     }
 
@@ -2763,7 +2776,7 @@
             head += `<th class="nio-sortable ${cls}" onclick="ordenarDashNio('${escapeAttr(k)}')"
                 title="Ordenar por % aberto de ${escapeHtml(c.label || k)} (maior↔menor)">
                 <div>${escapeHtml(k)}<span class="nio-sort-ico">${_sortIco(k)}</span></div>
-                <div class="nio-legenda-tpa" style="font-weight:500"><span class="t">T</span>/<span class="p">P</span>/<span class="a">A</span>/<span class="pct">%</span></div>
+                <div class="nio-legenda-tpa"><span class="t">T</span> / <span class="p">P</span> / <span class="a">A</span> - <span class="pct">% FPD</span></div>
             </th>`;
         });
         head += '</tr>';
