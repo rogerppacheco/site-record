@@ -1366,16 +1366,14 @@ def _classificar_pago_aberto_fpd(
 
 
 def _nome_vendedor_de_row(row: dict[str, Any]) -> tuple[Optional[int], str]:
+    """Nickname operacional = username (padrão do time / _vendedor_nome)."""
     vid = row.get('contrato_m10__vendedor_id') or row.get('vendedor_id')
     if not vid:
-        return None, 'Sem vendedor CRM'
-    nome = (
-        f"{(row.get('contrato_m10__vendedor__first_name') or '').strip()} "
-        f"{(row.get('contrato_m10__vendedor__last_name') or '').strip()}"
-    ).strip()
-    if not nome:
-        nome = (row.get('contrato_m10__vendedor__username') or f'#{vid}').strip()
-    return int(vid), nome
+        return None, 'sem-vendedor'
+    nick = (row.get('contrato_m10__vendedor__username') or '').strip()
+    if nick:
+        return int(vid), nick
+    return int(vid), f'#{vid}'
 
 
 def dashboard_fpd_por_vendedor(
@@ -1500,32 +1498,47 @@ def dashboard_fpd_por_vendedor(
     for block in por_vend.values():
         total = int(block['total'])
         abertas = int(block['abertas'])
+        pagas = int(block['pagas'])
+        # Só listar quem tem volume (paga ou aberta) no período
+        if total <= 0 or (pagas + abertas) <= 0:
+            continue
         pct = round((abertas / total * 100), 2) if total else 0.0
         meses_out = {}
         for m in meses_ord:
             b = block['meses'][m]
+            m_total = int(b['total'])
+            m_abertas = int(b['abertas'])
+            m_pct = round((m_abertas / m_total * 100), 2) if m_total else None
             meses_out[m] = {
-                'total': b['total'],
-                'pagas': b['pagas'],
-                'abertas': b['abertas'],
+                'total': m_total,
+                'pagas': int(b['pagas']),
+                'abertas': m_abertas,
+                'pct_aberto': m_pct,
             }
-            totais_mes[m]['total'] += b['total']
-            totais_mes[m]['pagas'] += b['pagas']
-            totais_mes[m]['abertas'] += b['abertas']
+            totais_mes[m]['total'] += m_total
+            totais_mes[m]['pagas'] += int(b['pagas'])
+            totais_mes[m]['abertas'] += m_abertas
         tot_geral['total'] += total
-        tot_geral['pagas'] += int(block['pagas'])
+        tot_geral['pagas'] += pagas
         tot_geral['abertas'] += abertas
         linhas.append({
             'vendedor_id': block['vendedor_id'],
             'vendedor_nome': block['vendedor_nome'],
             'meses': meses_out,
             'total': total,
-            'pagas': int(block['pagas']),
+            'pagas': pagas,
             'abertas': abertas,
             'pct_aberto': pct,
         })
 
-    # Maior FPD (pior) primeiro; depois nome
+    for m in meses_ord:
+        tm = totais_mes[m]
+        tm_total = int(tm['total'])
+        tm['pct_aberto'] = (
+            round((int(tm['abertas']) / tm_total * 100), 2) if tm_total else None
+        )
+
+    # Maior FPD do período (pior) primeiro; depois nickname
     linhas.sort(key=lambda x: (-x['pct_aberto'], x['vendedor_nome'].lower()))
 
     pct_geral = (
@@ -1546,10 +1559,10 @@ def dashboard_fpd_por_vendedor(
             'abertas': tot_geral['abertas'],
             'pct_aberto': pct_geral,
         },
-        'legenda_celula': 'T = total · P = pagas · A = abertas',
+        'legenda_celula': 'T = total · P = pagas · A = abertas · % = aberto no mês',
         'fonte': (
             'Visão por vendedor CRM · pago/aberto = Tratamento · '
-            'universo = ImportacaoFPD · % Aberto = abertas ÷ total do período'
+            'universo = ImportacaoFPD · % Aberto = abertas ÷ total de cada mês'
         ),
         'vendedores': _listar_vendedores_dashboard_fpd(ind),
         'modo_resumo': False,
@@ -1565,7 +1578,10 @@ def dashboard_fpd_por_vendedor(
 
 
 def _listar_vendedores_dashboard_fpd(indicador: str) -> list[dict[str, Any]]:
-    """Vendedores do CRM com contrato linkado em ImportacaoFPD do indicador."""
+    """Vendedores do CRM com contrato linkado em ImportacaoFPD do indicador.
+
+    ``nome`` = username (nickname operacional).
+    """
     vend_ids = (
         ImportacaoFPD.objects.filter(
             indicador=indicador,
@@ -1581,8 +1597,6 @@ def _listar_vendedores_dashboard_fpd(indicador: str) -> list[dict[str, Any]]:
         .values(
             'vendedor_id',
             'vendedor__username',
-            'vendedor__first_name',
-            'vendedor__last_name',
         )
         .distinct()
     )
@@ -1593,13 +1607,8 @@ def _listar_vendedores_dashboard_fpd(indicador: str) -> list[dict[str, Any]]:
         if not vid or vid in vistos:
             continue
         vistos.add(vid)
-        nome = (
-            f"{(row.get('vendedor__first_name') or '').strip()} "
-            f"{(row.get('vendedor__last_name') or '').strip()}"
-        ).strip()
-        if not nome:
-            nome = (row.get('vendedor__username') or f'#{vid}').strip()
-        out.append({'id': vid, 'nome': nome})
+        nick = (row.get('vendedor__username') or '').strip() or f'#{vid}'
+        out.append({'id': vid, 'nome': nick})
     out.sort(key=lambda x: x['nome'].lower())
     return out
 

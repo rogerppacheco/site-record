@@ -367,15 +367,21 @@
 }
 .table-nio-fpd .nio-cell-tri {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.15rem;
-    min-width: 5.5rem;
+    grid-template-columns: 1fr 1fr 1fr 1.35fr;
+    gap: 0.12rem;
+    min-width: 7.2rem;
     font-variant-numeric: tabular-nums;
     line-height: 1.15;
+    align-items: center;
 }
-.table-nio-fpd .nio-cell-tri .t { color: var(--text-primary); font-weight: 700; }
+.table-nio-fpd .nio-cell-tri .t { color: #222; font-weight: 700; }
 .table-nio-fpd .nio-cell-tri .p { color: #059669; }
 .table-nio-fpd .nio-cell-tri .a { color: #dc2626; font-weight: 600; }
+.table-nio-fpd .nio-cell-tri .pct {
+    font-weight: 700;
+    font-size: 0.68rem;
+}
+.nio-legenda-tpa .pct { font-weight: 700; }
 .table-nio-fpd .nio-pct {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -388,6 +394,44 @@
     font-weight: 700;
     border-top: 2px solid var(--border-color);
     background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+}
+.nio-fpd-scroll {
+    max-height: calc(100vh - 210px);
+    overflow: auto;
+    border-radius: 4px;
+}
+.table-nio-fpd thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #fff;
+    color: #222;
+    box-shadow: inset 0 -2px 0 #c62828;
+}
+.table-nio-fpd thead th.nio-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+.table-nio-fpd thead th.nio-sortable:hover {
+    background: #f5f5f5;
+}
+.table-nio-fpd thead th .nio-sort-ico {
+    margin-left: 0.2rem;
+    font-size: 0.65rem;
+    opacity: 0.35;
+    font-weight: 700;
+}
+.table-nio-fpd thead th.is-sorted .nio-sort-ico {
+    opacity: 1;
+    color: #c62828;
+}
+.table-nio-fpd.is-por-vendedor thead th:first-child {
+    z-index: 4;
+    left: 0;
+    position: sticky;
+}
+.table-nio-fpd.is-por-vendedor tbody td:first-child {
+    z-index: 2;
 }
 .nio-modo-toggle .btn { font-size: 0.72rem; padding: 0.18rem 0.45rem; }
 .nio-legenda-tpa {
@@ -859,12 +903,13 @@
                             <i class="bi bi-arrow-clockwise"></i> Atualizar
                         </button>
                         <span class="nio-legenda-tpa d-none" id="nio-legenda-tpa" title="Legenda por mês">
-                            Em cada mês: <span class="t">T</span>otal · <span class="p">P</span>agas · <span class="a">A</span>bertas
+                            Em cada mês: <span class="t">T</span>otal · <span class="p">P</span>agas · <span class="a">A</span>bertas · <span class="pct">%</span>
                         </span>
                         <small class="text-muted" id="nio-fpd-fonte">Fonte: planilha FPD importada</small>
                     </div>
-                    <div class="table-responsive">
+                    <div class="table-responsive nio-fpd-scroll">
                         <table class="table-nio-fpd" id="table-nio-fpd">
+                            <thead id="thead-nio-fpd"></thead>
                             <tbody id="tbody-nio-fpd">
                                 <tr><td class="text-muted">Carregando…</td></tr>
                             </tbody>
@@ -2581,9 +2626,15 @@
     };
 
     let modoDashNio = 'geral';
+    let dashNioPorVendData = null;
+    /** @type {{key: string, dir: 'asc'|'desc'}} */
+    let dashNioSort = { key: 'pct_periodo', dir: 'desc' };
 
     window.setModoDashNio = function (modo) {
         modoDashNio = modo === 'por_vendedor' ? 'por_vendedor' : 'geral';
+        if (modoDashNio === 'por_vendedor') {
+            dashNioSort = { key: 'pct_periodo', dir: 'desc' };
+        }
         const btnG = document.getElementById('btn-modo-geral');
         const btnV = document.getElementById('btn-modo-vendedor');
         if (btnG && btnV) {
@@ -2603,11 +2654,17 @@
         const t = Number((m && m.total) || 0);
         const p = Number((m && m.pagas) || 0);
         const a = Number((m && m.abertas) || 0);
-        return `<td title="Total ${t} · Pagas ${p} · Abertas ${a}">
+        const pctRaw = (m && m.pct_aberto != null) ? Number(m.pct_aberto) : (t > 0 ? (a / t * 100) : null);
+        const pctTxt = pctRaw == null
+            ? '—'
+            : pctRaw.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 }) + '%';
+        const pctCls = pctRaw == null ? '' : _pctClassNio(pctRaw);
+        return `<td title="Total ${t} · Pagas ${p} · Abertas ${a} · % Aberto ${pctTxt}">
             <div class="nio-cell-tri">
                 <span class="t">${t}</span>
                 <span class="p">${p}</span>
                 <span class="a">${a}</span>
+                <span class="pct nio-pct ${pctCls}">${pctTxt}</span>
             </div>
         </td>`;
     }
@@ -2619,58 +2676,129 @@
         return 'is-baixo';
     }
 
+    function _sortIco(key) {
+        if (!dashNioSort || dashNioSort.key !== key) return '↕';
+        return dashNioSort.dir === 'asc' ? '▲' : '▼';
+    }
+
+    window.ordenarDashNio = function (key) {
+        if (!dashNioPorVendData) return;
+        if (dashNioSort && dashNioSort.key === key) {
+            dashNioSort.dir = dashNioSort.dir === 'desc' ? 'asc' : 'desc';
+        } else {
+            dashNioSort = {
+                key,
+                dir: key === 'vendedor' ? 'asc' : 'desc',
+            };
+        }
+        renderDashNioPorVendedor(dashNioPorVendData);
+    };
+
+    function _linhasOrdenadas(linhas, key, dir) {
+        const rows = (linhas || []).slice();
+        const mult = dir === 'asc' ? 1 : -1;
+        rows.sort((a, b) => {
+            if (key === 'vendedor') {
+                const na = String(a.vendedor_nome || '').toLowerCase();
+                const nb = String(b.vendedor_nome || '').toLowerCase();
+                if (na < nb) return -1 * mult;
+                if (na > nb) return 1 * mult;
+                return 0;
+            }
+            let va, vb;
+            if (key === 'pct_periodo') {
+                va = Number(a.pct_aberto || 0);
+                vb = Number(b.pct_aberto || 0);
+            } else {
+                const ma = (a.meses && a.meses[key]) || {};
+                const mb = (b.meses && b.meses[key]) || {};
+                const pa = ma.pct_aberto;
+                const pb = mb.pct_aberto;
+                const aEmpty = pa == null || Number(ma.total || 0) === 0;
+                const bEmpty = pb == null || Number(mb.total || 0) === 0;
+                if (aEmpty && bEmpty) {
+                    return String(a.vendedor_nome || '').localeCompare(String(b.vendedor_nome || ''), 'pt-BR');
+                }
+                if (aEmpty) return 1;
+                if (bEmpty) return -1;
+                va = Number(pa);
+                vb = Number(pb);
+                if (va === vb) {
+                    va = Number(ma.total || 0);
+                    vb = Number(mb.total || 0);
+                }
+            }
+            if (va < vb) return -1 * mult;
+            if (va > vb) return 1 * mult;
+            return String(a.vendedor_nome || '').localeCompare(String(b.vendedor_nome || ''), 'pt-BR');
+        });
+        return rows;
+    }
+
     function renderDashNioPorVendedor(data) {
+        dashNioPorVendData = data;
+        const thead = document.getElementById('thead-nio-fpd');
         const tbody = document.getElementById('tbody-nio-fpd');
         const table = document.getElementById('table-nio-fpd');
         if (table) table.classList.add('is-por-vendedor');
         const cols = data.colunas || [];
-        const linhas = data.linhas_vendedores || [];
         const totais = data.totais || {};
         if (!cols.length) {
+            if (thead) thead.innerHTML = '';
             tbody.innerHTML = '<tr><td class="text-muted">Sem dados importados. Importe a planilha FPD.</td></tr>';
             return;
         }
-        const fmtPct = (v) => Number(v || 0).toLocaleString('pt-BR', {
-            minimumFractionDigits: 2, maximumFractionDigits: 2,
-        }) + '%';
 
-        let html = '<tr class="nio-row-header"><td>VENDEDOR</td>';
+        const sort = dashNioSort || { key: 'pct_periodo', dir: 'desc' };
+        const linhas = _linhasOrdenadas(data.linhas_vendedores || [], sort.key, sort.dir);
+
+        const clsVend = sort.key === 'vendedor' ? 'is-sorted' : '';
+        let head = `<tr>
+            <th class="nio-sortable ${clsVend}" onclick="ordenarDashNio('vendedor')" title="Ordenar por nickname A–Z / Z–A">
+                VENDEDOR<span class="nio-sort-ico">${_sortIco('vendedor')}</span>
+            </th>`;
         cols.forEach((c) => {
-            html += `<td title="${escapeHtml(c.label || c.mes_fatura)}"><div>${escapeHtml(c.mes_fatura)}</div>
-                <div class="nio-legenda-tpa" style="font-weight:500"><span class="t">T</span>/<span class="p">P</span>/<span class="a">A</span></div></td>`;
+            const k = c.mes_fatura;
+            const cls = sort.key === k ? 'is-sorted' : '';
+            head += `<th class="nio-sortable ${cls}" onclick="ordenarDashNio('${escapeAttr(k)}')"
+                title="Ordenar por % aberto de ${escapeHtml(c.label || k)} (maior↔menor)">
+                <div>${escapeHtml(k)}<span class="nio-sort-ico">${_sortIco(k)}</span></div>
+                <div class="nio-legenda-tpa" style="font-weight:500"><span class="t">T</span>/<span class="p">P</span>/<span class="a">A</span>/<span class="pct">%</span></div>
+            </th>`;
         });
-        html += '<td>% ABERTO<br><small style="font-weight:500">(período)</small></td></tr>';
+        head += '</tr>';
+        if (thead) thead.innerHTML = head;
 
         if (!linhas.length) {
-            html += `<tr><td colspan="${cols.length + 2}" class="text-muted">Nenhum vendedor com volume neste filtro</td></tr>`;
-            tbody.innerHTML = html;
+            tbody.innerHTML = `<tr><td colspan="${cols.length + 1}" class="text-muted">Nenhum vendedor com conta no período</td></tr>`;
             return;
         }
 
+        let html = '';
         linhas.forEach((row) => {
-            const pct = Number(row.pct_aberto || 0);
             html += `<tr><td title="Total ${row.total} · Pagas ${row.pagas} · Abertas ${row.abertas}">${escapeHtml(row.vendedor_nome || '—')}</td>`;
             cols.forEach((c) => {
                 const m = (row.meses && row.meses[c.mes_fatura]) || {};
                 html += _cellTriNio(m);
             });
-            html += `<td><span class="nio-pct ${_pctClassNio(pct)}">${fmtPct(pct)}</span></td></tr>`;
+            html += '</tr>';
         });
 
         const tm = totais.meses || {};
-        const pctG = Number(totais.pct_aberto || 0);
         html += `<tr class="nio-total-row"><td>TOTAL</td>`;
         cols.forEach((c) => {
             html += _cellTriNio(tm[c.mes_fatura] || {});
         });
-        html += `<td><span class="nio-pct ${_pctClassNio(pctG)}">${fmtPct(pctG)}</span></td></tr>`;
+        html += '</tr>';
         tbody.innerHTML = html;
     }
 
     window.carregarDashboardFpdNio = async function () {
+        const thead = document.getElementById('thead-nio-fpd');
         const tbody = document.getElementById('tbody-nio-fpd');
         const table = document.getElementById('table-nio-fpd');
         if (!tbody) return;
+        if (thead) thead.innerHTML = '';
         tbody.innerHTML = '<tr><td class="text-muted">Carregando…</td></tr>';
         if (table) table.classList.remove('is-por-vendedor');
         const indicador = (document.getElementById('filtro-indicador-nio') || {}).value || 'FPD';
@@ -2730,9 +2858,14 @@
             const cell = (val, cls = '') =>
                 `<td class="${cls}"><span class="nio-num">${escapeHtml(String(val))}</span></td>`;
 
+            // Cabeçalho sticky também no modo geral (meses)
+            if (thead) {
+                thead.innerHTML = '<tr><th>MÊS FATURA</th>' +
+                    cols.map(c => `<th><span class="nio-num">${escapeHtml(String(c.mes_fatura))}</span></th>`).join('') +
+                    '</tr>';
+            }
+
             let html = '';
-            html += '<tr class="nio-row-header"><td>MÊS FATURA</td>' +
-                cols.map(c => cell(c.mes_fatura)).join('') + '</tr>';
             html += '<tr><td>FATURA PAGA</td>' +
                 cols.map(c => cell(c.fatura_paga)).join('') + '</tr>';
             html += '<tr><td>FATURA ABERTA</td>' +
