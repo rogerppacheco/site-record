@@ -750,13 +750,58 @@
                     <label class="form-label">E-mail</label>
                     <input type="email" class="form-control" id="envio-email" placeholder="cliente@email.com">
                 </div>
+                <div class="border rounded p-2 mb-3 small bg-light" id="envio-preview-dados">
+                    <div><strong>Valor:</strong> <span id="envio-preview-valor">—</span></div>
+                    <div><strong>Vencimento:</strong> <span id="envio-preview-venc">—</span></div>
+                </div>
                 <div class="alert alert-warning d-none" id="envio-alerta-orfao">
                     Contrato órfão ou sem CPF — vincule/preencha o CPF antes de cobrar.
                 </div>
+                <div class="alert alert-danger d-none" id="envio-alerta-dados"></div>
+                <div class="small text-muted" id="envio-status"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="confirmarEnvio()">Enviar</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btn-envio-cancelar">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-envio-enviar" onclick="confirmarEnvio()">
+                    <span class="btn-envio-label">Enviar</span>
+                    <span class="btn-envio-loading d-none"><span class="spinner-border spinner-border-sm me-1" role="status"></span>Enviando…</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ligação Sonax (mesma API da auditoria) -->
+<div class="modal fade" id="modalLigacaoQualidade" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-telephone"></i> Ligar para o cliente</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ligacao-venda-id">
+                <p class="small text-muted mb-2" id="ligacao-cliente-nome">—</p>
+                <div class="mb-3" id="ligacao-botoes-tels"></div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Destino</label>
+                    <input type="text" class="form-control" id="ligacao-destino" placeholder="(DDD) 9xxxx-xxxx">
+                </div>
+                <div class="mb-3" id="row-ligacao-ramal-q">
+                    <label class="form-label fw-bold">Ramal Sonax (SIP) <span class="text-danger">*</span></label>
+                    <select class="form-select" id="ligacao-ramal"></select>
+                </div>
+                <div class="mb-3 d-none" id="row-ligacao-origem-q">
+                    <label class="form-label fw-bold">Origem (opcional)</label>
+                    <input type="text" class="form-control" id="ligacao-origem" placeholder="Padrão do servidor se vazio">
+                </div>
+                <div class="small text-muted" id="ligacao-feedback">Pronto para iniciar.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" class="btn btn-primary" id="btn-iniciar-ligacao" onclick="iniciarLigacaoQualidade()">
+                    <i class="bi bi-telephone-outbound-fill"></i> Iniciar ligação
+                </button>
             </div>
         </div>
     </div>
@@ -1390,6 +1435,8 @@
             }
 
             const rows = data.contratos || [];
+            window._qualidadeContratos = window._qualidadeContratos || {};
+            rows.forEach((c) => { window._qualidadeContratos[c.id] = c; });
             if (!rows.length) {
                 tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Nenhum contrato nesta fila</td></tr>';
             } else {
@@ -1400,6 +1447,10 @@
                     const orfaoBadge = c.orfao ? ' <span class="badge badge-orfao">órfão</span>' : '';
                     const disabled = c.pode_tratar ? '' : 'disabled title="Precisa CPF/vínculo"';
                     const corBord = c.status_tratamento_cor ? `style="border-color:${escapeAttr(c.status_tratamento_cor)}"` : '';
+                    const titleWpp = c.pode_enviar_cobranca
+                        ? 'WhatsApp'
+                        : escapeAttr(c.motivo_bloqueio_envio || 'Dados incompletos para cobrança');
+                    const disabledLigar = (c.venda_id && c.pode_tratar) ? '' : 'disabled title="Sem venda vinculada"';
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
                         <td class="col-cliente">${escapeHtml(c.cliente_nome || '-')}</td>
@@ -1418,8 +1469,9 @@
                         ${bonusCell}
                         <td class="acoes-btns">
                             <button class="btn btn-outline-secondary" title="Faturas" onclick="abrirFaturas(${c.id})"><i class="bi bi-receipt"></i></button>
-                            <button class="btn btn-success" ${disabled} onclick='abrirEnvio(${c.id}, ${c.fatura_envio_id || 'null'}, "whatsapp", ${JSON.stringify(c.telefone || '')}, ${JSON.stringify(c.email || '')}, ${c.pode_tratar})'><i class="bi bi-whatsapp"></i></button>
-                            <button class="btn btn-outline-primary" ${disabled} onclick='abrirEnvio(${c.id}, ${c.fatura_envio_id || 'null'}, "email", ${JSON.stringify(c.telefone || '')}, ${JSON.stringify(c.email || '')}, ${c.pode_tratar})'><i class="bi bi-envelope"></i></button>
+                            <button class="btn btn-success" ${disabled} title="${titleWpp}" onclick="abrirEnvioFromId(${c.id}, 'whatsapp')"><i class="bi bi-whatsapp"></i></button>
+                            <button class="btn btn-outline-primary" ${disabled} title="E-mail" onclick="abrirEnvioFromId(${c.id}, 'email')"><i class="bi bi-envelope"></i></button>
+                            <button class="btn btn-outline-info" ${disabledLigar} title="Ligar" onclick="abrirLigacaoFromId(${c.id})"><i class="bi bi-telephone"></i></button>
                         </td>
                     </tr>`;
                 }).join('');
@@ -1472,21 +1524,119 @@
         }
     };
 
-    window.abrirEnvio = function (contratoId, faturaId, canal, telefone, email, podeTratar) {
-        document.getElementById('envio-contrato-id').value = contratoId;
-        document.getElementById('envio-fatura-id').value = faturaId || '';
-        document.getElementById('envio-canal').value = canal;
-        document.getElementById('envio-telefone').value = telefone || '';
-        document.getElementById('envio-email').value = email || '';
+    window.abrirEnvioFromId = function (contratoId, canal) {
+        const c = (window._qualidadeContratos || {})[contratoId];
+        if (!c) {
+            alert('Contrato não encontrado na lista. Recarregue a página.');
+            return;
+        }
+        abrirEnvio({
+            contratoId: c.id,
+            faturaId: c.fatura_envio_id || null,
+            canal: canal,
+            telefone: c.telefone || '',
+            email: c.email || '',
+            podeTratar: !!c.pode_tratar,
+            podeEnviar: !!c.pode_enviar_cobranca,
+            motivoBloqueio: c.motivo_bloqueio_envio || '',
+            valor: c.valor_envio,
+            vencimento: c.vencimento_envio || '',
+            vendaId: c.venda_id || null,
+        });
+    };
+
+    window.abrirLigacaoFromId = function (contratoId) {
+        const c = (window._qualidadeContratos || {})[contratoId];
+        if (!c) {
+            alert('Contrato não encontrado na lista. Recarregue a página.');
+            return;
+        }
+        abrirLigacaoQualidade({
+            vendaId: c.venda_id || null,
+            clienteNome: c.cliente_nome || '',
+            telefone: c.telefone || '',
+            telefone2: c.telefone2 || '',
+        });
+    };
+
+    window.abrirEnvio = function (opts) {
+        // Compat: assinatura antiga (args posicionais) ainda chamada em alguns pontos
+        if (typeof opts !== 'object' || opts === null) {
+            opts = {
+                contratoId: arguments[0],
+                faturaId: arguments[1],
+                canal: arguments[2],
+                telefone: arguments[3],
+                email: arguments[4],
+                podeTratar: arguments[5],
+                podeEnviar: true,
+                motivoBloqueio: '',
+                valor: null,
+                vencimento: '',
+            };
+        }
+        document.getElementById('envio-contrato-id').value = opts.contratoId;
+        document.getElementById('envio-fatura-id').value = opts.faturaId || '';
+        document.getElementById('envio-canal').value = opts.canal;
+        document.getElementById('envio-telefone').value = opts.telefone || '';
+        document.getElementById('envio-email').value = opts.email || '';
         document.getElementById('modalEnvioTitulo').textContent =
-            canal === 'whatsapp' ? 'Enviar WhatsApp' : 'Enviar e-mail';
-        document.getElementById('wrap-telefone').style.display = canal === 'whatsapp' ? '' : 'none';
-        document.getElementById('wrap-email').style.display = canal === 'email' ? '' : 'none';
-        document.getElementById('envio-alerta-orfao').classList.toggle('d-none', !!podeTratar);
+            opts.canal === 'whatsapp' ? 'Enviar WhatsApp' : 'Enviar e-mail';
+        document.getElementById('wrap-telefone').style.display = opts.canal === 'whatsapp' ? '' : 'none';
+        document.getElementById('wrap-email').style.display = opts.canal === 'email' ? '' : 'none';
+        document.getElementById('envio-alerta-orfao').classList.toggle('d-none', !!opts.podeTratar);
+
+        const valorTxt = (opts.valor != null && Number(opts.valor) > 0)
+            ? formatMoney(opts.valor)
+            : 'R$ 0,00 / sem valor';
+        document.getElementById('envio-preview-valor').textContent = valorTxt;
+        document.getElementById('envio-preview-venc').textContent = formatDataBr(opts.vencimento) || '—';
+
+        const alertaDados = document.getElementById('envio-alerta-dados');
+        const podeEnviar = !!opts.podeTratar && opts.podeEnviar !== false;
+        if (!podeEnviar) {
+            const motivo = opts.motivoBloqueio
+                || (!opts.podeTratar ? 'Contrato órfão ou sem CPF.' : 'Dados da fatura incompletos.');
+            alertaDados.textContent = motivo;
+            alertaDados.classList.remove('d-none');
+        } else {
+            alertaDados.classList.add('d-none');
+            alertaDados.textContent = '';
+        }
+
+        const btn = document.getElementById('btn-envio-enviar');
+        btn.disabled = !podeEnviar;
+        setEnvioLoading(false);
+        document.getElementById('envio-status').textContent = podeEnviar
+            ? 'Revise o telefone/e-mail e clique em Enviar.'
+            : 'Envio bloqueado até corrigir os dados.';
         modalEnvio.show();
     };
 
+    function setEnvioLoading(loading, statusTxt) {
+        const btn = document.getElementById('btn-envio-enviar');
+        const cancel = document.getElementById('btn-envio-cancelar');
+        const label = btn.querySelector('.btn-envio-label');
+        const spin = btn.querySelector('.btn-envio-loading');
+        if (loading) {
+            btn.disabled = true;
+            if (cancel) cancel.disabled = true;
+            if (label) label.classList.add('d-none');
+            if (spin) spin.classList.remove('d-none');
+        } else {
+            if (cancel) cancel.disabled = false;
+            if (label) label.classList.remove('d-none');
+            if (spin) spin.classList.add('d-none');
+        }
+        if (statusTxt != null) {
+            document.getElementById('envio-status').textContent = statusTxt;
+        }
+    }
+
     window.confirmarEnvio = async function () {
+        const btn = document.getElementById('btn-envio-enviar');
+        if (btn.disabled) return;
+
         const contratoId = document.getElementById('envio-contrato-id').value;
         const faturaId = document.getElementById('envio-fatura-id').value;
         const canal = document.getElementById('envio-canal').value;
@@ -1494,27 +1644,178 @@
         if (faturaId) body.fatura_id = Number(faturaId);
         const tel = document.getElementById('envio-telefone').value.trim();
         const em = document.getElementById('envio-email').value.trim();
+        if (canal === 'whatsapp' && !tel) {
+            document.getElementById('envio-status').textContent = 'Informe o WhatsApp do cliente.';
+            return;
+        }
+        if (canal === 'email' && !em) {
+            document.getElementById('envio-status').textContent = 'Informe o e-mail do cliente.';
+            return;
+        }
         if (tel) body.telefone = tel;
         if (em) body.email = em;
+
+        setEnvioLoading(true, canal === 'whatsapp'
+            ? 'Enviando template WhatsApp… aguarde a API.'
+            : 'Enviando e-mail…');
         try {
             if (tel || em) {
-                await fetch(`${API}/api/qualidade/contratos/${contratoId}/contato/`, {
+                const rc = await fetch(`${API}/api/qualidade/contratos/${contratoId}/contato/`, {
                     method: 'POST',
                     headers: authHeaders(),
                     body: JSON.stringify({ telefone: tel || undefined, email: em || undefined }),
                 });
+                if (!rc.ok) {
+                    const dc = await rc.json().catch(() => ({}));
+                    throw new Error(dc.error || dc.detail || 'Falha ao salvar contato');
+                }
             }
+            setEnvioLoading(true, 'Contato ok. Disparando cobrança…');
             const r = await fetch(`${API}/api/qualidade/contratos/${contratoId}/enviar/`, {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(body),
             });
-            const data = await r.json();
-            if (!r.ok || data.ok === false) throw new Error(data.error || data.mensagem || 'Falha no envio');
-            alert(data.mensagem || 'Enviado com sucesso');
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || data.ok === false) {
+                throw new Error(data.erro || data.error || data.detail || 'Falha no envio');
+            }
+            setEnvioLoading(false, data.detail || 'Enviado com sucesso.');
+            alert(data.detail || 'Cobrança enviada com sucesso.');
             modalEnvio.hide();
+            if (typeof carregarDashboard === 'function') carregarDashboard();
         } catch (e) {
-            alert(e.message);
+            setEnvioLoading(false, 'Falhou: ' + (e.message || 'erro'));
+            const alerta = document.getElementById('envio-alerta-dados');
+            alerta.textContent = e.message || 'Erro no envio';
+            alerta.classList.remove('d-none');
+            btn.disabled = false;
+        }
+    };
+
+    let qualidadeVoiceConfig = { voice_provider: 'sonax', sonax_ramais: [] };
+    let opcoesLigacaoCarregadas = false;
+    let modalLigacaoQualidade = null;
+
+    function normalizarTelefoneQualidade(raw) {
+        const digits = String(raw || '').replace(/\D/g, '');
+        if (!digits) return '';
+        if (digits.startsWith('55') && digits.length >= 12) return digits;
+        if (digits.length === 10 || digits.length === 11) return '55' + digits;
+        return digits;
+    }
+
+    async function carregarOpcoesLigacaoQualidade(force = false) {
+        if (opcoesLigacaoCarregadas && !force) return;
+        try {
+            const r = await fetch(`${API}/api/crm/auditoria/ligacoes/opcoes/`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.detail || 'Falha ao carregar opções de ligação');
+            qualidadeVoiceConfig = data || qualidadeVoiceConfig;
+            const provider = qualidadeVoiceConfig.voice_provider || 'sonax';
+            const rowRamal = document.getElementById('row-ligacao-ramal-q');
+            const rowOrigem = document.getElementById('row-ligacao-origem-q');
+            if (rowRamal) rowRamal.classList.toggle('d-none', provider !== 'sonax');
+            if (rowOrigem) rowOrigem.classList.toggle('d-none', provider === 'sonax');
+            if (provider === 'sonax') {
+                const sel = document.getElementById('ligacao-ramal');
+                sel.innerHTML = '';
+                const ramais = Array.isArray(qualidadeVoiceConfig.sonax_ramais) ? qualidadeVoiceConfig.sonax_ramais : [];
+                ramais.forEach((x) => {
+                    const opt = document.createElement('option');
+                    opt.value = String(x);
+                    opt.textContent = `Ramal ${x}`;
+                    sel.appendChild(opt);
+                });
+                if (!ramais.length) {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = 'Configure SONAX_RAMAIS no servidor';
+                    sel.appendChild(opt);
+                }
+            }
+            opcoesLigacaoCarregadas = true;
+        } catch (e) {
+            console.warn('opcoes ligacao qualidade', e);
+            document.getElementById('ligacao-feedback').textContent = e.message || 'Erro ao carregar ramais';
+        }
+    }
+
+    window.abrirLigacaoQualidade = async function (opts) {
+        if (!opts || !opts.vendaId) {
+            alert('Contrato sem venda vinculada — não é possível iniciar ligação.');
+            return;
+        }
+        document.getElementById('ligacao-venda-id').value = opts.vendaId;
+        document.getElementById('ligacao-cliente-nome').textContent = opts.clienteNome || 'Cliente';
+        const dest = opts.telefone || opts.telefone2 || '';
+        document.getElementById('ligacao-destino').value = dest;
+        const wrap = document.getElementById('ligacao-botoes-tels');
+        wrap.innerHTML = '';
+        [opts.telefone, opts.telefone2].filter(Boolean).forEach((t, i) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-outline-secondary me-1 mb-1';
+            btn.textContent = (i === 0 ? 'Tel 1: ' : 'Tel 2: ') + t;
+            btn.onclick = () => { document.getElementById('ligacao-destino').value = t; };
+            wrap.appendChild(btn);
+        });
+        document.getElementById('ligacao-feedback').textContent = 'Pronto para iniciar ligação.';
+        await carregarOpcoesLigacaoQualidade();
+        if (!modalLigacaoQualidade) {
+            modalLigacaoQualidade = new bootstrap.Modal(document.getElementById('modalLigacaoQualidade'));
+        }
+        modalLigacaoQualidade.show();
+    };
+
+    window.iniciarLigacaoQualidade = async function () {
+        const vendaId = document.getElementById('ligacao-venda-id').value;
+        const destino = normalizarTelefoneQualidade(document.getElementById('ligacao-destino').value);
+        const feedback = document.getElementById('ligacao-feedback');
+        const btn = document.getElementById('btn-iniciar-ligacao');
+        if (!vendaId) {
+            feedback.textContent = 'Venda não informada.';
+            return;
+        }
+        if (!destino) {
+            feedback.textContent = 'Informe o telefone de destino.';
+            return;
+        }
+        await carregarOpcoesLigacaoQualidade();
+        const provider = qualidadeVoiceConfig.voice_provider || 'sonax';
+        const payload = {
+            destination_number: destino,
+            consentimento_declarado: true,
+            consentimento_observacao: 'Cliente informado pelo atendimento de Qualidade no início da chamada.',
+        };
+        if (provider === 'sonax') {
+            const ramal = document.getElementById('ligacao-ramal').value;
+            if (!ramal) {
+                feedback.textContent = 'Selecione o ramal Sonax.';
+                return;
+            }
+            payload.sip_extension = ramal;
+            payload.ramal = ramal;
+        } else {
+            const origem = normalizarTelefoneQualidade(document.getElementById('ligacao-origem').value);
+            if (origem) payload.source_number = origem;
+        }
+        btn.disabled = true;
+        feedback.textContent = 'Iniciando ligação…';
+        try {
+            const r = await fetch(`${API}/api/crm/auditoria/ligacoes/${vendaId}/iniciar/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify(payload),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.detail || data.error || 'Falha ao iniciar ligação');
+            feedback.textContent = data.detail || 'Ligação iniciada.';
+            if (data.warning) feedback.textContent += ' ' + data.warning;
+        } catch (e) {
+            feedback.textContent = e.message || 'Erro na ligação';
+        } finally {
+            btn.disabled = false;
         }
     };
 
@@ -2115,6 +2416,7 @@
         modalOrfaos = new bootstrap.Modal(document.getElementById('modalOrfaos'));
         modalFaturas = new bootstrap.Modal(document.getElementById('modalFaturas'));
         modalNio = new bootstrap.Modal(document.getElementById('modalNioOpcoes'));
+        modalLigacaoQualidade = new bootstrap.Modal(document.getElementById('modalLigacaoQualidade'));
         document.getElementById('qualidade-page').classList.add('modo-tratamento');
         const tb = document.getElementById('qualidade-toolbar');
         if (tb) tb.style.display = '';

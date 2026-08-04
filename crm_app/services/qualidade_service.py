@@ -504,6 +504,43 @@ def _fatura_envio_id(contrato: ContratoM10, faturas_por_contrato: dict[int, list
     return None
 
 
+def _resolver_fatura_envio(
+    contrato: ContratoM10,
+    faturas_por_contrato: dict[int, list[FaturaM10]],
+) -> Optional[FaturaM10]:
+    fatura_id = _fatura_envio_id(contrato, faturas_por_contrato)
+    if not fatura_id:
+        return None
+    for f in faturas_por_contrato.get(contrato.id, []):
+        if f.id == fatura_id:
+            return f
+    return None
+
+
+def validar_fatura_para_envio_cobranca(fatura: FaturaM10) -> tuple[bool, str]:
+    """
+    Impede cobrança WhatsApp/e-mail sem variáveis mínimas do template Meta
+    (valor e vencimento). R$ 0,00 ou nulo bloqueia o envio.
+    """
+    if fatura is None:
+        return False, 'Fatura não encontrada.'
+    if not getattr(fatura, 'data_vencimento', None):
+        return False, (
+            'Fatura sem data de vencimento. '
+            'Atualize a fatura antes de enviar a cobrança.'
+        )
+    try:
+        valor = float(fatura.valor) if fatura.valor is not None else 0.0
+    except (TypeError, ValueError):
+        valor = 0.0
+    if valor <= 0:
+        return False, (
+            'Fatura sem valor válido (R$ 0,00 ou vazio). '
+            'Atualize o valor da fatura antes de enviar a cobrança.'
+        )
+    return True, ''
+
+
 def _vendedor_nome(contrato: ContratoM10) -> str:
     """Exibe o nickname (username) do vendedor — padrão operacional do time."""
     if not contrato.vendedor:
@@ -729,8 +766,29 @@ def dashboard_qualidade(
 
         data_venc_f1 = f1.data_vencimento.isoformat() if f1 and f1.data_vencimento else None
         st = getattr(c, 'status_tratamento', None)
+        fatura_envio = _resolver_fatura_envio(c, faturas_por_contrato)
+        valor_envio: Optional[float] = None
+        venc_envio: Optional[str] = None
+        pode_enviar_cobranca = False
+        motivo_bloqueio_envio = 'Nenhuma fatura disponível para cobrança.'
+        if fatura_envio is not None:
+            try:
+                valor_envio = (
+                    float(fatura_envio.valor) if fatura_envio.valor is not None else None
+                )
+            except (TypeError, ValueError):
+                valor_envio = None
+            venc_envio = (
+                fatura_envio.data_vencimento.isoformat()
+                if fatura_envio.data_vencimento
+                else None
+            )
+            pode_enviar_cobranca, motivo_bloqueio_envio = validar_fatura_para_envio_cobranca(
+                fatura_envio
+            )
         contratos_data.append({
             'id': c.id,
+            'venda_id': c.venda_id,
             'ordem_servico': c.ordem_servico or '-',
             'cliente_nome': c.cliente_nome,
             'vendedor_nome': _vendedor_nome(c),
@@ -751,8 +809,13 @@ def dashboard_qualidade(
             'orfao': orfao,
             'pode_tratar': pode_tratar_contrato(c),
             'telefone': contato.get('telefone') or contato.get('telefone1'),
+            'telefone2': contato.get('telefone2'),
             'email': contato.get('email'),
-            'fatura_envio_id': _fatura_envio_id(c, faturas_por_contrato),
+            'fatura_envio_id': fatura_envio.id if fatura_envio else None,
+            'valor_envio': valor_envio,
+            'vencimento_envio': venc_envio,
+            'pode_enviar_cobranca': pode_enviar_cobranca,
+            'motivo_bloqueio_envio': motivo_bloqueio_envio if not pode_enviar_cobranca else '',
         })
 
     return {
@@ -1548,6 +1611,10 @@ def enviar_cobranca_whatsapp(
     except FaturaM10.DoesNotExist as exc:
         raise ValueError(f'Fatura {fatura_id} não encontrada para o contrato.') from exc
 
+    ok_dados, erro_dados = validar_fatura_para_envio_cobranca(fatura)
+    if not ok_dados:
+        return {'ok': False, 'erro': erro_dados, 'fatura_id': fatura.id}
+
     contato = enriquecer_contato_contrato(contrato)
     telefone = (telefone_override or '').strip() or contato.get('telefone')
     if not telefone:
@@ -1645,6 +1712,11 @@ def enviar_cobranca_whatsapp(
         'mensagem': mensagem,
         'canal': canal,
         'resposta': resp,
+        'detail': (
+            f'Cobrança enviada via {canal}.'
+            if ok
+            else None
+        ),
         'erro': None if ok else (str(resp) if resp else 'Falha no envio WhatsApp'),
     }
 
@@ -1673,6 +1745,10 @@ def enviar_cobranca_email(
         fatura = FaturaM10.objects.get(pk=fatura_id, contrato=contrato)
     except FaturaM10.DoesNotExist as exc:
         raise ValueError(f'Fatura {fatura_id} não encontrada para o contrato.') from exc
+
+    ok_dados, erro_dados = validar_fatura_para_envio_cobranca(fatura)
+    if not ok_dados:
+        return {'ok': False, 'erro': erro_dados, 'fatura_id': fatura.id}
 
     contato = enriquecer_contato_contrato(contrato)
     destino = (email_override or '').strip() or contato.get('email')
