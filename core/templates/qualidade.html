@@ -375,28 +375,41 @@
     text-align: left;
     font-weight: 600;
 }
-/* Célula: T / P / A - % FPD (sempre legível no tema escuro) */
+/* Célula: T / P / A - % FPD alinhados em colunas fixas */
 .table-nio-fpd .nio-cell-tpa {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: 2.1rem 0.55rem 2.1rem 0.55rem 2.1rem 0.7rem 3.4rem;
     align-items: baseline;
-    gap: 0.2rem;
+    justify-content: center;
     font-variant-numeric: tabular-nums;
     font-size: 0.74rem;
     line-height: 1.2;
     white-space: nowrap;
     color: #1a1a1a !important;
+    min-width: 12.5rem;
 }
-.table-nio-fpd .nio-cell-tpa .t { color: #111827 !important; font-weight: 700; }
-.table-nio-fpd .nio-cell-tpa .p { color: #047857 !important; font-weight: 700; }
-.table-nio-fpd .nio-cell-tpa .a { color: #b91c1c !important; font-weight: 700; }
-.table-nio-fpd .nio-cell-tpa .sep { color: #6b7280 !important; font-weight: 600; }
+.table-nio-fpd .nio-cell-tpa .t,
+.table-nio-fpd .nio-cell-tpa .p,
+.table-nio-fpd .nio-cell-tpa .a {
+    text-align: right;
+    font-weight: 700;
+}
+.table-nio-fpd .nio-cell-tpa .t { color: #111827 !important; }
+.table-nio-fpd .nio-cell-tpa .p { color: #047857 !important; }
+.table-nio-fpd .nio-cell-tpa .a { color: #b91c1c !important; }
+.table-nio-fpd .nio-cell-tpa .sep {
+    text-align: center;
+    color: #6b7280 !important;
+    font-weight: 600;
+}
 .table-nio-fpd .nio-cell-tpa .pct {
+    text-align: right;
     font-weight: 800;
-    margin-left: 0.05rem;
+    min-width: 3.2rem;
 }
-.table-nio-fpd .nio-pct.is-alto { color: #b91c1c !important; }
-.table-nio-fpd .nio-pct.is-medio { color: #b45309 !important; }
 .table-nio-fpd .nio-pct.is-baixo { color: #047857 !important; }
+.table-nio-fpd .nio-pct.is-medio { color: #ca8a04 !important; }
+.table-nio-fpd .nio-pct.is-alto { color: #b91c1c !important; }
 .table-nio-fpd tr.nio-total-row td {
     font-weight: 700;
     border-top: 2px solid #c62828 !important;
@@ -2662,6 +2675,14 @@
         carregarDashboardFpdNio();
     };
 
+    function _pctClassNio(pct) {
+        const n = Number(pct || 0);
+        // Verde < 11% · Amarelo 11–15% · Vermelho > 15%
+        if (n < 11) return 'is-baixo';
+        if (n <= 15) return 'is-medio';
+        return 'is-alto';
+    }
+
     function _cellTriNio(m) {
         const t = Number((m && m.total) || 0);
         const p = Number((m && m.pagas) || 0);
@@ -2680,13 +2701,6 @@
                 <span class="pct nio-pct ${pctCls}">${pctTxt}</span>
             </span>
         </td>`;
-    }
-
-    function _pctClassNio(pct) {
-        const n = Number(pct || 0);
-        if (n >= 50) return 'is-alto';
-        if (n >= 25) return 'is-medio';
-        return 'is-baixo';
     }
 
     function _sortIco(key) {
