@@ -403,6 +403,9 @@ VTOP_STORAGE_STATE = config(
     'VTOP_STORAGE_STATE',
     default=os.path.join(BASE_DIR, '.playwright_vtop_state.json'),
 )
+# Produção (Railway): JSON do storage_state em base64 (sessão gerada no PC).
+# Sem isso o Chromium headless não consegue pedir senha na sua tela.
+VTOP_STORAGE_STATE_B64 = config('VTOP_STORAGE_STATE_B64', default='')
 # Local: False para ver o browser e digitar a senha. Produção: True se a sessão já estiver salva.
 VTOP_HEADLESS = config(
     'VTOP_HEADLESS',

@@ -536,7 +536,7 @@
                         <button type="button" id="btn-vtop-fechar" class="btn btn-sm btn-outline-secondary d-none" onclick="vtopFecharNavegador()" title="Fecha o navegador sem deslogar (mantém sessão)">
                             <i class="bi bi-x-circle"></i> Fechar navegador
                         </button>
-                        <button type="button" id="btn-vtop-smartriser" class="btn btn-sm btn-outline-primary d-none" onclick="vtopIniciarSmartRiser()" title="Abre o V.top e preenche o SmartRiser com os dados deste CDOI">
+                        <button type="button" id="btn-vtop-smartriser" class="btn btn-sm btn-outline-primary d-none" onclick="vtopAbrirModalCredenciais()" title="Abre o V.top e preenche o SmartRiser com os dados deste CDOI">
                             <i class="bi bi-building"></i> Preencher SmartRiser
                         </button>
                         <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
@@ -942,6 +942,47 @@
     </div>
 </div>
 
+</div>
+
+<!-- Modal login V.top (produção: browser no servidor; credenciais só nesta execução) -->
+<div class="modal fade" id="modalVtopLogin" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-shield-lock"></i> Login V.tal / SmartRiser</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    Em produção o navegador roda no servidor (não abre na sua tela).
+                    Informe usuário e senha V.tal — usados só nesta execução (não são gravados).
+                    Se a sessão ainda estiver válida, pode deixar em branco e tentar mesmo assim.
+                </p>
+                <div id="vtop-modal-alerta" class="alert alert-warning d-none py-2 small" role="alert"></div>
+                <div class="mb-2">
+                    <label class="form-label" for="vtop_usuario">Usuário V.tal</label>
+                    <input type="text" class="form-control" id="vtop_usuario" autocomplete="username">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label" for="vtop_senha">Senha</label>
+                    <input type="password" class="form-control" id="vtop_senha" autocomplete="current-password">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label" for="vtop_bloco">Bloco / complemento</label>
+                    <select class="form-select" id="vtop_bloco">
+                        <option value="">— só testar login (sessão) —</option>
+                    </select>
+                    <div class="form-text">Com bloco: inventário → reusar ou criar obra → Cadastro. Vazio: só valida sessão.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-vtop-modal-iniciar" onclick="vtopIniciarSmartRiser()">
+                    Iniciar SmartRiser
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% endblock %}
@@ -2416,7 +2457,13 @@
         badge.textContent = msg.length > 80 ? msg.slice(0, 80) + '…' : msg;
         badge.title = msg;
 
+        // Produção: needs_vtop_login → reabre modal (browser headless não aceita digitar na tela)
+        if (state.needs_vtop_login || state.error === 'needs_vtop_login') {
+            vtopAbrirModalCredenciais(msg || 'Informe usuário e senha V.tal para continuar.');
+        }
+
         if (st === 'awaiting_credentials') {
+            // Local (browser visível): botão «Já coloquei a senha»
             btnSenha?.classList.remove('d-none');
             btnSenha?.classList.add('pulse');
         } else {
@@ -2429,10 +2476,16 @@
         }
 
         if (btnStart && ['starting', 'awaiting_credentials', 'clicking_login', 'navigating',
-            'filling_obra', 'filling_coords', 'filling_cadastro', 'uploading', 'saving', 'validating'].includes(st)) {
+            'filling_obra', 'filling_coords', 'filling_cadastro', 'uploading', 'saving', 'validating',
+            'logged_in'].includes(st)) {
             btnStart.disabled = true;
         } else if (btnStart) {
             btnStart.disabled = false;
+        }
+
+        const btnModal = document.getElementById('btn-vtop-modal-iniciar');
+        if (btnModal) {
+            btnModal.disabled = !!(btnStart && btnStart.disabled && st !== 'error' && st !== 'idle' && st !== 'done');
         }
 
         if (['done', 'error', 'idle'].includes(st) && window._vtopPollTimer) {
@@ -2456,40 +2509,131 @@
         }, 2000);
     }
 
+    function vtopPopularSelectBlocos() {
+        const sel = document.getElementById('vtop_bloco');
+        if (!sel) return;
+        const prev = sel.value;
+        sel.innerHTML = '<option value="">— só testar login (sessão) —</option>';
+        const lista = (typeof blocos !== 'undefined' && Array.isArray(blocos)) ? blocos : [];
+        lista.forEach((b) => {
+            const nome = (b.nome || '').trim();
+            if (!nome) return;
+            if ([...sel.options].some((o) => o.value === nome)) return;
+            const opt = document.createElement('option');
+            opt.value = nome;
+            opt.textContent = nome;
+            sel.appendChild(opt);
+        });
+        if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    }
+
+    function vtopAbrirModalCredenciais(alertaMsg) {
+        const id = document.getElementById('edit_mode_id')?.value;
+        if (!id) {
+            alert('Abra um CDOI em modo edição antes de preencher o SmartRiser.');
+            return;
+        }
+        vtopPopularSelectBlocos();
+        const alerta = document.getElementById('vtop-modal-alerta');
+        if (alerta) {
+            if (alertaMsg) {
+                alerta.textContent = alertaMsg;
+                alerta.classList.remove('d-none');
+            } else {
+                alerta.classList.add('d-none');
+                alerta.textContent = '';
+            }
+        }
+        const el = document.getElementById('modalVtopLogin');
+        if (!el || typeof bootstrap === 'undefined') {
+            // Fallback sem Bootstrap modal
+            const u = prompt('Usuário V.tal:');
+            const s = u ? prompt('Senha V.tal:') : null;
+            if (u && s) {
+                document.getElementById('vtop_usuario').value = u;
+                document.getElementById('vtop_senha').value = s;
+                vtopIniciarSmartRiser();
+            }
+            return;
+        }
+        bootstrap.Modal.getOrCreateInstance(el).show();
+        setTimeout(() => document.getElementById('vtop_usuario')?.focus(), 300);
+    }
+
     async function vtopIniciarSmartRiser() {
         const id = document.getElementById('edit_mode_id')?.value;
         if (!id) {
             alert('Abra um CDOI em modo edição antes de preencher o SmartRiser.');
             return;
         }
-        if (!confirm(
-            `TESTE DE LOGIN SmartRiser — CDOI #${id}\n\n` +
-            `• Abre o navegador só para login V.tal\n` +
-            `• Digite suas credenciais e clique em «Já coloquei a senha»\n` +
-            `• A sessão será salva (não preenche formulário neste teste)\n` +
-            `• Não desloga ao terminar`
-        )) return;
+
+        const usuario = (document.getElementById('vtop_usuario')?.value || '').trim();
+        const senha = document.getElementById('vtop_senha')?.value || '';
+        const bloco = (document.getElementById('vtop_bloco')?.value || '').trim();
+
+        const body = {};
+        if (usuario) body.vtop_usuario = usuario;
+        if (senha) body.vtop_senha = senha;
+        if (bloco) {
+            body.bloco = bloco;
+        } else {
+            body.somente_ate = 'login';
+        }
 
         const btn = document.getElementById('btn-vtop-smartriser');
+        const btnModal = document.getElementById('btn-vtop-modal-iniciar');
         if (btn) btn.disabled = true;
+        if (btnModal) {
+            btnModal.disabled = true;
+            btnModal.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Iniciando…';
+        }
+
         try {
             const res = await fetch(`/api/crm/cdoi/${id}/vtop/iniciar/`, {
                 method: 'POST',
                 headers: _vtopAuthHeaders(),
-                body: JSON.stringify({ somente_ate: 'login' }),
+                body: JSON.stringify(body),
             });
             const data = await res.json();
-            if (!res.ok || !data.ok) {
-                alert(data.error || 'Não foi possível iniciar a automação.');
+
+            // Limpa senha do DOM assim que a request sai (não fica no campo)
+            const senhaEl = document.getElementById('vtop_senha');
+            if (senhaEl) senhaEl.value = '';
+
+            if (data.state) vtopAtualizarUiStatus(data.state);
+
+            if (data.state?.needs_vtop_login || data.state?.error === 'needs_vtop_login') {
+                // Mantém modal aberto pedindo credenciais
+                const alerta = document.getElementById('vtop-modal-alerta');
+                if (alerta) {
+                    alerta.textContent = data.state.message || 'Informe usuário e senha V.tal.';
+                    alerta.classList.remove('d-none');
+                }
                 if (btn) btn.disabled = false;
                 return;
             }
-            vtopAtualizarUiStatus(data.state);
+
+            if (!res.ok || !data.ok) {
+                alert(data.error || data.state?.message || 'Não foi possível iniciar a automação.');
+                if (btn) btn.disabled = false;
+                return;
+            }
+
+            // Fecha modal se login/fluxo engatou
+            const modalEl = document.getElementById('modalVtopLogin');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getInstance(modalEl)?.hide();
+            }
             vtopIniciarPolling(id);
         } catch (e) {
             console.error(e);
             alert('Erro de rede ao iniciar SmartRiser.');
             if (btn) btn.disabled = false;
+        } finally {
+            if (btnModal) {
+                btnModal.disabled = false;
+                btnModal.innerHTML = 'Iniciar SmartRiser';
+            }
         }
     }
 

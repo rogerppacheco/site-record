@@ -91,6 +91,38 @@ def _storage_state_path() -> str:
     return path
 
 
+def _garantir_storage_state_arquivo() -> bool:
+    """
+    Garante arquivo de sessão Playwright.
+    Em Railway o disco é efêmero — use VTOP_STORAGE_STATE_B64 (JSON em base64
+    gerado localmente com scripts/teste_login_vtop.py + publicar_sessao_vtop_railway.py).
+    """
+    path = _storage_state_path()
+    if os.path.isfile(path) and os.path.getsize(path) > 50:
+        return True
+
+    b64 = (getattr(settings, "VTOP_STORAGE_STATE_B64", None) or os.environ.get("VTOP_STORAGE_STATE_B64") or "").strip()
+    if not b64:
+        return False
+    try:
+        import base64
+
+        raw = base64.b64decode(b64, validate=False)
+        if raw[:1] != b"{":
+            raw = b64.encode("utf-8")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_bytes(raw)
+        logger.info(
+            "[VTOP] Storage state materializado de VTOP_STORAGE_STATE_B64 (%s bytes) -> %s",
+            len(raw),
+            path,
+        )
+        return True
+    except Exception:
+        logger.exception("[VTOP] Falha ao materializar VTOP_STORAGE_STATE_B64")
+        return False
+
+
 def _headless() -> bool:
     return bool(getattr(settings, "VTOP_HEADLESS", False))
 
@@ -237,6 +269,10 @@ class VtopJobState:
     extras: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        extras = dict(self.extras or {})
+        extras.pop("vtop_senha", None)
+        extras.pop("senha", None)
+        extras.pop("_vtop_senha_runtime", None)
         return {
             "cdoi_id": self.cdoi_id,
             "status": self.status.value,
@@ -246,7 +282,8 @@ class VtopJobState:
             "updated_at": self.updated_at,
             "error": self.error,
             "session_valid": self.session_valid,
-            "extras": self.extras,
+            "extras": extras,
+            "needs_vtop_login": self.error == "needs_vtop_login",
         }
 
 
@@ -606,7 +643,8 @@ class VtopSmartRiserService:
             return self.state.to_dict()
 
     def _storage_exists(self) -> bool:
-        return os.path.exists(_storage_state_path())
+        path = _storage_state_path()
+        return os.path.isfile(path) and os.path.getsize(path) > 50
 
     # -------------------------------------------------------------- API pública
     def iniciar(
@@ -706,10 +744,16 @@ class VtopSmartRiserService:
         somente_ate: Optional[str],
     ) -> None:
         try:
-            self._payload_atual = dict(payload or {})
+            # Senha só na memória desta execução — nunca vai para extras/logs
+            payload = dict(payload or {})
+            _senha_runtime = str(payload.pop("vtop_senha", "") or "")
+            self._payload_atual = dict(payload)
+            if _senha_runtime:
+                self._payload_atual["_vtop_senha_runtime"] = _senha_runtime
             self._abrir_browser(forcar_login=forcar_login)
             if not self._garantir_logado(forcar_login=forcar_login):
                 return
+            self._payload_atual.pop("_vtop_senha_runtime", None)
 
             # Teste seguro: valida login e persiste storage_state sem navegar no SmartRiser
             if (somente_ate or "").lower() == "login":
@@ -793,6 +837,9 @@ class VtopSmartRiserService:
     def _abrir_browser(self, *, forcar_login: bool) -> None:
         self._set(VtopStatus.STARTING, "Abrindo Chromium…", step="browser")
         self._dialog_handler_installed = False
+        # Materializa sessão do env (produção) antes de abrir o contexto
+        if not forcar_login:
+            _garantir_storage_state_arquivo()
         self.playwright = sync_playwright().start()
         launch_opts: Dict[str, Any] = {
             "headless": _headless(),
@@ -882,10 +929,39 @@ class VtopSmartRiserService:
             self._set(VtopStatus.LOGGED_IN, "Sessão reutilizada — login não necessário.", step="login")
             return True
 
-        # Precisa de login manual
+        usuario = str((self._payload_atual or {}).get("vtop_usuario") or "").strip()
+        senha = str(
+            (self._payload_atual or {}).get("_vtop_senha_runtime")
+            or (self._payload_atual or {}).get("vtop_senha")
+            or ""
+        )
+
         if "login.vtal.com" not in (self.page.url or ""):
             self.page.goto(VTOP_LOGIN_URL, wait_until="domcontentloaded")
+            time.sleep(1)
 
+        # Produção (headless) ou local com credenciais do modal → preenche automaticamente
+        if usuario and senha:
+            if not self._preencher_login_automatico(usuario, senha):
+                return False
+            # Limpa senha da memória do payload o quanto antes
+            if self._payload_atual:
+                self._payload_atual.pop("vtop_senha", None)
+                self._payload_atual.pop("_vtop_senha_runtime", None)
+            return True
+
+        # Headless sem credenciais: não há janela para digitar — pede modal na UI
+        if _headless():
+            self._set(
+                VtopStatus.ERROR,
+                "Sessão V.top ausente. Informe usuário e senha no modal do Gestão CDOI "
+                "(em produção o navegador roda no servidor e não abre na sua tela).",
+                step="login",
+                error="needs_vtop_login",
+            )
+            return False
+
+        # Local com browser visível: fluxo antigo (digitar no Chromium)
         self._credentials_event.clear()
         self._set(
             VtopStatus.AWAITING_CREDENTIALS,
@@ -906,22 +982,58 @@ class VtopSmartRiserService:
             return False
 
         self._clicar_efetuar_login()
-        # Espera redirect ao portal
+        return self._confirmar_login_pos_clique()
+
+    def _preencher_login_automatico(self, usuario: str, senha: str) -> bool:
+        """Preenche usuário/senha na tela IdP V.tal (sem logar a senha)."""
+        assert self.page is not None
+        page = self.page
+        self._set(
+            VtopStatus.CLICKING_LOGIN,
+            "Preenchendo login V.tal com credenciais do modal…",
+            step="login",
+        )
+        try:
+            # Campos comuns do NIDP / login corporativo
+            user_loc = page.locator(
+                'input[type="text"], input[type="email"], input[name*="user" i], '
+                'input[id*="user" i], input[name*="Ecom_User" i], input#Ecom_User_ID'
+            ).first
+            pass_loc = page.locator(
+                'input[type="password"], input[name*="pass" i], input[id*="pass" i], '
+                'input[name*="Ecom_Password" i], input#Ecom_Password'
+            ).first
+            user_loc.wait_for(state="visible", timeout=20_000)
+            user_loc.fill(usuario)
+            pass_loc.fill(senha)
+            page.wait_for_timeout(300)
+            self._clicar_efetuar_login()
+            return self._confirmar_login_pos_clique()
+        except Exception as exc:
+            logger.exception("[VTOP] Falha ao preencher login automático")
+            self._set(
+                VtopStatus.ERROR,
+                "Não foi possível preencher o login V.tal automaticamente.",
+                step="login",
+                error=str(exc)[:200],
+            )
+            return False
+
+    def _confirmar_login_pos_clique(self) -> bool:
+        assert self.page is not None
         try:
             self.page.wait_for_url("**/appvtop/**", timeout=90_000)
         except Exception:
-            # Fallback: alguns redirects passam por callback
             self.page.wait_for_timeout(5000)
 
         if not self._esta_logado():
-            # Tenta ir à home após OAuth
             self.page.goto(VTOP_HOME_URL, wait_until="domcontentloaded")
             time.sleep(2)
 
         if not self._esta_logado():
             self._set(
                 VtopStatus.ERROR,
-                "Login não confirmado após EFETUAR LOGIN. Verifique MFA/senha.",
+                "Login não confirmado após EFETUAR LOGIN. Verifique usuário/senha/MFA.",
                 step="login",
                 error="login_failed",
             )

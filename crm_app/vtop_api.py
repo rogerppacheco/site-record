@@ -70,6 +70,7 @@ class CdoiVtopIniciarView(APIView):
       bloco / nome_bloco: str (obrigatório para obra)
       obra_id + forcar_obra_id: reabre direto sem inventário
       permitir_criar: false — bloqueia criação nesta requisição
+      vtop_usuario / vtop_senha — credenciais do modal (só memória desta execução)
       cod_survey, estacao, celula, complemento, codigo_sap — overrides
     """
 
@@ -108,11 +109,17 @@ class CdoiVtopIniciarView(APIView):
             payload["obra_id"] = str(data.get("obra_id")).strip()
         if data.get("forcar_obra_id") or data.get("forcarObraId"):
             payload["forcar_obra_id"] = True
-        # permitir_criar=false bloqueia criação nesta request (inventário ainda roda)
         if "permitir_criar" in data or "permitirCriar" in data:
             payload["permitir_criar"] = bool(
                 data.get("permitir_criar", data.get("permitirCriar"))
             )
+        # Credenciais do modal (só memória desta execução — não logar / não persistir)
+        usuario = (data.get("vtop_usuario") or data.get("usuario") or "").strip()
+        senha = data.get("vtop_senha") or data.get("senha") or ""
+        if usuario:
+            payload["vtop_usuario"] = usuario
+        if senha:
+            payload["vtop_senha"] = str(senha)
 
         faltando = []
         if somente_ate != "login":
@@ -130,6 +137,7 @@ class CdoiVtopIniciarView(APIView):
                 status=400,
             )
 
+        # Não espelhar senha no state da API
         svc = get_vtop_service()
         result = svc.iniciar(
             cdoi_id=pk,
@@ -138,6 +146,9 @@ class CdoiVtopIniciarView(APIView):
             pausar_apos=data.get("pausar_apos") or None,
             somente_ate=somente_ate,
         )
+        # Remove vestígios da senha da resposta/extras se houver
+        if isinstance(result.get("state"), dict):
+            result["state"].get("extras", {}).pop("vtop_senha", None)
         code = status.HTTP_200_OK if result.get("ok") else status.HTTP_409_CONFLICT
         return Response(result, status=code)
 
