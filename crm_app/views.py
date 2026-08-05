@@ -11242,6 +11242,8 @@ class CdoiUpdateView(APIView):
                     'andares': b.andares,
                     'aptos': b.unidades_por_andar,
                     'total': b.total_hps_bloco,
+                    'obra_id': b.vtop_obra_id or '',
+                    'vtop_etapa': b.vtop_etapa,
                 }
                 for b in blocos_queryset
             ]
@@ -11342,10 +11344,14 @@ class CdoiUpdateView(APIView):
             if data.get('nome_condominio'):
                 cdoi.nome_condominio = data.get('nome_condominio')
             
-            # Atualizar blocos se fornecidos
+            # Atualizar blocos se fornecidos (preserva vtop_obra_id por nome do bloco)
             blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
             if blocos_json:
                 try:
+                    antigos = {
+                        (b.nome_bloco or '').strip().upper(): b
+                        for b in cdoi.blocos.all()
+                    }
                     # Remove blocos antigos
                     cdoi.blocos.all().delete()
                     logger.info(f"[CDOI] Blocos antigos removidos para {cdoi.nome_condominio} (ID: {pk})")
@@ -11355,12 +11361,17 @@ class CdoiUpdateView(APIView):
                     blocos_criados = 0
                     for b in blocos:
                         try:
+                            nome = b.get('nome', '')
+                            prev = antigos.get((nome or '').strip().upper())
                             CdoiBloco.objects.create(
                                 solicitacao=cdoi,
-                                nome_bloco=b.get('nome', ''),
+                                nome_bloco=nome,
                                 andares=_to_int(b.get('andares', 0)),
                                 unidades_por_andar=_to_int(b.get('aptos', 0)),
-                                total_hps_bloco=_to_int(b.get('total', 0))
+                                total_hps_bloco=_to_int(b.get('total', 0)),
+                                vtop_obra_id=(prev.vtop_obra_id if prev else None),
+                                vtop_etapa=(prev.vtop_etapa if prev else None),
+                                vtop_sincronizado_em=(prev.vtop_sincronizado_em if prev else None),
                             )
                             blocos_criados += 1
                         except Exception as e_bloco:
@@ -11453,21 +11464,30 @@ class CdoiUpdateView(APIView):
 
             cdoi.save()
 
-            # Atualiza blocos se enviados
+            # Atualiza blocos se enviados (preserva vínculo V.top por nome)
             blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
             if blocos_json:
                 try:
                     import json as _json
                     blocos = _json.loads(blocos_json)
+                    antigos = {
+                        (b.nome_bloco or '').strip().upper(): b
+                        for b in cdoi.blocos.all()
+                    }
                     # Remove blocos existentes e recria
                     cdoi.blocos.all().delete()
                     for b in blocos:
+                        nome = b.get('nome')
+                        prev = antigos.get((nome or '').strip().upper())
                         CdoiBloco.objects.create(
                             solicitacao=cdoi,
-                            nome_bloco=b.get('nome'),
+                            nome_bloco=nome,
                             andares=int(b.get('andares') or 0),
                             unidades_por_andar=int(b.get('aptos') or 0),
-                            total_hps_bloco=int(b.get('total') or 0)
+                            total_hps_bloco=int(b.get('total') or 0),
+                            vtop_obra_id=(prev.vtop_obra_id if prev else None),
+                            vtop_etapa=(prev.vtop_etapa if prev else None),
+                            vtop_sincronizado_em=(prev.vtop_sincronizado_em if prev else None),
                         )
                 except Exception as e:
                     return Response({"error": f"Erro ao atualizar blocos: {e}"}, status=400)

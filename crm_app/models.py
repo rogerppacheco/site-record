@@ -2732,6 +2732,24 @@ class CdoiBloco(models.Model):
     andares = models.IntegerField()
     unidades_por_andar = models.IntegerField()
     total_hps_bloco = models.IntegerField()
+    # Vínculo 1:1 com obra SmartRiser — evita recriar obra com o mesmo complemento
+    vtop_obra_id = models.CharField(
+        max_length=32,
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name="ID obra V.top",
+    )
+    vtop_etapa = models.PositiveSmallIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Etapa V.top após última sync",
+    )
+    vtop_sincronizado_em = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Última sync V.top",
+    )
 
 
 class LinkPublicoPreVenda(models.Model):

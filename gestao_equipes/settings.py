@@ -396,6 +396,41 @@ RECAPTCHA_SOLVER_API_URL = config('RECAPTCHA_SOLVER_API_URL', default='')
 # Caminho para armazenar/reusar cookies da Nio (storage state do Playwright)
 NIO_STORAGE_STATE = os.path.join(BASE_DIR, '.playwright_state.json')
 
+# --- SmartRiser / V.top (Gestão CDOI) ---
+# Sessão OAuth V.tal persistida (NÃO apagar entre testes — evita relogar IdP corporativo).
+# Em produção, apontar para volume persistente.
+VTOP_STORAGE_STATE = config(
+    'VTOP_STORAGE_STATE',
+    default=os.path.join(BASE_DIR, '.playwright_vtop_state.json'),
+)
+# Local: False para ver o browser e digitar a senha. Produção: True se a sessão já estiver salva.
+VTOP_HEADLESS = config(
+    'VTOP_HEADLESS',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+VTOP_CODIGO_SAP = config('VTOP_CODIGO_SAP', default='1068561')
+# Emergência: True bloqueia QUALQUER criação de obra (só reabre se achar na lista/banco).
+# Fluxo normal: sempre tenta criar, MAS só depois do inventário confirmar que
+# o mesmo complemento ainda não existe no endereço (senão reusa a obra).
+VTOP_BLOQUEAR_CRIAR_OBRA = config(
+    'VTOP_BLOQUEAR_CRIAR_OBRA',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+# Compat: alias antigo — se False e não houver BLOQUEAR, comportamento atual é criar após inventário.
+VTOP_PERMITIR_CRIAR_OBRA = config(
+    'VTOP_PERMITIR_CRIAR_OBRA',
+    default=True,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+# Em produção: falha de anexo NÃO aborta o fluxo (salva/valida mesmo assim).
+VTOP_ANEXO_OBRIGATORIO = config(
+    'VTOP_ANEXO_OBRIGATORIO',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+
 # Sessão Google Forms (Inclusão/Viabilidade). Gere com:
 #   .venv\Scripts\python.exe scripts\salvar_sessao_google_form.py
 # Em produção, aponte para volume persistente (ex.: /data/google_form_state.json).

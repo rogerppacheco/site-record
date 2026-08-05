@@ -526,9 +526,21 @@
         {% endif %}
         <div class="tab-pane fade" id="nova-content">
             <div class="card card-modern">
-                <div class="card-header d-flex justify-content-between">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span>Dados do Condomínio</span>
-                    <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span id="vtop-status-badge" class="badge bg-secondary d-none" title="Status da automação SmartRiser"></span>
+                        <button type="button" id="btn-vtop-senha-pronta" class="btn btn-sm btn-success d-none" onclick="vtopSenhaPronta()" title="Depois de digitar login e senha no navegador V.tal">
+                            <i class="bi bi-key-fill"></i> Já coloquei a senha
+                        </button>
+                        <button type="button" id="btn-vtop-fechar" class="btn btn-sm btn-outline-secondary d-none" onclick="vtopFecharNavegador()" title="Fecha o navegador sem deslogar (mantém sessão)">
+                            <i class="bi bi-x-circle"></i> Fechar navegador
+                        </button>
+                        <button type="button" id="btn-vtop-smartriser" class="btn btn-sm btn-outline-primary d-none" onclick="vtopIniciarSmartRiser()" title="Abre o V.top e preenche o SmartRiser com os dados deste CDOI">
+                            <i class="bi bi-building"></i> Preencher SmartRiser
+                        </button>
+                        <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <form id="form-cdoi">
@@ -1313,6 +1325,8 @@
                 document.getElementById('btn-submit').innerHTML = 'Salvar Alterações';
                 document.getElementById('btn-submit').classList.replace('btn-success', 'btn-warning');
                 document.getElementById('btn-cancelar-edicao').classList.remove('d-none');
+                document.getElementById('btn-vtop-smartriser')?.classList.remove('d-none');
+                vtopAtualizarUiStatus(null);
                 
                 // Mostra campos de arquivo no modo edição (mas torná-los opcionais)
                 document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
@@ -1404,6 +1418,11 @@
         document.getElementById('btn-submit').innerHTML = '<i class="bi bi-send-fill"></i> Enviar Solicitação';
         document.getElementById('btn-submit').classList.replace('btn-warning', 'btn-success');
         document.getElementById('btn-cancelar-edicao').classList.add('d-none');
+        document.getElementById('btn-vtop-smartriser')?.classList.add('d-none');
+        document.getElementById('btn-vtop-senha-pronta')?.classList.add('d-none');
+        document.getElementById('btn-vtop-fechar')?.classList.add('d-none');
+        document.getElementById('vtop-status-badge')?.classList.add('d-none');
+        if (window._vtopPollTimer) { clearInterval(window._vtopPollTimer); window._vtopPollTimer = null; }
         document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
         document.querySelectorAll('.file-input-group input').forEach(el => el.required = true);
         // Restaura labels originais
@@ -2359,6 +2378,157 @@
             loading.style.display = 'none';
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar pré-vendas.</td></tr>';
             content.style.display = 'block';
+        }
+    }
+
+    // --- SmartRiser / V.top ---
+    function _vtopAuthHeaders() {
+        return {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+            'Content-Type': 'application/json',
+        };
+    }
+
+    function vtopAtualizarUiStatus(state) {
+        const badge = document.getElementById('vtop-status-badge');
+        const btnSenha = document.getElementById('btn-vtop-senha-pronta');
+        const btnFechar = document.getElementById('btn-vtop-fechar');
+        const btnStart = document.getElementById('btn-vtop-smartriser');
+        if (!badge) return;
+
+        if (!state) {
+            badge.classList.add('d-none');
+            btnSenha?.classList.add('d-none');
+            btnFechar?.classList.add('d-none');
+            return;
+        }
+
+        const st = state.status || '';
+        const msg = state.message || st;
+        badge.classList.remove('d-none', 'bg-secondary', 'bg-warning', 'bg-success', 'bg-danger', 'bg-info', 'text-dark');
+        let cls = 'bg-secondary';
+        if (st === 'awaiting_credentials') cls = 'bg-warning text-dark';
+        else if (st === 'done') cls = 'bg-success';
+        else if (st === 'error') cls = 'bg-danger';
+        else if (st === 'paused') cls = 'bg-info text-dark';
+        else if (st && st !== 'idle') cls = 'bg-primary';
+        badge.className = `badge ${cls}`;
+        badge.textContent = msg.length > 80 ? msg.slice(0, 80) + '…' : msg;
+        badge.title = msg;
+
+        if (st === 'awaiting_credentials') {
+            btnSenha?.classList.remove('d-none');
+            btnSenha?.classList.add('pulse');
+        } else {
+            btnSenha?.classList.add('d-none');
+        }
+
+        const ativo = st && !['idle', 'done', 'error'].includes(st);
+        if (ativo || st === 'paused' || st === 'done' || st === 'error') {
+            btnFechar?.classList.remove('d-none');
+        }
+
+        if (btnStart && ['starting', 'awaiting_credentials', 'clicking_login', 'navigating',
+            'filling_obra', 'filling_coords', 'filling_cadastro', 'uploading', 'saving', 'validating'].includes(st)) {
+            btnStart.disabled = true;
+        } else if (btnStart) {
+            btnStart.disabled = false;
+        }
+
+        if (['done', 'error', 'idle'].includes(st) && window._vtopPollTimer) {
+            clearInterval(window._vtopPollTimer);
+            window._vtopPollTimer = null;
+        }
+    }
+
+    function vtopIniciarPolling(cdoiId) {
+        if (window._vtopPollTimer) clearInterval(window._vtopPollTimer);
+        window._vtopPollTimer = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/crm/cdoi/${cdoiId}/vtop/status/`, {
+                    headers: _vtopAuthHeaders(),
+                });
+                const data = await res.json();
+                if (data.state) vtopAtualizarUiStatus(data.state);
+            } catch (e) {
+                console.warn('[VTOP] poll falhou', e);
+            }
+        }, 2000);
+    }
+
+    async function vtopIniciarSmartRiser() {
+        const id = document.getElementById('edit_mode_id')?.value;
+        if (!id) {
+            alert('Abra um CDOI em modo edição antes de preencher o SmartRiser.');
+            return;
+        }
+        if (!confirm(
+            `TESTE DE LOGIN SmartRiser — CDOI #${id}\n\n` +
+            `• Abre o navegador só para login V.tal\n` +
+            `• Digite suas credenciais e clique em «Já coloquei a senha»\n` +
+            `• A sessão será salva (não preenche formulário neste teste)\n` +
+            `• Não desloga ao terminar`
+        )) return;
+
+        const btn = document.getElementById('btn-vtop-smartriser');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch(`/api/crm/cdoi/${id}/vtop/iniciar/`, {
+                method: 'POST',
+                headers: _vtopAuthHeaders(),
+                body: JSON.stringify({ somente_ate: 'login' }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+                alert(data.error || 'Não foi possível iniciar a automação.');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            vtopAtualizarUiStatus(data.state);
+            vtopIniciarPolling(id);
+        } catch (e) {
+            console.error(e);
+            alert('Erro de rede ao iniciar SmartRiser.');
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function vtopSenhaPronta() {
+        const id = document.getElementById('edit_mode_id')?.value;
+        if (!id) return;
+        try {
+            const res = await fetch(`/api/crm/cdoi/${id}/vtop/senha-pronta/`, {
+                method: 'POST',
+                headers: _vtopAuthHeaders(),
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+                alert(data.error || 'Não foi possível confirmar a senha.');
+                return;
+            }
+            vtopAtualizarUiStatus(data.state);
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao sinalizar senha pronta.');
+        }
+    }
+
+    async function vtopFecharNavegador() {
+        const id = document.getElementById('edit_mode_id')?.value || '0';
+        try {
+            const res = await fetch(`/api/crm/cdoi/${id}/vtop/fechar/`, {
+                method: 'POST',
+                headers: _vtopAuthHeaders(),
+                body: JSON.stringify({ manter_sessao: true }),
+            });
+            const data = await res.json();
+            vtopAtualizarUiStatus(data.state || { status: 'idle', message: 'Navegador fechado (sessão mantida).' });
+            const btn = document.getElementById('btn-vtop-smartriser');
+            if (btn) btn.disabled = false;
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao fechar navegador.');
         }
     }
 </script>

@@ -193,6 +193,7 @@ from .views import (
 # Importar módulo de views de análise de buscas
 from . import views_analise_busca
 from . import conhecimento_ia_api
+from . import vtop_api
 from .auditoria_ligacoes_api import (
     AuditoriaLigacaoHistoricoView,
     AuditoriaLigacaoListView,
@@ -472,6 +473,15 @@ urlpatterns = [
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
     path('cdoi/viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-cdoi-viacep'),
     path('cdoi/nominatim/', NominatimProxyView.as_view(), name='api-cdoi-nominatim'),
+    # SmartRiser / V.top — automação a partir do Gestão CDOI
+    path('cdoi/<int:pk>/vtop/iniciar/', vtop_api.CdoiVtopIniciarView.as_view(), name='api-cdoi-vtop-iniciar'),
+    path('cdoi/<int:pk>/vtop/senha-pronta/', vtop_api.CdoiVtopSenhaProntaView.as_view(), name='api-cdoi-vtop-senha-pronta'),
+    path('cdoi/<int:pk>/vtop/status/', vtop_api.CdoiVtopStatusView.as_view(), name='api-cdoi-vtop-status'),
+    path('cdoi/<int:pk>/vtop/fechar/', vtop_api.CdoiVtopFecharView.as_view(), name='api-cdoi-vtop-fechar'),
+    path('cdoi/<int:pk>/vtop/payload/', vtop_api.CdoiVtopPayloadPreviewView.as_view(), name='api-cdoi-vtop-payload'),
+    path('cdoi/vtop/status/', vtop_api.CdoiVtopStatusView.as_view(), name='api-cdoi-vtop-status-global'),
+    path('cdoi/vtop/fechar/', vtop_api.CdoiVtopFecharView.as_view(), name='api-cdoi-vtop-fechar-global'),
+    path('cdoi/vtop/invalidar-sessao/', vtop_api.CdoiVtopInvalidarSessaoView.as_view(), name='api-cdoi-vtop-invalidar'),
     # Proxy ViaCEP genérico (auditoria, crm_vendas, etc.) — evita CORS ao chamar do frontend
     path('viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-viacep'),
 
