@@ -924,6 +924,11 @@
                         <select id="filtro-vendedor-nio" class="form-select form-select-sm" style="width:auto; min-width:11rem; max-width:16rem" onchange="carregarDashboardFpdNio()" title="Vendedor do CRM">
                             <option value="">Todos os vendedores</option>
                         </select>
+                        <select id="filtro-nm-seg-nio" class="form-select form-select-sm" style="width:auto; min-width:9rem" onchange="carregarDashboardFpdNio()" title="Segmento (nm_seg)">
+                            <option value="">Todos os segmentos</option>
+                            <option value="Varejo">Varejo</option>
+                            <option value="Empresarial">Empresarial</option>
+                        </select>
                         <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarDashboardFpdNio()">
                             <i class="bi bi-arrow-clockwise"></i> Atualizar
                         </button>
@@ -2831,8 +2836,10 @@
         const indicador = (document.getElementById('filtro-indicador-nio') || {}).value || 'FPD';
         const meses = (document.getElementById('filtro-meses-nio') || {}).value || '6';
         const vendedorId = (document.getElementById('filtro-vendedor-nio') || {}).value || '';
+        const nmSeg = (document.getElementById('filtro-nm-seg-nio') || {}).value || '';
         const params = new URLSearchParams({ indicador, meses, modo: modoDashNio });
         if (modoDashNio === 'geral' && vendedorId) params.set('vendedor_id', vendedorId);
+        if (nmSeg) params.set('nm_seg', nmSeg);
         try {
             const r = await fetch(`${API}/api/qualidade/dashboard-fpd-nio/?${params}`, { headers: authHeaders() });
             const data = await r.json();
@@ -2849,6 +2856,26 @@
                 );
                 selVend.innerHTML = opts.join('');
                 if (atual) selVend.value = atual;
+            }
+
+            // Popula select de segmento (nm_seg)
+            const selSeg = document.getElementById('filtro-nm-seg-nio');
+            if (selSeg && Array.isArray(data.segmentos)) {
+                const atualSeg = selSeg.value || String(data.nm_seg || nmSeg || '');
+                const base = [
+                    { value: 'Varejo', label: 'Varejo' },
+                    { value: 'Empresarial', label: 'Empresarial' },
+                ];
+                const extras = data.segmentos
+                    .filter((s) => s && !['Varejo', 'Empresarial'].includes(s))
+                    .map((s) => ({ value: s, label: s }));
+                const optsSeg = ['<option value="">Todos os segmentos</option>'].concat(
+                    base.concat(extras).map((o) =>
+                        `<option value="${escapeHtml(o.value)}"${o.value === atualSeg ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
+                    )
+                );
+                selSeg.innerHTML = optsSeg.join('');
+                if (atualSeg) selSeg.value = atualSeg;
             }
 
             const fonte = document.getElementById('nio-fpd-fonte');

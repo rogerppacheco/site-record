@@ -109,9 +109,9 @@ class ImportacaoRecompraAdmin(admin.ModelAdmin):
 
 @admin.register(ImportacaoFPD)
 class ImportacaoFPDAdmin(admin.ModelAdmin):
-    list_display = ('nr_ordem', 'id_contrato', 'nr_fatura', 'ds_status_fatura', 'dt_venc_orig', 'dt_pagamento', 'vl_fatura', 'importada_em')
-    list_filter = ('ds_status_fatura', 'dt_venc_orig', 'importada_em')
-    search_fields = ('nr_ordem', 'id_contrato', 'nr_fatura', 'contrato_m10__numero_contrato')
+    list_display = ('nr_ordem', 'indicador', 'nm_seg', 'id_contrato', 'nr_fatura', 'ds_status_fatura', 'dt_venc_orig', 'dt_pagamento', 'vl_fatura', 'importada_em')
+    list_filter = ('indicador', 'nm_seg', 'ds_status_fatura', 'match_status', 'dt_venc_orig', 'importada_em')
+    search_fields = ('nr_ordem', 'id_contrato', 'nr_fatura', 'nm_seg', 'contrato_m10__numero_contrato')
     date_hierarchy = 'dt_venc_orig'
     list_per_page = 100
     ordering = ['-importada_em', 'nr_ordem']

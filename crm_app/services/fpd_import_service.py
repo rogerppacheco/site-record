@@ -184,6 +184,10 @@ def extrair_campos_linha_fpd(row: Any, hoje: Optional[date] = None) -> dict[str,
     if nm_gc.lower() == 'nan':
         nm_gc = ''
 
+    nm_seg = str(row.get('nm_seg', '') if hasattr(row, 'get') else '').strip()
+    if nm_seg.lower() == 'nan':
+        nm_seg = ''
+
     vl_fatura = row.get('vl_fatura', 0) if hasattr(row, 'get') else 0
     nr_dias_atraso = row.get('nr_dias_atraso', 0) if hasattr(row, 'get') else 0
 
@@ -218,6 +222,7 @@ def extrair_campos_linha_fpd(row: Any, hoje: Optional[date] = None) -> dict[str,
         'cd_vendedor_original': cd_vendedor,
         'nm_pdv': nm_pdv,
         'nm_gc': nm_gc,
+        'nm_seg': nm_seg,
         'vl_fatura': vl_fatura_float,
         'nr_dias_atraso': nr_dias_atraso_int,
         'dt_venc_date': dt_venc_date or hoje,

@@ -3396,6 +3396,14 @@ class ImportacaoFPD(models.Model):
     cd_vendedor_original = models.CharField(max_length=50, blank=True, default='')
     nm_pdv = models.CharField(max_length=120, blank=True, default='')
     nm_gc = models.CharField(max_length=120, blank=True, default='')
+    # Segmento da planilha (Varejo / Empresarial) — coluna nm_seg
+    nm_seg = models.CharField(
+        max_length=40,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text='Segmento do cliente na planilha (Varejo / Empresarial)',
+    )
     match_status = models.CharField(
         max_length=20,
         choices=MATCH_STATUS_CHOICES,

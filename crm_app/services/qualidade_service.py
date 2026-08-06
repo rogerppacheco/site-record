@@ -1107,6 +1107,7 @@ def dashboard_fpd_estilo_nio(
     indicador: str = 'FPD',
     meses: Optional[int] = 6,
     vendedor_id: Optional[int] = None,
+    nm_seg: Optional[str] = None,
     modo: str = 'geral',
 ) -> dict[str, Any]:
     """Monta tabela no formato do dashboard Nio (colunas = meses de vencimento).
@@ -1120,6 +1121,8 @@ def dashboard_fpd_estilo_nio(
     ``vendedor_id`` filtra pelo vendedor do CRM (``ContratoM10.vendedor``).
     Com filtro, a UI usa visão resumida (pagas/abertas/total/% aberto).
 
+    ``nm_seg`` filtra pelo segmento da planilha (Varejo / Empresarial).
+
     ``modo=por_vendedor``: linhas = vendedores; cada mês com total/pagas/abertas;
     coluna % Aberto no período.
     """
@@ -1128,6 +1131,7 @@ def dashboard_fpd_estilo_nio(
         return dashboard_fpd_por_vendedor(
             indicador=indicador,
             meses=meses,
+            nm_seg=nm_seg,
         )
 
     ind = (indicador or 'FPD').strip().upper()
@@ -1146,10 +1150,12 @@ def dashboard_fpd_estilo_nio(
         except (TypeError, ValueError):
             vend_id = None
 
+    seg_filtro = _normalizar_filtro_nm_seg(nm_seg)
+
     hoje = timezone.localdate()
 
     qs_universo = ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
-    # Janela de meses alinhada ao universo (mesmo com filtro de vendedor)
+    # Janela de meses alinhada ao universo (mesmo com filtro de vendedor/segmento)
     meses_disponiveis = sorted({
         d.strftime('%Y%m')
         for d in qs_universo.dates('dt_venc_orig', 'month')
@@ -1160,6 +1166,8 @@ def dashboard_fpd_estilo_nio(
     qs_imp = qs_universo
     if vend_id:
         qs_imp = qs_imp.filter(contrato_m10__vendedor_id=vend_id)
+    if seg_filtro:
+        qs_imp = qs_imp.filter(nm_seg__iexact=seg_filtro)
 
     qs = list(
         qs_imp.values(
@@ -1304,6 +1312,7 @@ def dashboard_fpd_estilo_nio(
             linhas.append({'chave': fk, 'label': label, 'tipo': 'faixa'})
 
     vendedores = _listar_vendedores_dashboard_fpd(ind)
+    segmentos = _listar_segmentos_dashboard_fpd(ind)
     vend_sel = None
     if vend_id:
         for v in vendedores:
@@ -1312,6 +1321,16 @@ def dashboard_fpd_estilo_nio(
                 break
         if not vend_sel:
             vend_sel = {'id': vend_id, 'nome': f'Vendedor #{vend_id}'}
+
+    fonte_partes = [
+        'Faixas ao vivo (vencimento CRM/planilha)',
+        'pago/aberto = Tratamento',
+        'universo = ImportacaoFPD',
+    ]
+    if vend_sel:
+        fonte_partes.append(f'vendedor CRM: {vend_sel["nome"]}')
+    if seg_filtro:
+        fonte_partes.append(f'nm_seg: {seg_filtro}')
 
     return {
         'modo': 'geral',
@@ -1322,11 +1341,7 @@ def dashboard_fpd_estilo_nio(
             [] if modo_resumo
             else [{'chave': k, 'label': lbl} for k, lbl in FAIXAS_NIO_ORDEM]
         ),
-        'fonte': (
-            'Faixas ao vivo (vencimento CRM/planilha) · '
-            'pago/aberto = Tratamento · universo = ImportacaoFPD'
-            + (f' · vendedor CRM: {vend_sel["nome"]}' if vend_sel else '')
-        ),
+        'fonte': ' · '.join(fonte_partes),
         'faixas_ao_vivo': True,
         'referencia_dias': hoje.isoformat(),
         'abertas_total': abertas_total,
@@ -1335,6 +1350,8 @@ def dashboard_fpd_estilo_nio(
         'vendedor_id': vend_id,
         'vendedor': vend_sel,
         'vendedores': vendedores,
+        'nm_seg': seg_filtro,
+        'segmentos': segmentos,
     }
 
 
@@ -1380,6 +1397,7 @@ def dashboard_fpd_por_vendedor(
     *,
     indicador: str = 'FPD',
     meses: Optional[int] = 6,
+    nm_seg: Optional[str] = None,
 ) -> dict[str, Any]:
     """Matriz: linhas = vendedores CRM; colunas = meses (total / pagas / abertas).
 
@@ -1394,6 +1412,8 @@ def dashboard_fpd_por_vendedor(
         n_meses = max(1, min(12, int(meses or 6)))
     except (TypeError, ValueError):
         n_meses = 6
+
+    seg_filtro = _normalizar_filtro_nm_seg(nm_seg)
 
     qs_universo = ImportacaoFPD.objects.filter(indicador=ind, dt_venc_orig__isnull=False)
     meses_disponiveis = sorted({
@@ -1413,8 +1433,12 @@ def dashboard_fpd_por_vendedor(
             'label': _label_mes(mes_iso),
         })
 
+    qs_imp = qs_universo
+    if seg_filtro:
+        qs_imp = qs_imp.filter(nm_seg__iexact=seg_filtro)
+
     qs = list(
-        qs_universo.values(
+        qs_imp.values(
             'dt_venc_orig',
             'ds_sit_fatura',
             'faixa',
@@ -1563,8 +1587,11 @@ def dashboard_fpd_por_vendedor(
         'fonte': (
             'Visão por vendedor CRM · pago/aberto = Tratamento · '
             'universo = ImportacaoFPD · % Aberto = abertas ÷ total de cada mês'
+            + (f' · nm_seg: {seg_filtro}' if seg_filtro else '')
         ),
         'vendedores': _listar_vendedores_dashboard_fpd(ind),
+        'nm_seg': seg_filtro,
+        'segmentos': _listar_segmentos_dashboard_fpd(ind),
         'modo_resumo': False,
         'vendedor_id': None,
         'vendedor': None,
@@ -1575,6 +1602,37 @@ def dashboard_fpd_por_vendedor(
         'abertas_total': tot_geral['abertas'],
         'divergencias_faixa_planilha': 0,
     }
+
+
+def _normalizar_filtro_nm_seg(nm_seg: Optional[str]) -> Optional[str]:
+    """Normaliza filtro de segmento (Varejo / Empresarial) vindo da query string."""
+    if nm_seg in (None, '', '0', 0, 'todos', 'TODOS', 'Todos'):
+        return None
+    raw = str(nm_seg).strip()
+    if not raw:
+        return None
+    lower = raw.casefold()
+    if lower == 'varejo':
+        return 'Varejo'
+    if lower == 'empresarial':
+        return 'Empresarial'
+    return raw
+
+
+def _listar_segmentos_dashboard_fpd(indicador: str) -> list[str]:
+    """Valores distintos de ``nm_seg`` no universo ImportacaoFPD do indicador."""
+    vals = (
+        ImportacaoFPD.objects.filter(
+            indicador=indicador,
+            dt_venc_orig__isnull=False,
+        )
+        .exclude(nm_seg__isnull=True)
+        .exclude(nm_seg='')
+        .values_list('nm_seg', flat=True)
+        .distinct()
+        .order_by('nm_seg')
+    )
+    return [str(v).strip() for v in vals if v and str(v).strip()]
 
 
 def _listar_vendedores_dashboard_fpd(indicador: str) -> list[dict[str, Any]]:

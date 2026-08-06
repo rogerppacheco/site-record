@@ -13105,6 +13105,7 @@ class ImportarFPDView(APIView):
                     'cd_vendedor_original': campos['cd_vendedor_original'],
                     'nm_pdv': campos['nm_pdv'],
                     'nm_gc': campos['nm_gc'],
+                    'nm_seg': campos.get('nm_seg') or '',
                     'match_status': match_status,
                 }
                 existente = importacoes_dict.get(chave)
@@ -13273,7 +13274,7 @@ class ImportarFPDView(APIView):
                     'nr_dias_atraso', 'ds_status_fatura', 'vl_fatura', 'contrato_m10',
                     'indicador', 'numero_fatura_m10', 'ds_sit_fatura', 'faixa',
                     'municipio', 'uf', 'cd_vendedor_original', 'nm_pdv', 'nm_gc',
-                    'match_status',
+                    'nm_seg', 'match_status',
                 ]
                 if importacoes_para_criar:
                     ImportacaoFPD.objects.bulk_create(importacoes_para_criar, batch_size=500)
