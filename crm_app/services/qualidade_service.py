@@ -694,33 +694,44 @@ def dashboard_qualidade(
     user: Any,
     filtros: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Monta KPIs + lista paginada de contratos para a lente/mês informados."""
+    """Monta KPIs + lista paginada de contratos para a lente/mês informados.
+
+    Com busca textual (``q`` com 2+ caracteres), ignora o filtro de mês/safra
+    e pesquisa em toda a base — o BO frequentemente não sabe o mês da fatura.
+    """
     filtros = filtros or {}
     lente_norm = (lente or LENTE_VENCIMENTO).strip().lower()
-    data_inicio, data_fim = mes_range(mes)
     ver_bonus = pode_ver_valor_bonus(user)
 
     status_display_map = dict(FaturaM10.STATUS_CHOICES)
 
-    if lente_norm == LENTE_INSTALACAO:
-        queryset = ContratoM10.objects.filter(
-            data_instalacao__gte=data_inicio,
-            data_instalacao__lt=data_fim,
-        )
+    busca_raw = (filtros.get('q') or filtros.get('busca') or '').strip()
+    busca_geral = len(busca_raw) >= 2
+
+    if busca_geral:
+        # Busca em toda a base (todas as safras / meses)
+        queryset = ContratoM10.objects.all()
     else:
-        # Lente vencimento FPD: só contratos com 1ª fatura sincronizada da planilha
-        # (evita inflar o mês com vencimento calculado instalação+25 sem FPD).
-        contrato_ids = (
-            FaturaM10.objects.filter(
-                numero_fatura=1,
-                data_vencimento__gte=data_inicio,
-                data_vencimento__lt=data_fim,
-                data_importacao_fpd__isnull=False,
+        data_inicio, data_fim = mes_range(mes)
+        if lente_norm == LENTE_INSTALACAO:
+            queryset = ContratoM10.objects.filter(
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
             )
-            .values_list('contrato_id', flat=True)
-            .distinct()
-        )
-        queryset = ContratoM10.objects.filter(id__in=contrato_ids)
+        else:
+            # Lente vencimento FPD: só contratos com 1ª fatura sincronizada da planilha
+            # (evita inflar o mês com vencimento calculado instalação+25 sem FPD).
+            contrato_ids = (
+                FaturaM10.objects.filter(
+                    numero_fatura=1,
+                    data_vencimento__gte=data_inicio,
+                    data_vencimento__lt=data_fim,
+                    data_importacao_fpd__isnull=False,
+                )
+                .values_list('contrato_id', flat=True)
+                .distinct()
+            )
+            queryset = ContratoM10.objects.filter(id__in=contrato_ids)
 
     # Órfãos ficam fora do tratamento por padrão (contam em "Faltam no CRM" / modal órfãos)
     if filtros.get('orfao') in (None, '') and _contrato_tem_campo('orfao'):
@@ -772,7 +783,10 @@ def dashboard_qualidade(
             queryset = queryset.filter(faturas_pagas=n_pagas)
 
     filas = contagens_filas_tratamento(queryset)
-    reconciliacao = reconciliar_fpd_com_painel(mes, filas, lente=lente_norm)
+    reconciliacao = (
+        None if busca_geral
+        else reconciliar_fpd_com_painel(mes, filas, lente=lente_norm)
+    )
     if fila:
         queryset = _aplicar_filtro_fila(queryset, fila)
 
@@ -859,6 +873,12 @@ def dashboard_qualidade(
             valor_bonus = VALOR_BONUS_M10 if is_elegivel else 0
 
         data_venc_f1 = f1.data_vencimento.isoformat() if f1 and f1.data_vencimento else None
+        if f1 and f1.data_vencimento:
+            mes_ref = f1.data_vencimento.strftime('%Y-%m')
+        elif c.data_instalacao:
+            mes_ref = c.data_instalacao.strftime('%Y-%m')
+        else:
+            mes_ref = (c.safra or '')[:7]
         valor_fatura1: Optional[float] = None
         if f1 is not None and f1.valor is not None:
             try:
@@ -897,9 +917,12 @@ def dashboard_qualidade(
             'status_fatura1': status_fatura1,
             'status_fatura1_display': status_fatura1_display,
             'conferencia_fpd': (f1.conferencia_fpd if f1 else '') or '',
+            'fatura1_id': f1.id if f1 else None,
             'status_origem': (f1.status_origem if f1 else '') or '',
             'ds_status_fatura_fpd': (f1.ds_status_fatura_fpd if f1 else '') or '',
             'data_vencimento_f1': data_venc_f1,
+            'mes_ref': mes_ref,
+            'safra': (c.safra or '')[:7],
             'valor_fatura1': valor_fatura1,
             'status_tratamento_id': st.id if st else None,
             'status_tratamento_nome': st.nome if st else None,
@@ -925,6 +948,7 @@ def dashboard_qualidade(
         'lente': lente_norm,
         'mes': mes,
         'label': _label_mes(mes),
+        'busca_geral': busca_geral,
         'kpis': kpis,
         'filas': filas,
         'contagens_filtros': contagens_filtros,
@@ -2483,6 +2507,59 @@ def enviar_cobranca_email(
 
 
 STATUS_FATURA_EDITAVEIS: list[str] = ['PAGO', 'NAO_PAGO', 'AGUARDANDO', 'ATRASADO', 'OUTROS']
+
+
+def limpar_conferencia_fpd_fatura(fatura_id: int, user: Any) -> dict[str, Any]:
+    """Remove marcação de conferência FPD (ex.: Aguard. FPD) de uma fatura.
+
+    Usado quando o BO desfaz um teste ou cancela a pendência de confirmação
+    na planilha. Mantém o status operacional atual da fatura.
+    """
+    if not pode_acessar_qualidade(user):
+        raise PermissionError('Sem permissão para limpar conferência FPD.')
+
+    try:
+        fatura = FaturaM10.objects.select_related('contrato').get(pk=fatura_id)
+    except FaturaM10.DoesNotExist as exc:
+        raise ValueError(f'Fatura {fatura_id} não encontrada.') from exc
+
+    conf_antes = (fatura.conferencia_fpd or '').strip().upper()
+    if not conf_antes:
+        return {
+            'ok': True,
+            'fatura_id': fatura.id,
+            'contrato_id': fatura.contrato_id,
+            'conferencia_fpd': '',
+            'alterado': False,
+            'detalhe': detalhe_contrato_faturas(fatura.contrato_id),
+        }
+
+    fatura.conferencia_fpd = ''
+    fatura.status_informado_tratamento = ''
+    fatura.data_status_tratamento = None
+    fatura.status_origem = 'SISTEMA'
+    fatura.save(update_fields=[
+        'conferencia_fpd',
+        'status_informado_tratamento',
+        'data_status_tratamento',
+        'status_origem',
+        'atualizado_em',
+    ])
+
+    logger.info(
+        '[Qualidade] limpar_conferencia_fpd fatura=%s conf_antes=%s user=%s',
+        fatura_id,
+        conf_antes,
+        getattr(user, 'id', None),
+    )
+    return {
+        'ok': True,
+        'fatura_id': fatura.id,
+        'contrato_id': fatura.contrato_id,
+        'conferencia_fpd': '',
+        'alterado': True,
+        'detalhe': detalhe_contrato_faturas(fatura.contrato_id),
+    }
 
 
 def _valor_referencia_faturas(contrato: ContratoM10) -> float:

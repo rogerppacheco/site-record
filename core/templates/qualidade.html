@@ -131,9 +131,14 @@
 }
 .qualidade-toolbar .q-busca {
     width: 14rem;
-    max-width: 100%;
+    max-width: 22rem;
     flex: 1 1 12rem;
     min-width: 10rem;
+}
+#busca-geral-hint {
+    font-size: 0.68rem;
+    align-self: center;
+    white-space: nowrap;
 }
 .qualidade-toolbar .q-sel-mes { width: auto; min-width: 7.2rem; max-width: 9rem; }
 .qualidade-toolbar .q-sel-filtro {
@@ -564,6 +569,14 @@
 .badge-conf-aguardando { background: #0dcaf0; color: #033; font-size: 0.62rem; }
 .badge-conf-confirmado { background: #198754; font-size: 0.62rem; }
 .badge-conf-divergente { background: #dc3545; font-size: 0.62rem; }
+.badge-conf-clicavel {
+    cursor: pointer;
+    user-select: none;
+}
+.badge-conf-clicavel:hover {
+    filter: brightness(0.92);
+    outline: 1px solid rgba(255, 255, 255, 0.35);
+}
 .acoes-btns .btn { padding: 1px 6px; font-size: 0.72rem; }
 .link-faturas { cursor: pointer; color: var(--accent-color); text-decoration: underline; font-weight: 600; }
 .faturas-table { table-layout: fixed; width: 100%; margin-bottom: 0; }
@@ -588,25 +601,79 @@
 .faturas-table .col-valor { width: 80px; min-width: 72px; }
 .faturas-table .col-valor input { width: 100%; min-width: 68px; }
 .faturas-table .col-promessa { width: 112px; min-width: 104px; }
-.faturas-table .col-pix { width: 78px; min-width: 72px; text-align: center; overflow: hidden; }
-.faturas-table .col-pdf { width: 108px; min-width: 100px; text-align: center; overflow: hidden; }
+.faturas-table .col-pix { width: 72px; min-width: 68px; text-align: center; overflow: hidden; }
+.faturas-table .col-pdf {
+    width: 96px;
+    min-width: 90px;
+    max-width: 96px;
+    text-align: center;
+    overflow: hidden;
+}
+.faturas-table td.col-pdf {
+    padding-left: 0.2rem !important;
+    padding-right: 0.2rem !important;
+}
 .faturas-table .acoes-btns {
     display: flex;
     flex-wrap: nowrap;
-    gap: 0.18rem;
+    gap: 0.15rem;
     justify-content: center;
     align-items: center;
     white-space: nowrap;
     max-width: 100%;
     overflow: hidden;
 }
+/* Evita o CSS global (.btn / .btn-outline-primary) que deixa o botão enorme */
+#modalFaturas .faturas-table .col-pdf .btn-fat-acao,
+#modalFaturas .faturas-table .col-pdf label.btn-fat-acao {
+    flex: 0 0 1.5rem !important;
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    min-width: 1.5rem !important;
+    max-width: 1.5rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 0.72rem !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 0.3rem !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    transform: none !important;
+    background: transparent !important;
+    border: 1px solid rgba(13, 110, 253, 0.65) !important;
+    color: #6ea8fe !important;
+}
+#modalFaturas .faturas-table .col-pdf .btn-fat-acao::before,
+#modalFaturas .faturas-table .col-pdf label.btn-fat-acao::before {
+    display: none !important;
+    content: none !important;
+}
+#modalFaturas .faturas-table .col-pdf .btn-fat-acao.btn-fat-nio {
+    border-color: #0d6efd !important;
+    color: #6ea8fe !important;
+}
+#modalFaturas .faturas-table .col-pdf .btn-fat-acao.btn-fat-download {
+    border-color: #198754 !important;
+    color: #75b798 !important;
+}
+#modalFaturas .faturas-table .col-pdf .btn-fat-acao.btn-fat-upload {
+    border-color: #6c757d !important;
+    color: #adb5bd !important;
+}
+#modalFaturas .faturas-table .col-pdf .btn-fat-acao:hover {
+    filter: brightness(1.15);
+    transform: none !important;
+}
 .faturas-table .acoes-btns .btn,
 .faturas-table .acoes-btns label.btn {
     flex: 0 0 auto;
-    width: 1.7rem;
-    height: 1.7rem;
+    width: 1.5rem;
+    height: 1.5rem;
     padding: 0;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     line-height: 1;
     display: inline-flex;
     align-items: center;
@@ -900,7 +967,8 @@
                 <span class="qualidade-kpi-mini q-painel-only" id="kpi-mini"></span>
             </div>
             <div class="qualidade-toolbar-row">
-                <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="Buscar O.S., cliente ou CPF" onkeydown="if(event.key==='Enter'){page=1;carregarDashboard()}">
+                <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="Buscar em toda a base (O.S., cliente ou CPF)" title="Busca em todas as safras — não fica limitada ao mês selecionado" onkeydown="if(event.key==='Enter'){page=1;carregarDashboard()}">
+                <span id="busca-geral-hint" class="badge text-bg-info d-none" title="Resultados de todas as safras">Busca geral</span>
                 <select id="filtro-faixa-atraso" class="form-select form-select-sm q-sel-filtro" onchange="page=1;carregarDashboard()" title="Faixa de atraso da 1ª fatura">
                     <option value="">Atraso (dias)</option>
                     <option value="d10_15">10 a 15 dias</option>
@@ -1841,13 +1909,61 @@
         </div>`;
     }
 
-    function badgeConferenciaFpd(conf) {
+    function badgeConferenciaFpd(conf, faturaId) {
         const c = (conf || '').toUpperCase();
-        if (c === 'AGUARDANDO') return '<span class="badge badge-conf-aguardando" title="Aguardando confirmação na planilha FPD">Aguard. FPD</span>';
-        if (c === 'CONFIRMADO') return '<span class="badge badge-conf-confirmado" title="Confirmado na planilha FPD">OK FPD</span>';
-        if (c === 'DIVERGENTE') return '<span class="badge badge-conf-divergente" title="Divergente da planilha FPD">Divergente</span>';
-        return '';
+        const id = Number(faturaId) || 0;
+        let label = '';
+        let cls = '';
+        let title = '';
+        if (c === 'AGUARDANDO') {
+            label = 'Aguard. FPD';
+            cls = 'badge-conf-aguardando';
+            title = 'Aguardando confirmação na planilha FPD';
+        } else if (c === 'CONFIRMADO') {
+            label = 'OK FPD';
+            cls = 'badge-conf-confirmado';
+            title = 'Confirmado na planilha FPD';
+        } else if (c === 'DIVERGENTE') {
+            label = 'Divergente';
+            cls = 'badge-conf-divergente';
+            title = 'Divergente da planilha FPD';
+        } else {
+            return '';
+        }
+        if (!id) {
+            return `<span class="badge ${cls}" title="${escapeAttr(title)}">${label}</span>`;
+        }
+        title += ' — clique para remover';
+        return `<span class="badge ${cls} badge-conf-clicavel" role="button" tabindex="0"
+            title="${escapeAttr(title)}"
+            onclick="limparConferenciaFpd(${id}, event)"
+            onkeydown="if(event.key==='Enter'||event.key===' '){limparConferenciaFpd(${id}, event)}">${label}</span>`;
     }
+
+    window.limparConferenciaFpd = async function (faturaId, ev) {
+        if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+        if (!faturaId) return;
+        if (!confirm('Remover a marcação de conferência FPD desta fatura?')) return;
+        try {
+            const r = await fetch(`${API}/api/qualidade/faturas/${faturaId}/limpar-conferencia-fpd/`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({}),
+            });
+            const data = await r.json();
+            if (!r.ok || data.ok === false) throw new Error(data.error || 'Falha ao remover marcação');
+            const modalAberto = document.getElementById('modalFaturas')?.classList.contains('show');
+            if (modalAberto && data.detalhe) {
+                renderFaturasTabela(data.detalhe);
+            }
+            if (typeof carregarDashboard === 'function') carregarDashboard();
+        } catch (e) {
+            alert(e.message || 'Erro ao remover marcação');
+        }
+    };
 
     function badgeFatura(status, display) {
         const s = (status || '').toUpperCase();
@@ -1919,6 +2035,8 @@
         const confFpd = (document.getElementById('filtro-conferencia-fpd') || {}).value || '';
         const faixaAtraso = (document.getElementById('filtro-faixa-atraso') || {}).value || '';
         const faturasPagas = (document.getElementById('filtro-faturas-pagas') || {}).value || '';
+        const hintBusca = document.getElementById('busca-geral-hint');
+        if (hintBusca) hintBusca.classList.toggle('d-none', q.length < 2);
         atualizarResumoFiltrosAtivos();
         const params = new URLSearchParams({
             lente,
@@ -1943,6 +2061,13 @@
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'Falha no dashboard');
             podeVerBonus = !!data.pode_ver_valor_bonus;
+            const buscaGeral = !!data.busca_geral;
+            if (hintBusca) {
+                hintBusca.classList.toggle('d-none', !buscaGeral);
+                hintBusca.textContent = buscaGeral
+                    ? `Busca geral · ${data.total || 0}`
+                    : 'Busca geral';
+            }
             renderKpis(data.kpis || {});
             atualizarContagensFilas(data.filas);
             atualizarReconciliacao(data.reconciliacao);
@@ -1990,12 +2115,15 @@
                         ? `<div class="cliente-cpf text-muted">${escapeHtml(cpfFmt)}</div>`
                         : '<div class="cliente-cpf text-muted">CPF —</div>';
                     const contatosHtml = renderBadgesContato(c.contatos || {}, c.id);
+                    const mesRefHtml = (buscaGeral && (c.mes_ref || c.safra))
+                        ? `<div class="small text-muted">${escapeHtml(c.mes_ref || c.safra)}</div>`
+                        : '';
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}" data-contrato-id="${c.id}">
-                        <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
+                        <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}${mesRefHtml}</td>
                         <td class="col-cliente"><div class="cliente-nome">${escapeHtml(c.cliente_nome || '-')}</div>${cpfHtml}</td>
                         <td>${escapeHtml(c.vendedor_nome || '-')}</td>
                         <td>${escapeHtml(c.status_contrato || '-')}</td>
-                        <td>${badgeFatura(c.status_fatura1, c.status_fatura1_display)} ${badgeConferenciaFpd(c.conferencia_fpd)}</td>
+                        <td>${badgeFatura(c.status_fatura1, c.status_fatura1_display)} ${badgeConferenciaFpd(c.conferencia_fpd, c.fatura1_id)}</td>
                         <td>${formatDataBr(c.data_vencimento_f1)}</td>
                         <td>
                             <select class="form-select form-select-sm q-status-trat" data-prev="${c.status_tratamento_id || ''}" ${corBord}
@@ -3240,9 +3368,9 @@
         const rows = data.faturas || [];
         tbody.innerHTML = rows.map(f => {
             const pdfBtns = f.tem_pdf
-                ? `<button type="button" class="btn btn-sm btn-outline-success" onclick="downloadPdfFatura(${f.id})" title="Download"><i class="bi bi-download"></i></button>`
+                ? `<button type="button" class="btn-fat-acao btn-fat-download" onclick="downloadPdfFatura(${f.id})" title="Download"><i class="bi bi-download"></i></button>`
                 : '';
-            const confBadge = badgeConferenciaFpd(f.conferencia_fpd);
+            const confBadge = badgeConferenciaFpd(f.conferencia_fpd, f.id);
             const ind = (f.indicador || ({ 1: 'FPD', 2: 'SPD', 3: 'TPD' }[f.numero_fatura] || '')).toUpperCase();
             const indClass = ind === 'SPD' ? 'badge-ind-spd' : (ind === 'TPD' ? 'badge-ind-tpd' : (ind === 'FPD' ? 'badge-ind-fpd' : 'text-bg-secondary'));
             const indBadge = ind
@@ -3278,9 +3406,9 @@
                     </div>
                 </td>
                 <td class="acoes-btns col-pdf">
-                    <button type="button" class="btn btn-sm btn-outline-primary btn-fat-nio" title="Buscar na Nio" onclick="buscarNioFatura(${f.numero_fatura}, ${f.id})"><i class="bi bi-cloud-download"></i></button>
+                    <button type="button" class="btn-fat-acao btn-fat-nio" title="Buscar na Nio" onclick="buscarNioFatura(${f.numero_fatura}, ${f.id})"><i class="bi bi-cloud-download"></i></button>
                     ${pdfBtns}
-                    <label class="btn btn-sm btn-outline-secondary mb-0 btn-fat-upload" title="Upload PDF">
+                    <label class="btn-fat-acao btn-fat-upload mb-0" title="Upload PDF">
                         <i class="bi bi-upload"></i>
                         <input type="file" accept="application/pdf" hidden onchange="uploadPdfFatura(${f.id}, this)">
                     </label>

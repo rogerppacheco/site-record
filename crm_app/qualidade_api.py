@@ -420,6 +420,27 @@ class QualidadeFaturaUploadPdfView(APIView):
         })
 
 
+class QualidadeFaturaLimparConferenciaView(APIView):
+    """POST /api/qualidade/faturas/<id>/limpar-conferencia-fpd/ — remove Aguard. FPD etc."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk: int):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        try:
+            resultado = qs.limpar_conferencia_fpd_fatura(pk, request.user)
+            return Response(resultado)
+        except PermissionError as e:
+            return Response({'error': str(e)}, status=403)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=404)
+        except Exception as e:
+            logger.exception('Erro ao limpar conferência FPD fatura=%s', pk)
+            return Response({'error': str(e)}, status=500)
+
+
 class QualidadeBuscarNioOpcoesView(APIView):
     """POST /api/qualidade/contratos/<id>/buscar-nio/
     body: { numero_fatura: 1 }
