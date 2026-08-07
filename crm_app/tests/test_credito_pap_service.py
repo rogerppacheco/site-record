@@ -149,6 +149,23 @@ class ConsultarViabilidadeComFallbackTests(SimpleTestCase):
         self.assertTrue(resultado.sucesso)
         self.assertEqual(automacao.consultas, [("30130001", "522"), ("32140000", "712")])
 
+    def test_pedido_encontrado_tambem_dispara_fallback(self):
+        """Modal 'Pedido encontrado' no endereço deve cair no CEP padrão da loja."""
+        automacao = AutomacaoFake(
+            {
+                "30130001": (False, "❌ Pedido encontrado", "PEDIDO_ENCONTRADO"),
+                "32140000": (True, "Endereço viável.", None),
+            }
+        )
+        resultado = consultar_viabilidade_com_fallback(automacao, self._tentativas())
+
+        self.assertTrue(resultado.sucesso)
+        self.assertTrue(resultado.usou_fallback)
+        self.assertEqual(resultado.endereco.origem, ORIGEM_PADRAO)
+        self.assertEqual(automacao.resets, ["PEDIDO_ENCONTRADO"])
+        self.assertEqual(automacao.consultas, [("30130001", "522"), ("32140000", "712")])
+        self.assertIn("PEDIDO_ENCONTRADO", resultado.bloqueios[0])
+
     def test_falha_de_portal_nao_tenta_outro_endereco(self):
         automacao = AutomacaoFake(
             {

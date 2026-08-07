@@ -29,7 +29,13 @@ ORIGEM_MISTO = "misto"
 
 # Códigos da etapa 2 que indicam bloqueio do endereço (e não do cliente),
 # portanto passíveis de nova tentativa com outro endereço.
-CODIGOS_ENDERECO_BLOQUEADO = ("INDISPONIVEL_TECNICO", "POSSE_ENCONTRADA")
+# PEDIDO_ENCONTRADO = modal do PAP ("Pedido encontrado") no endereço;
+# POSSE_ENCONTRADA cobre o mesmo caso após normalização na etapa 2.
+CODIGOS_ENDERECO_BLOQUEADO = (
+    "INDISPONIVEL_TECNICO",
+    "POSSE_ENCONTRADA",
+    "PEDIDO_ENCONTRADO",
+)
 
 # Códigos do modal "Atenção!" da etapa 4 relacionados ao e-mail.
 CODIGO_EMAIL_INVALIDO = "EMAIL_INVALIDO"

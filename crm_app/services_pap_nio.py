@@ -3986,6 +3986,8 @@ class PAPNioAutomation:
         if not self.page:
             return False, "Página do PAP indisponível."
         codigo = (codigo_bloqueio or "").upper()
+        # Pedido encontrado e Posse usam "Consultar outro endereço";
+        # Indisponível usa "Voltar".
         acoes = (
             [self.etapa2_modal_indisponivel_clicar_voltar,
              self.etapa2_modal_posse_clicar_consultar_outro]
@@ -4379,9 +4381,47 @@ class PAPNioAutomation:
         except Exception:
             return False
 
+    def _etapa2_resultado_de_modal_bloqueante(
+        self,
+        modal_bloqueante: Dict[str, str],
+        cep: str,
+        numero: str,
+        referencia: str,
+    ) -> Tuple[bool, str, Optional[Any]]:
+        """Converte modal Posse/Pedido/Indisponível no retorno padrão da etapa 2."""
+        codigo = modal_bloqueante["codigo"]
+        if codigo == PAP_ERRO_PORTAL_NIO:
+            self._fechar_modal_erro_ops()
+            return False, PAP_ERRO_PORTAL_NIO, None
+        self._capture_screenshot(
+            f"02_modal_{codigo.lower()}",
+            forcar=True,
+        )
+        msg = self._mensagem_usuario_modal_bloqueante(
+            modal_bloqueante,
+            etapa="endereco",
+            cep=cep,
+            numero=numero,
+            referencia=referencia,
+        )
+        # Pedido encontrado no endereço ≡ posse para o fallback de crédito / VENDER.
+        if codigo == "PEDIDO_ENCONTRADO":
+            codigo = "POSSE_ENCONTRADA"
+        if codigo == "PAP_OCORREU_ERRO":
+            return False, msg, None
+        if codigo == "INDISPONIVEL_TECNICO":
+            msg = msg + "\n\nDigite outro *CEP* ou *CONCLUIR* para sair."
+        else:
+            msg = (
+                msg
+                + "\n\nDigite outro *CEP* para consultar outro endereço "
+                "ou *CONCLUIR* para sair."
+            )
+        return False, msg, codigo
+
     def _etapa2_concluir_endereco_viavel(
         self, cep: str, numero: str, referencia: str, motivo_log: str = ""
-    ) -> Tuple[bool, str, None]:
+    ) -> Tuple[bool, str, Optional[Any]]:
         if motivo_log:
             logger.info("[PAP] Etapa2: endereço viável — %s", motivo_log)
         btn_cont = self.page.query_selector('button:has-text("Continuar")')
@@ -4396,6 +4436,25 @@ class PAPNioAutomation:
                 self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=15000)
             except Exception:
                 self.page.wait_for_timeout(2000)
+
+        # Pedido/Posse encontrado às vezes abre DEPOIS do Continuar / tela de CPF.
+        self.page.wait_for_timeout(700 if self.optimize_for_credit else 1200)
+        modal_bloqueante = self._ler_modal_bloqueante_pap()
+        if modal_bloqueante and modal_bloqueante.get("codigo") in (
+            "POSSE_ENCONTRADA",
+            "PEDIDO_ENCONTRADO",
+            "INDISPONIVEL_TECNICO",
+            PAP_ERRO_PORTAL_NIO,
+            "PAP_OCORREU_ERRO",
+        ):
+            logger.warning(
+                "[PAP] Etapa2: modal %s após parecer viável — não avançando com este endereço",
+                modal_bloqueante.get("codigo"),
+            )
+            return self._etapa2_resultado_de_modal_bloqueante(
+                modal_bloqueante, cep, numero, referencia
+            )
+
         self._capture_screenshot(
             "02_viabilidade_disponivel",
             wait_selector='input[name="documento"]',
@@ -4415,12 +4474,11 @@ class PAPNioAutomation:
         if self.verificar_modal_erro_ops_visivel():
             self._fechar_modal_erro_ops()
             return False, PAP_ERRO_PORTAL_NIO, None
-        if self._etapa2_formulario_documento_visivel():
-            return self._etapa2_concluir_endereco_viavel(
-                cep, numero, referencia,
-                motivo_log="formulário CPF visível (PAP pulou modal de viabilidade)",
-            )
-        pagina_lower = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
+
+        # IMPORTANTE: checar Pedido/Posse/Indisponível ANTES do formulário CPF.
+        # O PAP pode deixar o input documento no DOM (ou já na etapa 3) com o
+        # modal bloqueante por cima — tratar CPF visível como sucesso fazia o
+        # crédito seguir sem cair no endereço padrão.
         modal_bloqueante = self._ler_modal_bloqueante_pap()
         if modal_bloqueante and modal_bloqueante.get("codigo") in (
             "POSSE_ENCONTRADA",
@@ -4429,38 +4487,19 @@ class PAPNioAutomation:
             PAP_ERRO_PORTAL_NIO,
             "PAP_OCORREU_ERRO",
         ):
-            codigo = modal_bloqueante["codigo"]
-            if codigo == PAP_ERRO_PORTAL_NIO:
-                self._fechar_modal_erro_ops()
-                return False, PAP_ERRO_PORTAL_NIO, None
-            self._capture_screenshot(
-                f"02_modal_{codigo.lower()}",
-                forcar=True,
+            return self._etapa2_resultado_de_modal_bloqueante(
+                modal_bloqueante, cep, numero, referencia
             )
-            msg = self._mensagem_usuario_modal_bloqueante(
-                modal_bloqueante,
-                etapa="endereco",
-                cep=cep,
-                numero=numero,
-                referencia=referencia,
+
+        if self._etapa2_formulario_documento_visivel():
+            return self._etapa2_concluir_endereco_viavel(
+                cep, numero, referencia,
+                motivo_log="formulário CPF visível (PAP pulou modal de viabilidade)",
             )
-            # Mantém string legada para o fluxo VENDER (comparações == "POSSE_ENCONTRADA").
-            if codigo == "PEDIDO_ENCONTRADO":
-                codigo = "POSSE_ENCONTRADA"
-            if codigo == "PAP_OCORREU_ERRO":
-                return False, msg, None
-            if codigo == "INDISPONIVEL_TECNICO":
-                msg = msg + "\n\nDigite outro *CEP* ou *CONCLUIR* para sair."
-            else:
-                msg = (
-                    msg
-                    + "\n\nDigite outro *CEP* para consultar outro endereço "
-                    "ou *CONCLUIR* para sair."
-                )
-            return False, msg, codigo
+        pagina_lower = self._page_content_seguro(tentativas=2, pausa_ms=350).lower()
         if "posse encontrada" in pagina_lower or (
             "pedido" in pagina_lower and "em andamento" in pagina_lower
-        ):
+        ) or "pedido encontrado" in pagina_lower:
             endereco = self._formatar_linha_endereco(cep, numero, referencia)
             return False, (
                 "❌ *Posse encontrada*\n\n"
@@ -4645,6 +4684,256 @@ class PAPNioAutomation:
             logger.error(f"[PAP] _preencher_cpf_representante_apos_consultar_cnpj: {e}")
             return False, f"Não foi possível preencher CPF do representante legal: {e}"
     
+    def _etapa3_ler_valor_input(self, *selectors: str) -> str:
+        """Lê value/texto do primeiro input visível entre os seletores."""
+        if not self.page:
+            return ""
+        for sel in selectors:
+            try:
+                el = self.page.query_selector(sel)
+                if not el:
+                    continue
+                val = (el.get_attribute("value") or el.input_value() or el.inner_text() or "").strip()
+                if val:
+                    return val
+            except Exception:
+                continue
+        return ""
+
+    def _etapa3_documento_invalido_visivel(self) -> bool:
+        """True só se a mensagem 'Documento inválido' estiver visível (não no HTML oculto)."""
+        if not self.page:
+            return False
+        try:
+            loc = self.page.get_by_text(re.compile(r"documento\s+inv[aá]lido", re.I))
+            if loc.count() <= 0:
+                return False
+            return bool(loc.first.is_visible())
+        except Exception:
+            return False
+
+    def _etapa3_cliente_carregado(self) -> bool:
+        """True quando a consulta Receita preencheu nome/mãe ou liberou Avançar."""
+        if not self.page:
+            return False
+        try:
+            btn = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+            if btn and btn.is_visible():
+                return True
+        except Exception:
+            pass
+        nome = self._etapa3_ler_valor_input(
+            'input[name="nome"]',
+            'input[name="nomeCompleto"]',
+            'input[name*="nome"]:not([name*="Mae"]):not([name*="mae"])',
+        )
+        mae = self._etapa3_ler_valor_input('input[name="nomeMae"]', 'input[name*="mae"]')
+        # Nome real costuma ter letras; máscara da mãe tem '*'.
+        if nome and re.search(r"[A-Za-zÀ-ÿ]", nome):
+            return True
+        if mae and ("*" in mae or re.search(r"[A-Za-zÀ-ÿ]", mae)):
+            return True
+        return False
+
+    def _etapa3_preencher_documento(self, cpf_selector: str, cpf_limpo: str) -> bool:
+        """
+        Preenche CPF/CNPJ respeitando máscara React (fill() costuma ser limpo no blur).
+        Digita caractere a caractere — igual ao preenchimento manual.
+        """
+        if not self.page or not cpf_limpo:
+            return False
+        try:
+            loc = self.page.locator(cpf_selector).first
+            loc.wait_for(state="visible", timeout=10000)
+            loc.click(timeout=5000)
+            # Seleciona tudo e apaga (máscaras ignoram fill vazio às vezes)
+            try:
+                loc.press("Control+A")
+                loc.press("Backspace")
+            except Exception:
+                try:
+                    loc.fill("")
+                except Exception:
+                    pass
+            # Digitação lenta para a máscara 000.000.000-00 / CNPJ aplicar
+            delay_ms = 35 if self.optimize_for_credit else 50
+            try:
+                loc.press_sequentially(cpf_limpo, delay=delay_ms)
+            except Exception:
+                # Playwright antigo: type()
+                loc.type(cpf_limpo, delay=delay_ms)
+            self.page.keyboard.press("Tab")
+            self.page.wait_for_timeout(400 if self.optimize_for_credit else 700)
+            atual = re.sub(
+                r"\D",
+                "",
+                self._etapa3_ler_valor_input(cpf_selector, 'input[name="documento"]'),
+            )
+            if atual == cpf_limpo:
+                logger.info("[PAP] Etapa3: documento preenchido via digitação (%s dígitos)", len(cpf_limpo))
+                return True
+            # Fallback React setter + re-leitura
+            logger.warning(
+                "[PAP] Etapa3: digitação deixou doc=%r — tentando _set_valor_react",
+                atual,
+            )
+            self._set_valor_react(cpf_selector, cpf_limpo)
+            self.page.keyboard.press("Tab")
+            self.page.wait_for_timeout(400)
+            atual = re.sub(
+                r"\D",
+                "",
+                self._etapa3_ler_valor_input(cpf_selector, 'input[name="documento"]'),
+            )
+            ok = atual == cpf_limpo
+            if not ok:
+                logger.error(
+                    "[PAP] Etapa3: falha ao preencher documento (campo=%r esperado=%s)",
+                    atual,
+                    cpf_limpo,
+                )
+            return ok
+        except Exception as e:
+            logger.error("[PAP] Etapa3: erro ao preencher documento: %s", e)
+            return False
+
+    def _etapa3_ainda_na_tela_cadastro(self) -> bool:
+        """True se o formulário de CPF/CNPJ (etapa 3) ainda está visível."""
+        if not self.page:
+            return False
+        try:
+            doc = self.page.query_selector('input[name="documento"]')
+            if doc and doc.is_visible():
+                return True
+        except Exception:
+            pass
+        # Voltou para CEP da etapa 2?
+        try:
+            h = self.page.get_by_text(re.compile(r"consulta de viabilidade", re.I))
+            if h.count() > 0 and h.first.is_visible():
+                return False
+        except Exception:
+            pass
+        try:
+            cep = self.page.query_selector(
+                'input[placeholder*="CEP"], input[placeholder*="Endereço ou CEP"], input[name="cep"]'
+            )
+            if cep and cep.is_visible():
+                return False
+        except Exception:
+            pass
+        return False
+
+    def _etapa3_clicar_buscar_documento(self) -> bool:
+        """Clica apenas o Buscar ao lado do CPF/CNPJ (nunca o Buscar da etapa 2)."""
+        if not self.page:
+            return False
+        if not self._etapa3_ainda_na_tela_cadastro():
+            logger.warning("[PAP] Etapa3: tela de cadastro não está visível — não clicando Buscar")
+            return False
+        # Somente Buscar (evitar 'Consultar' genérico de outras telas)
+        candidatos = [
+            'div:has(> input[name="documento"]) button:has-text("Buscar"):not([disabled])',
+            'div:has(input[name="documento"]) >> button:has-text("Buscar"):not([disabled])',
+            'form:has(input[name="documento"]) button:has-text("Buscar"):not([disabled])',
+        ]
+        for sel in candidatos:
+            try:
+                loc = self.page.locator(sel).first
+                if loc.count() > 0 and loc.is_visible():
+                    loc.click(timeout=5000)
+                    logger.info("[PAP] Etapa3: clicado Buscar via %s", sel[:90])
+                    return True
+            except Exception:
+                continue
+        # Último recurso: botão Buscar visível na viewport da etapa 3
+        try:
+            botoes = self.page.locator('button:has-text("Buscar"):not([disabled])')
+            n = min(botoes.count(), 5)
+            for i in range(n):
+                btn = botoes.nth(i)
+                if not btn.is_visible():
+                    continue
+                # Prefere o que está perto do label CPF/CNPJ
+                box = btn.bounding_box()
+                if box and box.get("y", 0) < 200:
+                    continue  # muito no topo (menu)
+                btn.click(timeout=5000)
+                logger.info("[PAP] Etapa3: clicado Buscar (fallback índice %s)", i)
+                return True
+        except Exception as e:
+            logger.debug("[PAP] Etapa3 Buscar fallback: %s", e)
+        return False
+
+    def _diagnostico_etapa3_falha(self, cpf_limpo: str) -> str:
+        """Loga e retorna resumo do estado da tela após falha na consulta de documento."""
+        if not self.page:
+            return "página inexistente"
+        try:
+            url = (self.page.url or "")[:160]
+        except Exception:
+            url = "?"
+        doc_val = self._etapa3_ler_valor_input(
+            'input[name="documento"]',
+            'input[name=documento]',
+            'input#documento',
+        )
+        nome = self._etapa3_ler_valor_input(
+            'input[name="nome"]',
+            'input[name="nomeCompleto"]',
+            'input[name*="nome"]:not([name*="Mae"]):not([name*="mae"])',
+        )
+        mae = self._etapa3_ler_valor_input('input[name="nomeMae"]', 'input[name*="mae"]')
+        dt = self._etapa3_ler_valor_input(
+            'input[name="dataNascimento"]',
+            'input[name*="nascimento"]',
+        )
+        avancar_ok = False
+        avancar_disabled = None
+        try:
+            btn = self.page.query_selector('button:has-text("Avançar")')
+            if btn:
+                avancar_disabled = btn.get_attribute("disabled") is not None or (
+                    (btn.get_attribute("aria-disabled") or "").lower() == "true"
+                )
+                avancar_ok = not avancar_disabled and btn.is_visible()
+        except Exception:
+            pass
+        alertas: list[str] = []
+        for padrao in (
+            r"documento\s+inv[aá]lido",
+            r"ops,?\s+ocorreu\s+um\s+erro",
+            r"aten[cç][aã]o",
+            r"n[aã]o\s+foi\s+poss[ií]vel",
+            r"cpf\s+n[aã]o\s+encontrado",
+            r"cliente\s+n[aã]o\s+encontrado",
+        ):
+            try:
+                loc = self.page.get_by_text(re.compile(padrao, re.I))
+                if loc.count() > 0 and loc.first.is_visible():
+                    alertas.append((loc.first.inner_text() or "")[:120].strip())
+            except Exception:
+                continue
+        digitos_doc = re.sub(r"\D", "", doc_val or "")
+        na_cadastro = self._etapa3_ainda_na_tela_cadastro()
+        resumo = (
+            f"url={url} | tela_cadastro={na_cadastro} | doc_campo={doc_val[:20]!r} digitos={digitos_doc} "
+            f"(esperado={cpf_limpo}) | nome={nome[:40]!r} | mae={mae[:40]!r} | "
+            f"nasc={dt!r} | avancar_ok={avancar_ok} disabled={avancar_disabled} | "
+            f"alertas={alertas[:3]!r}"
+        )
+        logger.error("[PAP] Etapa3 diagnóstico falha: %s", resumo)
+        try:
+            self._capture_screenshot(
+                "03_err_cpf_nao_carregou",
+                wait_selector=None,
+                wait_timeout_ms=0,
+                forcar=True,
+            )
+        except Exception:
+            pass
+        return resumo
+
     def etapa3_cadastro_cliente(self, cpf: str, cpf_representante: str = None) -> Tuple[bool, str, Optional[Dict]]:
         """
         Etapa 3: Cadastro do cliente.
@@ -4658,6 +4947,22 @@ class PAPNioAutomation:
             ok_sessao, msg_sessao = self._garantir_sessao_sem_descartar_pedido()
             if not ok_sessao:
                 return False, msg_sessao, None
+
+            # Se o modal Pedido/Posse ficou para trás da etapa 2, não preencher CPF.
+            modal_atrasado = self._ler_modal_bloqueante_pap()
+            if modal_atrasado and modal_atrasado.get("codigo") in (
+                "PEDIDO_ENCONTRADO",
+                "POSSE_ENCONTRADA",
+            ):
+                self._capture_screenshot("03_err_modal_pedido_posse", forcar=True)
+                logger.warning(
+                    "[PAP] Etapa3: modal %s ainda visível — bloqueio de endereço não tratado na etapa 2",
+                    modal_atrasado.get("codigo"),
+                )
+                return False, (
+                    "Já existe pedido/posse em andamento neste endereço "
+                    "(modal Pedido encontrado). A análise deveria usar o endereço padrão."
+                ), None
 
             self._etapa3_garantir_tela_documento()
             self.page.wait_for_timeout(400 if self.optimize_for_credit else 1200)
@@ -4682,15 +4987,14 @@ class PAPNioAutomation:
                 cpf_selector = 'input[name=documento]'
                 self.page.wait_for_selector(cpf_selector, state="visible", timeout=25000)
             
-            # Preencher CPF/CNPJ (apenas dígitos)
+            # Preencher CPF/CNPJ digitando (máscara React — fill() apaga o valor)
             cpf_limpo = re.sub(r'\D', '', cpf)
-            cpf_input = self.page.query_selector(cpf_selector)
-            if cpf_input:
-                cpf_input.click()
-                cpf_input.fill(cpf_limpo)
-                self.page.keyboard.press("Tab")
-            else:
-                self._set_valor_react(cpf_selector, cpf_limpo)
+            if not self._etapa3_preencher_documento(cpf_selector, cpf_limpo):
+                self._diagnostico_etapa3_falha(cpf_limpo)
+                return False, (
+                    "Não foi possível preencher o CPF/CNPJ no formulário do PAP "
+                    "(máscara do campo). Tente novamente."
+                ), None
 
             # CNPJ: o CPF do representante só pode ser preenchido DEPOIS de Buscar/Consultar
             # (o portal mostra os botões "Dados da empresa" e "Dados do representante legal").
@@ -4700,30 +5004,38 @@ class PAPNioAutomation:
                     return False, "Para CNPJ, informe um CPF válido do representante legal.", None
             
             # Dar tempo para o site validar o documento (evita clicar em Buscar com botão desabilitado)
-            self.page.wait_for_timeout(600 if self.optimize_for_credit else 1500)
-            # Detectar "Documento inválido" na página e falhar rápido (evita timeout de 25s no click)
-            try:
-                doc_invalido = self.page.get_by_text("Documento inválido", exact=False).first
-                if doc_invalido and doc_invalido.is_visible():
-                    return False, "Documento inválido.", None
-            except Exception:
-                pass
-            pagina_texto = (self.page.content() or "").lower()
-            if "documento inválido" in pagina_texto or "documento invalido" in pagina_texto:
+            self.page.wait_for_timeout(800 if self.optimize_for_credit else 1500)
+            if not self._etapa3_ainda_na_tela_cadastro():
+                logger.error("[PAP] Etapa3: após preencher documento a tela voltou da etapa 3")
+                self._diagnostico_etapa3_falha(cpf_limpo)
+                return False, (
+                    "O portal saiu da tela de cadastro do cliente após preencher o CPF. "
+                    "Digite *CRÉDITO* para tentar novamente."
+                ), None
+            if self._etapa3_documento_invalido_visivel():
+                self._diagnostico_etapa3_falha(cpf_limpo)
                 return False, "Documento inválido.", None
-            
-            # Clicar em Buscar ou Consultar somente se estiver habilitado
-            btn_buscar = self.page.query_selector('button:has-text("Buscar"):not([disabled])')
-            if not btn_buscar:
-                btn_buscar = self.page.query_selector('button:has-text("Consultar"):not([disabled])')
-            if not btn_buscar:
-                # Botão desabilitado = validação falhou no site; verificar de novo a mensagem
-                self.page.wait_for_timeout(300 if self.optimize_for_credit else 800)
-                pagina_texto = (self.page.content() or "").lower()
-                if "documento inválido" in pagina_texto or "documento invalido" in pagina_texto:
+
+            # Aguardar Buscar habilitar (máscara/React) e clicar no da etapa 3
+            buscou = False
+            for _ in range(10):
+                if not self._etapa3_ainda_na_tela_cadastro():
+                    logger.error("[PAP] Etapa3: tela de cadastro sumiu antes do Buscar")
+                    self._diagnostico_etapa3_falha(cpf_limpo)
+                    return False, (
+                        "O portal voltou para a consulta de viabilidade antes de buscar o CPF. "
+                        "Digite *CRÉDITO* para tentar novamente."
+                    ), None
+                if self._etapa3_clicar_buscar_documento():
+                    buscou = True
+                    break
+                if self._etapa3_documento_invalido_visivel():
+                    self._diagnostico_etapa3_falha(cpf_limpo)
                     return False, "Documento inválido.", None
+                self.page.wait_for_timeout(500)
+            if not buscou:
+                self._diagnostico_etapa3_falha(cpf_limpo)
                 return False, "Documento inválido ou CPF não encontrado. Verifique o número digitado.", None
-            btn_buscar.click()
 
             # CNPJ: após consultar, abrir "Dados do representante legal" e preencher o CPF
             if len(cpf_limpo) == 14:
@@ -4732,46 +5044,71 @@ class PAPNioAutomation:
                 if not ok_rep:
                     return False, msg_rep, None
 
-            try:
-                self.page.wait_for_selector('button:has-text("Avançar"):not([disabled]), input[disabled][value], h2:has-text("OPS, OCORREU UM ERRO")', state="visible", timeout=15000)
-            except Exception:
-                self.page.wait_for_timeout(1200 if self.optimize_for_credit else 3000)
+            # Esperar resultado real da Receita — NÃO usar input[disabled][value] genérico
+            # (campos vazios disabled fazem a espera acabar cedo e o Avançar ainda fica cinza).
+            timeout_resultado = 25000 if self.optimize_for_credit else 30000
+            deadline = time.monotonic() + (timeout_resultado / 1000.0)
+            while time.monotonic() < deadline:
+                if self.verificar_modal_erro_ops_visivel():
+                    self._fechar_modal_erro_ops()
+                    self._diagnostico_etapa3_falha(cpf_limpo)
+                    return False, PAP_ERRO_PORTAL_NIO, None
+                if self._etapa3_documento_invalido_visivel():
+                    self._diagnostico_etapa3_falha(cpf_limpo)
+                    return False, "Documento inválido.", None
+                if self._etapa3_cliente_carregado():
+                    break
+                self.page.wait_for_timeout(500)
+            else:
+                # Uma retentativa de Buscar (Receita/API às vezes não dispara no 1º clique)
+                logger.warning("[PAP] Etapa3: sem dados do cliente após Buscar — retentando clique")
+                if self._etapa3_clicar_buscar_documento():
+                    retry_deadline = time.monotonic() + 15.0
+                    while time.monotonic() < retry_deadline:
+                        if self.verificar_modal_erro_ops_visivel():
+                            self._fechar_modal_erro_ops()
+                            self._diagnostico_etapa3_falha(cpf_limpo)
+                            return False, PAP_ERRO_PORTAL_NIO, None
+                        if self._etapa3_cliente_carregado():
+                            break
+                        self.page.wait_for_timeout(500)
             
             # Modal "OPS, OCORREU UM ERRO!" após consultar documento (portal instável → orientar chamado Nio)
             if self.verificar_modal_erro_ops_visivel():
                 self._fechar_modal_erro_ops()
+                self._diagnostico_etapa3_falha(cpf_limpo)
                 return False, PAP_ERRO_PORTAL_NIO, None
             
             self._capture_screenshot("03_cpf_cliente_ok", wait_selector='button:has-text("Avançar"):not([disabled])', wait_timeout_ms=5000)
             # Extrair dados do cliente (nome, nome_mae mascarado, mês da data **/MM/**** para CRM)
             dados_cliente = {}
-            nome_elem = self.page.query_selector(SELETORES['etapa3']['nome_cliente'])
-            if nome_elem:
-                dados_cliente['nome'] = (nome_elem.get_attribute('value') or nome_elem.inner_text() or '').strip()
-            # Nome da mãe: campo oficial do portal é nomeMae (disabled, valor com asteriscos)
-            mae_elem = self.page.query_selector('input[name="nomeMae"]') or self.page.query_selector(
-                'input[name*="mae"]'
-            ) or self.page.query_selector('input[id*="mae"]')
-            if mae_elem:
-                val = (mae_elem.get_attribute('value') or '').strip()
-                if val:
-                    dados_cliente['nome_mae'] = val
-            # Data de nascimento: portal usa dataNascimento; máscara **/MM/**** — só o mês é confiável
-            dt_elem = self.page.query_selector('input[name="dataNascimento"]') or self.page.query_selector(
-                'input[name*="nascimento"]'
-            ) or self.page.query_selector('input[id*="nascimento"]')
-            if dt_elem:
-                val = (dt_elem.get_attribute('value') or '').strip()
-                if val:
-                    match = re.search(r'/(\d{1,2})/', val)
-                    if match:
-                        try:
-                            dados_cliente['mes_nascimento'] = int(match.group(1))
-                        except ValueError:
-                            pass
+            nome_val = self._etapa3_ler_valor_input(
+                'input[name="nome"]',
+                'input[name="nomeCompleto"]',
+                SELETORES['etapa3']['nome_cliente'],
+            )
+            if nome_val:
+                dados_cliente['nome'] = nome_val
+            mae_val = self._etapa3_ler_valor_input('input[name="nomeMae"]', 'input[name*="mae"]')
+            if mae_val:
+                dados_cliente['nome_mae'] = mae_val
+            dt_val = self._etapa3_ler_valor_input(
+                'input[name="dataNascimento"]',
+                'input[name*="nascimento"]',
+            )
+            if dt_val:
+                match = re.search(r'/(\d{1,2})/', dt_val)
+                if match:
+                    try:
+                        dados_cliente['mes_nascimento'] = int(match.group(1))
+                    except ValueError:
+                        pass
             
-            # Verificar se pode avançar
+            # Verificar se pode avançar (ou se os dados do cliente já carregaram — Avançar pode atrasar 1 frame)
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+            if not btn_avancar and self._etapa3_cliente_carregado():
+                self.page.wait_for_timeout(800)
+                btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if btn_avancar:
                 self.etapa_atual = 3
                 self.dados_pedido['cpf_cliente'] = cpf
@@ -4781,11 +5118,17 @@ class PAPNioAutomation:
                 self.dados_pedido['nome_mae'] = dados_cliente.get('nome_mae', '')
                 self.dados_pedido['mes_nascimento'] = dados_cliente.get('mes_nascimento')
                 return True, f"Cliente encontrado: {dados_cliente.get('nome', 'N/A')}", dados_cliente
-            else:
-                return False, "CPF não encontrado ou inválido.", None
+
+            diag = self._diagnostico_etapa3_falha(cpf_limpo)
+            # Mensagem curta no WhatsApp + detalhe técnico nos logs/screenshot
+            return False, f"CPF não encontrado ou inválido. Detalhe: {diag[:220]}", None
                 
         except Exception as e:
             logger.error(f"[PAP] Erro na Etapa 3: {e}")
+            try:
+                self._diagnostico_etapa3_falha(re.sub(r"\D", "", cpf or ""))
+            except Exception:
+                pass
             return False, f"Erro na Etapa 3: {str(e)}", None
     
     def _etapa4_limpar_todos_campos_contato(self) -> None:
