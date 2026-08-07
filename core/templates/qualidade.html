@@ -1453,7 +1453,82 @@
     let modalEnvio = null;
     let modalOrfaos = null;
     let modalFaturas = null;
-    const QUALIDADE_FOCO_FATURAS_KEY = 'qualidade_foco_pos_faturas';
+    const QUALIDADE_FOCO_POS_KEY = 'qualidade_foco_pos_acao';
+
+    function obterLinhasContratoVisiveis() {
+        return [...document.querySelectorAll('#tbody-contratos tr[data-contrato-id]')];
+    }
+
+    /**
+     * Memoriza o contrato atual e o seguinte na lista visível.
+     * Após recarregar: destaca o mesmo; se sumiu da fila/aba, destaca o próximo.
+     */
+    function marcarFocoAposAcao(contratoId) {
+        if (!contratoId) return;
+        try {
+            const rows = obterLinhasContratoVisiveis();
+            const ids = rows.map((r) => r.dataset.contratoId).filter(Boolean);
+            const idx = ids.indexOf(String(contratoId));
+            const proximoId = idx >= 0 && idx < ids.length - 1 ? ids[idx + 1] : null;
+            sessionStorage.setItem(QUALIDADE_FOCO_POS_KEY, JSON.stringify({
+                contratoId: Number(contratoId),
+                proximoId: proximoId ? Number(proximoId) : null,
+                focoIdx: idx >= 0 ? (idx < ids.length - 1 ? idx + 1 : idx) : null,
+                fila: typeof filaEfetiva === 'function' ? filaEfetiva() : '',
+                ts: Date.now(),
+            }));
+        } catch (_) { /* ignore */ }
+    }
+
+    function aplicarFocoAposAcao() {
+        let cfg = null;
+        try {
+            const raw = sessionStorage.getItem(QUALIDADE_FOCO_POS_KEY);
+            if (!raw) return;
+            sessionStorage.removeItem(QUALIDADE_FOCO_POS_KEY);
+            cfg = JSON.parse(raw);
+        } catch (_) {
+            return;
+        }
+        if (!cfg) return;
+
+        let row = null;
+        if (cfg.contratoId) {
+            row = document.querySelector(
+                `#tbody-contratos tr[data-contrato-id="${cfg.contratoId}"]`
+            );
+        }
+        // Saiu da fila/filtro/aba → continua no registro seguinte
+        if (!row && cfg.proximoId) {
+            row = document.querySelector(
+                `#tbody-contratos tr[data-contrato-id="${cfg.proximoId}"]`
+            );
+        }
+        if (!row) {
+            const rows = obterLinhasContratoVisiveis();
+            if (cfg.focoIdx != null && rows[cfg.focoIdx]) row = rows[cfg.focoIdx];
+        }
+        if (!row) return;
+
+        row.classList.add('qualidade-row-foco');
+        try {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) { /* ignore */ }
+        const removerFoco = function () {
+            row.classList.remove('qualidade-row-foco');
+            document.removeEventListener('click', removerFoco, true);
+        };
+        document.addEventListener('click', removerFoco, true);
+        setTimeout(removerFoco, 15000);
+    }
+
+    // Compat com chamadas antigas
+    function marcarFocoContratoAposFaturas(contratoId) {
+        marcarFocoAposAcao(contratoId);
+    }
+    function aplicarFocoContratoAposFaturas() {
+        aplicarFocoAposAcao();
+    }
     let modalNio = null;
     let statusChoicesFatura = [];
     let nioBuscaContexto = null;
@@ -1959,6 +2034,7 @@
             if (modalAberto && data.detalhe) {
                 renderFaturasTabela(data.detalhe);
             }
+            if (data.contrato_id) marcarFocoAposAcao(data.contrato_id);
             if (typeof carregarDashboard === 'function') carregarDashboard();
         } catch (e) {
             alert(e.message || 'Erro ao remover marcação');
@@ -2018,6 +2094,8 @@
             } else {
                 selectEl.style.borderColor = '';
             }
+            marcarFocoAposAcao(contratoId);
+            if (typeof carregarDashboard === 'function') carregarDashboard();
         } catch (e) {
             selectEl.value = prev;
             alert(e.message);
@@ -2150,49 +2228,12 @@
                 `Página ${page} de ${totalPages || 1} · ${data.total || 0} contratos`;
             document.getElementById('btn-prev').disabled = page <= 1;
             document.getElementById('btn-next').disabled = page >= totalPages;
-            aplicarFocoContratoAposFaturas();
+            aplicarFocoAposAcao();
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="12" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
         }
     }
     window.carregarDashboard = carregarDashboard;
-
-    function marcarFocoContratoAposFaturas(contratoId) {
-        if (!contratoId) return;
-        try {
-            sessionStorage.setItem(QUALIDADE_FOCO_FATURAS_KEY, JSON.stringify({
-                contratoId: Number(contratoId),
-                ts: Date.now(),
-            }));
-        } catch (_) { /* ignore */ }
-    }
-
-    function aplicarFocoContratoAposFaturas() {
-        let cfg = null;
-        try {
-            const raw = sessionStorage.getItem(QUALIDADE_FOCO_FATURAS_KEY);
-            if (!raw) return;
-            sessionStorage.removeItem(QUALIDADE_FOCO_FATURAS_KEY);
-            cfg = JSON.parse(raw);
-        } catch (_) {
-            return;
-        }
-        if (!cfg || !cfg.contratoId) return;
-        const row = document.querySelector(
-            `#tbody-contratos tr[data-contrato-id="${cfg.contratoId}"]`
-        );
-        if (!row) return;
-        row.classList.add('qualidade-row-foco');
-        try {
-            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } catch (_) { /* ignore */ }
-        const removerFoco = function () {
-            row.classList.remove('qualidade-row-foco');
-            document.removeEventListener('click', removerFoco, true);
-        };
-        document.addEventListener('click', removerFoco, true);
-        setTimeout(removerFoco, 15000);
-    }
 
     function renderKpis(k) {
         if (lente === 'vencimento') {
@@ -2457,6 +2498,7 @@
             setEnvioLoading(false, data.detail || 'Enviado com sucesso.');
             alert(data.detail || 'Cobrança enviada com sucesso.');
             modalEnvio.hide();
+            marcarFocoAposAcao(contratoId);
             if (typeof carregarDashboard === 'function') carregarDashboard();
             if (typeof carregarPreviewCobranca === 'function') carregarPreviewCobranca();
         } catch (e) {
@@ -2602,6 +2644,7 @@
                                 : 'Ligação iniciada pela Qualidade',
                         }),
                     });
+                    marcarFocoAposAcao(contratoId);
                     if (typeof carregarDashboard === 'function') carregarDashboard();
                 } catch (errHist) {
                     console.warn('Histórico ligação Qualidade', errHist);
@@ -3630,6 +3673,7 @@
             if (!r.ok || data.ok === false) throw new Error(data.error || 'Falha ao vincular');
             modalNio.hide();
             if (data.detalhe) renderFaturasTabela(data.detalhe);
+            if (contratoId) marcarFocoAposAcao(contratoId);
             carregarDashboard();
             alert('Dados da Nio vinculados. PDF buscado quando disponível.');
         } catch (e) {
