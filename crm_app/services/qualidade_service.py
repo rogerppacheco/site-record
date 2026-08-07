@@ -14,7 +14,7 @@ from typing import Any, Optional
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, F, Q, QuerySet
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
@@ -2485,14 +2485,46 @@ def enviar_cobranca_email(
 STATUS_FATURA_EDITAVEIS: list[str] = ['PAGO', 'NAO_PAGO', 'AGUARDANDO', 'ATRASADO', 'OUTROS']
 
 
+def _valor_referencia_faturas(contrato: ContratoM10) -> float:
+    """Valor padrão das faturas: GDP da venda → valor_plano → valor FPD.
+
+    Prioriza o preço GDP (mesma fonte do comercial) para manter as 10 faturas
+    alinhadas ao plano; cai no cadastro do contrato / FPD se o GDP falhar.
+    """
+    valor = 0.0
+    venda = getattr(contrato, 'venda', None)
+    if venda is not None and getattr(venda, 'plano_id', None):
+        try:
+            from crm_app.services.gdp_preco_service import resolver_valor_plano_venda
+
+            valor_gdp, _meta = resolver_valor_plano_venda(venda)
+            if valor_gdp is not None and float(valor_gdp) > 0:
+                valor = float(valor_gdp)
+        except Exception:
+            logger.exception(
+                '[Qualidade] Falha ao resolver valor GDP contrato=%s', contrato.pk
+            )
+    if valor <= 0 and contrato.valor_plano:
+        valor = float(contrato.valor_plano)
+    if valor <= 0 and contrato.valor_fatura_fpd:
+        valor = float(contrato.valor_fatura_fpd)
+    return valor
+
+
 def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
     """Retorna contrato + até 10 faturas para o painel de edição do BO."""
     try:
-        contrato = ContratoM10.objects.select_related('vendedor', 'venda', 'venda__cliente').get(
-            pk=contrato_id
-        )
+        contrato = ContratoM10.objects.select_related(
+            'vendedor',
+            'venda',
+            'venda__cliente',
+            'venda__plano',
+            'venda__forma_pagamento',
+        ).get(pk=contrato_id)
     except ContratoM10.DoesNotExist as exc:
         raise ValueError(f'Contrato {contrato_id} não encontrado.') from exc
+
+    valor_ref = _valor_referencia_faturas(contrato)
 
     # Garante esqueleto 1–10 criando só as faltantes (não sobrescreve datas já editadas)
     existentes = set(
@@ -2508,7 +2540,7 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
                     numero_fatura=i,
                     data_vencimento=contrato.calcular_vencimento_fatura_n(i),
                     data_disponibilidade=contrato.calcular_data_disponibilidade(i),
-                    valor=contrato.valor_plano or 0,
+                    valor=valor_ref,
                     status='NAO_PAGO',
                 )
             except Exception:
@@ -2516,7 +2548,18 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
                     '[Qualidade] Falha ao criar fatura %s contrato=%s', i, contrato_id
                 )
 
-    faturas_qs = contrato.faturas.all().order_by('numero_fatura')
+    # Faturas zeradas herdam o valor do plano/GDP (meses preenchidos sem valor)
+    if valor_ref > 0:
+        contrato.faturas.filter(Q(valor__isnull=True) | Q(valor=0)).update(
+            valor=valor_ref,
+            atualizado_em=timezone.now(),
+        )
+
+    # Mais atrasada (vencimento mais antigo) → vencimento mais recente
+    faturas_qs = contrato.faturas.all().order_by(
+        F('data_vencimento').asc(nulls_last=True),
+        'numero_fatura',
+    )
     faturas: list[dict[str, Any]] = []
     pagas = 0
     for f in faturas_qs:
@@ -2694,6 +2737,14 @@ def salvar_faturas_contrato(
                     'data_vencimento_fpd', 'data_pagamento_fpd',
                     'valor_fatura_fpd', 'atualizado_em',
                 ])
+                # Valor informado na 1ª fatura alinha as demais ainda zeradas
+                if fatura.valor is not None and float(fatura.valor) > 0:
+                    contrato.faturas.filter(
+                        Q(valor__isnull=True) | Q(valor=0)
+                    ).exclude(pk=fatura.pk).update(
+                        valor=fatura.valor,
+                        atualizado_em=timezone.now(),
+                    )
 
     elegivel = contrato.calcular_elegibilidade()
     if contrato.safra:
@@ -2908,6 +2959,12 @@ def aplicar_opcao_nio_fatura(
         contrato.save(update_fields=[
             'data_vencimento_fpd', 'valor_fatura_fpd', 'status_fatura_fpd', 'atualizado_em',
         ])
+        # Aceite da 1ª fatura define o valor mensal de todas as demais
+        if fatura.valor is not None and float(fatura.valor) > 0:
+            contrato.faturas.exclude(pk=fatura.pk).update(
+                valor=fatura.valor,
+                atualizado_em=timezone.now(),
+            )
 
     contrato.calcular_elegibilidade()
 
