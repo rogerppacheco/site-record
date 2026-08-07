@@ -1580,7 +1580,14 @@ class PAPNioAutomation:
                     self.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
                 except Exception as e:
                     logger.warning("[PAP] goto target em garantir_sessao: %s", e)
-                self.page.wait_for_timeout(400 if self.optimize_for_credit else 1500)
+                # Cookie/JWT inválido pode mostrar PAP por 1–2s e só depois redirecionar ao IdP.
+                settle_ms = 1200 if self.optimize_for_credit else 2000
+                self.page.wait_for_timeout(settle_ms)
+                try:
+                    self.page.wait_for_load_state("load", timeout=5000 if self.optimize_for_credit else 8000)
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(400 if self.optimize_for_credit else 800)
                 if (
                     self._esta_no_idp_vtal()
                     or self._sessao_expirada_detectada()
@@ -1708,19 +1715,37 @@ class PAPNioAutomation:
         """True se o campo de vendedor/matrícula (etapa 1) estiver visível."""
         if not self.page:
             return False
+        # Se caiu no IdP no meio da espera, não gastar o timeout inteiro.
+        if self._esta_no_idp_vtal() or self._sessao_expirada_detectada():
+            logger.warning(
+                "[PAP] IdP/sessão inválida ao esperar matrícula (url=%s)",
+                (self._ler_url_atual() or "")[:120],
+            )
+            return False
         try:
             self.page.wait_for_selector(
                 SELETORES_MATRICULA_VENDEDOR_CSS,
                 state="visible",
-                timeout=timeout_ms,
+                timeout=min(timeout_ms, 4000 if modo_rapido else 6000),
             )
             return True
         except Exception:
-            pass
+            if self._esta_no_idp_vtal() or self._sessao_expirada_detectada():
+                return False
         chunk = max(1200, min(3500, timeout_ms // max(1, len(SELETORES_MATRICULA_VENDEDOR) // 3)))
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
         for sel in SELETORES_MATRICULA_VENDEDOR:
+            if time.monotonic() >= deadline:
+                break
+            if self._esta_no_idp_vtal() or self._sessao_expirada_detectada():
+                return False
             try:
-                self.page.wait_for_selector(sel, state="visible", timeout=chunk if modo_rapido else min(chunk + 800, 5000))
+                restante = max(800, int((deadline - time.monotonic()) * 1000))
+                self.page.wait_for_selector(
+                    sel,
+                    state="visible",
+                    timeout=min(chunk if modo_rapido else min(chunk + 800, 5000), restante),
+                )
                 return True
             except Exception:
                 continue
@@ -1733,6 +1758,31 @@ class PAPNioAutomation:
         except Exception:
             pass
         return False
+
+    def _mensagem_falha_etapa1_sem_matricula(self) -> str:
+        """Mensagem correta conforme a URL real (IdP vs PAP)."""
+        url = ""
+        try:
+            url = self.page.url or ""
+        except Exception:
+            pass
+        if self._pagina_senha_expirada(url=url):
+            return self._mensagem_senha_pap_expirada()
+        if self._esta_no_idp_vtal(url=url) or "login.vtal.com" in url.lower():
+            return (
+                "Sessão do PAP caiu no login V.tal ao abrir Novo Pedido "
+                f"(login={self.matricula_pap or '?'}). "
+                "Tente novamente; se repetir, verifique senha/OTP do BO."
+            )
+        if "pap.niointernet.com.br" not in url.lower():
+            return (
+                "Não foi possível acessar a página de novo pedido. "
+                f"URL: {(url or '?')[:100]}"
+            )
+        return (
+            "Não foi possível acessar a página de novo pedido "
+            "(campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
+        )
 
     def _query_matricula_vendedor_input(self):
         """Retorna o elemento input do vendedor ou None."""
@@ -3574,6 +3624,26 @@ class PAPNioAutomation:
         t_first = 12000 if modo_rapido_credito else 16000
         matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credito)
 
+        # Sessão "fantasma": URL chegou em novo-pedido e depois caiu no IdP V.tal.
+        if not matricula_visivel and (
+            self._esta_no_idp_vtal() or self._sessao_expirada_detectada()
+        ):
+            if self._pagina_senha_expirada():
+                self._capture_screenshot_falha_etapa1("01_err_senha_expirada", wait_selector=None, wait_timeout_ms=0)
+                return False, self._mensagem_senha_pap_expirada()
+            logger.warning(
+                "[PAP] Novo pedido sem matrícula e URL no IdP — tentando relogin limpo uma vez"
+            )
+            ok_login, msg_login = self._relogin_pap(PAP_NOVO_PEDIDO_URL)
+            if not ok_login:
+                self._capture_screenshot_falha_etapa1("01_err_relogin_etapa1", wait_selector=None, wait_timeout_ms=0)
+                return False, msg_login
+            self._dispensar_modais_novo_pedido()
+            matricula_visivel = self._esperar_campo_matricula_vendedor(
+                12000 if modo_rapido_credito else 16000,
+                modo_rapido_credito,
+            )
+
         if not matricula_visivel:
             logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando menu 'Novo Pedido' e nova espera...")
             if self._clicar_menu_novo_pedido():
@@ -3611,10 +3681,7 @@ class PAPNioAutomation:
             except Exception:
                 pass
             self._capture_screenshot_falha_etapa1("01_err_campo_matricula_invisivel", wait_selector=None, wait_timeout_ms=0)
-            return False, (
-                "Não foi possível acessar a página de novo pedido "
-                "(campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
-            )
+            return False, self._mensagem_falha_etapa1_sem_matricula()
 
         if not self._query_matricula_vendedor_input():
             self._capture_screenshot_falha_etapa1("01_err_query_matricula_none", wait_selector=None, wait_timeout_ms=0)
