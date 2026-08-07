@@ -1166,6 +1166,10 @@ class PAPNioAutomation:
 
                 # Garantir que estamos na página de login (pode ter vindo de retry após timeout)
                 current_url, pagina_html = self._ler_url_e_conteudo()
+                if self._pagina_senha_expirada(pagina=pagina_html, url=current_url):
+                    self._capture_screenshot("00_err_senha_expirada", forcar=True)
+                    logger.warning("[PAP] Senha expirada para %s (antes do formulário)", self.matricula_pap)
+                    return False, self._mensagem_senha_pap_expirada()
                 if "login.vtal.com" in current_url and "upstream request timeout" in pagina_html.lower():
                     logger.warning("[PAP] Erro upstream timeout detectado, recarregando página de login...")
                     self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
@@ -1173,16 +1177,27 @@ class PAPNioAutomation:
                 
                 # Aguardar formulário (evita query_selector durante redirect SSO)
                 sel_timeout = 10000 if self.optimize_for_credit else 15000
-                self.page.wait_for_selector(
-                    '#inputMatricula, input[placeholder*="Login"], input[name*="matricula"], input[type="text"]',
-                    state="visible",
-                    timeout=sel_timeout,
-                )
+                try:
+                    self.page.wait_for_selector(
+                        '#inputMatricula, input[placeholder*="Login"], input[name*="matricula"], input[type="text"]',
+                        state="visible",
+                        timeout=sel_timeout,
+                    )
+                except Exception as e_sel:
+                    if self._pagina_senha_expirada():
+                        self._capture_screenshot("00_err_senha_expirada", forcar=True)
+                        return False, self._mensagem_senha_pap_expirada()
+                    raise e_sel
                 self.page.wait_for_selector(
                     '#passwordInput, input[type="password"], input[placeholder*="Senha"]',
                     state="visible",
                     timeout=8000 if self.optimize_for_credit else 10000,
                 )
+
+                if self._pagina_senha_expirada():
+                    self._capture_screenshot("00_err_senha_expirada", forcar=True)
+                    logger.warning("[PAP] Senha expirada para %s (formulário visível)", self.matricula_pap)
+                    return False, self._mensagem_senha_pap_expirada()
                 
                 # Preencher matrícula e senha (tentar vários seletores)
                 for sel in ['#inputMatricula', 'input[placeholder*="Login"]', 'input[name*="matricula"]', 'input[name*="username"]']:
@@ -1238,8 +1253,14 @@ class PAPNioAutomation:
                 # Tempo suficiente para o redirect do SSO evitar "Execution context was destroyed".
                 self.page.wait_for_timeout(1500 if self.optimize_for_credit else 3500)
 
+                if self._pagina_senha_expirada():
+                    self._capture_screenshot("00_err_senha_expirada", forcar=True)
+                    return False, self._mensagem_senha_pap_expirada()
+
                 # Validar: se aparecer "Login failed, please try again" (ou similar), não avançar
                 if self._pagina_tem_erro_login():
+                    if self._pagina_senha_expirada():
+                        return False, self._mensagem_senha_pap_expirada()
                     logger.warning("[PAP] Login falhou: mensagem de erro detectada na tela.")
                     return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
 
@@ -1250,6 +1271,8 @@ class PAPNioAutomation:
                         timeout=14000 if self.optimize_for_credit else 22000
                     )
                     # Nova checagem: às vezes o redirect mostra PAP mas ainda com iframe de erro
+                    if self._pagina_senha_expirada():
+                        return False, self._mensagem_senha_pap_expirada()
                     if self._pagina_tem_erro_login():
                         return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
                     logger.info(f"[PAP] Login bem-sucedido para {self.matricula_pap}")
@@ -1257,6 +1280,9 @@ class PAPNioAutomation:
                 except Exception:
                     current_url, pagina = self._ler_url_e_conteudo()
                     pagina = pagina.lower()
+                    if self._pagina_senha_expirada(pagina=pagina, url=current_url):
+                        self._capture_screenshot("00_err_senha_expirada", forcar=True)
+                        return False, self._mensagem_senha_pap_expirada()
                     # Se a tela mostra erro de login, falhar de forma clara
                     if self._pagina_tem_erro_login():
                         return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
@@ -1279,6 +1305,9 @@ class PAPNioAutomation:
                 
             except Exception as e:
                 logger.error(f"[PAP] Erro no login (tentativa {tentativa}): {e}")
+                if self._pagina_senha_expirada():
+                    self._capture_screenshot("00_err_senha_expirada", forcar=True)
+                    return False, self._mensagem_senha_pap_expirada()
                 if self._contexto_destruido(e) and tentativa < max_tentativas:
                     logger.warning("[PAP] Contexto destruído no login — aguardando redirect e tentando de novo...")
                     self.page.wait_for_timeout(1500 if self.optimize_for_credit else 3000)
@@ -1405,6 +1434,46 @@ class PAPNioAutomation:
 
         return True, "Sessão restaurada com sucesso."
 
+    def _mensagem_senha_pap_expirada(self) -> str:
+        mat = (self.matricula_pap or "").strip() or "este login"
+        return (
+            f"Senha do PAP expirada para *{mat}*. "
+            "Atualize a senha no portal V.tal e cadastre a nova senha no pool de BOs "
+            "antes de tentar novamente."
+        )
+
+    def _pagina_senha_expirada(self, pagina: str = "", url: str = "") -> bool:
+        """True se o IdP V.tal exibe o banner 'Sua senha expirou.'"""
+        pagina = (pagina or "").lower()
+        if not pagina and self.page:
+            try:
+                pagina = (self.page.content() or "").lower()
+            except Exception:
+                try:
+                    pagina = (self.page.inner_text("body") or "").lower()
+                except Exception:
+                    pagina = ""
+        if not pagina:
+            return False
+        sinais = (
+            "sua senha expirou",
+            "senha expirou",
+            "password has expired",
+            "password expired",
+            "senha expirada",
+        )
+        if any(s in pagina for s in sinais):
+            return True
+        # Banner visível (mais confiável que HTML genérico)
+        if self.page:
+            try:
+                loc = self.page.get_by_text(re.compile(r"sua\s+senha\s+expirou", re.I))
+                if loc.count() > 0 and loc.first.is_visible():
+                    return True
+            except Exception:
+                pass
+        return False
+
     def _pagina_tem_erro_login(self) -> bool:
         """
         Verifica se a página exibe mensagem de erro de login (ex.: "Login failed, please try again.").
@@ -1423,6 +1492,9 @@ class PAPNioAutomation:
                     continue
                 return False
         try:
+            if self._pagina_senha_expirada(pagina=content, url=url):
+                logger.warning("[PAP] Senha expirada detectada no IdP V.tal.")
+                return True
             # Textos que indicam falha de login (inglês e português)
             if "login failed" in content or "please try again" in content:
                 logger.warning("[PAP] Mensagem de erro de login detectada (Login failed / please try again).")
