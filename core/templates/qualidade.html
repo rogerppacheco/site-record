@@ -41,8 +41,15 @@
 .qualidade-card-mes.active {
     border-color: var(--accent-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 30%, transparent);
 }
+.qualidade-card-mes.is-limite {
+    border-color: color-mix(in srgb, #d97706 55%, transparent);
+}
 .qualidade-card-mes .mes-label { font-weight: 700; font-size: 0.85rem; }
 .qualidade-card-mes .mes-meta { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; }
+.qualidade-card-mes .mes-limite-tag {
+    display: inline-block; margin-top: 3px; font-size: 0.62rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.03em; color: #b86e00;
+}
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .kpi-item {
     background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px;
@@ -263,6 +270,16 @@
     letter-spacing: 0.04em;
     color: var(--text-secondary);
 }
+.qualidade-pct-fpd .q-pct-meta {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-left: 0.15rem;
+    padding-left: 0.4rem;
+    border-left: 1px solid color-mix(in srgb, var(--text-secondary) 35%, transparent);
+}
+.qualidade-pct-fpd .q-pct-meta.is-ok-meta { color: #2e7d32; }
+.qualidade-pct-fpd .q-pct-meta.is-need-meta { color: #b86e00; }
 /* ≤ 10%: verde */
 .qualidade-pct-fpd.is-ok {
     background: color-mix(in srgb, #2e7d32 10%, transparent);
@@ -1007,6 +1024,7 @@
                 <span class="qualidade-pct-fpd d-none" id="pct-fpd" title="(Atrasados + Em aberto) ÷ Total">
                     <span class="q-pct-val" id="pct-fpd-val">—</span>
                     <span class="q-pct-lbl">% FPD</span>
+                    <span class="q-pct-meta d-none" id="pct-fpd-meta"></span>
                 </span>
                 <div class="q-reconc-wrap ms-auto d-none" id="reconciliacao-fpd">
                     <button type="button" class="q-reconc-chip" id="reconciliacao-fpd-chip"
@@ -1793,16 +1811,23 @@
                 atualizarSelectMes();
                 return;
             }
+            // Vencimento: abre na safra no limite (mês atual − 2). Instalação: mais recente.
+            const mesPadrao = data.mes_padrao || periodosCache[0].mes;
             if (!mesAtual || !periodosCache.some(p => p.mes === mesAtual)) {
-                mesAtual = periodosCache[0].mes;
+                mesAtual = mesPadrao;
             }
             wrap.innerHTML = periodosCache.map(p => {
                 const meta = lente === 'vencimento'
                     ? `${p.total || 0} · ${p.abertas || 0} abertas`
                     : `${p.total || 0} · ${p.elegiveis || 0} elegíveis`;
-                return `<div class="qualidade-card-mes ${p.mes === mesAtual ? 'active' : ''}" data-mes="${p.mes}" onclick="selecionarMes('${p.mes}')">
-                    <div class="mes-label">${p.label}</div>
+                const limiteCls = p.no_limite ? ' is-limite' : '';
+                const limiteTag = p.no_limite
+                    ? '<div class="mes-limite-tag" title="Fecha o tratamento no fim deste mês calendário">No limite</div>'
+                    : '';
+                return `<div class="qualidade-card-mes${limiteCls} ${p.mes === mesAtual ? 'active' : ''}" data-mes="${p.mes}" onclick="selecionarMes('${p.mes}')">
+                    <div class="mes-label">${escapeHtml(p.label || p.mes)}</div>
                     <div class="mes-meta">${meta}</div>
+                    ${limiteTag}
                 </div>`;
             }).join('');
             atualizarSelectMes();
@@ -1840,10 +1865,15 @@
 
         const pctEl = document.getElementById('pct-fpd');
         const pctVal = document.getElementById('pct-fpd-val');
+        const pctMeta = document.getElementById('pct-fpd-meta');
         if (pctEl && pctVal) {
             const pct = f.pct_fpd != null
                 ? Number(f.pct_fpd)
                 : (tod > 0 ? Math.round(((atr + abe) / tod) * 1000) / 10 : 0);
+            const metaPct = f.meta_fpd_pct != null ? Number(f.meta_fpd_pct) : 11;
+            const faltam = f.faltam_para_meta_fpd != null
+                ? Number(f.faltam_para_meta_fpd)
+                : Math.max(0, (atr + abe) - Math.floor(tod * (metaPct / 100)));
             pctVal.textContent = `${pct.toLocaleString('pt-BR', { minimumFractionDigits: pct % 1 ? 1 : 0, maximumFractionDigits: 1 })}%`;
             pctEl.classList.toggle('d-none', false);
             // Limiares: ≤10% ok · ≤15% atenção · >15% crítico
@@ -1851,7 +1881,25 @@
             if (pct <= 10) pctEl.classList.add('is-ok');
             else if (pct <= 15) pctEl.classList.add('is-warn');
             else pctEl.classList.add('is-danger');
-            pctEl.title = `(Atrasados ${atr} + Em aberto ${abe}) ÷ Total ${tod} = ${pct}% FPD`;
+            pctEl.title = [
+                `(Atrasados ${atr} + Em aberto ${abe}) ÷ Total ${tod} = ${pct}% FPD`,
+                faltam > 0
+                    ? `Faltam ${faltam} pagamento(s) para chegar a ≤ ${metaPct}% FPD`
+                    : `Já está em ≤ ${metaPct}% FPD (meta)`,
+            ].join('\n');
+            if (pctMeta) {
+                pctMeta.classList.remove('d-none', 'is-ok-meta', 'is-need-meta');
+                if (tod <= 0) {
+                    pctMeta.classList.add('d-none');
+                    pctMeta.textContent = '';
+                } else if (faltam > 0) {
+                    pctMeta.classList.add('is-need-meta');
+                    pctMeta.textContent = `faltam ${faltam} p/ ${metaPct}%`;
+                } else {
+                    pctMeta.classList.add('is-ok-meta');
+                    pctMeta.textContent = `meta ${metaPct}% ok`;
+                }
+            }
         }
     }
 

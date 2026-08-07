@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 STATUS_FATURA_FECHADA: frozenset[str] = frozenset({'PAGO', 'OUTROS'})
 STATUS_FATURA_ABERTA_PROMESSA: frozenset[str] = frozenset({'NAO_PAGO', 'ATRASADO', 'AGUARDANDO'})
 
+# Safra de vencimento fecha o tratamento no fim do mês + 2 (ex.: jun/26 → até ago/26).
+MESES_OFFSET_LIMITE_VENCIMENTO = 2
+# Meta operacional de FPD (inadimplência da 1ª fatura) no mês.
+META_FPD_PCT = 11.0
+
 
 def _fatura_esta_fechada(status: Optional[str]) -> bool:
     """True se a fatura conta como paga/fechada operacionalmente."""
@@ -228,6 +233,53 @@ def _corte_safra_instalacao_tratavel() -> date:
     return (hoje.replace(day=1) - relativedelta(months=9))
 
 
+def mes_limite_tratamento_vencimento(hoje: Optional[date] = None) -> str:
+    """Safra de vencimento cujo prazo de tratamento fecha no fim do mês corrente.
+
+    Ex.: em ago/2026 → ``2026-06`` (junho fecha até o fim de agosto);
+    em set/2026 → ``2026-07`` (julho fecha até o fim de setembro).
+    """
+    ref = (hoje or timezone.localdate()).replace(day=1)
+    alvo = ref - relativedelta(months=MESES_OFFSET_LIMITE_VENCIMENTO)
+    return alvo.strftime('%Y-%m')
+
+
+def _resolver_mes_padrao(
+    periodos: list[dict[str, Any]],
+    mes_alvo: Optional[str],
+) -> str:
+    """Escolhe o mês inicial: alvo se existir; senão o mais próximo ≤ alvo; senão o mais recente."""
+    if not periodos:
+        return ''
+    meses = [str(p.get('mes') or '') for p in periodos if p.get('mes')]
+    if not meses:
+        return ''
+    if mes_alvo and mes_alvo in meses:
+        return mes_alvo
+    if mes_alvo:
+        anteriores = [m for m in meses if m <= mes_alvo]
+        if anteriores:
+            return max(anteriores)
+    return meses[0]
+
+
+def faltam_pagamentos_meta_fpd(
+    atrasados: int,
+    abertos: int,
+    total: int,
+    meta_pct: float = META_FPD_PCT,
+) -> int:
+    """Quantos pagamentos (saída de atrasado/aberto) faltam para FPD ≤ meta.
+
+    FPD = (atrasados + abertos) / total. Mantém o denominador (total do mês).
+    """
+    if total <= 0 or meta_pct < 0:
+        return 0
+    inad = max(0, int(atrasados) + int(abertos))
+    max_inad = int(total * (float(meta_pct) / 100.0))  # floor para positivos
+    return max(0, inad - max_inad)
+
+
 def listar_periodos(lente: str) -> list[dict[str, Any]]:
     """Lista meses disponíveis na lente, ordenados do mais recente ao mais antigo.
 
@@ -236,6 +288,11 @@ def listar_periodos(lente: str) -> list[dict[str, Any]]:
     """
     lente_norm = (lente or LENTE_VENCIMENTO).strip().lower()
     periodos: dict[str, dict[str, Any]] = {}
+    mes_limite = (
+        mes_limite_tratamento_vencimento()
+        if lente_norm == LENTE_VENCIMENTO
+        else ''
+    )
 
     if lente_norm == LENTE_INSTALACAO:
         corte = _corte_safra_instalacao_tratavel()
@@ -248,6 +305,7 @@ def listar_periodos(lente: str) -> list[dict[str, Any]]:
                 'ativos': safra.total_ativos or 0,
                 'elegiveis': safra.total_elegivel_bonus or 0,
                 'tratavel': True,
+                'no_limite': False,
             }
 
         qs = (
@@ -272,6 +330,7 @@ def listar_periodos(lente: str) -> list[dict[str, Any]]:
                 'ativos': row['ativos'],
                 'elegiveis': row['elegiveis'],
                 'tratavel': True,
+                'no_limite': False,
             }
     else:
         qs = (
@@ -296,9 +355,29 @@ def listar_periodos(lente: str) -> list[dict[str, Any]]:
                 'total': row['total'],
                 'abertas': row['abertas'],
                 'pagas': row['pagas'],
+                'no_limite': mes_key == mes_limite,
             }
 
     return sorted(periodos.values(), key=lambda p: p['mes'], reverse=True)
+
+
+def payload_periodos_qualidade(lente: str) -> dict[str, Any]:
+    """Resposta da API de períodos, com mês padrão (safra no limite de tratamento)."""
+    lente_norm = (lente or LENTE_VENCIMENTO).strip().lower()
+    periodos = listar_periodos(lente_norm)
+    mes_limite = (
+        mes_limite_tratamento_vencimento()
+        if lente_norm == LENTE_VENCIMENTO
+        else ''
+    )
+    mes_padrao = _resolver_mes_padrao(periodos, mes_limite or None)
+    return {
+        'lente': lente_norm,
+        'periodos': periodos,
+        'mes_padrao': mes_padrao,
+        'mes_limite_tratamento': mes_limite,
+        'meta_fpd_pct': META_FPD_PCT,
+    }
 
 
 def _aplicar_filtros_contratos(
@@ -490,26 +569,30 @@ def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet
     return queryset
 
 
-def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, int]:
+def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, Any]:
     """Contagens das filas sem aplicar o filtro de fila atual."""
     hoje = timezone.localdate()
     atrasados = queryset.filter(_q_fatura1_atrasada(hoje)).distinct().count()
     abertos = queryset.filter(_q_fatura1_em_aberto(hoje)).distinct().count()
     pagas = queryset.filter(_q_fatura1_paga()).distinct().count()
+    total = atrasados + abertos + pagas
+    pct_fpd = round(
+        ((atrasados + abertos) / total * 100) if total > 0 else 0.0,
+        1,
+    )
+    faltam_meta = faltam_pagamentos_meta_fpd(atrasados, abertos, total, META_FPD_PCT)
     return {
         'atrasados': atrasados,
         'abertos': abertos,
         'pagas': pagas,
         # Total operacional = soma das filas (bate com planilha quando vencimentos estão corretos)
-        'todos': atrasados + abertos + pagas,
+        'todos': total,
         'base': queryset.count(),
         # % FPD = (atrasados + em aberto) / total — inadimplência da 1ª fatura no mês
-        'pct_fpd': round(
-            ((atrasados + abertos) / (atrasados + abertos + pagas) * 100)
-            if (atrasados + abertos + pagas) > 0
-            else 0.0,
-            1,
-        ),
+        'pct_fpd': pct_fpd,
+        'meta_fpd_pct': META_FPD_PCT,
+        # Pagamentos necessários para chegar a FPD ≤ meta (denominador fixo)
+        'faltam_para_meta_fpd': faltam_meta,
     }
 
 
