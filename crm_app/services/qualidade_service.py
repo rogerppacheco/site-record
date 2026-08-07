@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # PAGO + OUTROS (Cancelada/Zerada/FECHADA): fechadas na visão FPD — entram em "Pagas"
 # sem alterar o status exibido (mantém OUTROS para rastrear cancelamento).
 STATUS_FATURA_FECHADA: frozenset[str] = frozenset({'PAGO', 'OUTROS'})
+STATUS_FATURA_ABERTA_PROMESSA: frozenset[str] = frozenset({'NAO_PAGO', 'ATRASADO', 'AGUARDANDO'})
 
 
 def _fatura_esta_fechada(status: Optional[str]) -> bool:
@@ -353,6 +354,12 @@ def _aplicar_filtros_contratos(
             _q_faixa_atraso_fatura1(faixa_atraso, timezone.localdate())
         ).distinct()
 
+    promessa = (filtros.get('promessa') or '').strip().lower()
+    if promessa:
+        q_prom = _q_promessa_pagamento(promessa, timezone.localdate())
+        if q_prom:
+            queryset = queryset.filter(q_prom).distinct()
+
     busca = filtros.get('q') or filtros.get('busca')
     if busca:
         busca_digits = re.sub(r'\D', '', str(busca))
@@ -367,6 +374,73 @@ def _aplicar_filtros_contratos(
         queryset = queryset.filter(filtros_busca)
 
     return queryset
+
+
+def _q_promessa_pagamento(faixa: str, hoje: date) -> Q:
+    """Contratos com fatura em aberto e data de promessa na faixa informada."""
+    base = (
+        Q(faturas__status__in=STATUS_FATURA_ABERTA_PROMESSA)
+        & Q(faturas__data_promessa_pagamento__isnull=False)
+    )
+    faixa_n = (faixa or '').strip().lower()
+    if faixa_n in ('hoje', 'today'):
+        return base & Q(faturas__data_promessa_pagamento=hoje)
+    if faixa_n in ('atrasada', 'atrasadas', 'vencida'):
+        return base & Q(faturas__data_promessa_pagamento__lt=hoje)
+    if faixa_n in ('proximos', 'proximas', 'proximos_3'):
+        limite = hoje + relativedelta(days=3)
+        return (
+            base
+            & Q(faturas__data_promessa_pagamento__gt=hoje)
+            & Q(faturas__data_promessa_pagamento__lte=limite)
+        )
+    if faixa_n in ('todas', 'todos', 'com_promessa'):
+        return base
+    return Q()
+
+
+def contagens_promessas(queryset: QuerySet[ContratoM10], hoje: Optional[date] = None) -> dict[str, int]:
+    """Contagens de promessa de pagamento (faturas em aberto) para o lembrete do BO."""
+    ref = hoje or timezone.localdate()
+    return {
+        'hoje': queryset.filter(_q_promessa_pagamento('hoje', ref)).distinct().count(),
+        'atrasadas': queryset.filter(_q_promessa_pagamento('atrasada', ref)).distinct().count(),
+        'proximos': queryset.filter(_q_promessa_pagamento('proximos', ref)).distinct().count(),
+        'todas': queryset.filter(_q_promessa_pagamento('todas', ref)).distinct().count(),
+    }
+
+
+def _promessa_aberta_contrato(
+    faturas: list[FaturaM10],
+    hoje: Optional[date] = None,
+) -> Optional[dict[str, Any]]:
+    """Menor data de promessa entre faturas em aberto do contrato."""
+    ref = hoje or timezone.localdate()
+    candidatas = [
+        f for f in faturas
+        if f.data_promessa_pagamento
+        and not _fatura_esta_fechada(f.status)
+    ]
+    if not candidatas:
+        return None
+    candidatas.sort(key=lambda f: f.data_promessa_pagamento or date.max)
+    f = candidatas[0]
+    d = f.data_promessa_pagamento
+    if d is None:
+        return None
+    if d < ref:
+        faixa = 'atrasada'
+    elif d == ref:
+        faixa = 'hoje'
+    elif d <= ref + relativedelta(days=3):
+        faixa = 'proximos'
+    else:
+        faixa = 'futura'
+    return {
+        'data': d.isoformat(),
+        'faixa': faixa,
+        'numero_fatura': f.numero_fatura,
+    }
 
 
 def _q_fatura1_atrasada(hoje: date) -> Q:
@@ -448,6 +522,7 @@ _FILTROS_OPCAO_CONTAGEM: frozenset[str] = frozenset({
     'conferencia_fpd',
     'status_tratamento_id',
     'status_tratamento',
+    'promessa',
 })
 
 
@@ -740,6 +815,9 @@ def dashboard_qualidade(
     if filtros.get('orfao') in (None, '') and _contrato_tem_campo('orfao'):
         queryset = queryset.filter(orfao=False)
 
+    # Lembrete de promessa: conta no universo do mês (antes dos filtros dimensionais)
+    promessas = contagens_promessas(queryset)
+
     # Base para contagens das opções de filtro (sem faixa/status trat./conf./N-10)
     filtros_contagem = {
         k: v for k, v in filtros.items() if k not in _FILTROS_OPCAO_CONTAGEM
@@ -909,6 +987,10 @@ def dashboard_qualidade(
             pode_enviar_cobranca, motivo_bloqueio_envio = validar_fatura_para_envio_cobranca(
                 fatura_envio
             )
+        promessa_info = _promessa_aberta_contrato(
+            faturas_por_contrato.get(c.id, []),
+            timezone.localdate(),
+        )
         contratos_data.append({
             'id': c.id,
             'venda_id': c.venda_id,
@@ -927,6 +1009,9 @@ def dashboard_qualidade(
             'mes_ref': mes_ref,
             'safra': (c.safra or '')[:7],
             'valor_fatura1': valor_fatura1,
+            'data_promessa_pagamento': (promessa_info or {}).get('data') or '',
+            'promessa_faixa': (promessa_info or {}).get('faixa') or '',
+            'promessa_numero_fatura': (promessa_info or {}).get('numero_fatura'),
             'status_tratamento_id': st.id if st else None,
             'status_tratamento_nome': st.nome if st else None,
             'status_tratamento_cor': st.cor if st else None,
@@ -955,6 +1040,7 @@ def dashboard_qualidade(
         'kpis': kpis,
         'filas': filas,
         'contagens_filtros': contagens_filtros,
+        'promessas': promessas,
         'reconciliacao': reconciliacao,
         'fila': fila if fila else 'todos',
         'status_tratamento_opcoes': listar_status_tratamento_qualidade(),
