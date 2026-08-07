@@ -4824,14 +4824,37 @@ class PAPNioAutomation:
             pass
         return False
 
+    def _etapa3_url_parece_consulta_documento(self, url: str) -> bool:
+        u = (url or "").lower()
+        return any(
+            trecho in u
+            for trecho in (
+                "consultareceita",
+                "consulta-receita",
+                "consulta_receita",
+                "/receita",
+                "cadastrocliente",
+                "cadastro-cliente",
+                "novafibra/consulta",
+                "portal/novafibra/consulta",
+            )
+        )
+
     def _etapa3_clicar_buscar_documento(self) -> bool:
-        """Clica apenas o Buscar ao lado do CPF/CNPJ (nunca o Buscar da etapa 2)."""
+        """
+        Clica o Buscar do CPF/CNPJ e tenta confirmar que a API da Receita disparou.
+
+        Em produção o clique Playwright às vezes não acionava a request — por isso
+        esperamos a response e temos fallbacks (force, Enter, click JS).
+        """
         if not self.page:
             return False
         if not self._etapa3_ainda_na_tela_cadastro():
             logger.warning("[PAP] Etapa3: tela de cadastro não está visível — não clicando Buscar")
             return False
-        # Somente Buscar (evitar 'Consultar' genérico de outras telas)
+
+        btn = None
+        sel_usado = ""
         candidatos = [
             'div:has(> input[name="documento"]) button:has-text("Buscar"):not([disabled])',
             'div:has(input[name="documento"]) >> button:has-text("Buscar"):not([disabled])',
@@ -4841,29 +4864,112 @@ class PAPNioAutomation:
             try:
                 loc = self.page.locator(sel).first
                 if loc.count() > 0 and loc.is_visible():
-                    loc.click(timeout=5000)
-                    logger.info("[PAP] Etapa3: clicado Buscar via %s", sel[:90])
-                    return True
+                    btn = loc
+                    sel_usado = sel
+                    break
             except Exception:
                 continue
-        # Último recurso: botão Buscar visível na viewport da etapa 3
-        try:
-            botoes = self.page.locator('button:has-text("Buscar"):not([disabled])')
-            n = min(botoes.count(), 5)
-            for i in range(n):
-                btn = botoes.nth(i)
-                if not btn.is_visible():
-                    continue
-                # Prefere o que está perto do label CPF/CNPJ
-                box = btn.bounding_box()
-                if box and box.get("y", 0) < 200:
-                    continue  # muito no topo (menu)
-                btn.click(timeout=5000)
-                logger.info("[PAP] Etapa3: clicado Buscar (fallback índice %s)", i)
+        if btn is None:
+            try:
+                botoes = self.page.locator('button:has-text("Buscar"):not([disabled])')
+                n = min(botoes.count(), 5)
+                for i in range(n):
+                    cand = botoes.nth(i)
+                    if not cand.is_visible():
+                        continue
+                    box = cand.bounding_box() or {}
+                    if box.get("y", 0) < 200:
+                        continue
+                    btn = cand
+                    sel_usado = f"fallback_idx_{i}"
+                    break
+            except Exception as e:
+                logger.debug("[PAP] Etapa3 Buscar fallback: %s", e)
+        if btn is None:
+            return False
+
+        def _disparar_e_aguardar(acao, rotulo: str) -> bool:
+            try:
+                with self.page.expect_response(
+                    lambda r: self._etapa3_url_parece_consulta_documento(r.url),
+                    timeout=18000,
+                ) as info:
+                    acao()
+                resp = info.value
+                logger.info(
+                    "[PAP] Etapa3: Buscar (%s) → API %s status=%s",
+                    rotulo,
+                    (resp.url or "")[:110],
+                    resp.status,
+                )
                 return True
-        except Exception as e:
-            logger.debug("[PAP] Etapa3 Buscar fallback: %s", e)
-        return False
+            except Exception as e:
+                logger.warning("[PAP] Etapa3: Buscar (%s) sem API Receita: %s", rotulo, e)
+                return False
+
+        if _disparar_e_aguardar(
+            lambda: btn.click(force=True, timeout=5000),
+            f"click:{sel_usado[:60]}",
+        ):
+            return True
+
+        # Enter no campo documento (alguns formulários só submetem assim)
+        def _enter_documento():
+            self.page.locator('input[name="documento"]').first.focus()
+            self.page.keyboard.press("Enter")
+
+        if _disparar_e_aguardar(_enter_documento, "Enter no documento"):
+            return True
+
+        # Click nativo no DOM (bypassa hit-target do Playwright)
+        if _disparar_e_aguardar(
+            lambda: self.page.evaluate(
+                """() => {
+                    const inp = document.querySelector('input[name="documento"]');
+                    if (!inp) return false;
+                    const root = inp.closest('form') || inp.closest('div') || document.body;
+                    const btn = [...root.querySelectorAll('button')].find(
+                        (b) => /buscar/i.test((b.textContent || '').trim()) && !b.disabled
+                    );
+                    if (!btn) return false;
+                    btn.click();
+                    return true;
+                }"""
+            ),
+            "JS click",
+        ):
+            return True
+
+        # Último recurso: clica mesmo sem confirmar a API (espera na etapa seguinte)
+        try:
+            btn.click(force=True, timeout=5000)
+            logger.warning("[PAP] Etapa3: Buscar clicado sem confirmação de API (%s)", sel_usado[:60])
+            return True
+        except Exception:
+            return False
+
+    def _etapa3_modal_bloqueio_endereco(self) -> Optional[str]:
+        """Se Pedido/Posse encontrado estiver visível, retorna código normalizado."""
+        modal = self._ler_modal_bloqueante_pap()
+        if not modal:
+            # Texto solto na página (modal com markup atípico)
+            try:
+                body = (self.page.inner_text("body") or "").lower()
+            except Exception:
+                body = ""
+            if "pedido encontrado" in body or (
+                "pedido" in body and "em andamento" in body and "endere" in body
+            ):
+                return "POSSE_ENCONTRADA"
+            if "posse encontrada" in body:
+                return "POSSE_ENCONTRADA"
+            return None
+        codigo = modal.get("codigo") or ""
+        if codigo == "PEDIDO_ENCONTRADO":
+            return "POSSE_ENCONTRADA"
+        if codigo in ("POSSE_ENCONTRADA", "INDISPONIVEL_TECNICO"):
+            return codigo
+        return None
 
     def _diagnostico_etapa3_falha(self, cpf_limpo: str) -> str:
         """Loga e retorna resumo do estado da tela após falha na consulta de documento."""
@@ -4916,11 +5022,18 @@ class PAPNioAutomation:
                 continue
         digitos_doc = re.sub(r"\D", "", doc_val or "")
         na_cadastro = self._etapa3_ainda_na_tela_cadastro()
+        bloqueio = self._etapa3_modal_bloqueio_endereco()
+        snippet = ""
+        try:
+            snippet = re.sub(r"\s+", " ", (self.page.inner_text("body") or ""))[:220]
+        except Exception:
+            pass
         resumo = (
-            f"url={url} | tela_cadastro={na_cadastro} | doc_campo={doc_val[:20]!r} digitos={digitos_doc} "
+            f"url={url} | tela_cadastro={na_cadastro} | bloqueio={bloqueio!r} | "
+            f"doc_campo={doc_val[:20]!r} digitos={digitos_doc} "
             f"(esperado={cpf_limpo}) | nome={nome[:40]!r} | mae={mae[:40]!r} | "
             f"nasc={dt!r} | avancar_ok={avancar_ok} disabled={avancar_disabled} | "
-            f"alertas={alertas[:3]!r}"
+            f"alertas={alertas[:3]!r} | body={snippet!r}"
         )
         logger.error("[PAP] Etapa3 diagnóstico falha: %s", resumo)
         try:
@@ -5046,13 +5159,24 @@ class PAPNioAutomation:
 
             # Esperar resultado real da Receita — NÃO usar input[disabled][value] genérico
             # (campos vazios disabled fazem a espera acabar cedo e o Avançar ainda fica cinza).
-            timeout_resultado = 25000 if self.optimize_for_credit else 30000
+            timeout_resultado = 28000 if self.optimize_for_credit else 35000
             deadline = time.monotonic() + (timeout_resultado / 1000.0)
             while time.monotonic() < deadline:
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     self._diagnostico_etapa3_falha(cpf_limpo)
                     return False, PAP_ERRO_PORTAL_NIO, None
+                bloqueio = self._etapa3_modal_bloqueio_endereco()
+                if bloqueio:
+                    self._diagnostico_etapa3_falha(cpf_limpo)
+                    logger.warning(
+                        "[PAP] Etapa3: bloqueio de endereço após Buscar (%s)",
+                        bloqueio,
+                    )
+                    return False, (
+                        "Já existe pedido/posse neste endereço. "
+                        "A análise deve usar o endereço padrão."
+                    ), {"bloqueio_endereco": bloqueio}
                 if self._etapa3_documento_invalido_visivel():
                     self._diagnostico_etapa3_falha(cpf_limpo)
                     return False, "Documento inválido.", None
@@ -5063,12 +5187,19 @@ class PAPNioAutomation:
                 # Uma retentativa de Buscar (Receita/API às vezes não dispara no 1º clique)
                 logger.warning("[PAP] Etapa3: sem dados do cliente após Buscar — retentando clique")
                 if self._etapa3_clicar_buscar_documento():
-                    retry_deadline = time.monotonic() + 15.0
+                    retry_deadline = time.monotonic() + 18.0
                     while time.monotonic() < retry_deadline:
                         if self.verificar_modal_erro_ops_visivel():
                             self._fechar_modal_erro_ops()
                             self._diagnostico_etapa3_falha(cpf_limpo)
                             return False, PAP_ERRO_PORTAL_NIO, None
+                        bloqueio = self._etapa3_modal_bloqueio_endereco()
+                        if bloqueio:
+                            self._diagnostico_etapa3_falha(cpf_limpo)
+                            return False, (
+                                "Já existe pedido/posse neste endereço. "
+                                "A análise deve usar o endereço padrão."
+                            ), {"bloqueio_endereco": bloqueio}
                         if self._etapa3_cliente_carregado():
                             break
                         self.page.wait_for_timeout(500)

@@ -1184,7 +1184,66 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
 
         # Etapa 3: Documento (CPF/CNPJ)
         t0 = time.time()
-        sucesso, msg, _ = automacao.etapa3_cadastro_cliente(documento_limpo, cpf_representante=cpf_rep_limpo or None)
+        sucesso, msg, extra_etapa3 = automacao.etapa3_cadastro_cliente(
+            documento_limpo, cpf_representante=cpf_rep_limpo or None
+        )
+        # Pedido/Posse encontrado só aparece após Buscar o CPF neste endereço:
+        # fecha o modal, consulta o CEP padrão e refaz a etapa 3.
+        bloqueio_end = (
+            (extra_etapa3 or {}).get("bloqueio_endereco")
+            if isinstance(extra_etapa3, dict)
+            else None
+        )
+        # Retry só se ainda estávamos no endereço da Assertiva.
+        if (
+            not sucesso
+            and bloqueio_end
+            and endereco_usado
+            and endereco_usado.origem != ORIGEM_ENDERECO_PADRAO
+            and len(tentativas_endereco) > 1
+        ):
+            endereco_padrao = tentativas_endereco[-1]
+            logger.warning(
+                "[CRÉDITO] Etapa3 bloqueou endereço assertiva (%s) — "
+                "reconsultando com endereço padrão %s/%s",
+                bloqueio_end,
+                endereco_padrao.cep,
+                endereco_padrao.numero,
+            )
+            ok_reset, msg_reset = automacao.etapa2_preparar_nova_consulta_endereco(
+                bloqueio_end
+            )
+            if ok_reset:
+                from crm_app.services.credito_pap_service import _executar_etapa2
+
+                ok_padrao, msg_padrao, _extra_padrao = _executar_etapa2(
+                    automacao, endereco_padrao
+                )
+                if ok_padrao:
+                    bloqueio_resumo = (
+                        f"assertiva:{endereco_usado.cep}/{endereco_usado.numero} "
+                        f"- {bloqueio_end} (etapa3)"
+                    )
+                    resultado_endereco.endereco = endereco_padrao
+                    resultado_endereco.bloqueios.append(bloqueio_resumo)
+                    resultado_endereco.sucesso = True
+                    endereco_usado = endereco_padrao
+                    registro_execucao["endereco_utilizado"] = {
+                        **endereco_padrao.como_dict(),
+                        "viavel": True,
+                        "bloqueios": list(resultado_endereco.bloqueios),
+                    }
+                    sucesso, msg, extra_etapa3 = automacao.etapa3_cadastro_cliente(
+                        documento_limpo, cpf_representante=cpf_rep_limpo or None
+                    )
+                else:
+                    msg = msg_padrao or msg
+                    sucesso = False
+            else:
+                logger.warning(
+                    "[CRÉDITO] Não foi possível voltar ao CEP após bloqueio etapa3: %s",
+                    msg_reset,
+                )
         tempos['etapa3'] = round(time.time() - t0, 1)
         if not sucesso:
             automacao._fechar_sessao()
