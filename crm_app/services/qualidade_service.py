@@ -719,16 +719,19 @@ def dashboard_qualidade(
                 data_instalacao__lt=data_fim,
             )
         else:
-            # Lente vencimento FPD: só contratos com 1ª fatura sincronizada da planilha
-            # (evita inflar o mês com vencimento calculado instalação+25 sem FPD).
+            # Lente vencimento: mesmo universo do Dashboard FPD (planilha MATCHED).
+            # Usa dt_venc_orig da ImportacaoFPD — não FaturaM10.data_vencimento —
+            # para não divergir quando o CRM ficou com vencimento recalculado
+            # (ex.: instalação+25) diferente da planilha.
             contrato_ids = (
-                FaturaM10.objects.filter(
-                    numero_fatura=1,
-                    data_vencimento__gte=data_inicio,
-                    data_vencimento__lt=data_fim,
-                    data_importacao_fpd__isnull=False,
+                ImportacaoFPD.objects.filter(
+                    indicador='FPD',
+                    dt_venc_orig__gte=data_inicio,
+                    dt_venc_orig__lt=data_fim,
+                    match_status='MATCHED',
+                    contrato_m10_id__isnull=False,
                 )
-                .values_list('contrato_id', flat=True)
+                .values_list('contrato_m10_id', flat=True)
                 .distinct()
             )
             queryset = ContratoM10.objects.filter(id__in=contrato_ids)
@@ -996,11 +999,17 @@ def reconciliar_fpd_com_painel(
     ).count()
 
     # PAGO no tratamento ainda aguardando/divergente da planilha (explica Δ abertas)
+    # Mesmo universo do painel: ImportacaoFPD MATCHED do mês (não data_vencimento CRM)
+    contrato_ids_mes = ImportacaoFPD.objects.filter(
+        indicador='FPD',
+        dt_venc_orig__gte=data_inicio,
+        dt_venc_orig__lt=data_fim,
+        match_status='MATCHED',
+        contrato_m10_id__isnull=False,
+    ).values_list('contrato_m10_id', flat=True)
     aguard_fpd = FaturaM10.objects.filter(
         numero_fatura=1,
-        data_vencimento__gte=data_inicio,
-        data_vencimento__lt=data_fim,
-        data_importacao_fpd__isnull=False,
+        contrato_id__in=contrato_ids_mes,
         status='PAGO',
         conferencia_fpd__in=['AGUARDANDO', 'DIVERGENTE'],
     ).count()
