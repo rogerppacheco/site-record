@@ -578,42 +578,56 @@
 .faturas-table .badge-ind-fpd { background: #0d6efd; }
 .faturas-table .badge-ind-spd { background: #6f42c1; }
 .faturas-table .badge-ind-tpd { background: #fd7e14; }
-.faturas-table .col-status { width: 150px; min-width: 140px; }
+.faturas-table .col-status { width: 140px; min-width: 130px; }
 .faturas-table .fat-status {
-    min-width: 130px;
+    min-width: 120px;
     width: 100%;
     max-width: none;
 }
-.faturas-table .col-date { width: 118px; min-width: 110px; }
-.faturas-table .col-valor { width: 88px; min-width: 80px; }
-.faturas-table .col-valor input { width: 100%; min-width: 72px; }
-.faturas-table .col-promessa { width: 118px; min-width: 110px; }
-.faturas-table .col-pix { width: 84px; min-width: 78px; text-align: center; }
-.faturas-table .col-pdf { width: 92px; min-width: 88px; text-align: center; }
+.faturas-table .col-date { width: 112px; min-width: 104px; }
+.faturas-table .col-valor { width: 80px; min-width: 72px; }
+.faturas-table .col-valor input { width: 100%; min-width: 68px; }
+.faturas-table .col-promessa { width: 112px; min-width: 104px; }
+.faturas-table .col-pix { width: 78px; min-width: 72px; text-align: center; overflow: hidden; }
+.faturas-table .col-pdf { width: 108px; min-width: 100px; text-align: center; overflow: hidden; }
 .faturas-table .acoes-btns {
     display: flex;
     flex-wrap: nowrap;
-    gap: 0.2rem;
+    gap: 0.18rem;
     justify-content: center;
     align-items: center;
     white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
 }
 .faturas-table .acoes-btns .btn,
 .faturas-table .acoes-btns label.btn {
-    padding: 0.15rem 0.35rem;
+    flex: 0 0 auto;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
     font-size: 0.78rem;
-    line-height: 1.1;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .faturas-pix-btns {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.2rem;
     justify-content: center;
     align-items: center;
 }
 .faturas-pix-btns .btn {
-    padding: 0.2rem 0.4rem;
-    font-size: 0.95rem;
+    position: relative;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    font-size: 0.9rem;
     line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .faturas-pix-btns .btn.has-value {
     border-color: #198754;
@@ -623,10 +637,47 @@
     opacity: 0.45;
 }
 .faturas-pix-btns .btn.copied {
-    border-color: #0d6efd;
-    color: #0d6efd;
-    background: rgba(13, 110, 253, 0.08);
+    border-color: #198754 !important;
+    color: #fff !important;
+    background: #198754 !important;
+    opacity: 1;
 }
+.faturas-pix-btns .btn .copiado-hint {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #198754;
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.2rem 0.35rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 5;
+}
+.faturas-subtitulo {
+    display: block;
+    line-height: 1.25;
+}
+.faturas-subtitulo .fat-cli-nome { font-weight: 600; color: inherit; }
+.faturas-subtitulo .fat-cli-cpf {
+    display: block;
+    font-size: 0.78rem;
+    opacity: 0.85;
+}
+.table-qualidade tbody tr.qualidade-row-foco {
+    background: rgba(255, 193, 7, 0.22) !important;
+    outline: 2px solid #ffc107;
+    outline-offset: -1px;
+}
+.table-qualidade tbody tr.qualidade-row-foco td {
+    background: transparent !important;
+}
+.gestao-cliente-nome { font-weight: 600; line-height: 1.2; }
+.gestao-cliente-cpf { font-size: 0.72rem; opacity: 0.8; line-height: 1.2; }
 #modalFaturas .modal-dialog {
     max-width: min(1480px, 98vw);
     width: 98vw;
@@ -1252,7 +1303,7 @@
             <div class="modal-header">
                 <div>
                     <h5 class="modal-title mb-0">Faturas do pedido</h5>
-                    <small class="text-muted" id="faturas-subtitulo"></small>
+                    <small class="text-muted faturas-subtitulo" id="faturas-subtitulo"></small>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -1334,6 +1385,7 @@
     let modalEnvio = null;
     let modalOrfaos = null;
     let modalFaturas = null;
+    const QUALIDADE_FOCO_FATURAS_KEY = 'qualidade_foco_pos_faturas';
     let modalNio = null;
     let statusChoicesFatura = [];
     let nioBuscaContexto = null;
@@ -1938,7 +1990,7 @@
                         ? `<div class="cliente-cpf text-muted">${escapeHtml(cpfFmt)}</div>`
                         : '<div class="cliente-cpf text-muted">CPF —</div>';
                     const contatosHtml = renderBadgesContato(c.contatos || {}, c.id);
-                    return `<tr class="${c.orfao ? 'row-orfao' : ''}">
+                    return `<tr class="${c.orfao ? 'row-orfao' : ''}" data-contrato-id="${c.id}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}</td>
                         <td class="col-cliente"><div class="cliente-nome">${escapeHtml(c.cliente_nome || '-')}</div>${cpfHtml}</td>
                         <td>${escapeHtml(c.vendedor_nome || '-')}</td>
@@ -1970,11 +2022,49 @@
                 `Página ${page} de ${totalPages || 1} · ${data.total || 0} contratos`;
             document.getElementById('btn-prev').disabled = page <= 1;
             document.getElementById('btn-next').disabled = page >= totalPages;
+            aplicarFocoContratoAposFaturas();
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="12" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
         }
     }
     window.carregarDashboard = carregarDashboard;
+
+    function marcarFocoContratoAposFaturas(contratoId) {
+        if (!contratoId) return;
+        try {
+            sessionStorage.setItem(QUALIDADE_FOCO_FATURAS_KEY, JSON.stringify({
+                contratoId: Number(contratoId),
+                ts: Date.now(),
+            }));
+        } catch (_) { /* ignore */ }
+    }
+
+    function aplicarFocoContratoAposFaturas() {
+        let cfg = null;
+        try {
+            const raw = sessionStorage.getItem(QUALIDADE_FOCO_FATURAS_KEY);
+            if (!raw) return;
+            sessionStorage.removeItem(QUALIDADE_FOCO_FATURAS_KEY);
+            cfg = JSON.parse(raw);
+        } catch (_) {
+            return;
+        }
+        if (!cfg || !cfg.contratoId) return;
+        const row = document.querySelector(
+            `#tbody-contratos tr[data-contrato-id="${cfg.contratoId}"]`
+        );
+        if (!row) return;
+        row.classList.add('qualidade-row-foco');
+        try {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) { /* ignore */ }
+        const removerFoco = function () {
+            row.classList.remove('qualidade-row-foco');
+            document.removeEventListener('click', removerFoco, true);
+        };
+        document.addEventListener('click', removerFoco, true);
+        setTimeout(removerFoco, 15000);
+    }
 
     function renderKpis(k) {
         if (lente === 'vencimento') {
@@ -2605,7 +2695,10 @@
                     <td class="small">${escapeHtml(quando)}</td>
                     <td><span class="badge ${origemCls}">${escapeHtml(h.origem || '—')}</span></td>
                     <td>${escapeHtml(h.os || '—')}</td>
-                    <td class="small">${escapeHtml(h.cliente || '—')}</td>
+                    <td class="small">
+                        <div class="gestao-cliente-nome">${escapeHtml(h.cliente || '—')}</div>
+                        <div class="gestao-cliente-cpf text-muted">${escapeHtml(formatarCpfCnpj(h.cpf_cliente) || 'CPF —')}</div>
+                    </td>
                     <td class="small">${escapeHtml(h.destinatario || '—')}</td>
                     <td class="small">${escapeHtml(h.template_nome || '—')}</td>
                     <td>${result}</td>
@@ -3081,12 +3174,22 @@
             await navigator.clipboard.writeText(texto);
             if (btn) {
                 btn.classList.add('copied');
-                const prev = btn.title;
+                const icon = btn.querySelector('i');
+                const prevIcon = icon ? icon.className : '';
+                if (icon) icon.className = 'bi bi-check2';
+                const prevTitle = btn.title;
                 btn.title = 'Copiado!';
+                btn.querySelectorAll('.copiado-hint').forEach((el) => el.remove());
+                const hint = document.createElement('span');
+                hint.className = 'copiado-hint';
+                hint.textContent = 'Copiado!';
+                btn.appendChild(hint);
                 setTimeout(() => {
                     btn.classList.remove('copied');
-                    btn.title = prev;
-                }, 1200);
+                    btn.title = prevTitle;
+                    if (icon) icon.className = prevIcon;
+                    hint.remove();
+                }, 1600);
             }
         } catch (e) {
             window.prompt(`Copie o ${label} (Ctrl+C):`, texto);
@@ -3119,8 +3222,13 @@
 
     function renderFaturasTabela(data) {
         document.getElementById('faturas-contrato-id').value = data.id;
-        document.getElementById('faturas-subtitulo').textContent =
-            `O.S. ${data.ordem_servico || '-'} · ${data.cliente_nome || ''} · ${data.vendedor_nome || ''}`;
+        const cpfFmt = formatarCpfCnpj(data.cpf_cliente);
+        const sub = document.getElementById('faturas-subtitulo');
+        sub.innerHTML =
+            `O.S. ${escapeHtml(data.ordem_servico || '-')} · ` +
+            `<span class="fat-cli-nome">${escapeHtml(data.cliente_nome || '')}</span>` +
+            (data.vendedor_nome ? ` · ${escapeHtml(data.vendedor_nome)}` : '') +
+            `<span class="fat-cli-cpf">${escapeHtml(cpfFmt || 'CPF/CNPJ —')}</span>`;
         document.getElementById('faturas-status-contrato').textContent = data.status_contrato || '—';
         document.getElementById('faturas-resumo-pagas').textContent =
             `${data.faturas_pagas || 0}/${data.total_faturas || 0}`;
@@ -3156,7 +3264,7 @@
                 <td><input type="date" class="form-control form-control-sm fat-venc" value="${f.data_vencimento || ''}"></td>
                 <td><input type="date" class="form-control form-control-sm fat-promessa" value="${f.data_promessa_pagamento || ''}"></td>
                 <td><input type="date" class="form-control form-control-sm fat-pagto" value="${f.data_pagamento || ''}"></td>
-                <td><input type="text" inputmode="decimal" class="form-control form-control-sm fat-valor" value="${formatValorInput(f.valor)}"></td>
+                <td class="col-valor"><input type="text" inputmode="decimal" class="form-control form-control-sm fat-valor" value="${formatValorInput(f.valor)}"></td>
                 <td class="col-pix">
                     <input type="hidden" class="fat-pix" value="${escapeAttr(pix)}">
                     <input type="hidden" class="fat-barras" value="${escapeAttr(barras)}">
@@ -3170,9 +3278,9 @@
                     </div>
                 </td>
                 <td class="acoes-btns col-pdf">
-                    <button type="button" class="btn btn-sm btn-outline-primary" title="Buscar na Nio" onclick="buscarNioFatura(${f.numero_fatura}, ${f.id})"><i class="bi bi-cloud-download"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-fat-nio" title="Buscar na Nio" onclick="buscarNioFatura(${f.numero_fatura}, ${f.id})"><i class="bi bi-cloud-download"></i></button>
                     ${pdfBtns}
-                    <label class="btn btn-sm btn-outline-secondary mb-0" title="Upload PDF">
+                    <label class="btn btn-sm btn-outline-secondary mb-0 btn-fat-upload" title="Upload PDF">
                         <i class="bi bi-upload"></i>
                         <input type="file" accept="application/pdf" hidden onchange="uploadPdfFatura(${f.id}, this)">
                     </label>
@@ -3233,6 +3341,7 @@
             if (data.erros && data.erros.length) {
                 alert('Salvo com avisos:\n' + data.erros.join('\n'));
             } else {
+                marcarFocoContratoAposFaturas(contratoId);
                 modalFaturas.hide();
             }
             carregarDashboard();

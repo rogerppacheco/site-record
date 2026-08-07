@@ -3279,6 +3279,7 @@ def listar_gestao_envios_qualidade(
             'contrato_id': h.contrato_id,
             'os': getattr(h.contrato, 'ordem_servico', '') or '',
             'cliente': (h.contrato.cliente_nome or '')[:80],
+            'cpf_cliente': (getattr(h.contrato, 'cpf_cliente', None) or '').strip(),
             'fatura_id': h.fatura_id,
             'valor': float(h.fatura.valor) if h.fatura_id and h.fatura and h.fatura.valor is not None else None,
             'vencimento': (
