@@ -12,7 +12,153 @@
 
 {% block extra_css %}
 <style>
-.painel-performance-page .table-excel {
+/* Página em viewport: header do site (80px) + chrome sticky + tabela no resto */
+        body.painel-performance-body {
+            padding-top: 80px !important;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .painel-performance-page {
+            --perf-sticky-bg: var(--bg-card, #fff);
+            --perf-thead-h: 36px;
+            --perf-chrome-h: 88px;
+            height: calc(100vh - 80px);
+            display: flex;
+            flex-direction: column;
+            padding: 0 0.5rem 0.25rem !important;
+            margin: 0;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .painel-performance-page .perf-sticky-chrome {
+            position: sticky;
+            top: 0;
+            z-index: 45;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+            padding: 4px 0 2px;
+            border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+        }
+        .painel-performance-page .perf-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 6px;
+            padding: 4px 6px;
+            margin: 0;
+            border-radius: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+        }
+        .painel-performance-page .perf-toolbar .perf-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin: 0 4px 0 0;
+            white-space: nowrap;
+            color: var(--text-primary);
+        }
+        .painel-performance-page .perf-toolbar .form-select,
+        .painel-performance-page .perf-toolbar .form-control {
+            min-height: 28px;
+            height: 28px;
+            padding: 0 0.4rem;
+            font-size: 0.72rem;
+            width: auto;
+        }
+        .painel-performance-page .perf-toolbar .form-label-inline,
+        .painel-performance-page .perf-toolbar label {
+            font-size: 0.68rem;
+            margin: 0;
+            white-space: nowrap;
+            color: var(--text-secondary, #94a3b8);
+            font-weight: 600;
+        }
+        .painel-performance-page .perf-toolbar .btn {
+            min-height: 28px;
+            height: 28px;
+            padding: 0 0.55rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .painel-performance-page .perf-toolbar .btn-icon {
+            width: 28px;
+            min-width: 28px;
+            padding: 0;
+            justify-content: center;
+        }
+        .painel-performance-page .perf-toolbar .vr {
+            height: 20px;
+            margin: 0 2px;
+            opacity: 0.35;
+        }
+        .painel-performance-page .perf-tabs.nav-pills {
+            margin: 4px 0 0 !important;
+            gap: 2px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+        }
+        .painel-performance-page .perf-tabs .nav-link {
+            padding: 3px 12px !important;
+            margin-right: 2px !important;
+            font-size: 0.75rem;
+            border-radius: 14px !important;
+        }
+        .painel-performance-page .perf-tab-content {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .painel-performance-page .perf-tab-content > .tab-pane {
+            height: 100%;
+        }
+        .painel-performance-page .perf-tab-content > .tab-pane.active {
+            display: flex !important;
+            flex-direction: column;
+            min-height: 0;
+        }
+        /* Gestão tem filtros próprios: rolagem no painel inteiro da aba */
+        .painel-performance-page #content-gestao.active {
+            display: block !important;
+            overflow: auto;
+        }
+        .painel-performance-page #content-gestao .card,
+        .painel-performance-page #content-gestao .card > .card-body {
+            display: block !important;
+            height: auto !important;
+            min-height: 0;
+            overflow: visible !important;
+            flex: none !important;
+        }
+        .painel-performance-page #content-gestao .card > .card-body {
+            padding: 0.5rem !important;
+        }
+        .painel-performance-page #content-gestao .perf-table-scroll {
+            height: auto;
+            max-height: min(58vh, 640px);
+            flex: none;
+        }
+        .painel-performance-page .perf-tab-content .card {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+        }
+        .painel-performance-page .perf-tab-content .card > .card-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 0 !important;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .painel-performance-page .table-excel {
             font-size: 0.72rem;
             border-collapse: separate;
             border-spacing: 0;
@@ -23,7 +169,10 @@
             --perf-thead-h: 36px;
         }
         .painel-performance-page .perf-table-scroll {
-            max-height: calc(100vh - 260px);
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+            height: 100%;
             overflow: auto;
             position: relative;
             border-radius: 0 0 0.375rem 0.375rem;
@@ -318,16 +467,7 @@
         .painel-performance-page #capture-summary.show { display: block; }
         .painel-performance-page .nav-pills .nav-link { color: var(--text-secondary); font-weight: 600; border-radius: 20px; padding: 8px 20px; margin-right: 5px; }
         .painel-performance-page .nav-pills .nav-link.active { background-color: var(--accent-primary); color: var(--text-on-accent); box-shadow: 0 2px 5px color-mix(in srgb, var(--accent-primary) 30%, transparent); }
-        .top-action-btn {
-            width: 180px;
-            height: 52px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            font-weight: 700;
-        }
-        .top-action-wrap { width: 180px; }
+        .top-action-wrap { display: inline-flex; }
         .gestao-filtros-header {
             display: flex;
             justify-content: space-between;
@@ -450,29 +590,31 @@
 </style>
 {% endblock %}
 
+{% block body_attrs %}class="painel-performance-body"{% endblock %}
+
 {% block header_nav %}
     <li><a href="/area-interna/">Voltar</a></li>
                         <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
 {% endblock %}
 
 {% block content %}
-<main class="container-fluid px-4 py-4 painel-performance-page">
+<main class="container-fluid painel-performance-page">
         
-        <div class="d-flex justify-content-between align-items-center mb-4 card-modern p-3 rounded shadow-sm flex-wrap gap-2">
-            <div><h4 class="fw-bold text-dark mb-0"><i class="bi bi-bar-chart-line-fill text-primary"></i> Painel de Performance</h4></div>
-            
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-                <button class="btn btn-sm btn-outline-dark top-action-btn" onclick="abrirConfiguracaoRobo()">
-                    <i class="bi bi-robot"></i> Robô Automático
+        <div class="perf-sticky-chrome" id="perf-sticky-chrome">
+        <div class="perf-toolbar">
+            <span class="perf-title"><i class="bi bi-bar-chart-line-fill text-primary"></i> Performance</span>
+
+                <button class="btn btn-outline-secondary" onclick="abrirConfiguracaoRobo()" title="Robô Automático">
+                    <i class="bi bi-robot"></i> Robô
                 </button>
 
-                <button class="btn btn-sm btn-success top-action-btn" onclick="abrirModalEnvioManual()">
-                    <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
+                <button class="btn btn-success" onclick="abrirModalEnvioManual()" title="Enviar imagem agora">
+                    <i class="bi bi-whatsapp"></i> WPP
                 </button>
 
                 <div class="dropdown top-action-wrap" id="dropdown-export-performance">
-                    <button class="btn btn-sm btn-outline-primary dropdown-toggle top-action-btn w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-file-earmark-excel"></i> Exportar
+                    <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-file-earmark-excel"></i> Excel
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><button class="dropdown-item" type="button" onclick="exportarPerformance('HOJE')">Base de Hoje</button></li>
@@ -482,26 +624,26 @@
                     </ul>
                 </div>
                 
-                <div class="vr mx-2"></div>
+                <div class="vr"></div>
 
-                <div id="wrap-filtro-mes-performance" class="d-flex align-items-center gap-1 ms-2">
-                    <label class="fw-bold text-muted small mb-0">Mês ref.:</label>
-                    <select id="filtro-mes-performance" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
+                <div id="wrap-filtro-mes-performance" class="d-flex align-items-center gap-1">
+                    <label class="form-label-inline">Mês:</label>
+                    <select id="filtro-mes-performance" class="form-select" style="width: 118px;" onchange="carregarDados()">
                         <option value="atual">Mês atual</option>
                         <option value="anterior">Mês anterior</option>
                     </select>
                 </div>
-                <div id="wrap-filtro-mes-livre" class="d-none align-items-center gap-1 ms-2">
-                    <label class="fw-bold text-muted small mb-0">Mês:</label>
-                    <input type="month" id="filtro-mes-livre" class="form-control form-control-sm" style="width: 140px;" onchange="carregarDados()">
+                <div id="wrap-filtro-mes-livre" class="d-none align-items-center gap-1">
+                    <label class="form-label-inline">Mês:</label>
+                    <input type="month" id="filtro-mes-livre" class="form-control" style="width: 124px;" onchange="carregarDados()">
                 </div>
-                <div id="wrap-filtro-segunda-livre" class="d-none align-items-center gap-1 ms-2">
-                    <label class="fw-bold text-muted small mb-0">Segunda feira:</label>
-                    <input type="date" id="filtro-segunda-livre" class="form-control form-control-sm" style="width: 148px;" onchange="carregarDados()" title="Início da semana (segunda a sábado)">
+                <div id="wrap-filtro-segunda-livre" class="d-none align-items-center gap-1">
+                    <label class="form-label-inline">2ª:</label>
+                    <input type="date" id="filtro-segunda-livre" class="form-control" style="width: 128px;" onchange="carregarDados()" title="Início da semana (segunda a sábado)">
                 </div>
                 
-                <label class="fw-bold text-muted small mb-0">Canal:</label>
-                <select id="filtro-canal" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
+                <label class="form-label-inline">Canal:</label>
+                <select id="filtro-canal" class="form-select" style="width: 110px;" onchange="carregarDados()">
                     <option value="">Todos</option>
                     <option value="PAP">PAP</option>
                     <option value="DIGITAL">Digital</option>
@@ -509,25 +651,25 @@
                     <option value="PARCEIRO">Parceiro</option>
                 </select>
 
-                <label class="fw-bold text-muted small mb-0 ms-2">Cluster:</label>
-                <select id="filtro-cluster" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
+                <label class="form-label-inline">Cluster:</label>
+                <select id="filtro-cluster" class="form-select" style="width: 118px;" onchange="carregarDados()">
                     <option value="">Todos</option>
                     <option value="CLUSTER_1">CLUSTER 1</option>
                     <option value="CLUSTER_2">CLUSTER 2</option>
                     <option value="CLUSTER_3">CLUSTER 3</option>
                 </select>
 
-                <div id="filtro-vendedor-ativo-wrap" class="d-none align-items-center gap-1 ms-2">
-                    <label class="fw-bold text-muted small mb-0">Vendedor:</label>
-                    <select id="filtro-vendedor-ativo" class="form-select form-select-sm" style="width: 168px;" onchange="carregarDados()" title="Conta de usuário ativo/inativo">
-                        <option value="todos" selected>Todos (ativos e inativos)</option>
+                <div id="filtro-vendedor-ativo-wrap" class="d-none align-items-center gap-1">
+                    <label class="form-label-inline">Vendedor:</label>
+                    <select id="filtro-vendedor-ativo" class="form-select" style="width: 140px;" onchange="carregarDados()" title="Conta de usuário ativo/inativo">
+                        <option value="todos" selected>Todos</option>
                         <option value="ativos">Só ativos</option>
                         <option value="inativos">Só inativos</option>
                     </select>
                 </div>
 
-                <label class="fw-bold text-muted small mb-0 ms-2" title="Exibe apenas vendedores com participação mínima no total do período">Repr. mín.:</label>
-                <select id="filtro-representatividade" class="form-select form-select-sm" style="width: 120px;" onchange="reRenderPainelPerformance()" title="Filtra vendedores pela representatividade mínima no resultado">
+                <label class="form-label-inline" title="Exibe apenas vendedores com participação mínima no total do período">Repr.:</label>
+                <select id="filtro-representatividade" class="form-select" style="width: 88px;" onchange="reRenderPainelPerformance()" title="Filtra vendedores pela representatividade mínima no resultado">
                     <option value="0" selected>Todos</option>
                     <option value="1">≥ 1%</option>
                     <option value="2">≥ 2%</option>
@@ -540,17 +682,17 @@
                 <button class="btn btn-icon btn-icon-primary" onclick="carregarDados()" title="Atualizar" aria-label="Atualizar dados">
                     <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
                 </button>
-            </div>
         </div>
 
-        <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+        <ul class="nav nav-pills perf-tabs" id="pills-tab" role="tablist">
             <li class="nav-item"><button class="nav-link active" id="tab-hoje" data-bs-toggle="pill" data-bs-target="#content-hoje">Hoje</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-semana" data-bs-toggle="pill" data-bs-target="#content-semana">Semanal</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-mes" data-bs-toggle="pill" data-bs-target="#content-mes">Mensal</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-gestao" data-bs-toggle="pill" data-bs-target="#content-gestao">Gestão</button></li>
         </ul>
+        </div>
 
-        <div class="tab-content" id="pills-tabContent">
+        <div class="tab-content perf-tab-content" id="pills-tabContent">
             <div class="tab-pane fade show active" id="content-hoje">
                 <div class="card border-0 shadow"><div class="card-body p-0"><div class="table-responsive perf-table-scroll"><table class="table-excel" id="table-hoje"><thead id="thead-hoje"></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div></div>
             </div>
@@ -868,6 +1010,9 @@
             window.addEventListener('resize', () => {
                 clearTimeout(window.__perfStickyResizeT);
                 window.__perfStickyResizeT = setTimeout(syncPerfStickyHeights, 120);
+            });
+            document.getElementById('pills-tab')?.addEventListener('shown.bs.tab', () => {
+                syncPerfStickyHeights();
             });
         });
 
@@ -1234,6 +1379,11 @@
         }
 
         function syncPerfStickyHeights() {
+            const chrome = document.getElementById('perf-sticky-chrome');
+            if (chrome) {
+                const ch = Math.ceil(chrome.getBoundingClientRect().height);
+                document.querySelector('.painel-performance-page')?.style.setProperty('--perf-chrome-h', `${ch}px`);
+            }
             ['table-hoje', 'table-semana', 'table-mes', 'table-gestao'].forEach(id => {
                 const table = document.getElementById(id);
                 if (!table) return;
