@@ -50,8 +50,45 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
         self.assertEqual(_banda_legado_comissao('500MB'), '500MB')
 
     def test_chave_excel_planos_transicao(self) -> None:
-        self.assertEqual(plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF'), '500MB_PAP')
+        self.assertEqual(plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF'), '600MB_PAP')
         self.assertEqual(plano_tipo_to_chave('NIO FIBRA SUPER 800MB', 'CNPJ'), '700MB_CNPJ')
+        self.assertEqual(plano_tipo_to_chave('NIO FIBRA 500MB', 'CPF'), '500MB_PAP')
+
+    def test_chave_600_cidade_especial(self) -> None:
+        venda = MagicMock(cidade='CAMPINAS', estado='SP')
+        with patch(
+            'crm_app.services.comissao_cidade_especial_service.venda_em_cidade_oferta_especial',
+            return_value=True,
+        ):
+            self.assertEqual(
+                plano_tipo_to_chave(
+                    'NIO FIBRA ESSENCIAL 600MB',
+                    'CPF',
+                    venda=venda,
+                    cidades_especiais_cache={('SP', 'CAMPINAS')},
+                ),
+                '600MB_ESP_PAP',
+            )
+        with patch(
+            'crm_app.services.comissao_cidade_especial_service.venda_em_cidade_oferta_especial',
+            return_value=False,
+        ):
+            self.assertEqual(
+                plano_tipo_to_chave(
+                    'NIO FIBRA ESSENCIAL 600MB',
+                    'CPF',
+                    venda=venda,
+                    cidades_especiais_cache=set(),
+                ),
+                '600MB_PAP',
+            )
+
+    def test_chave_legado_lookup_600(self) -> None:
+        from crm_app.comissao_folha_service import chave_legado_lookup
+
+        self.assertEqual(chave_legado_lookup('600MB_PAP'), '500MB_PAP')
+        self.assertEqual(chave_legado_lookup('600MB_ESP_CNPJ'), '500MB_CNPJ')
+        self.assertEqual(chave_legado_lookup('1GB_PAP'), '1GB_PAP')
 
     def test_legacy_faixa_herda_valores_600_e_800(self) -> None:
         faixa = MagicMock(

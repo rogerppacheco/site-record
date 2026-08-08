@@ -1,16 +1,48 @@
 # crm_app/comissao_folha_service.py
 """
 Serviço de cálculo da folha de comissão no formato Excel (REGRAS_FAIXAS + REGRAS_VENDEDORES).
-Mapeamento: plano.nome + tipo_cliente -> chave (500MB_PAP, 700MB_CNPJ, etc.)
+Mapeamento: plano.nome + tipo_cliente (+ cidade especial) -> chave de exibição na folha.
 """
 from decimal import Decimal
 from collections import defaultdict
 from datetime import datetime
 
+# Chaves de exibição/agregação na Gestão de Comissionamento (ordem da tabela).
 CHAVES_PLANO = [
-    '500MB_PAP', '700MB_PAP', '1GB_PAP',
-    '500MB_CNPJ', '700MB_CNPJ', '1GB_CNPJ',
+    '500MB_PAP',
+    '600MB_PAP',
+    '600MB_ESP_PAP',
+    '700MB_PAP',
+    '1GB_PAP',
+    '500MB_CNPJ',
+    '600MB_CNPJ',
+    '600MB_ESP_CNPJ',
+    '700MB_CNPJ',
+    '1GB_CNPJ',
 ]
+
+LABELS_CHAVE_PLANO = {
+    '500MB_PAP': '500MB PAP',
+    '600MB_PAP': '600MB PAP',
+    '600MB_ESP_PAP': '600MB Cidade Especial PAP',
+    '700MB_PAP': '700MB PAP',
+    '1GB_PAP': '1GB PAP',
+    '500MB_CNPJ': '500MB CNPJ',
+    '600MB_CNPJ': '600MB CNPJ',
+    '600MB_ESP_CNPJ': '600MB Cidade Especial CNPJ',
+    '700MB_CNPJ': '700MB CNPJ',
+    '1GB_CNPJ': '1GB CNPJ',
+}
+
+# Mapa chave de exibição -> coluna legada (matriz/manual 500/700/1GB).
+_CHAVE_PARA_LEGADO = {
+    '600MB_PAP': '500MB_PAP',
+    '600MB_ESP_PAP': '500MB_PAP',
+    '600MB_CNPJ': '500MB_CNPJ',
+    '600MB_ESP_CNPJ': '500MB_CNPJ',
+    # 800MB continua agregado em 700MB (sem linha própria neste momento).
+}
+
 
 # Nomes de plano (normalizado) -> banda para chave
 def _plano_nome_to_banda(nome):
@@ -44,17 +76,49 @@ def _banda_legado_comissao(banda: str | None) -> str | None:
     return banda
 
 
-def plano_tipo_to_chave(plano_nome, tipo_cliente):
+def chave_legado_lookup(chave: str | None) -> str | None:
+    """Converte chave de exibição (ex.: 600MB_ESP_PAP) para coluna legada da matriz."""
+    if not chave:
+        return None
+    return _CHAVE_PARA_LEGADO.get(chave, chave)
+
+
+def plano_tipo_to_chave(
+    plano_nome,
+    tipo_cliente,
+    *,
+    venda=None,
+    cidades_especiais_cache=None,
+):
     """
-    Retorna a chave do Excel (ex: 500MB_PAP, 1GB_CNPJ) a partir do nome do plano e CPF/CNPJ.
-    tipo_cliente: 'CPF' ou 'CNPJ'. PAP = CPF no Excel.
-    600MB→500MB e 800MB→700MB (mesma regra de transição da matriz legada).
+    Retorna a chave de exibição na folha (ex.: 600MB_ESP_PAP, 500MB_PAP).
+
+    - 600MB em cidade de oferta especial → 600MB_ESP_*
+    - 600MB demais cidades → 600MB_*
+    - 800MB ainda agrega em 700MB_* (legado)
+    - Demais bandas → chave própria
     """
-    banda = _banda_legado_comissao(_plano_nome_to_banda(plano_nome))
-    if not banda:
+    banda_real = _plano_nome_to_banda(plano_nome)
+    if not banda_real:
         return None
     sufixo = 'PAP' if tipo_cliente == 'CPF' else 'CNPJ'
-    chave = f"{banda}_{sufixo}"
+
+    if banda_real == '600MB':
+        from crm_app.services.comissao_cidade_especial_service import (
+            venda_em_cidade_oferta_especial,
+        )
+        if venda is not None and venda_em_cidade_oferta_especial(
+            venda, cache=cidades_especiais_cache,
+        ):
+            chave = f'600MB_ESP_{sufixo}'
+        else:
+            chave = f'600MB_{sufixo}'
+        return chave if chave in CHAVES_PLANO else None
+
+    banda = _banda_legado_comissao(banda_real)
+    if not banda:
+        return None
+    chave = f'{banda}_{sufixo}'
     return chave if chave in CHAVES_PLANO else None
 
 
@@ -94,7 +158,12 @@ def estimar_comissao_instaladas_vendedor(
         if not plano:
             continue
         tipo_cliente = tipo_cliente_comissao(venda)
-        chave = plano_tipo_to_chave(getattr(plano, 'nome', None), tipo_cliente)
+        chave = plano_tipo_to_chave(
+            getattr(plano, 'nome', None),
+            tipo_cliente,
+            venda=venda,
+            cidades_especiais_cache=cidades_cache,
+        )
         valor = resolver_valor_comissao_venda(
             plano,
             tipo_cliente,
@@ -116,6 +185,7 @@ def get_valor_from_faixa(regra_faixa, chave):
     """Retorna o valor decimal da regra de faixa para a chave (500MB_PAP, etc.)."""
     if not regra_faixa or not chave:
         return None
+    chave_lookup = chave_legado_lookup(chave)
     m = {
         '500MB_PAP': regra_faixa.valor_500mb_pap,
         '700MB_PAP': regra_faixa.valor_700mb_pap,
@@ -124,7 +194,7 @@ def get_valor_from_faixa(regra_faixa, chave):
         '700MB_CNPJ': regra_faixa.valor_700mb_cnpj,
         '1GB_CNPJ': regra_faixa.valor_1gb_cnpj,
     }
-    v = m.get(chave)
+    v = m.get(chave_lookup)
     return float(v) if v is not None else None
 
 
@@ -450,12 +520,13 @@ def get_valor_manual(config, chave, plano=None, matriz_cache=None):
     """Retorna valor manual do vendedor (por plano ou colunas legadas 500/700/1GB)."""
     if plano and config and chave:
         from crm_app.services.comissao_matriz_service import get_valor_manual_vendedor_plano
-        tipo = 'CPF' if chave.endswith('_PAP') else 'CNPJ'
+        tipo = 'CPF' if str(chave).endswith('_PAP') else 'CNPJ'
         v_plano = get_valor_manual_vendedor_plano(config, plano, tipo, matriz_cache=matriz_cache)
         if v_plano is not None:
             return v_plano
     if not config or not chave:
         return None
+    chave_lookup = chave_legado_lookup(chave)
     m = {
         '500MB_PAP': config.valor_500mb_pap_manual,
         '700MB_PAP': config.valor_700mb_pap_manual,
@@ -464,7 +535,7 @@ def get_valor_manual(config, chave, plano=None, matriz_cache=None):
         '700MB_CNPJ': config.valor_700mb_cnpj_manual,
         '1GB_CNPJ': config.valor_1gb_cnpj_manual,
     }
-    v = m.get(chave)
+    v = m.get(chave_lookup)
     return float(v) if v is not None else None
 
 
@@ -538,7 +609,12 @@ def valor_comissao_linha_extrato(
     )
 
     plano_nome = venda.plano.nome if venda.plano else ''
-    chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+    chave = plano_tipo_to_chave(
+        plano_nome,
+        tipo_cliente_comissao(venda),
+        venda=venda,
+        cidades_especiais_cache=cidades_especiais_cache,
+    )
     origem = origem_adiantamento_comissao_venda(venda)
     if not chave:
         val = None
@@ -933,7 +1009,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         for v in vendas:
             tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
+            chave = plano_tipo_to_chave(
+                plano_nome,
+                tipo_cliente,
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+            )
             doc_limpo_v = ''.join(filter(str.isdigit, (v.cliente.cpf_cnpj or '') if v.cliente else ''))
             if len(doc_limpo_v) == 14:
                 if classificacao_mei_venda(v) == CLASSIFICACAO_MEI:
@@ -1003,11 +1084,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             por_plano[chave]['total'] += valor_unit
             comissao_total_geral += Decimal(str(valor_unit))
 
-        # Montar lista por_plano no formato do Excel (500MB PAP, 700MB PAP, ...) + qtd_antecipada
-        labels = {
-            '500MB_PAP': '500MB PAP', '700MB_PAP': '700MB PAP', '1GB_PAP': '1GB PAP',
-            '500MB_CNPJ': '500MB CNPJ', '700MB_CNPJ': '700MB CNPJ', '1GB_CNPJ': '1GB CNPJ',
-        }
+        # Montar lista por_plano (500 / 600 / 600 ESP / 700 / 1GB) + qtd_antecipada
+        labels = LABELS_CHAVE_PLANO
         por_plano_lista = []
         for chave in CHAVES_PLANO:
             d = por_plano.get(
@@ -1138,7 +1216,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
             tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
+            chave = plano_tipo_to_chave(
+                plano_nome,
+                tipo_cliente,
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+            )
             if not chave:
                 continue
             valor_unit = resolver_valor_comissao_venda(
@@ -1166,7 +1249,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
             tipo_cliente = tipo_cliente_comissao(v)
             plano_nome = v.plano.nome if v.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
+            chave = plano_tipo_to_chave(
+                plano_nome,
+                tipo_cliente,
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+            )
             if not chave:
                 continue
             valor_unit = resolver_valor_comissao_venda(
@@ -1307,7 +1395,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             doc_limpo = ''.join(filter(str.isdigit, doc))
             eh_cnpj = len(doc_limpo) == 14
             plano_nome = venda.plano.nome if venda.plano else ''
-            chave = plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+            chave = plano_tipo_to_chave(
+                plano_nome,
+                tipo_cliente_comissao(venda),
+                venda=venda,
+                cidades_especiais_cache=cidades_especiais_cache,
+            )
             mei = classificacao_mei_venda(venda) if eh_cnpj else None
             return {
                 'plano_label': labels.get(chave, plano_nome or '-'),

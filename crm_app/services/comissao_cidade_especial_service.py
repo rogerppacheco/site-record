@@ -52,7 +52,7 @@ def _valores_comissao_plano(plano: Plano | None) -> PlanoValoresComissao | None:
         return None
     try:
         return plano.valores_comissao
-    except PlanoValoresComissao.DoesNotExist:
+    except (PlanoValoresComissao.DoesNotExist, AttributeError):
         return None
 
 

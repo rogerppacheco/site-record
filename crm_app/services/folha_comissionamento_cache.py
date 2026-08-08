@@ -15,7 +15,9 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 _VERSION_KEY = "folha_comissao_ver:{ano}:{mes}"
-_DATA_KEY = "folha_comissao:{ano}:{mes}:{vendedor_id}:{use_effective}:{version}"
+# v2: linhas 600MB e 600MB Cidade Especial separadas do 500MB
+_FOLHA_SCHEMA = 2
+_DATA_KEY = "folha_comissao:s{schema}:{ano}:{mes}:{vendedor_id}:{use_effective}:{version}"
 
 
 def _cache_ttl() -> int:
@@ -39,6 +41,7 @@ def _data_key(
 ) -> str:
     vid = vendedor_id if vendedor_id is not None else "all"
     return _DATA_KEY.format(
+        schema=_FOLHA_SCHEMA,
         ano=ano,
         mes=mes,
         vendedor_id=vid,

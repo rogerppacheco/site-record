@@ -82,12 +82,15 @@ def get_valor_faixa_plano(
     """Valor na interseção faixa × plano; fallback nas colunas legadas 500/700/1GB."""
     if not faixa or not plano:
         return None
+    faixa_id = getattr(faixa, 'id', None)
+    plano_id = getattr(plano, 'id', None)
     row: RegraComissaoFaixaPlano | None = None
     if matriz_cache is not None:
-        row = matriz_cache._faixa_plano.get((faixa.id, plano.id))
-    else:
+        if isinstance(faixa_id, int) and isinstance(plano_id, int):
+            row = matriz_cache._faixa_plano.get((faixa_id, plano_id))
+    elif isinstance(faixa_id, int) and isinstance(plano_id, int):
         try:
-            row = RegraComissaoFaixaPlano.objects.get(faixa=faixa, plano=plano)
+            row = RegraComissaoFaixaPlano.objects.get(faixa_id=faixa_id, plano_id=plano_id)
         except RegraComissaoFaixaPlano.DoesNotExist:
             row = None
     if row is not None:
@@ -114,12 +117,15 @@ def get_valor_manual_vendedor_plano(
 ) -> float | None:
     if not config or not plano:
         return None
+    config_id = getattr(config, 'id', None)
+    plano_id = getattr(plano, 'id', None)
     row: PlanoValoresComissaoVendedor | None = None
     if matriz_cache is not None:
-        row = matriz_cache._manual_config.get((config.id, plano.id))
-    else:
+        if isinstance(config_id, int) and isinstance(plano_id, int):
+            row = matriz_cache._manual_config.get((config_id, plano_id))
+    elif isinstance(config_id, int) and isinstance(plano_id, int):
         try:
-            row = PlanoValoresComissaoVendedor.objects.get(config=config, plano=plano)
+            row = PlanoValoresComissaoVendedor.objects.get(config_id=config_id, plano_id=plano_id)
         except PlanoValoresComissaoVendedor.DoesNotExist:
             row = None
     if row is None:

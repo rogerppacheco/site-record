@@ -410,13 +410,18 @@ def carregar_valores_pago_sabado_lancamentos(
     return mapa
 
 
-def chave_comissao_venda(venda) -> str | None:
-    """Chave REGRAS_FAIXAS (500MB_PAP etc.) respeitando MEI → PAP."""
+def chave_comissao_venda(venda, cidades_especiais_cache=None) -> str | None:
+    """Chave de exibição na folha (respeitando MEI → PAP e cidade especial)."""
     from crm_app.comissao_folha_service import plano_tipo_to_chave
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
 
     plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
-    return plano_tipo_to_chave(plano_nome, tipo_cliente_comissao(venda))
+    return plano_tipo_to_chave(
+        plano_nome,
+        tipo_cliente_comissao(venda),
+        venda=venda,
+        cidades_especiais_cache=cidades_especiais_cache,
+    )
 
 
 def valor_alvo_adiantamento_sabado_folha(
@@ -435,7 +440,7 @@ def valor_alvo_adiantamento_sabado_folha(
     from crm_app.comissao_folha_service import resolver_valor_comissao_venda
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
 
-    chave = chave_comissao_venda(venda)
+    chave = chave_comissao_venda(venda, cidades_especiais_cache=cidades_especiais_cache)
     if not chave:
         return None
     return resolver_valor_comissao_venda(
@@ -503,7 +508,7 @@ def calcular_complemento_adiantamento_sabado_folha(
         pago_r = round(pago, 2)
 
         plano_nome = venda.plano.nome if getattr(venda, 'plano', None) else ''
-        chave = chave_comissao_venda(venda) or ''
+        chave = chave_comissao_venda(venda, cidades_especiais_cache=cidades_especiais_cache) or ''
         mei = classificacao_mei_venda(venda)
         tipo_cli = tipo_cliente_comissao(venda)
 
