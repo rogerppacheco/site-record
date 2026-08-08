@@ -5,9 +5,10 @@ Regras de negócio isoladas aqui:
 * Endereço: usa o endereço cadastral da Assertiva e, quando o PAP responde sem
   viabilidade (ou com pedido/posse no endereço), refaz a consulta com o endereço
   padrão da automação para não abortar a análise.
-* Contatos: usa telefone/e-mail reais da Assertiva; quando o PAP recusa todos
-  (contato já utilizado em pedido anterior), volta ao celular aleatório e ao
-  e-mail validado do pool, que o portal aceita receber.
+* Contatos: usa telefone/e-mail reais da Assertiva; quando o PAP recusa o
+  telefone (já utilizado / excede repetições / celular inválido) ou o e-mail,
+  o seletor avança para o próximo candidato e, esgotados os da Assertiva,
+  volta ao celular aleatório e ao e-mail validado do pool.
 """
 
 from __future__ import annotations
@@ -41,6 +42,12 @@ CODIGOS_ENDERECO_BLOQUEADO = (
 CODIGO_EMAIL_INVALIDO = "EMAIL_INVALIDO"
 CODIGO_EMAIL_REJEITADO = "EMAIL_REJEITADO"
 CODIGOS_EMAIL_RECUSADO = (CODIGO_EMAIL_INVALIDO, CODIGO_EMAIL_REJEITADO)
+
+# Códigos de telefone recusado/inválido: o fluxo CRÉDITO deve avançar
+# automaticamente para o próximo da Assertiva ou para celular aleatório.
+CODIGO_TELEFONE_REJEITADO = "TELEFONE_REJEITADO"
+CODIGO_CELULAR_INVALIDO = "CELULAR_INVALIDO"
+CODIGOS_TELEFONE_RECUSADO = (CODIGO_TELEFONE_REJEITADO, CODIGO_CELULAR_INVALIDO)
 
 # Formas de pagamento liberadas no modal "Resultado da análise de crédito".
 FORMAS_TODAS = "todas"

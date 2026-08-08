@@ -284,7 +284,7 @@ class Command(BaseCommand):
                         resultado_credito or "Elegível para formas de pagamento disponíveis.",
                         None,
                     )
-                if msg in ("TELEFONE_REJEITADO",):
+                if msg in ("TELEFONE_REJEITADO", "CELULAR_INVALIDO"):
                     cel = gerar_celular_random()
                     cel_sec = gerar_celular_random()
                     continue

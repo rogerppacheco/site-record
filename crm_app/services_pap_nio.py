@@ -5427,7 +5427,11 @@ class PAPNioAutomation:
             or "repeticoes" in pagina
             or "celular já utilizado" in pagina
             or "celular ja utilizado" in pagina
+            or "celular inválido" in pagina
+            or "celular invalido" in pagina
         ):
+            if "celular inválido" in pagina or "celular invalido" in pagina:
+                return "CELULAR_INVALIDO"
             return "TELEFONE_REJEITADO"
         if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
             return "EMAIL_REJEITADO"

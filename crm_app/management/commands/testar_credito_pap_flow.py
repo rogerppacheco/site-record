@@ -64,6 +64,7 @@ class Command(BaseCommand):
         )
         from crm_app.services.credito_pap_service import (
             CODIGOS_EMAIL_RECUSADO,
+            CODIGOS_TELEFONE_RECUSADO,
             ORIGEM_PADRAO,
             EnderecoCredito,
             SeletorContatosCredito,
@@ -359,8 +360,14 @@ class Command(BaseCommand):
                 )
                 if sucesso or msg == "CREDITO_NEGADO":
                     break
-                if msg == "TELEFONE_REJEITADO":
+                if msg in CODIGOS_TELEFONE_RECUSADO:
                     contato = seletor_contatos.proximo_telefone()
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  Telefone recusado/inválido ({msg}); "
+                            f"nova origem={contato.origem_telefone}"
+                        )
+                    )
                     continue
                 if msg in CODIGOS_EMAIL_RECUSADO:
                     contato = seletor_contatos.email_recusado(msg)

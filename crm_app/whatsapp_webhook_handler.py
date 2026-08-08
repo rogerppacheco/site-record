@@ -781,6 +781,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
     )
     from crm_app.services.credito_pap_service import (
         CODIGOS_EMAIL_RECUSADO,
+        CODIGOS_TELEFONE_RECUSADO,
         ORIGEM_PADRAO as ORIGEM_ENDERECO_PADRAO,
         EnderecoCredito,
         SeletorContatosCredito,
@@ -1279,10 +1280,12 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, documen
             )
             if sucesso or msg == "CREDITO_NEGADO":
                 break
-            if msg == 'TELEFONE_REJEITADO':
+            if msg in CODIGOS_TELEFONE_RECUSADO:
                 contato = seletor_contatos.proximo_telefone()
                 logger.info(
-                    "[CRÉDITO] Telefone recusado pelo PAP; nova origem=%s.",
+                    "[CRÉDITO] Telefone recusado/inválido pelo PAP (%s); "
+                    "nova origem=%s.",
+                    msg,
                     contato.origem_telefone,
                 )
                 continue

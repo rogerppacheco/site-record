@@ -416,3 +416,27 @@ class SeletorContatosCreditoTests(SimpleTestCase):
 
         self.assertGreater(len(gerados), 1)
         self.assertTrue(all(len(numero) == 11 for numero in gerados))
+
+    def test_codigos_telefone_recusado_incluem_celular_invalido(self):
+        from crm_app.services.credito_pap_service import (
+            CODIGO_CELULAR_INVALIDO,
+            CODIGO_TELEFONE_REJEITADO,
+            CODIGOS_TELEFONE_RECUSADO,
+        )
+
+        self.assertIn(CODIGO_TELEFONE_REJEITADO, CODIGOS_TELEFONE_RECUSADO)
+        self.assertIn(CODIGO_CELULAR_INVALIDO, CODIGOS_TELEFONE_RECUSADO)
+
+    def test_celular_invalido_da_assertiva_avanca_para_proximo_ou_aleatorio(self):
+        """Espelha o loop do fluxo CRÉDITO: CELULAR_INVALIDO não deve abortar."""
+        seletor = SeletorContatosCredito(telefones=("31999998888", "31977776666"))
+        primeiro = seletor.atual().telefone
+        # simula CELULAR_INVALIDO no primeiro → próximo da Assertiva
+        segundo = seletor.proximo_telefone()
+        self.assertEqual(primeiro, "31999998888")
+        self.assertEqual(segundo.telefone, "31977776666")
+        self.assertEqual(segundo.origem_telefone, ORIGEM_ASSERTIVA)
+        # esgota Assertiva → aleatório
+        terceiro = seletor.proximo_telefone()
+        self.assertEqual(terceiro.origem_telefone, ORIGEM_ALEATORIO)
+        self.assertNotEqual(terceiro.telefone, segundo.telefone)
