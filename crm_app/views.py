@@ -714,7 +714,7 @@ from .models import (
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
     AgendamentoDisparo, LogEnvioPerformance, ImportacaoAgendamento, ImportacaoRecompra,
     LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
-    RegraComissaoFaixa, ConfigComissaoVendedor,
+    RegraComissaoFaixa, ConfigComissaoVendedor, CidadeOfertaEspecial,
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao, EsteiraVendasConfig,
     PapConfirmacaoCliente, LembreteInstalacaoEnviado, PossoAnteciparVendedorEnviado,
     ControleTTDiaTratado,
@@ -731,7 +731,7 @@ from .serializers import (
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
     CicloPagamentoSerializer, VendaDetailSerializer,
     CampanhaSerializer, ComissaoOperadoraSerializer, ComunicadoSerializer,
-    FaturaM10Serializer
+    FaturaM10Serializer, CidadeOfertaEspecialSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -938,6 +938,57 @@ class StatusAgendamentoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = StatusAgendamento.objects.all().order_by('ordem', 'nome')
     serializer_class = StatusAgendamentoSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class CidadeOfertaEspecialListCreateView(generics.ListCreateAPIView):
+    """CRUD da lista de municípios com oferta especial (comissão diferenciada)."""
+
+    serializer_class = CidadeOfertaEspecialSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = CidadeOfertaEspecial.objects.all().order_by('uf', 'municipio')
+        ativo = self.request.query_params.get('ativo')
+        uf = (self.request.query_params.get('uf') or '').strip().upper()
+        q = (self.request.query_params.get('q') or '').strip()
+        if ativo is not None:
+            ativo_norm = str(ativo).strip().lower()
+            if ativo_norm in ('1', 'true', 'sim', 'yes'):
+                qs = qs.filter(ativo=True)
+            elif ativo_norm in ('0', 'false', 'nao', 'não', 'no'):
+                qs = qs.filter(ativo=False)
+        if uf:
+            qs = qs.filter(uf=uf)
+        if q:
+            qs = qs.filter(municipio__icontains=q)
+        return qs
+
+
+class CidadeOfertaEspecialDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = CidadeOfertaEspecial.objects.all().order_by('uf', 'municipio')
+    serializer_class = CidadeOfertaEspecialSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class CidadeOfertaEspecialSincronizarView(APIView):
+    """Recarrega a lista canônica de cidades da oferta especial."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from crm_app.cidades_oferta_especial_data import CIDADES_OFERTA_ESPECIAL
+        from crm_app.services.comissao_cidade_especial_service import (
+            upsert_cidades_oferta_especial,
+        )
+
+        resultado = upsert_cidades_oferta_especial(CIDADES_OFERTA_ESPECIAL, ativar=True)
+        total = CidadeOfertaEspecial.objects.filter(ativo=True).count()
+        return Response({
+            **resultado,
+            'total_ativos': total,
+            'mensagem': 'Lista de cidades de oferta especial sincronizada.',
+        })
 
 
 class RegraComissaoListCreateView(generics.ListCreateAPIView):

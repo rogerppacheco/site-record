@@ -426,6 +426,7 @@ def valor_alvo_adiantamento_sabado_folha(
     config,
     usar_manual: bool,
     matriz_cache=None,
+    cidades_especiais_cache=None,
 ) -> float | None:
     """
     Valor-alvo do adiantamento sábado para venda instalada na folha do mês.
@@ -445,6 +446,8 @@ def valor_alvo_adiantamento_sabado_folha(
         usar_manual=usar_manual,
         chave=chave,
         matriz_cache=matriz_cache,
+        venda=venda,
+        cidades_especiais_cache=cidades_especiais_cache,
     )
 
 
@@ -456,6 +459,7 @@ def calcular_complemento_adiantamento_sabado_folha(
     usar_manual: bool,
     valores_lancamento: dict[int, float] | None = None,
     matriz_cache=None,
+    cidades_especiais_cache=None,
 ) -> dict:
     """
     Complemento de faixa para vendas instaladas com adiantamento sábado.
@@ -489,6 +493,7 @@ def calcular_complemento_adiantamento_sabado_folha(
             config=config,
             usar_manual=usar_manual,
             matriz_cache=matriz_cache,
+            cidades_especiais_cache=cidades_especiais_cache,
         )
         if alvo is None:
             continue

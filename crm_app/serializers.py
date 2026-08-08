@@ -9,7 +9,7 @@ from .models import (
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
     RegraCampanha, FaturaM10, GrupoDisparo,
     RegraComissaoFaixa, ConfigComissaoVendedor, RegraComissaoFaixaPlano,
-    EtapaErroAjudaGc,
+    EtapaErroAjudaGc, PlanoValoresComissao, CidadeOfertaEspecial,
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -37,6 +37,13 @@ class PlanoSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, required=False, allow_null=True, write_only=True,
     )
     comissao_operadora_valor = serializers.SerializerMethodField()
+    usa_comissao_cidade_especial = serializers.BooleanField(required=False)
+    valor_pap_cidade_especial = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True,
+    )
+    valor_cnpj_cidade_especial = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True,
+    )
 
     class Meta:
         model = Plano
@@ -44,6 +51,8 @@ class PlanoSerializer(serializers.ModelSerializer):
             'id', 'nome', 'valor', 'operadora', 'operadora_nome', 'beneficios', 'ativo',
             'comissao_base', 'gdp_velocidade_mbps', 'gdp_indice_oferta',
             'recebimento_operadora_base', 'comissao_operadora_valor',
+            'usa_comissao_cidade_especial', 'valor_pap_cidade_especial',
+            'valor_cnpj_cidade_especial',
         ]
 
     def get_comissao_operadora_valor(self, obj: Plano):
@@ -51,6 +60,49 @@ class PlanoSerializer(serializers.ModelSerializer):
             return obj.comissao_operadora.valor_base
         except ComissaoOperadora.DoesNotExist:
             return None
+
+    def to_representation(self, instance: Plano):
+        data = super().to_representation(instance)
+        try:
+            vc = instance.valores_comissao
+            data['usa_comissao_cidade_especial'] = bool(vc.usa_comissao_cidade_especial)
+            data['valor_pap_cidade_especial'] = vc.valor_pap_cidade_especial
+            data['valor_cnpj_cidade_especial'] = vc.valor_cnpj_cidade_especial
+        except PlanoValoresComissao.DoesNotExist:
+            data['usa_comissao_cidade_especial'] = False
+            data['valor_pap_cidade_especial'] = None
+            data['valor_cnpj_cidade_especial'] = None
+        return data
+
+    def _pop_comissao_cidade_especial(self, validated_data: dict) -> dict:
+        """Extrai campos de cidade especial; chave ausente = não alterar."""
+        extras: dict = {}
+        for campo in (
+            'usa_comissao_cidade_especial',
+            'valor_pap_cidade_especial',
+            'valor_cnpj_cidade_especial',
+        ):
+            if campo in validated_data:
+                extras[campo] = validated_data.pop(campo)
+        return extras
+
+    def _sync_comissao_cidade_especial(self, plano: Plano, extras: dict) -> None:
+        """Persiste override de comissão em cidade de oferta especial no PlanoValoresComissao."""
+        if not extras:
+            return
+        vc, _created = PlanoValoresComissao.objects.get_or_create(plano=plano)
+        update_fields: list[str] = []
+        if 'usa_comissao_cidade_especial' in extras:
+            vc.usa_comissao_cidade_especial = bool(extras['usa_comissao_cidade_especial'])
+            update_fields.append('usa_comissao_cidade_especial')
+        if 'valor_pap_cidade_especial' in extras:
+            vc.valor_pap_cidade_especial = extras['valor_pap_cidade_especial']
+            update_fields.append('valor_pap_cidade_especial')
+        if 'valor_cnpj_cidade_especial' in extras:
+            vc.valor_cnpj_cidade_especial = extras['valor_cnpj_cidade_especial']
+            update_fields.append('valor_cnpj_cidade_especial')
+        if update_fields:
+            vc.save(update_fields=update_fields)
 
     def _sync_plano_comissao(self, plano: Plano, recebimento) -> None:
         from crm_app.services.comissao_matriz_service import sincronizar_plano_em_todas_faixas
@@ -72,19 +124,23 @@ class PlanoSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         recebimento = validated_data.pop('recebimento_operadora_base', None)
+        extras = self._pop_comissao_cidade_especial(validated_data)
         plano = Plano.objects.create(**validated_data)
         self._aplicar_mapeamento_gdp_plano(plano, validated_data)
         self._sync_plano_comissao(plano, recebimento)
+        self._sync_comissao_cidade_especial(plano, extras)
         return plano
 
     def update(self, instance, validated_data):
         recebimento = validated_data.pop('recebimento_operadora_base', None)
+        extras = self._pop_comissao_cidade_especial(validated_data)
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
         if 'gdp_velocidade_mbps' not in validated_data and 'nome' in validated_data:
             self._aplicar_mapeamento_gdp_plano(instance, validated_data)
         self._sync_plano_comissao(instance, recebimento)
+        self._sync_comissao_cidade_especial(instance, extras)
         return instance
 
 class FormaPagamentoSerializer(serializers.ModelSerializer):
@@ -237,6 +293,28 @@ class StatusAgendamentoSerializer(serializers.ModelSerializer):
                 'Já existe um status de agendamento com este nome.'
             )
         return nome
+
+
+class CidadeOfertaEspecialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CidadeOfertaEspecial
+        fields = [
+            'id', 'uf', 'municipio', 'municipio_normalizado', 'ativo',
+            'criado_em', 'atualizado_em',
+        ]
+        read_only_fields = ['municipio_normalizado', 'criado_em', 'atualizado_em']
+
+    def validate_uf(self, value: str) -> str:
+        uf = (value or '').strip().upper()
+        if len(uf) != 2:
+            raise serializers.ValidationError('UF deve ter 2 letras.')
+        return uf
+
+    def validate_municipio(self, value: str) -> str:
+        municipio = (value or '').strip()
+        if not municipio:
+            raise serializers.ValidationError('Informe o município.')
+        return municipio
 
 
 class EtapaErroAjudaGcSerializer(serializers.ModelSerializer):

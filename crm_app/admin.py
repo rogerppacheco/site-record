@@ -10,6 +10,7 @@ from .models import (
     HistoricoAtendimentoIACliente,
     SessaoTratamento, RelatorioTratamentoConfig,
     WhatsAppTarifaOficial, HistoricoCustoWhatsAppOficial,
+    CidadeOfertaEspecial,
 )
 
 
@@ -295,6 +296,14 @@ class ConfigComissaoVendedorAdmin(admin.ModelAdmin):
     list_filter = ('perfil_comissao', 'usar_valor_manual')
     search_fields = ('usuario__username',)
     raw_id_fields = ('usuario',)
+
+
+@admin.register(CidadeOfertaEspecial)
+class CidadeOfertaEspecialAdmin(admin.ModelAdmin):
+    list_display = ('municipio', 'uf', 'ativo', 'atualizado_em')
+    list_filter = ('uf', 'ativo')
+    search_fields = ('municipio', 'municipio_normalizado', 'uf')
+    ordering = ('uf', 'municipio')
 
 
 @admin.register(ImportacaoEstabelecimentoCNPJ)

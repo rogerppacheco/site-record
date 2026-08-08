@@ -77,6 +77,7 @@ def estimar_comissao_instaladas_vendedor(
         perfil_comissao_do_consultor,
     )
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.services.comissao_cidade_especial_service import carregar_cidades_oferta_especial
     from crm_app.services.plano_comissao_service import get_valor_comissao_plano
 
     vendas = list(vendas_instaladas)
@@ -85,6 +86,7 @@ def estimar_comissao_instaladas_vendedor(
     regras = _regras_aplicaveis_vendedor(ctx_faixas, getattr(vendedor, 'id', None), perfil)
     faixa_regra = encontrar_faixa_regra(regras, len(vendas))
     usar_manual = bool(config and getattr(config, 'usar_valor_manual', False))
+    cidades_cache = carregar_cidades_oferta_especial()
 
     total = 0.0
     for venda in vendas:
@@ -101,6 +103,8 @@ def estimar_comissao_instaladas_vendedor(
             usar_manual=usar_manual,
             chave=chave,
             matriz_cache=matriz_cache,
+            venda=venda,
+            cidades_especiais_cache=cidades_cache,
         )
         if valor is None:
             valor = get_valor_comissao_plano(plano, tipo_cliente)
@@ -208,12 +212,27 @@ def carregar_valores_adiantamento_esteira_lancamentos(vendedor_id: int | None = 
     return mapa
 
 
-def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave, matriz_cache=None):
-    """Valor por venda: matriz faixa×plano → colunas legadas → comissao_base."""
+def valor_comissao_tabela_adiantamento(
+    venda,
+    faixa_adiantamento,
+    chave,
+    matriz_cache=None,
+    cidades_especiais_cache=None,
+):
+    """Valor por venda: cidade especial → matriz faixa×plano → colunas legadas → comissao_base."""
     from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+    from crm_app.services.comissao_cidade_especial_service import resolver_valor_cidade_especial
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
     tipo = tipo_cliente_comissao(venda)
+    valor_especial = resolver_valor_cidade_especial(
+        venda.plano if venda else None,
+        tipo,
+        venda=venda,
+        cache=cidades_especiais_cache,
+    )
+    if valor_especial is not None:
+        return valor_especial
     if venda.plano and faixa_adiantamento:
         v_matriz = get_valor_faixa_plano(
             faixa_adiantamento, venda.plano, tipo, matriz_cache=matriz_cache,
@@ -237,6 +256,7 @@ def valor_adiantamento_exibicao_folha(
     complemento_sabado: float | None = None,
     valores_esteira_lancamento: dict[int, float] | None = None,
     matriz_cache=None,
+    cidades_especiais_cache=None,
 ):
     """
     Valor de comissão antecipada na folha/extrato.
@@ -265,7 +285,11 @@ def valor_adiantamento_exibicao_folha(
             if val_lanc is not None and float(val_lanc) > 0:
                 return float(val_lanc)
     return valor_comissao_tabela_adiantamento(
-        venda, faixa_adiantamento, chave, matriz_cache=matriz_cache,
+        venda,
+        faixa_adiantamento,
+        chave,
+        matriz_cache=matriz_cache,
+        cidades_especiais_cache=cidades_especiais_cache,
     )
 
 
@@ -321,7 +345,10 @@ def vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim):
             data_folha_comissao__gte=di,
             data_folha_comissao__lt=df,
         )
-        .select_related('plano', 'cliente', 'forma_pagamento', 'status_tratamento', 'status_esteira')
+        .select_related(
+            'plano', 'plano__valores_comissao', 'cliente',
+            'forma_pagamento', 'status_tratamento', 'status_esteira',
+        )
         .order_by('data_folha_comissao', 'id')
     )
 
@@ -348,7 +375,10 @@ def _agrupar_vendas_folha_bulk(vendedor_ids, data_inicio, data_fim):
             data_folha_comissao__gte=di,
             data_folha_comissao__lt=df,
         )
-        .select_related('plano', 'cliente', 'forma_pagamento', 'status_tratamento', 'status_esteira')
+        .select_related(
+            'plano', 'plano__valores_comissao', 'cliente',
+            'forma_pagamento', 'status_tratamento', 'status_esteira',
+        )
         .order_by('vendedor_id', 'data_folha_comissao', 'id')
     )
     grupos = defaultdict(list)
@@ -389,9 +419,21 @@ def resolver_valor_comissao_venda(
     usar_manual: bool,
     chave: str | None,
     matriz_cache=None,
+    venda=None,
+    cidades_especiais_cache=None,
 ) -> float | None:
-    """Valor de comissão: manual por plano → matriz faixa×plano → colunas legadas."""
+    """Valor de comissão: cidade especial → manual por plano → matriz faixa×plano → legado."""
+    from crm_app.services.comissao_cidade_especial_service import resolver_valor_cidade_especial
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
+
+    valor_especial = resolver_valor_cidade_especial(
+        plano,
+        tipo_cliente,
+        venda=venda,
+        cache=cidades_especiais_cache,
+    )
+    if valor_especial is not None:
+        return valor_especial
 
     if usar_manual:
         return get_valor_manual(config, chave, plano, matriz_cache=matriz_cache)
@@ -483,6 +525,7 @@ def valor_comissao_linha_extrato(
     complemento_sabado: float | None = None,
     valores_esteira_lancamento: dict[int, float] | None = None,
     matriz_cache=None,
+    cidades_especiais_cache=None,
 ):
     """
     Valor e tipo de comissão exibidos no extrato por venda.
@@ -508,7 +551,11 @@ def valor_comissao_linha_extrato(
         return val, label_tipo_comissao_extrato(base, origem), base
 
     tabela = valor_comissao_tabela_adiantamento(
-        venda, faixa_adiantamento, chave, matriz_cache=matriz_cache,
+        venda,
+        faixa_adiantamento,
+        chave,
+        matriz_cache=matriz_cache,
+        cidades_especiais_cache=cidades_especiais_cache,
     )
     val_adiant = valor_adiantamento_exibicao_folha(
         venda,
@@ -518,6 +565,7 @@ def valor_comissao_linha_extrato(
         complemento_sabado=complemento_sabado,
         valores_esteira_lancamento=valores_esteira_lancamento,
         matriz_cache=matriz_cache,
+        cidades_especiais_cache=cidades_especiais_cache,
     )
 
     if churn_m1:
@@ -529,6 +577,8 @@ def valor_comissao_linha_extrato(
             usar_manual=usar_manual,
             chave=chave,
             matriz_cache=matriz_cache,
+            venda=venda,
+            cidades_especiais_cache=cidades_especiais_cache,
         )
         base = 'churn'
         return (float(vu) if vu is not None else tabela), label_tipo_comissao_extrato(base, origem), base
@@ -551,6 +601,8 @@ def valor_comissao_linha_extrato(
             usar_manual=usar_manual,
             chave=chave,
             matriz_cache=matriz_cache,
+            venda=venda,
+            cidades_especiais_cache=cidades_especiais_cache,
         )
         if vu is not None:
             base = 'a_pagar'
@@ -667,6 +719,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
     config_ids_matriz = [c.id for c in configs.values() if c]
     matriz_cache = MatrizComissaoCache.carregar(config_ids_matriz)
+    from crm_app.services.comissao_cidade_especial_service import carregar_cidades_oferta_especial
+    cidades_especiais_cache = carregar_cidades_oferta_especial()
 
     def _safe_min_max(r):
         """Evita comparação None > None no sorted e no intervalo."""
@@ -804,7 +858,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             )
             .exclude(status_esteira__nome__iexact='INSTALADA')
             .select_related(
-                'plano', 'cliente', 'forma_pagamento',
+                'plano', 'plano__valores_comissao', 'cliente', 'forma_pagamento',
                 'status_esteira', 'status_tratamento',
             )
             .order_by('vendedor_id', 'data_criacao', 'id')
@@ -840,6 +894,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             usar_manual=bool(usar_manual),
             valores_lancamento=valores_pago_sabado_lanc,
             matriz_cache=matriz_cache,
+            cidades_especiais_cache=cidades_especiais_cache,
         )
         complemento_por_venda = resumo_complemento_sab.get('por_venda') or {}
         complemento_sabado_total = Decimal(str(resumo_complemento_sab.get('total_complemento') or 0))
@@ -939,7 +994,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 usar_manual=usar_manual,
                 chave=chave,
                 matriz_cache=matriz_cache,
-            )
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+                )
             valor_unit = valor_unit if valor_unit is not None else 0
             por_plano[chave]['qtd'] += 1
             por_plano[chave]['valor_unit'] = valor_unit
@@ -1092,7 +1149,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 usar_manual=usar_manual,
                 chave=chave,
                 matriz_cache=matriz_cache,
-            )
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+                )
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
             if variantes & set_os_churn_m0:
                 valor_churn_m0 += valor_unit
@@ -1118,7 +1177,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 usar_manual=usar_manual,
                 chave=chave,
                 matriz_cache=matriz_cache,
-            )
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+                )
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
             valor_churn_m1 += valor_unit
             qtd_churn_m1 += 1
@@ -1270,6 +1331,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 complemento_sabado=float((complemento_por_venda.get(v.id) or {}).get('complemento') or 0),
                 valores_esteira_lancamento=valores_esteira_lanc,
                 matriz_cache=matriz_cache,
+                cidades_especiais_cache=cidades_especiais_cache,
             )
             extrato.append({
                 'venda_id': v.id,
@@ -1311,7 +1373,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 usar_manual=usar_manual,
                 churn_m1=True,
                 matriz_cache=matriz_cache,
-            )
+                cidades_especiais_cache=cidades_especiais_cache,
+                )
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -1348,7 +1411,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 usar_manual=usar_manual,
                 instalada_na_folha=False,
                 matriz_cache=matriz_cache,
-            )
+                cidades_especiais_cache=cidades_especiais_cache,
+                )
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',

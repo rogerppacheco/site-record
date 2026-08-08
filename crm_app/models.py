@@ -70,6 +70,28 @@ class PlanoValoresComissao(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True,
         verbose_name='Comissão CNPJ',
     )
+    usa_comissao_cidade_especial = models.BooleanField(
+        default=False,
+        verbose_name='Comissão especial em cidade de oferta',
+        help_text=(
+            'Quando ativo, vendas deste plano em municípios da lista de oferta especial '
+            'usam valor fixo (não escala por faixa de volume).'
+        ),
+    )
+    valor_pap_cidade_especial = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Comissão PAP em cidade especial',
+    )
+    valor_cnpj_cidade_especial = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Comissão CNPJ em cidade especial',
+    )
     propagar_faixas = models.BooleanField(
         default=False,
         help_text='Atualiza colunas da banda em Regras por Faixa (COMISSÃO).',
@@ -86,6 +108,43 @@ class PlanoValoresComissao(models.Model):
 
     def __str__(self) -> str:
         return f'Comissão {self.plano.nome}'
+
+
+class CidadeOfertaEspecial(models.Model):
+    """Municípios com oferta especial (ex.: 600Mb 50% off) e comissão diferenciada."""
+
+    uf = models.CharField(max_length=2, db_index=True)
+    municipio = models.CharField(max_length=120)
+    municipio_normalizado = models.CharField(max_length=120, db_index=True)
+    ativo = models.BooleanField(default=True, db_index=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_cidade_oferta_especial'
+        verbose_name = 'Cidade de oferta especial'
+        verbose_name_plural = 'Cidades de oferta especial'
+        ordering = ['uf', 'municipio']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['uf', 'municipio_normalizado'],
+                name='uniq_cidade_oferta_especial_uf_municipio',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['municipio_normalizado', 'uf', 'ativo']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.municipio}/{self.uf}'
+
+    def save(self, *args, **kwargs) -> None:
+        from crm_app.services.gdp_preco_service import normalizar_municipio
+
+        self.uf = (self.uf or '').strip().upper()[:2]
+        self.municipio = (self.municipio or '').strip()
+        self.municipio_normalizado = normalizar_municipio(self.municipio)
+        super().save(*args, **kwargs)
 
 
 class FormaPagamento(models.Model):

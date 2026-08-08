@@ -346,7 +346,7 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar');">Bônus e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'cidades_oferta_tab'); carregarCidadesOfertaEspecial();">Cidades Oferta Especial</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar');">Bônus e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_faixa_tab" class="tab-content active">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -422,6 +422,27 @@
                             </div>
                             <div id="form-regras-vendedor-placeholder" class="text-center text-muted py-4 small">Selecione um vendedor no dropdown acima.</div>
                         </div>
+                        <div id="cidades_oferta_tab" class="tab-content" style="display:none;">
+                            <p class="small text-muted mb-3">Municípios com oferta especial (ex.: 600Mb 50% off). Vendas nessas cidades usam o <strong>valor fixo</strong> configurado no plano (Cadastros Gerais → Planos).</p>
+                            <form id="form-cidade-oferta" class="row g-2 align-items-end bg-light p-3 rounded border mb-3">
+                                <input type="hidden" id="cidade_oferta_id">
+                                <div class="col-md-2"><label class="form-label fw-bold">UF</label><input type="text" class="form-control text-uppercase" id="cidade_oferta_uf" maxlength="2" required placeholder="SP"></div>
+                                <div class="col-md-5"><label class="form-label fw-bold">Município</label><input type="text" class="form-control" id="cidade_oferta_municipio" required placeholder="Campinas"></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Ativo</label><select id="cidade_oferta_ativo" class="form-select"><option value="true">Sim</option><option value="false">Não</option></select></div>
+                                <div class="col-md-3 d-flex gap-2">
+                                    <button type="submit" class="btn btn-primary flex-grow-1">Salvar</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="sincronizarCidadesOfertaEspecial()" title="Recarregar lista canônica">Sync</button>
+                                </div>
+                            </form>
+                            <div class="row g-2 mb-2 align-items-end">
+                                <div class="col-md-3"><label class="form-label small mb-0">Filtrar UF</label><input type="text" id="filtro-cidade-oferta-uf" class="form-control form-control-sm text-uppercase" maxlength="2" placeholder="UF" oninput="carregarCidadesOfertaEspecial()"></div>
+                                <div class="col-md-5"><label class="form-label small mb-0">Buscar município</label><input type="search" id="filtro-cidade-oferta-q" class="form-control form-control-sm" placeholder="Nome..." oninput="carregarCidadesOfertaEspecial()"></div>
+                                <div class="col-md-4"><span class="small text-muted" id="cidade-oferta-contagem"></span></div>
+                            </div>
+                            <div class="table-responsive" style="max-height:55vh;overflow:auto;">
+                                <table class="table table-hover align-middle mb-0"><thead class="table-light sticky-top"><tr><th>UF</th><th>Município</th><th>Ativo</th><th>Ações</th></tr></thead><tbody id="lista-cidades-oferta"></tbody></table>
+                            </div>
+                        </div>
                         <div id="recebimento_operadora_tab" class="tab-content" style="display:none;">
                             <div class="bg-light p-4 rounded border mb-4"><h5 class="text-success mb-3"><i class="bi bi-bank"></i> Configuração de Recebimento (Operadora -> Empresa)</h5><form id="form-comissao-operadora"><input type="hidden" id="co_id"><div class="row g-3 align-items-end"><div class="col-md-4"><label class="form-label fw-bold">Plano Vendido</label><select id="co_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Comissão Base (R$)</label><input type="number" class="form-control" id="co_valor_base" step="0.01" required placeholder="0,00"></div><div class="col-md-2"><label class="form-label fw-bold text-success">Bônus Transição (R$)</label><input type="number" class="form-control border-success" id="co_bonus" step="0.01" value="0" placeholder="0,00"></div><div class="col-md-2"><label class="form-label small text-muted">Validade Bônus (Fim)</label><input type="date" class="form-control" id="co_data_fim"></div><div class="col-md-2"><button type="submit" class="btn btn-success w-100">Salvar Config</button></div></div></form></div>
                             <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Plano</th><th>Recebimento Base</th><th class="text-success">Bônus Transição</th><th>Validade Bônus</th><th class="fw-bold">Total Recebido</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-comissoes-operadora"></tbody></table></div>
@@ -458,8 +479,17 @@
                                 <div class="col-md-2"><label class="form-label fw-bold">Receb. operadora</label><input type="number" class="form-control" id="plano_receb_operadora" step="0.01" placeholder="0,00" title="Valor que a operadora paga à empresa"></div>
                                 <div class="col-md-2"><label class="form-label fw-bold">Vel. GDP (Mbps)</label><input type="number" class="form-control" id="plano_gdp_velocidade" min="0" placeholder="Auto" title="Velocidade na planilha GDP (500, 600, 800, 1000). Vazio = infere pelo nome."></div>
                                 <div class="col-md-1"><label class="form-label fw-bold">Índ.</label><input type="number" class="form-control" id="plano_gdp_indice" min="0" max="1" value="0" title="0 = 1º plano da velocidade; 1 = 2º (ex.: 1GB premium)"></div>
+                                <div class="col-12"><hr class="my-1"><h6 class="text-muted mb-0">Comissão em cidade de oferta especial</h6></div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="plano_usa_cidade_especial">
+                                        <label class="form-check-label" for="plano_usa_cidade_especial">Usar valor fixo nessas cidades</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-2"><label class="form-label fw-bold">PAP especial</label><input type="number" class="form-control" id="plano_valor_pap_especial" step="0.01" placeholder="105,00" title="Ex.: R$105 no 600Mb cidade especial"></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">CNPJ especial</label><input type="number" class="form-control" id="plano_valor_cnpj_especial" step="0.01" placeholder="105,00"></div>
                                 <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Salvar plano</button></div>
-                                <div class="col-12"><small class="text-muted">Portfólio atual Nio: <strong>500 / 600 / 800 / 1GB</strong>. Planos inativos (ex.: 700MB) somem da lista, mas permanecem no histórico. Ao salvar, o plano ganha <strong>colunas próprias</strong> em Comissionamento → Regras por Faixa.</small></div>
+                                <div class="col-12"><small class="text-muted">Portfólio atual Nio: <strong>500 / 600 / 800 / 1GB</strong>. Planos inativos (ex.: 700MB) somem da lista, mas permanecem no histórico. Ao salvar, o plano ganha <strong>colunas próprias</strong> em Comissionamento → Regras por Faixa. A lista de municípios fica em <strong>Comissionamento → Cidades Oferta Especial</strong>.</small></div>
                             </form>
                             <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
                         </div>
@@ -1256,6 +1286,7 @@
         if(tabName === 'etapasAjudaGc') carregarEtapasAjudaGc();
         if(tabName === 'operadoras') carregarOperadoras();
         if(tabName === 'planos') { carregarOperadoras(); carregarPlanos(); }
+        if(tabName === 'cidades_oferta_tab') carregarCidadesOfertaEspecial();
         if(tabName === 'recebimento_operadora_tab') carregarComissoesOperadora();
         if(tabName === 'campanhas_tab') { carregarDadosAuxiliaresCampanha(); carregarCampanhas(); }
         if(tabName === 'tab-lista-feriados') carregarFeriados();
@@ -2860,6 +2891,11 @@
         const gdpIdx = document.getElementById('plano_gdp_indice').value;
         if (gdpVel !== '') body.gdp_velocidade_mbps = parseInt(gdpVel, 10);
         if (gdpIdx !== '') body.gdp_indice_oferta = parseInt(gdpIdx, 10);
+        body.usa_comissao_cidade_especial = !!document.getElementById('plano_usa_cidade_especial').checked;
+        const papEsp = document.getElementById('plano_valor_pap_especial').value;
+        const cnpjEsp = document.getElementById('plano_valor_cnpj_especial').value;
+        body.valor_pap_cidade_especial = papEsp !== '' ? papEsp : null;
+        body.valor_cnpj_cidade_especial = cnpjEsp !== '' ? cnpjEsp : null;
         if (!body.nome) {
             alert('Informe o nome do plano.');
             return;
@@ -2883,11 +2919,94 @@
         document.getElementById('plano_operadora_id').value = p.operadora;
         document.getElementById('plano_gdp_velocidade').value = p.gdp_velocidade_mbps != null ? p.gdp_velocidade_mbps : '';
         document.getElementById('plano_gdp_indice').value = p.gdp_indice_oferta != null ? p.gdp_indice_oferta : 0;
+        document.getElementById('plano_usa_cidade_especial').checked = !!p.usa_comissao_cidade_especial;
+        document.getElementById('plano_valor_pap_especial').value = p.valor_pap_cidade_especial != null ? p.valor_pap_cidade_especial : '';
+        document.getElementById('plano_valor_cnpj_especial').value = p.valor_cnpj_cidade_especial != null ? p.valor_cnpj_cidade_especial : '';
     };
     window.excluirPlano = async (id) => {
         if (!confirm('Inativar este plano? Ele deixa de aparecer em novas vendas, mas vendas antigas são preservadas.')) return;
         await apiFetch(`/crm/planos/${id}/`, { method: 'DELETE' });
         carregarPlanos();
+    };
+
+    async function carregarCidadesOfertaEspecial() {
+        try {
+            const uf = (document.getElementById('filtro-cidade-oferta-uf')?.value || '').trim();
+            const q = (document.getElementById('filtro-cidade-oferta-q')?.value || '').trim();
+            const params = new URLSearchParams();
+            if (uf) params.set('uf', uf);
+            if (q) params.set('q', q);
+            const qs = params.toString() ? `?${params.toString()}` : '';
+            const res = await apiFetch(`/crm/cidades-oferta-especial/${qs}`);
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            const tbody = document.getElementById('lista-cidades-oferta');
+            const cont = document.getElementById('cidade-oferta-contagem');
+            if (cont) cont.textContent = `${lista.length} município(s)`;
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            lista.forEach(c => {
+                tbody.innerHTML += `<tr>
+                    <td>${c.uf}</td>
+                    <td>${c.municipio}</td>
+                    <td>${c.ativo ? 'Sim' : 'Não'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-editar me-1" onclick='editarCidadeOferta(${JSON.stringify(c)})'>✏️</button>
+                        <button class="btn btn-sm btn-excluir" onclick="excluirCidadeOferta(${c.id})">🗑️</button>
+                    </td>
+                </tr>`;
+            });
+        } catch (e) {
+            console.error('carregarCidadesOfertaEspecial:', e);
+            const tbody = document.getElementById('lista-cidades-oferta');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Erro: ${e.message || e}</td></tr>`;
+        }
+    }
+    window.editarCidadeOferta = (c) => {
+        document.getElementById('cidade_oferta_id').value = c.id;
+        document.getElementById('cidade_oferta_uf').value = c.uf || '';
+        document.getElementById('cidade_oferta_municipio').value = c.municipio || '';
+        document.getElementById('cidade_oferta_ativo').value = c.ativo ? 'true' : 'false';
+    };
+    window.excluirCidadeOferta = async (id) => {
+        if (!confirm('Excluir este município da lista de oferta especial?')) return;
+        await apiFetch(`/crm/cidades-oferta-especial/${id}/`, { method: 'DELETE' });
+        carregarCidadesOfertaEspecial();
+    };
+    window.sincronizarCidadesOfertaEspecial = async () => {
+        if (!confirm('Recarregar a lista canônica de cidades de oferta especial?')) return;
+        try {
+            const res = await apiFetch('/crm/cidades-oferta-especial/sincronizar/', { method: 'POST', body: '{}' });
+            alert(res.mensagem || `Sincronizado. Ativos: ${res.total_ativos || 0}`);
+            carregarCidadesOfertaEspecial();
+        } catch (e) {
+            alert('Erro ao sincronizar: ' + (e.message || e));
+        }
+    };
+    const formCidadeOferta = document.getElementById('form-cidade-oferta');
+    if (formCidadeOferta) formCidadeOferta.onsubmit = async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('cidade_oferta_id').value;
+        const body = {
+            uf: (document.getElementById('cidade_oferta_uf').value || '').trim().toUpperCase(),
+            municipio: (document.getElementById('cidade_oferta_municipio').value || '').trim(),
+            ativo: document.getElementById('cidade_oferta_ativo').value === 'true',
+        };
+        if (!body.uf || body.uf.length !== 2 || !body.municipio) {
+            alert('Informe UF (2 letras) e município.');
+            return;
+        }
+        try {
+            await apiFetch(id ? `/crm/cidades-oferta-especial/${id}/` : '/crm/cidades-oferta-especial/', {
+                method: id ? 'PUT' : 'POST',
+                body: JSON.stringify(body),
+            });
+            formCidadeOferta.reset();
+            document.getElementById('cidade_oferta_id').value = '';
+            document.getElementById('cidade_oferta_ativo').value = 'true';
+            await carregarCidadesOfertaEspecial();
+        } catch (err) {
+            alert('Erro ao salvar cidade: ' + (err.message || err));
+        }
     };
 
     async function carregarFormasPagamento() {

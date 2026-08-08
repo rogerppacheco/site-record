@@ -71,10 +71,57 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
             (Decimal('190'), Decimal('280')),
         )
 
+    def test_resolver_cidade_especial_tem_prioridade(self) -> None:
+        plano = MagicMock()
+        plano.id = 6
+        faixa = MagicMock()
+        venda = MagicMock(cidade='CAMPINAS', estado='SP')
+
+        with (
+            patch(
+                'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+                return_value=105.0,
+            ),
+            patch('crm_app.services.comissao_matriz_service.get_valor_faixa_plano', return_value=180.0),
+        ):
+            valor = resolver_valor_comissao_venda(
+                plano,
+                'CPF',
+                faixa_regra=faixa,
+                config=None,
+                usar_manual=False,
+                chave='500MB_PAP',
+                venda=venda,
+            )
+        self.assertEqual(valor, 105.0)
+
+    def test_resolver_sem_cidade_especial_usa_matriz(self) -> None:
+        plano = MagicMock()
+        faixa = MagicMock()
+        venda = MagicMock(cidade='SAO PAULO', estado='SP')
+
+        with (
+            patch(
+                'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+                return_value=None,
+            ),
+            patch('crm_app.services.comissao_matriz_service.get_valor_faixa_plano', return_value=180.0),
+        ):
+            valor = resolver_valor_comissao_venda(
+                plano,
+                'CPF',
+                faixa_regra=faixa,
+                config=None,
+                usar_manual=False,
+                chave='500MB_PAP',
+                venda=venda,
+            )
+        self.assertEqual(valor, 180.0)
+
     def test_estimar_comissao_inclui_plano_sem_regra_legado(self) -> None:
         vendedor = MagicMock(id=1)
         plano_600 = MagicMock(id=6, nome='NIO FIBRA ESSENCIAL 600MB')
-        venda = MagicMock(plano=plano_600, plano_id=6)
+        venda = MagicMock(plano=plano_600, plano_id=6, cidade='SAO PAULO', estado='SP')
         faixa = MagicMock(id=10, min_vendas=1, max_vendas=20, perfil='Vendedor')
         ctx = {
             'configs': {},
@@ -92,6 +139,10 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
                 return_value='CPF',
             ),
             patch(
+                'crm_app.services.comissao_cidade_especial_service.carregar_cidades_oferta_especial',
+                return_value=set(),
+            ),
+            patch(
                 'crm_app.services.comissao_matriz_service.get_valor_faixa_plano',
                 return_value=150.0,
             ),
@@ -104,3 +155,37 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
             )
 
         self.assertEqual(total, 150.0)
+
+
+class ComissaoCidadeEspecialServiceTest(SimpleTestCase):
+    def test_cidade_em_oferta_com_cache(self) -> None:
+        from crm_app.services.comissao_cidade_especial_service import cidade_em_oferta_especial
+
+        cache = {('SP', 'CAMPINAS'), ('PR', 'LONDRINA')}
+        self.assertTrue(cidade_em_oferta_especial('Campinas', 'sp', cache=cache))
+        self.assertTrue(cidade_em_oferta_especial('LONDRINA', 'PR', cache=cache))
+        self.assertFalse(cidade_em_oferta_especial('São Paulo', 'SP', cache=cache))
+
+    def test_get_valor_so_com_flag_true(self) -> None:
+        from crm_app.services.comissao_cidade_especial_service import (
+            get_valor_comissao_cidade_especial,
+        )
+
+        plano = MagicMock()
+        vc = MagicMock()
+        vc.usa_comissao_cidade_especial = True
+        vc.valor_pap_cidade_especial = Decimal('105.00')
+        vc.valor_cnpj_cidade_especial = Decimal('105.00')
+        plano.valores_comissao = vc
+
+        self.assertEqual(get_valor_comissao_cidade_especial(plano, 'CPF'), 105.0)
+
+        vc.usa_comissao_cidade_especial = False
+        self.assertIsNone(get_valor_comissao_cidade_especial(plano, 'CPF'))
+
+    def test_lista_canonica_tem_161_cidades(self) -> None:
+        from crm_app.cidades_oferta_especial_data import CIDADES_OFERTA_ESPECIAL
+
+        self.assertEqual(len(CIDADES_OFERTA_ESPECIAL), 161)
+        self.assertIn(('SP', 'CAMPINAS'), CIDADES_OFERTA_ESPECIAL)
+        self.assertIn(('PR', 'LONDRINA'), CIDADES_OFERTA_ESPECIAL)
