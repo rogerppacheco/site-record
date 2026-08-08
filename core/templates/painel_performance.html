@@ -12,10 +12,105 @@
 
 {% block extra_css %}
 <style>
-.painel-performance-page .table-excel { font-size: 0.85rem; border-collapse: separate; border-spacing: 0; width: 100%; color: var(--text-primary); }
-        .painel-performance-page .table-excel thead th { background-color: var(--accent-primary); color: var(--text-on-accent); border: 1px solid var(--border-color); padding: 8px; text-align: center; vertical-align: middle; position: sticky; top: 0; z-index: 2; font-weight: 600; }
-        .painel-performance-page .table-excel tbody td { border: 1px solid var(--border-color); padding: 6px; text-align: center; vertical-align: middle; font-weight: 500; color: var(--text-primary); }
-        .painel-performance-page .table-excel tfoot td { background-color: var(--bg-secondary); color: var(--text-primary); font-weight: bold; padding: 8px; text-align: center; position: sticky; bottom: 0; z-index: 2; }
+.painel-performance-page .table-excel {
+            font-size: 0.72rem;
+            border-collapse: separate;
+            border-spacing: 0;
+            width: max-content;
+            min-width: 100%;
+            color: var(--text-primary);
+            --perf-sticky-bg: var(--bg-card, #fff);
+            --perf-thead-h: 36px;
+        }
+        .painel-performance-page .perf-table-scroll {
+            max-height: calc(100vh - 260px);
+            overflow: auto;
+            position: relative;
+            border-radius: 0 0 0.375rem 0.375rem;
+        }
+        .painel-performance-page .table-excel thead th {
+            background-color: var(--accent-primary);
+            color: var(--text-on-accent);
+            border: 1px solid var(--border-color);
+            padding: 5px 6px;
+            text-align: center;
+            vertical-align: middle;
+            position: sticky;
+            top: 0;
+            z-index: 4;
+            font-weight: 600;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+        .painel-performance-page .table-excel tbody td {
+            border: 1px solid var(--border-color);
+            padding: 4px 6px;
+            text-align: center;
+            vertical-align: middle;
+            font-weight: 500;
+            color: var(--text-primary);
+            white-space: nowrap;
+            background-color: var(--perf-sticky-bg);
+        }
+        .painel-performance-page .table-excel tfoot td {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            font-weight: bold;
+            padding: 5px 6px;
+            text-align: center;
+            position: sticky;
+            bottom: 0;
+            z-index: 3;
+        }
+
+        /* Coluna Vendedor/Grupo travada no scroll horizontal */
+        .painel-performance-page .table-excel thead th:first-child,
+        .painel-performance-page .table-excel tbody td:first-child,
+        .painel-performance-page .table-excel tfoot td:first-child {
+            position: sticky;
+            left: 0;
+            min-width: 118px;
+            max-width: 150px;
+            text-align: left;
+            box-shadow: 3px 0 6px rgba(0, 0, 0, 0.12);
+        }
+        .painel-performance-page .table-excel thead th:first-child {
+            top: 0;
+            left: 0;
+            z-index: 6;
+            background-color: var(--accent-primary) !important;
+            color: var(--text-on-accent) !important;
+        }
+        .painel-performance-page .table-excel tbody td:first-child {
+            z-index: 3;
+            background-color: var(--perf-sticky-bg);
+        }
+        /* TOTAL fica logo abaixo do cabeçalho ao rolar verticalmente */
+        .painel-performance-page .table-excel tbody tr.perf-total-row > td {
+            position: sticky;
+            top: var(--perf-thead-h);
+            z-index: 5;
+        }
+        .painel-performance-page .table-excel tbody tr.perf-total-row > td:first-child {
+            left: 0;
+            z-index: 7;
+            top: var(--perf-thead-h);
+        }
+
+        /* Compactar colunas numéricas / textos longos */
+        .painel-performance-page .table-excel td.small,
+        .painel-performance-page .table-excel td.perf-cell-clip {
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .painel-performance-page .perf-th-inner {
+            gap: 2px;
+        }
+        .painel-performance-page .perf-th-label {
+            font-size: 0.7rem;
+        }
 
         /* Faixas de performance — light (texto escuro + !important para não perder no tema) */
         .painel-performance-page .bg-green-soft { background-color: #d1e7dd !important; color: #0f5132 !important; }
@@ -212,6 +307,13 @@
         .painel-performance-page #capture-area { position: absolute; left: -9999px; top: -9999px; width: 1200px; background: var(--bg-card); padding: 20px; }
         .painel-performance-page #capture-area .table-excel thead th { position: static !important; }
         .painel-performance-page #capture-area .table-excel tfoot td { position: static !important; }
+        .painel-performance-page #capture-area .table-excel tbody td,
+        .painel-performance-page #capture-area .table-excel tbody tr.perf-total-row > td {
+            position: static !important;
+            box-shadow: none !important;
+            left: auto !important;
+            top: auto !important;
+        }
         .painel-performance-page #capture-summary { display: none; background-color: var(--bg-secondary); border: 1px solid var(--border-color); padding: 15px; border-radius: 5px; margin-bottom: 20px; }
         .painel-performance-page #capture-summary.show { display: block; }
         .painel-performance-page .nav-pills .nav-link { color: var(--text-secondary); font-weight: 600; border-radius: 20px; padding: 8px 20px; margin-right: 5px; }
@@ -264,10 +366,21 @@
         #modalConfigRobo .table td.destinos-regra { max-width: 220px; }
         .painel-performance-page .bg-white { background-color: var(--bg-card) !important; }
         .painel-performance-page .text-dark { color: var(--text-primary) !important; }
+        html[data-theme="dark"] .painel-performance-page .table-excel,
+        [data-theme="dark"] .painel-performance-page .table-excel {
+            --perf-sticky-bg: var(--bg-card, #1a202c);
+        }
+        html[data-theme="dark"] .painel-performance-page .table-excel thead th:first-child,
+        [data-theme="dark"] .painel-performance-page .table-excel thead th:first-child {
+            box-shadow: 3px 0 8px rgba(0, 0, 0, 0.45);
+        }
+        html[data-theme="dark"] .painel-performance-page .table-excel tbody td:first-child,
+        [data-theme="dark"] .painel-performance-page .table-excel tbody td:first-child {
+            box-shadow: 3px 0 8px rgba(0, 0, 0, 0.35);
+        }
 
         /* Ordenação e filtro de colunas */
         .painel-performance-page .table-excel thead th.perf-th {
-            position: sticky; top: 0; z-index: 3;
             user-select: none;
             white-space: nowrap;
         }
@@ -439,13 +552,13 @@
 
         <div class="tab-content" id="pills-tabContent">
             <div class="tab-pane fade show active" id="content-hoje">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel" id="table-hoje"><thead id="thead-hoje"></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0"><div class="table-responsive perf-table-scroll"><table class="table-excel" id="table-hoje"><thead id="thead-hoje"></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div></div>
             </div>
             <div class="tab-pane fade" id="content-semana">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel" id="table-semana"><thead id="thead-semana"></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0"><div class="table-responsive perf-table-scroll"><table class="table-excel" id="table-semana"><thead id="thead-semana"></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div></div>
             </div>
             <div class="tab-pane fade" id="content-mes">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel" id="table-mes"><thead id="thead-mes"></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0"><div class="table-responsive perf-table-scroll"><table class="table-excel" id="table-mes"><thead id="thead-mes"></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div></div>
             </div>
             <div class="tab-pane fade" id="content-gestao">
                 <div class="card border-0 shadow">
@@ -527,9 +640,9 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="table-responsive mb-3">
-                            <div id="gestao-resumo-comparacao" class="small fw-bold text-primary mb-2"></div>
-                            <table class="table-excel">
+                        <div id="gestao-resumo-comparacao" class="small fw-bold text-primary mb-2"></div>
+                        <div class="table-responsive perf-table-scroll mb-3">
+                            <table class="table-excel" id="table-gestao">
                                 <thead id="thead-gestao"></thead>
                                 <tbody id="tbody-gestao"></tbody>
                             </table>
@@ -752,6 +865,10 @@
             } catch (e) {}
             atualizarModoEnvioRobo();
             carregarRegrasFaixaComissao().finally(() => carregarDados());
+            window.addEventListener('resize', () => {
+                clearTimeout(window.__perfStickyResizeT);
+                window.__perfStickyResizeT = setTimeout(syncPerfStickyHeights, 120);
+            });
         });
 
         async function carregarRegrasFaixaComissao() {
@@ -903,17 +1020,18 @@
             }));
         }
 
-        function perfWeightedAvg(rows, valueGet, weightGet) {
-            let sw = 0;
-            let sv = 0;
-            (rows || []).forEach(r => {
-                const w = Number(typeof weightGet === 'function' ? weightGet(r) : r[weightGet]) || 0;
-                const v = Number(typeof valueGet === 'function' ? valueGet(r) : r[valueGet]);
-                if (!Number.isFinite(v) || w <= 0) return;
-                sw += w;
-                sv += v * w;
-            });
-            return sw > 0 ? sv / sw : 0;
+        // DVU = volume / peso fiscal (mesmo peso para todos). O TOTAL da equipe é a
+        // DVU do volume agregado — NÃO a média das DVUs individuais.
+        function perfSumCampo(rows, campo) {
+            return (rows || []).reduce((s, r) => s + (Number(r[campo]) || 0), 0);
+        }
+
+        function perfTotalDvu(rows, campo, totaisValor, temFiltro) {
+            if (!temFiltro && totaisValor != null && Number.isFinite(Number(totaisValor))) {
+                return Number(totaisValor);
+            }
+            // Com filtro: soma das DVUs visíveis ≈ volume filtrado / peso.
+            return perfSumCampo(rows, campo);
         }
 
         function perfPipeline(lista, campoVolume, tableId, cols) {
@@ -1112,6 +1230,17 @@
             renderSemana(d.semana, d.periodo, d.totais);
             renderMes(d.mes, d.periodo, d.totais);
             renderGestao(window.__gestaoPayload || d.gestao || null);
+            syncPerfStickyHeights();
+        }
+
+        function syncPerfStickyHeights() {
+            ['table-hoje', 'table-semana', 'table-mes', 'table-gestao'].forEach(id => {
+                const table = document.getElementById(id);
+                if (!table) return;
+                const th = table.querySelector('thead tr th');
+                const h = th ? Math.ceil(th.getBoundingClientRect().height) : 36;
+                table.style.setProperty('--perf-thead-h', `${h}px`);
+            });
         }
 
         async function exportarPerformance(periodo) {
@@ -1258,12 +1387,12 @@
             const tV = totalFiltrado;
             const tC = rows.reduce((s, r) => s + Number(r.cc || 0), 0);
             const pct = tV > 0 ? ((tC / tV) * 100).toFixed(1) : 0;
-            const dvuHoje = perfWeightedAvg(rows, 'dvu_hoje', 'total');
-            const dvuM0 = perfWeightedAvg(rows, 'dvu_m0', 'total');
-            const dvuM1 = perfWeightedAvg(rows, 'dvu_m1', 'total');
+            const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
+            const dvuHoje = perfTotalDvu(rows, 'dvu_hoje', totais?.dvu_hoje, temFiltro);
+            const dvuM0 = perfTotalDvu(rows, 'dvu_m0', totais?.dvu_m0, temFiltro);
+            const dvuM1 = perfTotalDvu(rows, 'dvu_m1', totais?.dvu_m1, temFiltro);
             const clsTotM0 = clsDvuComparacao(dvuM0, dvuM1);
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
-            const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
             const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${fmtRep(temFiltro ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td>${fmtDvu(dvuHoje)}</td><td class="${clsTotM0}">${fmtDvu(dvuM0)}</td><td>${fmtDvu(dvuM1)}</td></tr>`;
             document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || `<tr><td colspan="10">Sem dados</td></tr>`);
             document.getElementById('tfoot-hoje').innerHTML = '';
@@ -1303,10 +1432,10 @@
             const tS = totalFiltrado;
             const tC = rows.reduce((s, r) => s + Number(r.cc || 0), 0);
             const pct = tS > 0 ? ((tC / tS) * 100).toFixed(1) : 0;
-            const dvuSem = perfWeightedAvg(rows, 'dvu', 'total');
-            const dvuM1 = perfWeightedAvg(rows, 'dvu_m1', 'total');
-            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
             const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
+            const dvuSem = perfTotalDvu(rows, 'dvu', totais?.dvu_semana, temFiltro);
+            const dvuM1 = perfTotalDvu(rows, 'dvu_m1', totais?.dvu_m1, temFiltro);
+            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
             const clsTotSem = clsDvuComparacao(dvuSem, dvuM1);
             const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${fmtRep(temFiltro ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td class="${clsTotSem}">${fmtDvu(dvuSem)}</td><td>${fmtDvu(dvuM1)}</td></tr>`;
             document.getElementById('tbody-semana').innerHTML = linhaTotal + (h || `<tr><td colspan="14">Sem dados</td></tr>`);
@@ -1345,7 +1474,7 @@
             rows.forEach(i => {
                 const aval = perfEsc(i.avaliacao_cluster || '—');
                 const clsMes = clsDvuComparacao(i.dvu, i.dvu_m1);
-                h += `<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${perfEsc(i.vendedor)}</td><td>${perfEsc(i.cluster || '-')}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td class="${clsMes}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+                h += `<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${perfEsc(i.vendedor)}</td><td>${perfEsc(i.cluster || '-')}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td class="${clsMes}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start perf-cell-clip" title="${aval}">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
             });
             const tT = totalFiltrado;
             const tI = rows.reduce((s, r) => s + Number(r.instaladas || 0), 0);
@@ -1357,10 +1486,10 @@
             const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
             const pct_cc_inst = tI > 0 ? ((tCI / tI) * 100).toFixed(1) : 0;
             const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
-            const dvuMes = perfWeightedAvg(rows, 'dvu', 'total');
-            const dvuM1 = perfWeightedAvg(rows, 'dvu_m1', 'total');
-            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
             const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
+            const dvuMes = perfTotalDvu(rows, 'dvu', totais?.dvu_mes, temFiltro);
+            const dvuM1 = perfTotalDvu(rows, 'dvu_m1', totais?.dvu_m1, temFiltro);
+            const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
             const clsTotMes = clsDvuComparacao(dvuMes, dvuM1);
             const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${fmtRep(temFiltro ? repVisivel : 100)}</td><td class="${clsTotMes}">${fmtDvu(dvuMes)}</td><td>${fmtDvu(dvuM1)}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
             document.getElementById('tbody-mes').innerHTML = linhaTotal + (h || `<tr><td colspan="16">Sem dados</td></tr>`);
@@ -1509,14 +1638,14 @@
             } else {
                 let b = '';
                 const totSerie = labels.map((_, idx) => rows.reduce((s, r) => s + Number((r.serie || [])[idx] || 0), 0));
+                // Soma das DVUs (mesmo peso fiscal por mês) ≈ DVU do volume agregado.
+                const temFiltroGestao = Object.keys(st.filters || {}).some(k => (st.filters[k] || []).length);
+                const totSerieDvuBackend = payload.totais_serie_dvu || [];
                 const totSerieDvu = labels.map((_, idx) => {
-                    const w = rows.reduce((s, r) => s + Number((r.serie || [])[idx] || 0), 0);
-                    if (w <= 0) return 0;
-                    const sv = rows.reduce((s, r) => {
-                        const vol = Number((r.serie || [])[idx] || 0);
-                        return s + vol * Number((r.serie_dvu || [])[idx] || 0);
-                    }, 0);
-                    return sv / w;
+                    if (!temFiltroGestao && totSerieDvuBackend[idx] != null) {
+                        return Number(totSerieDvuBackend[idx] || 0);
+                    }
+                    return rows.reduce((s, r) => s + Number((r.serie_dvu || [])[idx] || 0), 0);
                 });
                 let totMeta = 0;
                 let totRef = 0;
@@ -1619,6 +1748,7 @@
                     return `<tr><td>${s.semana}</td><td>${s.ref_total}</td><td>${s.comp_total}</td><td class="${clsVar}">${s.var_abs}</td><td class="${clsVarPct}">${s.var_pct}%</td></tr>`;
                 }).join('');
             }
+            syncPerfStickyHeights();
         }
 
         function toggleFiltrosGestao() {
