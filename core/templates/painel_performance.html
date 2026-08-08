@@ -264,6 +264,76 @@
         #modalConfigRobo .table td.destinos-regra { max-width: 220px; }
         .painel-performance-page .bg-white { background-color: var(--bg-card) !important; }
         .painel-performance-page .text-dark { color: var(--text-primary) !important; }
+
+        /* Ordenação e filtro de colunas */
+        .painel-performance-page .table-excel thead th.perf-th {
+            position: sticky; top: 0; z-index: 3;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .painel-performance-page .perf-th-inner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            max-width: 100%;
+        }
+        .painel-performance-page .perf-th-label {
+            cursor: pointer;
+        }
+        .painel-performance-page .perf-th-label:hover { text-decoration: underline; }
+        .painel-performance-page .perf-sort-icon {
+            font-size: 0.7rem;
+            opacity: 0.55;
+        }
+        .painel-performance-page .perf-th.is-sorted .perf-sort-icon { opacity: 1; }
+        .painel-performance-page .perf-filter-btn {
+            border: 0;
+            background: transparent;
+            color: inherit;
+            padding: 0 2px;
+            line-height: 1;
+            opacity: 0.65;
+            cursor: pointer;
+        }
+        .painel-performance-page .perf-filter-btn:hover,
+        .painel-performance-page .perf-filter-btn.is-active {
+            opacity: 1;
+        }
+        .painel-performance-page .perf-filter-btn.is-active { color: #ffe082; }
+        .perf-col-filter-pop {
+            position: fixed;
+            z-index: 1080;
+            min-width: 220px;
+            max-width: 280px;
+            max-height: 340px;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-card, #fff);
+            color: var(--text-primary, #212529);
+            border: 1px solid var(--border-color, #dee2e6);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.2);
+            padding: 8px;
+        }
+        .perf-col-filter-pop .perf-filter-search {
+            margin-bottom: 6px;
+        }
+        .perf-col-filter-pop .perf-filter-list {
+            overflow: auto;
+            flex: 1;
+            max-height: 220px;
+            font-size: 0.85rem;
+        }
+        .perf-col-filter-pop .perf-filter-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .perf-col-filter-pop .form-check {
+            margin: 2px 0;
+            padding-left: 1.6em;
+        }
 </style>
 {% endblock %}
 
@@ -369,13 +439,13 @@
 
         <div class="tab-content" id="pills-tabContent">
             <div class="tab-pane fade show active" id="content-hoje">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Canal</th><th>Vendas Hoje (O.S.)</th><th>% Rep.</th><th>Vendas Cartão (CC)</th><th>% CC / Total</th><th>DVU Hoje</th><th id="th-dvu-m0">DVU M-0</th><th id="th-dvu-m1">DVU M-1</th></tr></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel" id="table-hoje"><thead id="thead-hoje"></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-semana">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>% Rep.</th><th>Total CC</th><th>% CC</th><th>DVU Sem.</th><th id="th-dvu-m1-semana">DVU M-1</th></tr></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel" id="table-semana"><thead id="thead-semana"></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-mes">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th>% Rep.</th><th>DVU</th><th id="th-dvu-m1-mes">DVU M-1</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel" id="table-mes"><thead id="thead-mes"></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-gestao">
                 <div class="card border-0 shadow">
@@ -433,7 +503,7 @@
                             </div>
                             <div class="col-md-3">
                                 <label class="small fw-bold">Ordenação</label>
-                                <select id="gestao-ordenacao" class="form-select form-select-sm" title="Ordenação da tabela de gestão" onchange="renderGestao(window.__gestaoPayload || null)">
+                                <select id="gestao-ordenacao" class="form-select form-select-sm" title="Ordenação da tabela de gestão" onchange="perfGetState('gestao').sortKey=null; renderGestao(window.__gestaoPayload || null)">
                                     <option value="VAR_PCT_DESC">Maior crescimento (%)</option>
                                     <option value="VAR_PCT_ASC">Maior queda (%)</option>
                                     <option value="ATING_DESC">Maior atingimento de meta</option>
@@ -743,6 +813,251 @@
             return `${Number(pct || 0).toFixed(2)}%`;
         }
 
+        /** Estado de sort/filtro por aba (persistente entre re-renders). */
+        window.__perfUi = window.__perfUi || {
+            hoje: { sortKey: null, sortDir: 'asc', filters: {} },
+            semana: { sortKey: null, sortDir: 'asc', filters: {} },
+            mes: { sortKey: null, sortDir: 'asc', filters: {} },
+            gestao: { sortKey: null, sortDir: 'asc', filters: {} },
+        };
+
+        function perfEsc(s) {
+            return String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function perfGetState(tableId) {
+            if (!window.__perfUi[tableId]) {
+                window.__perfUi[tableId] = { sortKey: null, sortDir: 'asc', filters: {} };
+            }
+            return window.__perfUi[tableId];
+        }
+
+        function perfColGet(col, row) {
+            if (typeof col.get === 'function') return col.get(row);
+            return row[col.key];
+        }
+
+        function perfFilterKey(val) {
+            if (val == null || val === '') return '—';
+            return String(val);
+        }
+
+        function perfDistinct(rows, col) {
+            const set = new Set();
+            (rows || []).forEach(r => set.add(perfFilterKey(perfColGet(col, r))));
+            return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+        }
+
+        function perfShouldFilter(col, rows) {
+            if (col.filter === false) return false;
+            if (col.filter === true) return true;
+            if (col.type === 'text') return true;
+            // numérico: só se poucas opções distintas (faz sentido multi-selecionar)
+            const dist = perfDistinct(rows, col);
+            return dist.length > 0 && dist.length <= 25;
+        }
+
+        function perfApplyColumnFilters(rows, cols, filters) {
+            let out = rows || [];
+            (cols || []).forEach(col => {
+                const selected = filters[col.key];
+                if (!selected || !selected.length) return;
+                const allow = new Set(selected.map(String));
+                out = out.filter(r => allow.has(perfFilterKey(perfColGet(col, r))));
+            });
+            return out;
+        }
+
+        function perfSortRows(rows, cols, sortKey, sortDir) {
+            if (!sortKey) return rows || [];
+            const col = (cols || []).find(c => c.key === sortKey);
+            if (!col) return rows || [];
+            const dir = sortDir === 'desc' ? -1 : 1;
+            const isNum = col.type === 'num';
+            return [...(rows || [])].sort((a, b) => {
+                const va = perfColGet(col, a);
+                const vb = perfColGet(col, b);
+                if (isNum) {
+                    const na = Number(va);
+                    const nb = Number(vb);
+                    const fa = Number.isFinite(na) ? na : 0;
+                    const fb = Number.isFinite(nb) ? nb : 0;
+                    if (fa !== fb) return (fa - fb) * dir;
+                } else {
+                    const cmp = String(va ?? '').localeCompare(String(vb ?? ''), 'pt-BR', { numeric: true, sensitivity: 'base' });
+                    if (cmp !== 0) return cmp * dir;
+                }
+                return 0;
+            });
+        }
+
+        function perfRecalcPctRep(rows, campoVolume) {
+            const tot = (rows || []).reduce((s, r) => s + Number(r[campoVolume] || 0), 0);
+            return (rows || []).map(r => ({
+                ...r,
+                pct_rep: tot > 0 ? ((Number(r[campoVolume] || 0) / tot) * 100) : 0,
+            }));
+        }
+
+        function perfWeightedAvg(rows, valueGet, weightGet) {
+            let sw = 0;
+            let sv = 0;
+            (rows || []).forEach(r => {
+                const w = Number(typeof weightGet === 'function' ? weightGet(r) : r[weightGet]) || 0;
+                const v = Number(typeof valueGet === 'function' ? valueGet(r) : r[valueGet]);
+                if (!Number.isFinite(v) || w <= 0) return;
+                sw += w;
+                sv += v * w;
+            });
+            return sw > 0 ? sv / sw : 0;
+        }
+
+        function perfPipeline(lista, campoVolume, tableId, cols) {
+            const state = perfGetState(tableId);
+            const prep = prepararRowsRepresentatividade(lista, campoVolume);
+            let rows = prep.rows;
+            rows = perfApplyColumnFilters(rows, cols, state.filters);
+            rows = perfRecalcPctRep(rows, campoVolume);
+            rows = perfSortRows(rows, cols, state.sortKey, state.sortDir);
+            const totalFiltrado = rows.reduce((s, r) => s + Number(r[campoVolume] || 0), 0);
+            return { rows, totalFiltrado, totalBase: prep.totalGeral, state };
+        }
+
+        function perfCloseFilterPop() {
+            document.querySelectorAll('.perf-col-filter-pop').forEach(el => el.remove());
+        }
+
+        function perfToggleSort(tableId, colKey) {
+            const st = perfGetState(tableId);
+            if (st.sortKey === colKey) {
+                st.sortDir = st.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                st.sortKey = colKey;
+                st.sortDir = 'asc';
+            }
+            reRenderPainelPerformance();
+        }
+
+        function perfOpenFilter(tableId, colKey, anchorEl, allRows, cols) {
+            perfCloseFilterPop();
+            const col = (cols || []).find(c => c.key === colKey);
+            if (!col) return;
+            const st = perfGetState(tableId);
+            const options = perfDistinct(allRows, col);
+            const selected = new Set((st.filters[colKey] || []).map(String));
+            const hasFilter = selected.size > 0;
+
+            const pop = document.createElement('div');
+            pop.className = 'perf-col-filter-pop';
+            pop.innerHTML = `
+                <input type="search" class="form-control form-control-sm perf-filter-search" placeholder="Buscar...">
+                <div class="d-flex gap-2 mb-1">
+                    <button type="button" class="btn btn-link btn-sm p-0 perf-filter-all">Todos</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 perf-filter-none">Nenhum</button>
+                </div>
+                <div class="perf-filter-list"></div>
+                <div class="perf-filter-actions">
+                    <button type="button" class="btn btn-sm btn-primary flex-fill perf-filter-apply">Aplicar</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary perf-filter-clear">Limpar</button>
+                </div>
+            `;
+            const list = pop.querySelector('.perf-filter-list');
+            const renderOpts = (q) => {
+                const qq = (q || '').toLowerCase();
+                list.innerHTML = options
+                    .filter(o => !qq || o.toLowerCase().includes(qq))
+                    .map((o, idx) => {
+                        const ck = hasFilter ? (selected.has(o) ? 'checked' : '') : 'checked';
+                        const oid = `pf-${tableId}-${colKey}-${idx}`;
+                        return `<div class="form-check"><input class="form-check-input perf-opt" type="checkbox" value="${perfEsc(o)}" id="${oid}" ${ck}><label class="form-check-label" for="${oid}">${perfEsc(o)}</label></div>`;
+                    }).join('') || '<div class="text-muted small">Sem opções</div>';
+            };
+            renderOpts('');
+            pop.querySelector('.perf-filter-search').addEventListener('input', (e) => renderOpts(e.target.value));
+            pop.querySelector('.perf-filter-all').onclick = () => {
+                list.querySelectorAll('.perf-opt').forEach(cb => { cb.checked = true; });
+            };
+            pop.querySelector('.perf-filter-none').onclick = () => {
+                list.querySelectorAll('.perf-opt').forEach(cb => { cb.checked = false; });
+            };
+            pop.querySelector('.perf-filter-clear').onclick = () => {
+                delete st.filters[colKey];
+                perfCloseFilterPop();
+                reRenderPainelPerformance();
+            };
+            pop.querySelector('.perf-filter-apply').onclick = () => {
+                const checked = Array.from(list.querySelectorAll('.perf-opt:checked')).map(cb => cb.value);
+                if (!checked.length || checked.length === options.length) {
+                    delete st.filters[colKey];
+                } else {
+                    st.filters[colKey] = checked;
+                }
+                perfCloseFilterPop();
+                reRenderPainelPerformance();
+            };
+            document.body.appendChild(pop);
+            const rect = anchorEl.getBoundingClientRect();
+            const left = Math.min(rect.left, window.innerWidth - 290);
+            const top = Math.min(rect.bottom + 4, window.innerHeight - 360);
+            pop.style.left = `${Math.max(8, left)}px`;
+            pop.style.top = `${Math.max(8, top)}px`;
+
+            const onDoc = (ev) => {
+                if (pop.contains(ev.target) || anchorEl.contains(ev.target)) return;
+                perfCloseFilterPop();
+                document.removeEventListener('mousedown', onDoc);
+            };
+            setTimeout(() => document.addEventListener('mousedown', onDoc), 0);
+        }
+
+        function perfRenderThead(theadEl, tableId, cols, rowsForFilterOptions, extraClassByKey) {
+            if (!theadEl) return;
+            const st = perfGetState(tableId);
+            // opções de filtro a partir do conjunto pós-representatividade (antes do filtro da própria coluna)
+            const baseForOpts = rowsForFilterOptions || [];
+            let html = '<tr>';
+            cols.forEach(col => {
+                const canFilter = perfShouldFilter(col, baseForOpts);
+                const isSorted = st.sortKey === col.key;
+                const sortIcon = isSorted
+                    ? (st.sortDir === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill')
+                    : 'bi-arrow-down-up';
+                const filterActive = !!(st.filters[col.key] && st.filters[col.key].length);
+                const extra = (extraClassByKey && extraClassByKey[col.key]) || '';
+                const align = col.align === 'start' ? 'text-start ps-3' : '';
+                html += `<th class="perf-th ${align} ${extra} ${isSorted ? 'is-sorted' : ''}" data-col="${perfEsc(col.key)}">
+                    <span class="perf-th-inner">
+                        <span class="perf-th-label" data-action="sort" title="Ordenar">${perfEsc(col.label)} <i class="bi ${sortIcon} perf-sort-icon"></i></span>
+                        ${canFilter ? `<button type="button" class="perf-filter-btn ${filterActive ? 'is-active' : ''}" data-action="filter" title="Filtrar"><i class="bi ${filterActive ? 'bi-funnel-fill' : 'bi-funnel'}"></i></button>` : ''}
+                    </span>
+                </th>`;
+            });
+            html += '</tr>';
+            theadEl.innerHTML = html;
+            theadEl.querySelectorAll('.perf-th-label[data-action="sort"]').forEach(el => {
+                el.addEventListener('click', () => {
+                    const th = el.closest('th');
+                    perfToggleSort(tableId, th?.dataset?.col);
+                });
+            });
+            theadEl.querySelectorAll('.perf-filter-btn[data-action="filter"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const th = btn.closest('th');
+                    const key = th?.dataset?.col;
+                    // opções: base sem o filtro desta coluna
+                    const filtersSemEsta = { ...st.filters };
+                    delete filtersSemEsta[key];
+                    const optsRows = perfApplyColumnFilters(baseForOpts, cols, filtersSemEsta);
+                    perfOpenFilter(tableId, key, btn, optsRows, cols);
+                });
+            });
+        }
+
         function prepararRowsRepresentatividade(lista, campoVolume) {
             const semFiltroCluster = !document.getElementById('filtro-cluster')?.value;
             const rowsAll = semFiltroCluster ? ordenarListaPerf(lista) : (lista || []);
@@ -917,82 +1232,138 @@
         }
         
         function renderHoje(lista, periodo, totais) {
-            const { rows, totalGeral } = prepararRowsRepresentatividade(lista, 'total');
             const mesM0 = periodo?.mes_m0 || 'M-0';
             const mesM1 = periodo?.mes_m1 || 'M-1';
-            const thM0 = document.getElementById('th-dvu-m0');
-            const thM1 = document.getElementById('th-dvu-m1');
-            if (thM0) thM0.textContent = `DVU ${mesM0}`;
-            if (thM1) thM1.textContent = `DVU ${mesM1}`;
+            const cols = [
+                { key: 'vendedor', label: 'Vendedor', type: 'text', filter: true, align: 'start', get: r => r.vendedor || '' },
+                { key: 'cluster', label: 'Cluster', type: 'text', filter: true, get: r => r.cluster || '-' },
+                { key: 'canal', label: 'Canal', type: 'text', filter: true, get: r => r.canal || '-' },
+                { key: 'total', label: 'Vendas Hoje (O.S.)', type: 'num', filter: false, get: r => Number(r.total || 0) },
+                { key: 'pct_rep', label: '% Rep.', type: 'num', filter: false, get: r => Number(r.pct_rep || 0) },
+                { key: 'cc', label: 'Vendas Cartão (CC)', type: 'num', get: r => Number(r.cc || 0) },
+                { key: 'pct_cc', label: '% CC / Total', type: 'num', get: r => Number(r.pct_cc || 0) },
+                { key: 'dvu_hoje', label: 'DVU Hoje', type: 'num', get: r => Number(r.dvu_hoje || 0) },
+                { key: 'dvu_m0', label: `DVU ${mesM0}`, type: 'num', get: r => Number(r.dvu_m0 || 0) },
+                { key: 'dvu_m1', label: `DVU ${mesM1}`, type: 'num', get: r => Number(r.dvu_m1 || 0) },
+            ];
+            const prep = prepararRowsRepresentatividade(lista, 'total');
+            const { rows, totalFiltrado, state } = perfPipeline(lista, 'total', 'hoje', cols);
+            perfRenderThead(document.getElementById('thead-hoje'), 'hoje', cols, prep.rows);
+
             let h = '';
             rows.forEach(i => {
                 const clsM0 = clsDvuComparacao(i.dvu_m0, i.dvu_m1);
-                h += `<tr class="${rowClass(i.total)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster || '-'}</td><td>${i.canal || '-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td>${i.cc}</td><td>${i.pct_cc}%</td><td>${fmtDvu(i.dvu_hoje)}</td><td class="${clsM0}">${fmtDvu(i.dvu_m0)}</td><td>${fmtDvu(i.dvu_m1)}</td></tr>`;
+                h += `<tr class="${rowClass(i.total)}"><td class="text-start ps-3 fw-bold">${perfEsc(i.vendedor)}</td><td>${perfEsc(i.cluster || '-')}</td><td>${perfEsc(i.canal || '-')}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td>${i.cc}</td><td>${i.pct_cc}%</td><td>${fmtDvu(i.dvu_hoje)}</td><td class="${clsM0}">${fmtDvu(i.dvu_m0)}</td><td>${fmtDvu(i.dvu_m1)}</td></tr>`;
             });
-            const tV = totalGeral;
-            const tC = (lista || []).reduce((s, r) => s + Number(r.cc || 0), 0);
+            const tV = totalFiltrado;
+            const tC = rows.reduce((s, r) => s + Number(r.cc || 0), 0);
             const pct = tV > 0 ? ((tC / tV) * 100).toFixed(1) : 0;
-            const clsTotM0 = clsDvuComparacao(totais?.dvu_m0, totais?.dvu_m1);
+            const dvuHoje = perfWeightedAvg(rows, 'dvu_hoje', 'total');
+            const dvuM0 = perfWeightedAvg(rows, 'dvu_m0', 'total');
+            const dvuM1 = perfWeightedAvg(rows, 'dvu_m1', 'total');
+            const clsTotM0 = clsDvuComparacao(dvuM0, dvuM1);
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
-            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td>${fmtDvu(totais?.dvu_hoje)}</td><td class="${clsTotM0}">${fmtDvu(totais?.dvu_m0)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
-            const colspan = 10;
-            document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || `<tr><td colspan="${colspan}">Sem dados</td></tr>`);
+            const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
+            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${fmtRep(temFiltro ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td>${fmtDvu(dvuHoje)}</td><td class="${clsTotM0}">${fmtDvu(dvuM0)}</td><td>${fmtDvu(dvuM1)}</td></tr>`;
+            document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || `<tr><td colspan="10">Sem dados</td></tr>`);
             document.getElementById('tfoot-hoje').innerHTML = '';
         }
-        
+
         function renderSemana(lista, periodo, totais) {
-            const { rows, totalGeral } = prepararRowsRepresentatividade(lista, 'total');
             const mesM1 = periodo?.mes_m1 || 'M-1';
-            const thM1 = document.getElementById('th-dvu-m1-semana');
-            if (thM1) thM1.textContent = `DVU ${mesM1}`;
+            const cols = [
+                { key: 'vendedor', label: 'Vendedor', type: 'text', filter: true, align: 'start', get: r => r.vendedor || '' },
+                { key: 'cluster', label: 'Cluster', type: 'text', filter: true, get: r => r.cluster || '-' },
+                { key: 'd0', label: 'Seg', type: 'num', get: r => Number((r.dias || [])[0] || 0) },
+                { key: 'd1', label: 'Ter', type: 'num', get: r => Number((r.dias || [])[1] || 0) },
+                { key: 'd2', label: 'Qua', type: 'num', get: r => Number((r.dias || [])[2] || 0) },
+                { key: 'd3', label: 'Qui', type: 'num', get: r => Number((r.dias || [])[3] || 0) },
+                { key: 'd4', label: 'Sex', type: 'num', get: r => Number((r.dias || [])[4] || 0) },
+                { key: 'd5', label: 'Sáb', type: 'num', get: r => Number((r.dias || [])[5] || 0) },
+                { key: 'total', label: 'Total Semana', type: 'num', filter: false, get: r => Number(r.total || 0) },
+                { key: 'pct_rep', label: '% Rep.', type: 'num', filter: false, get: r => Number(r.pct_rep || 0) },
+                { key: 'cc', label: 'Total CC', type: 'num', get: r => Number(r.cc || 0) },
+                { key: 'pct_cc', label: '% CC', type: 'num', get: r => Number(r.pct_cc || 0) },
+                { key: 'dvu', label: 'DVU Sem.', type: 'num', get: r => Number(r.dvu || 0) },
+                { key: 'dvu_m1', label: `DVU ${mesM1}`, type: 'num', get: r => Number(r.dvu_m1 || 0) },
+            ];
+            const prep = prepararRowsRepresentatividade(lista, 'total');
+            const { rows, totalFiltrado, state } = perfPipeline(lista, 'total', 'semana', cols);
+            perfRenderThead(document.getElementById('thead-semana'), 'semana', cols, prep.rows, { total: 'bg-header-group' });
+
             let h = '';
             const dias_total = [0, 0, 0, 0, 0, 0];
-            (lista || []).forEach(i => {
-                if (i.dias) {
-                    for (let d = 0; d < 6; d++) {
-                        dias_total[d] += (i.dias[d] || 0);
-                    }
-                }
-            });
             rows.forEach(i => {
+                if (i.dias) {
+                    for (let d = 0; d < 6; d++) dias_total[d] += (i.dias[d] || 0);
+                }
                 const clsSem = clsDvuComparacao(i.dvu, i.dvu_m1);
-                h += `<tr class="${rowClassSemanal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster || '-'}</td><td>${i.dias[0]}</td><td>${i.dias[1]}</td><td>${i.dias[2]}</td><td>${i.dias[3]}</td><td>${i.dias[4]}</td><td>${i.dias[5]}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td>${i.cc}</td><td>${i.pct_cc}%</td><td class="${clsSem}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td></tr>`;
+                h += `<tr class="${rowClassSemanal(i)}"><td class="text-start ps-3 fw-bold">${perfEsc(i.vendedor)}</td><td>${perfEsc(i.cluster || '-')}</td><td>${(i.dias||[])[0]||0}</td><td>${(i.dias||[])[1]||0}</td><td>${(i.dias||[])[2]||0}</td><td>${(i.dias||[])[3]||0}</td><td>${(i.dias||[])[4]||0}</td><td>${(i.dias||[])[5]||0}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td>${i.cc}</td><td>${i.pct_cc}%</td><td class="${clsSem}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td></tr>`;
             });
-            const tS = totalGeral;
-            const tC = (lista || []).reduce((s, r) => s + Number(r.cc || 0), 0);
+            const tS = totalFiltrado;
+            const tC = rows.reduce((s, r) => s + Number(r.cc || 0), 0);
             const pct = tS > 0 ? ((tC / tS) * 100).toFixed(1) : 0;
+            const dvuSem = perfWeightedAvg(rows, 'dvu', 'total');
+            const dvuM1 = perfWeightedAvg(rows, 'dvu_m1', 'total');
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
-            const clsTotSem = clsDvuComparacao(totais?.dvu_semana, totais?.dvu_m1);
-            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td class="${clsTotSem}">${fmtDvu(totais?.dvu_semana)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
-            document.getElementById('tbody-semana').innerHTML = linhaTotal + h;
+            const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
+            const clsTotSem = clsDvuComparacao(dvuSem, dvuM1);
+            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${fmtRep(temFiltro ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td class="${clsTotSem}">${fmtDvu(dvuSem)}</td><td>${fmtDvu(dvuM1)}</td></tr>`;
+            document.getElementById('tbody-semana').innerHTML = linhaTotal + (h || `<tr><td colspan="14">Sem dados</td></tr>`);
             document.getElementById('tfoot-semana').innerHTML = '';
         }
-        
+
         function renderMes(lista, periodo, totais) {
-            const { rows, totalGeral } = prepararRowsRepresentatividade(lista, 'total');
             const mesM1 = periodo?.mes_m1 || 'M-1';
-            const thM1 = document.getElementById('th-dvu-m1-mes');
-            if (thM1) thM1.textContent = `DVU ${mesM1}`;
+            const cols = [
+                { key: 'vendedor', label: 'Vendedor', type: 'text', filter: true, align: 'start', get: r => r.vendedor || '' },
+                { key: 'cluster', label: 'Cluster', type: 'text', filter: true, get: r => r.cluster || '-' },
+                { key: 'total', label: 'Total Vendas', type: 'num', filter: false, get: r => Number(r.total || 0) },
+                { key: 'pct_rep', label: '% Rep.', type: 'num', filter: false, get: r => Number(r.pct_rep || 0) },
+                { key: 'dvu', label: 'DVU', type: 'num', get: r => Number(r.dvu || 0) },
+                { key: 'dvu_m1', label: `DVU ${mesM1}`, type: 'num', get: r => Number(r.dvu_m1 || 0) },
+                { key: 'instaladas', label: 'Instaladas', type: 'num', get: r => Number(r.instaladas || 0) },
+                { key: 'cc_total', label: 'Total CC', type: 'num', get: r => Number(r.cc_total || 0) },
+                { key: 'cc_inst', label: 'Instaladas CC', type: 'num', get: r => Number(r.cc_inst || 0) },
+                { key: 'pct_cc_total', label: '% CC Total', type: 'num', get: r => Number(r.pct_cc_total || 0) },
+                { key: 'pct_cc_inst', label: '% CC Inst', type: 'num', get: r => Number(r.pct_cc_inst || 0) },
+                { key: 'aproveitamento', label: 'Aprov.', type: 'num', get: r => Number(r.aproveitamento || 0) },
+                { key: 'avaliacao_cluster', label: 'Aval. Cluster', type: 'text', filter: true, align: 'start', get: r => r.avaliacao_cluster || '—' },
+                { key: 'pend', label: 'Pende', type: 'num', get: r => Number(r.pend || 0) },
+                { key: 'agend', label: 'Agend', type: 'num', get: r => Number(r.agend || 0) },
+                { key: 'canc', label: 'Canc', type: 'num', get: r => Number(r.canc || 0) },
+            ];
+            const prep = prepararRowsRepresentatividade(lista, 'total');
+            const { rows, totalFiltrado, state } = perfPipeline(lista, 'total', 'mes', cols);
+            perfRenderThead(document.getElementById('thead-mes'), 'mes', cols, prep.rows, {
+                total: 'bg-header-group',
+                instaladas: 'bg-success text-white',
+                aproveitamento: 'bg-info text-white',
+            });
+
             let h = '';
             rows.forEach(i => {
-                const aval = (i.avaliacao_cluster || '—').replace(/</g, '&lt;');
+                const aval = perfEsc(i.avaliacao_cluster || '—');
                 const clsMes = clsDvuComparacao(i.dvu, i.dvu_m1);
-                h += `<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster || '-'}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td class="${clsMes}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+                h += `<tr class="${rowClassMensal(i)}"><td class="text-start ps-3 fw-bold">${perfEsc(i.vendedor)}</td><td>${perfEsc(i.cluster || '-')}</td><td class="bg-total-column fw-bold">${i.total}</td><td>${fmtRep(i.pct_rep)}</td><td class="${clsMes}">${fmtDvu(i.dvu)}</td><td>${fmtDvu(i.dvu_m1)}</td><td class="fw-bold">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
             });
-            const tT = totalGeral;
-            const tI = (lista || []).reduce((s, r) => s + Number(r.instaladas || 0), 0);
-            const tCC = (lista || []).reduce((s, r) => s + Number(r.cc_total || 0), 0);
-            const tCI = (lista || []).reduce((s, r) => s + Number(r.cc_inst || 0), 0);
-            const tPend = (lista || []).reduce((s, r) => s + Number(r.pend || 0), 0);
-            const tAgend = (lista || []).reduce((s, r) => s + Number(r.agend || 0), 0);
-            const tCanc = (lista || []).reduce((s, r) => s + Number(r.canc || 0), 0);
+            const tT = totalFiltrado;
+            const tI = rows.reduce((s, r) => s + Number(r.instaladas || 0), 0);
+            const tCC = rows.reduce((s, r) => s + Number(r.cc_total || 0), 0);
+            const tCI = rows.reduce((s, r) => s + Number(r.cc_inst || 0), 0);
+            const tPend = rows.reduce((s, r) => s + Number(r.pend || 0), 0);
+            const tAgend = rows.reduce((s, r) => s + Number(r.agend || 0), 0);
+            const tCanc = rows.reduce((s, r) => s + Number(r.canc || 0), 0);
             const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
             const pct_cc_inst = tI > 0 ? ((tCI / tI) * 100).toFixed(1) : 0;
             const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
+            const dvuMes = perfWeightedAvg(rows, 'dvu', 'total');
+            const dvuM1 = perfWeightedAvg(rows, 'dvu_m1', 'total');
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
-            const clsTotMes = clsDvuComparacao(totais?.dvu_mes, totais?.dvu_m1);
-            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td class="${clsTotMes}">${fmtDvu(totais?.dvu_mes)}</td><td>${fmtDvu(totais?.dvu_m1)}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
-            document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
+            const temFiltro = minRepresentatividade() > 0 || Object.keys(state.filters || {}).some(k => (state.filters[k] || []).length);
+            const clsTotMes = clsDvuComparacao(dvuMes, dvuM1);
+            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${fmtRep(temFiltro ? repVisivel : 100)}</td><td class="${clsTotMes}">${fmtDvu(dvuMes)}</td><td>${fmtDvu(dvuM1)}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
+            document.getElementById('tbody-mes').innerHTML = linhaTotal + (h || `<tr><td colspan="16">Sem dados</td></tr>`);
             document.getElementById('tfoot-mes').innerHTML = '';
         }
 
@@ -1058,49 +1429,95 @@
             }
             onChangeModoComparacaoGestao(false);
             const rowsRaw = visao === 'CANAL_CLUSTER' ? (payload.rows_canal_cluster || []) : (payload.rows_vendedor || []);
-            const ord = (document.getElementById('gestao-ordenacao')?.value || 'VAR_PCT_DESC').toUpperCase();
-            const rows = [...rowsRaw];
-            rows.sort((a, b) => {
-                if (ord === 'VAR_PCT_ASC') return (Number(a.var_pct) || 0) - (Number(b.var_pct) || 0);
-                if (ord === 'ATING_DESC') return (Number(b.atingimento_meta) || 0) - (Number(a.atingimento_meta) || 0);
-                if (ord === 'REF_DESC') return (Number(b.ref_total) || 0) - (Number(a.ref_total) || 0);
-                if (ord === 'ALFA_ASC') return String(a.grupo || '').localeCompare(String(b.grupo || ''), 'pt-BR');
-                return (Number(b.var_pct) || 0) - (Number(a.var_pct) || 0);
-            });
 
-            let h = '<tr><th class="text-start ps-3">Grupo</th><th>Canal</th><th>Cluster</th>';
+            const cols = [
+                { key: 'grupo', label: 'Grupo', type: 'text', filter: true, align: 'start', get: r => r.grupo || '' },
+                { key: 'canal', label: 'Canal', type: 'text', filter: true, get: r => r.canal || '-' },
+                { key: 'cluster', label: 'Cluster', type: 'text', filter: true, get: r => r.cluster || '-' },
+            ];
             if (showVol) {
-                h += '<th>Meta</th>';
-                labels.forEach(lb => {
-                    h += `<th>${lb.label} (${lb.mes})</th>`;
-                    h += `<th>DVU ${lb.label}</th>`;
+                cols.push({ key: 'meta', label: 'Meta', type: 'num', get: r => Number(r.meta || 0) });
+                labels.forEach((lb, idx) => {
+                    cols.push({
+                        key: `serie_${idx}`,
+                        label: `${lb.label} (${lb.mes})`,
+                        type: 'num',
+                        get: r => Number((r.serie || [])[idx] || 0),
+                    });
+                    cols.push({
+                        key: `serie_dvu_${idx}`,
+                        label: `DVU ${lb.label}`,
+                        type: 'num',
+                        get: r => Number((r.serie_dvu || [])[idx] || 0),
+                    });
                 });
             }
             if (showMm && labels.length > 1) {
                 for (let i = 0; i < labels.length - 1; i++) {
-                    const a = labels[i].mes;
-                    const b = labels[i + 1].mes;
-                    h += `<th title="${a} vs ${b}">Δ M${i}→M${i + 1}</th><th title="${a} vs ${b}">% M${i}→M${i + 1}</th>`;
+                    cols.push({
+                        key: `mm_abs_${i}`,
+                        label: `Δ M${i}→M${i + 1}`,
+                        type: 'num',
+                        get: r => {
+                            const a = Number((r.serie || [])[i] || 0);
+                            const b = Number((r.serie || [])[i + 1] || 0);
+                            return a - b;
+                        },
+                    });
+                    cols.push({
+                        key: `mm_pct_${i}`,
+                        label: `% M${i}→M${i + 1}`,
+                        type: 'num',
+                        get: r => {
+                            const a = Number((r.serie || [])[i] || 0);
+                            const b = Number((r.serie || [])[i + 1] || 0);
+                            return b > 0 ? ((a - b) / b) * 100 : (a > 0 ? 100 : 0);
+                        },
+                    });
                 }
             }
             if (showRc) {
-                h += `<th>${labelPrincipal} Ref (${payload.mes_ref})</th><th>${labelPrincipal} Comp (${payload.mes_comp})</th><th>Var Abs</th><th>Var %</th><th>%CC Ref</th><th>Aprov. Ref</th><th>Ating. Meta</th>`;
+                cols.push({ key: 'ref_total', label: `${labelPrincipal} Ref (${payload.mes_ref})`, type: 'num', get: r => Number(r.ref_total || 0) });
+                cols.push({ key: 'comp_total', label: `${labelPrincipal} Comp (${payload.mes_comp})`, type: 'num', get: r => Number(r.comp_total || 0) });
+                cols.push({ key: 'var_abs', label: 'Var Abs', type: 'num', get: r => Number(r.var_abs || 0) });
+                cols.push({ key: 'var_pct', label: 'Var %', type: 'num', get: r => Number(r.var_pct || 0) });
+                cols.push({ key: 'pct_cc_ref', label: '%CC Ref', type: 'num', get: r => Number(r.pct_cc_ref || 0) });
+                cols.push({ key: 'aprov_ref', label: 'Aprov. Ref', type: 'num', get: r => Number(r.aprov_ref || 0) });
+                cols.push({ key: 'atingimento_meta', label: 'Ating. Meta', type: 'num', get: r => Number(r.atingimento_meta || 0) });
             }
-            h += '</tr>';
-            thead.innerHTML = h;
+
+            const st = perfGetState('gestao');
+            let rows = perfApplyColumnFilters(rowsRaw, cols, st.filters);
+            if (st.sortKey) {
+                rows = perfSortRows(rows, cols, st.sortKey, st.sortDir);
+            } else {
+                const ord = (document.getElementById('gestao-ordenacao')?.value || 'VAR_PCT_DESC').toUpperCase();
+                rows = [...rows];
+                rows.sort((a, b) => {
+                    if (ord === 'VAR_PCT_ASC') return (Number(a.var_pct) || 0) - (Number(b.var_pct) || 0);
+                    if (ord === 'ATING_DESC') return (Number(b.atingimento_meta) || 0) - (Number(a.atingimento_meta) || 0);
+                    if (ord === 'REF_DESC') return (Number(b.ref_total) || 0) - (Number(a.ref_total) || 0);
+                    if (ord === 'ALFA_ASC') return String(a.grupo || '').localeCompare(String(b.grupo || ''), 'pt-BR');
+                    return (Number(b.var_pct) || 0) - (Number(a.var_pct) || 0);
+                });
+            }
+
+            perfRenderThead(thead, 'gestao', cols, rowsRaw);
 
             if (!rows.length) {
                 tbody.innerHTML = '<tr><td colspan="40">Sem dados para os filtros selecionados</td></tr>';
             } else {
                 let b = '';
-                const totSerie = (payload.totais_serie || []).map(v => Number(v || 0));
-                const totSerieDvu = (payload.totais_serie_dvu || []).map(v => Number(v || 0));
-                if (!totSerie.length) {
-                    labels.forEach(() => totSerie.push(0));
-                }
-                if (!totSerieDvu.length) {
-                    labels.forEach(() => totSerieDvu.push(0));
-                }
+                const totSerie = labels.map((_, idx) => rows.reduce((s, r) => s + Number((r.serie || [])[idx] || 0), 0));
+                const totSerieDvu = labels.map((_, idx) => {
+                    const w = rows.reduce((s, r) => s + Number((r.serie || [])[idx] || 0), 0);
+                    if (w <= 0) return 0;
+                    const sv = rows.reduce((s, r) => {
+                        const vol = Number((r.serie || [])[idx] || 0);
+                        return s + vol * Number((r.serie_dvu || [])[idx] || 0);
+                    }, 0);
+                    return sv / w;
+                });
                 let totMeta = 0;
                 let totRef = 0;
                 let totComp = 0;
@@ -1114,7 +1531,7 @@
                     const clsVar = varAbs > 0 ? 'metric-up' : (varAbs < 0 ? 'metric-down' : 'metric-flat');
                     const clsVarPct = varPct > 0 ? 'metric-up' : (varPct < 0 ? 'metric-down' : 'metric-flat');
                     const clsMeta = ating >= 100 ? 'meta-hit' : 'meta-miss';
-                    b += `<tr><td class="text-start ps-3 fw-bold">${r.grupo}</td><td>${r.canal||'-'}</td><td>${r.cluster||'-'}</td>`;
+                    b += `<tr><td class="text-start ps-3 fw-bold">${perfEsc(r.grupo)}</td><td>${perfEsc(r.canal||'-')}</td><td>${perfEsc(r.cluster||'-')}</td>`;
                     if (showVol) {
                         b += `<td>${r.meta||0}</td>`;
                         (r.serie || []).forEach((v, idx) => {
