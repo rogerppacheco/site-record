@@ -1155,6 +1155,9 @@ class ConfigComissaoVendedorDetailView(APIView):
         serializer = ConfigComissaoVendedorSerializer(config, data=data, partial=True)
         if serializer.is_valid():
             config = serializer.save()
+            if ano is not None and mes is not None:
+                from crm_app.services.folha_comissionamento_cache import invalidar_folha_mes
+                invalidar_folha_mes(ano, mes)
             return Response(ConfigComissaoVendedorSerializer(config).data)
         return Response(serializer.errors, status=400)
 
@@ -1172,6 +1175,11 @@ class ConfigComissaoVendedorDetailView(APIView):
         serializer = ConfigComissaoVendedorSerializer(config, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            ano_inv = ano if ano is not None else getattr(config, 'ano', None)
+            mes_inv = mes if mes is not None else getattr(config, 'mes', None)
+            if ano_inv is not None and mes_inv is not None:
+                from crm_app.services.folha_comissionamento_cache import invalidar_folha_mes
+                invalidar_folha_mes(int(ano_inv), int(mes_inv))
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
@@ -1220,6 +1228,9 @@ class ConfigComissaoVendedorSalvarMesView(APIView):
                     erros.append(f"User {uid}: " + str(serializer.errors))
             except Exception as e:
                 erros.append(f"User {uid}: {e}")
+        if salvos:
+            from crm_app.services.folha_comissionamento_cache import invalidar_folha_mes
+            invalidar_folha_mes(ano, mes)
         return Response({'salvos': salvos, 'erros': erros})
 
 

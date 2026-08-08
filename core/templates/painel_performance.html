@@ -12,41 +12,203 @@
 
 {% block extra_css %}
 <style>
-.painel-performance-page .table-excel { font-size: 0.85rem; border-collapse: separate; border-spacing: 0; width: 100%; }
+.painel-performance-page .table-excel { font-size: 0.85rem; border-collapse: separate; border-spacing: 0; width: 100%; color: var(--text-primary); }
         .painel-performance-page .table-excel thead th { background-color: var(--accent-primary); color: var(--text-on-accent); border: 1px solid var(--border-color); padding: 8px; text-align: center; vertical-align: middle; position: sticky; top: 0; z-index: 2; font-weight: 600; }
-        .painel-performance-page .table-excel tbody td { border: 1px solid var(--border-color); padding: 6px; text-align: center; vertical-align: middle; font-weight: 500; }
+        .painel-performance-page .table-excel tbody td { border: 1px solid var(--border-color); padding: 6px; text-align: center; vertical-align: middle; font-weight: 500; color: var(--text-primary); }
         .painel-performance-page .table-excel tfoot td { background-color: var(--bg-secondary); color: var(--text-primary); font-weight: bold; padding: 8px; text-align: center; position: sticky; bottom: 0; z-index: 2; }
-        .bg-green-soft { background-color: #d1e7dd !important; color: #0f5132; }
-        .bg-red-soft { background-color: #f8d7da !important; color: #842029; opacity: 0.8; }
-        tr.row-perf-zero td, tr.row-perf-below-faixa td { background-color: #f8d7da !important; color: #842029; }
-        tr.row-perf-1-2 td { background-color: #fff3cd !important; color: #664d03; }
-        tr.row-perf-3-5 td { background-color: #cfe2ff !important; color: #084298; }
-        tr.row-perf-6-plus td { background-color: #146c43 !important; color: #fff; }
-        tr.row-perf-faixa-1 td { background-color: #fff3cd !important; color: #664d03; }
-        tr.row-perf-faixa-2 td { background-color: #ffe49c !important; color: #78450a; }
-        tr.row-perf-faixa-3 td { background-color: #cfe2ff !important; color: #084298; }
-        tr.row-perf-faixa-4 td { background-color: #0d6efd !important; color: #fff; }
-        tr.row-perf-faixa-5 td, tr.row-perf-faixa-6 td { background-color: #146c43 !important; color: #fff; }
-        tr.row-perf-zero td.bg-total-column,
-        tr.row-perf-below-faixa td.bg-total-column,
-        tr.row-perf-1-2 td.bg-total-column,
-        tr.row-perf-3-5 td.bg-total-column,
-        tr.row-perf-6-plus td.bg-total-column,
-        tr.row-perf-faixa-1 td.bg-total-column,
-        tr.row-perf-faixa-2 td.bg-total-column,
-        tr.row-perf-faixa-3 td.bg-total-column,
-        tr.row-perf-faixa-4 td.bg-total-column,
-        tr.row-perf-faixa-5 td.bg-total-column,
-        tr.row-perf-faixa-6 td.bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; }
-        .bg-header-group { background-color: #e7eef7 !important; color: #1e3a5f !important; font-weight: 600; }
-        .bg-info { background-color: #0d6efd !important; }
-        .bg-success { background-color: #198754 !important; }
-        .bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; font-weight: bold; }
-        .metric-up { background-color: #d1e7dd; color: #0f5132; font-weight: 700; }
-        .metric-down { background-color: #f8d7da; color: #842029; font-weight: 700; }
-        .painel-performance-page .metric-flat { background-color: var(--bg-secondary); color: var(--text-primary); font-weight: 700; }
-        .meta-hit { background-color: #d1e7dd; color: #0f5132; font-weight: 700; }
-        .meta-miss { background-color: #fff3cd; color: #664d03; font-weight: 700; }
+
+        /* Faixas de performance — light (texto escuro + !important para não perder no tema) */
+        .painel-performance-page .bg-green-soft { background-color: #d1e7dd !important; color: #0f5132 !important; }
+        .painel-performance-page .bg-red-soft { background-color: #f8d7da !important; color: #842029 !important; opacity: 0.8; }
+        .painel-performance-page tr.row-perf-zero td,
+        .painel-performance-page tr.row-perf-below-faixa td { background-color: #f8d7da !important; color: #842029 !important; }
+        .painel-performance-page tr.row-perf-1-2 td { background-color: #fff3cd !important; color: #664d03 !important; }
+        .painel-performance-page tr.row-perf-3-5 td { background-color: #cfe2ff !important; color: #084298 !important; }
+        .painel-performance-page tr.row-perf-6-plus td { background-color: #146c43 !important; color: #fff !important; }
+        .painel-performance-page tr.row-perf-faixa-1 td { background-color: #fff3cd !important; color: #664d03 !important; }
+        .painel-performance-page tr.row-perf-faixa-2 td { background-color: #ffe49c !important; color: #78450a !important; }
+        .painel-performance-page tr.row-perf-faixa-3 td { background-color: #cfe2ff !important; color: #084298 !important; }
+        .painel-performance-page tr.row-perf-faixa-4 td { background-color: #0d6efd !important; color: #fff !important; }
+        .painel-performance-page tr.row-perf-faixa-5 td,
+        .painel-performance-page tr.row-perf-faixa-6 td { background-color: #146c43 !important; color: #fff !important; }
+        .painel-performance-page tr[class*="row-perf-"] td.bg-total-column {
+            background-color: #e7f1ff !important;
+            color: #003d82 !important;
+        }
+        .painel-performance-page .bg-header-group { background-color: #e7eef7 !important; color: #1e3a5f !important; font-weight: 600; }
+        .painel-performance-page .bg-info { background-color: #0d6efd !important; }
+        .painel-performance-page .bg-success { background-color: #198754 !important; }
+        .painel-performance-page .bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; font-weight: bold; }
+        .painel-performance-page .metric-up { background-color: #d1e7dd !important; color: #0f5132 !important; font-weight: 700; }
+        .painel-performance-page .metric-down { background-color: #f8d7da !important; color: #842029 !important; font-weight: 700; }
+        .painel-performance-page .metric-flat { background-color: var(--bg-secondary) !important; color: var(--text-primary) !important; font-weight: 700; }
+        .painel-performance-page .meta-hit { background-color: #d1e7dd !important; color: #0f5132 !important; font-weight: 700; }
+        .painel-performance-page .meta-miss { background-color: #fff3cd !important; color: #664d03 !important; font-weight: 700; }
+        .painel-performance-page .table-excel .text-white { color: #fff !important; }
+
+        /* Dark mode: fundos tintados escuros + texto claro legível */
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-zero td,
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-below-faixa td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-zero td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-below-faixa td {
+            background-color: rgba(248, 113, 113, 0.28) !important;
+            color: #FECACA !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-1-2 td,
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-faixa-1 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-1-2 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-faixa-1 td {
+            background-color: rgba(251, 191, 36, 0.26) !important;
+            color: #FDE68A !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-faixa-2 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-faixa-2 td {
+            background-color: rgba(245, 158, 11, 0.3) !important;
+            color: #FCD34D !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-3-5 td,
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-faixa-3 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-3-5 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-faixa-3 td {
+            background-color: rgba(59, 130, 246, 0.32) !important;
+            color: #BFDBFE !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-faixa-4 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-faixa-4 td {
+            background-color: rgba(37, 99, 235, 0.55) !important;
+            color: #EFF6FF !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-6-plus td,
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-faixa-5 td,
+        html[data-theme="dark"] .painel-performance-page tr.row-perf-faixa-6 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-6-plus td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-faixa-5 td,
+        [data-theme="dark"] .painel-performance-page tr.row-perf-faixa-6 td {
+            background-color: rgba(16, 185, 129, 0.38) !important;
+            color: #D1FAE5 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .bg-total-column,
+        html[data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.bg-total-column,
+        [data-theme="dark"] .painel-performance-page .bg-total-column,
+        [data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.bg-total-column {
+            background-color: rgba(56, 189, 248, 0.22) !important;
+            color: #7DD3FC !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .bg-header-group,
+        [data-theme="dark"] .painel-performance-page .bg-header-group {
+            background-color: rgba(51, 65, 85, 0.9) !important;
+            color: #E2E8F0 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .metric-up,
+        [data-theme="dark"] .painel-performance-page .metric-up {
+            background-color: rgba(52, 211, 153, 0.28) !important;
+            color: #6EE7B7 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .metric-down,
+        [data-theme="dark"] .painel-performance-page .metric-down {
+            background-color: rgba(251, 113, 133, 0.28) !important;
+            color: #FDA4AF !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .metric-flat,
+        [data-theme="dark"] .painel-performance-page .metric-flat {
+            background-color: rgba(51, 65, 85, 0.75) !important;
+            color: #E2E8F0 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .meta-hit,
+        [data-theme="dark"] .painel-performance-page .meta-hit {
+            background-color: rgba(52, 211, 153, 0.28) !important;
+            color: #6EE7B7 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .meta-miss,
+        [data-theme="dark"] .painel-performance-page .meta-miss {
+            background-color: rgba(251, 191, 36, 0.26) !important;
+            color: #FDE68A !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .bg-info,
+        [data-theme="dark"] .painel-performance-page .bg-info {
+            background-color: rgba(37, 99, 235, 0.65) !important;
+            color: #EFF6FF !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .bg-success,
+        [data-theme="dark"] .painel-performance-page .bg-success {
+            background-color: rgba(16, 185, 129, 0.55) !important;
+            color: #ECFDF5 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .bg-green-soft,
+        [data-theme="dark"] .painel-performance-page .bg-green-soft {
+            background-color: rgba(52, 211, 153, 0.28) !important;
+            color: #6EE7B7 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page .bg-red-soft,
+        [data-theme="dark"] .painel-performance-page .bg-red-soft {
+            background-color: rgba(251, 113, 133, 0.28) !important;
+            color: #FDA4AF !important;
+        }
+        /* Células de métrica devem sobrescrever a cor da faixa da linha */
+        .painel-performance-page tr[class*="row-perf-"] td.metric-up {
+            background-color: #d1e7dd !important;
+            color: #0f5132 !important;
+        }
+        .painel-performance-page tr[class*="row-perf-"] td.metric-down {
+            background-color: #f8d7da !important;
+            color: #842029 !important;
+        }
+        .painel-performance-page tr[class*="row-perf-"] td.metric-flat {
+            background-color: #e9ecef !important;
+            color: #212529 !important;
+        }
+        .painel-performance-page tr[class*="row-perf-"] td.bg-info,
+        .painel-performance-page tr[class*="row-perf-"] td.bg-success {
+            color: #fff !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.metric-up,
+        [data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.metric-up {
+            background-color: rgba(52, 211, 153, 0.42) !important;
+            color: #A7F3D0 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.metric-down,
+        [data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.metric-down {
+            background-color: rgba(251, 113, 133, 0.42) !important;
+            color: #FECDD3 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.metric-flat,
+        [data-theme="dark"] .painel-performance-page tr[class*="row-perf-"] td.metric-flat {
+            background-color: rgba(71, 85, 105, 0.85) !important;
+            color: #E2E8F0 !important;
+        }
+        .painel-performance-page tr.perf-total-row > td {
+            background-color: #2c3e50 !important;
+            color: #fff !important;
+            font-weight: bold;
+        }
+        .painel-performance-page tr.perf-total-row > td.metric-up {
+            background-color: #198754 !important;
+            color: #fff !important;
+        }
+        .painel-performance-page tr.perf-total-row > td.metric-down {
+            background-color: #dc3545 !important;
+            color: #fff !important;
+        }
+        .painel-performance-page tr.perf-total-row > td.metric-flat,
+        .painel-performance-page tr.perf-total-row > td.meta-hit,
+        .painel-performance-page tr.perf-total-row > td.meta-miss {
+            color: #fff !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.perf-total-row > td,
+        [data-theme="dark"] .painel-performance-page tr.perf-total-row > td {
+            background-color: #0f172a !important;
+            color: #E2E8F0 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.perf-total-row > td.metric-up,
+        [data-theme="dark"] .painel-performance-page tr.perf-total-row > td.metric-up {
+            background-color: rgba(16, 185, 129, 0.55) !important;
+            color: #ECFDF5 !important;
+        }
+        html[data-theme="dark"] .painel-performance-page tr.perf-total-row > td.metric-down,
+        [data-theme="dark"] .painel-performance-page tr.perf-total-row > td.metric-down {
+            background-color: rgba(244, 63, 94, 0.55) !important;
+            color: #FFF1F2 !important;
+        }
         .painel-performance-page #capture-area { position: absolute; left: -9999px; top: -9999px; width: 1200px; background: var(--bg-card); padding: 20px; }
         .painel-performance-page #capture-area .table-excel thead th { position: static !important; }
         .painel-performance-page #capture-area .table-excel tfoot td { position: static !important; }
@@ -772,7 +934,7 @@
             const pct = tV > 0 ? ((tC / tV) * 100).toFixed(1) : 0;
             const clsTotM0 = clsDvuComparacao(totais?.dvu_m0, totais?.dvu_m1);
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td>${fmtDvu(totais?.dvu_hoje)}</td><td class="${clsTotM0}">${fmtDvu(totais?.dvu_m0)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
+            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td><td>${tV}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td>${fmtDvu(totais?.dvu_hoje)}</td><td class="${clsTotM0}">${fmtDvu(totais?.dvu_m0)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
             const colspan = 10;
             document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || `<tr><td colspan="${colspan}">Sem dados</td></tr>`);
             document.getElementById('tfoot-hoje').innerHTML = '';
@@ -801,7 +963,7 @@
             const pct = tS > 0 ? ((tC / tS) * 100).toFixed(1) : 0;
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
             const clsTotSem = clsDvuComparacao(totais?.dvu_semana, totais?.dvu_m1);
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td class="${clsTotSem}">${fmtDvu(totais?.dvu_semana)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
+            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td>${tC}</td><td>${pct}%</td><td class="${clsTotSem}">${fmtDvu(totais?.dvu_semana)}</td><td>${fmtDvu(totais?.dvu_m1)}</td></tr>`;
             document.getElementById('tbody-semana').innerHTML = linhaTotal + h;
             document.getElementById('tfoot-semana').innerHTML = '';
         }
@@ -829,7 +991,7 @@
             const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
             const repVisivel = rows.reduce((s, r) => s + Number(r.pct_rep || 0), 0);
             const clsTotMes = clsDvuComparacao(totais?.dvu_mes, totais?.dvu_m1);
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td class="${clsTotMes}">${fmtDvu(totais?.dvu_mes)}</td><td>${fmtDvu(totais?.dvu_m1)}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
+            const linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${fmtRep(repVisivel < 100 && minRepresentatividade() > 0 ? repVisivel : 100)}</td><td class="${clsTotMes}">${fmtDvu(totais?.dvu_mes)}</td><td>${fmtDvu(totais?.dvu_m1)}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
             document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
             document.getElementById('tfoot-mes').innerHTML = '';
         }
@@ -990,7 +1152,7 @@
                 const clsTotVar = totVarAbs > 0 ? 'metric-up' : (totVarAbs < 0 ? 'metric-down' : 'metric-flat');
                 const clsTotVarPct = totVarPct > 0 ? 'metric-up' : (totVarPct < 0 ? 'metric-down' : 'metric-flat');
                 const clsTotMeta = totAting >= 100 ? 'meta-hit' : 'meta-miss';
-                let linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td>`;
+                let linhaTotal = `<tr class="perf-total-row"><td class="text-start ps-3">TOTAL</td><td>-</td><td>-</td>`;
                 if (showVol) {
                     linhaTotal += `<td>${totMeta}</td>`;
                     totSerie.forEach((v, idx) => {

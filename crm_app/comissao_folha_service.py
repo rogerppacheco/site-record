@@ -1369,8 +1369,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             detalhes_bonus.append(item)
 
         liquido = comissao_total_geral + complemento_sabado_total + total_bonus - total_descontos
-        faixa_aplicada = (faixa_regra.faixa_nome if faixa_regra else None) or ('MANUAL' if usar_manual else '')
-        faixa_complemento_sabado = faixa_aplicada
+        # Badge/origem: com valor manual ativo a grade da folha NÃO usa a tabela de faixas.
+        faixa_referencia = (faixa_regra.faixa_nome if faixa_regra else None) or ''
+        if usar_manual:
+            faixa_aplicada = 'Regras por vendedor'
+        else:
+            faixa_aplicada = faixa_referencia
+        faixa_complemento_sabado = faixa_referencia or faixa_aplicada
+        origem_valores = 'manual' if usar_manual else 'faixa'
 
         ajustes = {
             'premiacao': float(getattr(config, 'premiação', None) or 0) if config else 0,
@@ -1613,6 +1619,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'total_qtd_ja_pago': 0,
                 'total_qtd_churn_30': 0,
                 'faixa_aplicada': faixa_aplicada,
+                'faixa_referencia': faixa_referencia,
+                'origem_valores': origem_valores,
                 'faixa_complemento_sabado': faixa_complemento_sabado,
                 'qtd_instalada_faixa_complemento': qtd_total_instalada,
                 'por_plano': por_plano_lista,
