@@ -259,19 +259,57 @@ def salvar_matriz_comissao(payload: dict[str, Any]) -> dict[str, int]:
 
 
 def listar_valores_manuais_vendedor(config: ConfigComissaoVendedor) -> list[dict[str, Any]]:
-    planos = Plano.objects.filter(ativo=True).order_by('nome')
+    """
+    Monta a grade de valores manuais por plano para o vendedor.
+
+    Inclui:
+    - todos os planos ativos (novos entram automaticamente);
+    - planos inativos que já tenham valor salvo nesta config (histórico).
+    """
     existentes = {
         v.plano_id: v
-        for v in PlanoValoresComissaoVendedor.objects.filter(config=config).select_related('plano')
+        for v in PlanoValoresComissaoVendedor.objects.filter(config=config).select_related(
+            'plano', 'plano__operadora',
+        )
     }
+    planos_ativos = list(
+        Plano.objects.filter(ativo=True).select_related('operadora').order_by('nome')
+    )
+    ids_ativos = {p.id for p in planos_ativos}
+
     out: list[dict[str, Any]] = []
-    for plano in planos:
+    for plano in planos_ativos:
         row = existentes.get(plano.id)
         out.append({
             'plano_id': plano.id,
             'plano_nome': plano.nome,
+            'plano_ativo': True,
+            'operadora_nome': plano.operadora.nome if plano.operadora_id else None,
             'valor_pap': float(row.valor_pap) if row and row.valor_pap is not None else None,
             'valor_cnpj': float(row.valor_cnpj) if row and row.valor_cnpj is not None else None,
+        })
+
+    inativos_com_valor: list[tuple[Plano, PlanoValoresComissaoVendedor]] = []
+    for plano_id, row in existentes.items():
+        if plano_id in ids_ativos:
+            continue
+        plano = row.plano
+        if not plano or plano.ativo:
+            continue
+        # Só reaparece inativo se já houver valor manual preenchido (histórico útil).
+        if row.valor_pap is None and row.valor_cnpj is None:
+            continue
+        inativos_com_valor.append((plano, row))
+
+    inativos_com_valor.sort(key=lambda item: (item[0].nome or '').upper())
+    for plano, row in inativos_com_valor:
+        out.append({
+            'plano_id': plano.id,
+            'plano_nome': plano.nome,
+            'plano_ativo': bool(plano.ativo),
+            'operadora_nome': plano.operadora.nome if getattr(plano, 'operadora_id', None) else None,
+            'valor_pap': float(row.valor_pap) if row.valor_pap is not None else None,
+            'valor_cnpj': float(row.valor_cnpj) if row.valor_cnpj is not None else None,
         })
     return out
 

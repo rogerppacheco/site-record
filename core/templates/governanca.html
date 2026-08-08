@@ -207,15 +207,47 @@
             z-index: 6;
             background: #e8eef5;
         }
-        .matriz-vendedor-planos { font-size: 0.9rem; }
-        .matriz-vendedor-planos th { background: #e8eef5; font-size: 0.8rem; }
-        .matriz-vendedor-planos td.plano-nome { font-weight: 600; color: #1e293b; min-width: 220px; }
+        .matriz-vendedor-planos { font-size: 0.9rem; color: var(--text-primary); }
+        .matriz-vendedor-planos thead th {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            border-color: var(--border-color);
+        }
+        .matriz-vendedor-planos td {
+            color: var(--text-primary);
+            border-color: var(--border-color);
+            vertical-align: middle;
+        }
+        .matriz-vendedor-planos td.plano-nome {
+            font-weight: 600;
+            color: var(--text-primary);
+            min-width: 220px;
+        }
+        .matriz-vendedor-planos td.plano-nome .badge-plano-inativo {
+            font-size: 0.65rem;
+            font-weight: 600;
+            vertical-align: middle;
+            margin-left: 0.35rem;
+        }
         .matriz-vendedor-planos .mat-input-money {
             max-width: 140px;
             margin-left: auto;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
             text-align: right;
+            color: var(--text-primary);
+            background-color: var(--bg-card);
+            border-color: var(--border-color);
+        }
+        .matriz-vendedor-planos .mat-input-money:focus {
+            color: var(--text-primary);
+            background-color: var(--bg-card);
+            border-color: var(--accent-primary);
+        }
+        .matriz-vendedor-planos .mat-input-money[readonly] {
+            opacity: 0.85;
+            background-color: var(--bg-secondary);
         }
 
         @media (max-width: 992px) {
@@ -3592,19 +3624,31 @@
         const box = document.getElementById('cfg_valores_planos_container');
         if (!box) return;
         if (!valoresPorPlano || !valoresPorPlano.length) {
-            box.innerHTML = '<div class="col-12 text-muted small">Nenhum plano cadastrado.</div>';
+            box.innerHTML = '<div class="col-12 text-muted small">Nenhum plano cadastrado. Cadastre planos em Cadastros Gerais → Planos.</div>';
             return;
         }
         const ro = manual ? '' : 'readonly';
-        let html = '<div class="col-12"><div class="table-responsive border rounded"><table class="table table-sm matriz-vendedor-planos mb-0"><thead><tr><th>Plano</th><th class="text-end">PAP (R$)</th><th class="text-end">CNPJ (R$)</th></tr></thead><tbody>';
+        const ativos = valoresPorPlano.filter(v => v.plano_ativo !== false);
+        const inativos = valoresPorPlano.filter(v => v.plano_ativo === false);
+        let html = '<div class="col-12"><p class="small text-muted mb-2">Lista os <strong>planos ativos</strong> do sistema'
+            + (inativos.length ? ` e <strong>${inativos.length} inativo(s)</strong> com valor já cadastrado neste vendedor` : '')
+            + '.</p>';
+        html += '<div class="table-responsive border rounded"><table class="table table-sm matriz-vendedor-planos mb-0"><thead><tr><th>Plano</th><th class="text-end">PAP (R$)</th><th class="text-end">CNPJ (R$)</th></tr></thead><tbody>';
         valoresPorPlano.forEach(v => {
-            html += `<tr>
-                <td class="plano-nome">${escMatriz(v.plano_nome)}</td>
+            const badge = v.plano_ativo === false
+                ? ' <span class="badge text-bg-secondary badge-plano-inativo">Inativo</span>'
+                : '';
+            const op = v.operadora_nome ? ` <span class="text-muted small">(${escMatriz(v.operadora_nome)})</span>` : '';
+            html += `<tr class="${v.plano_ativo === false ? 'table-secondary' : ''}">
+                <td class="plano-nome">${escMatriz(v.plano_nome)}${op}${badge}</td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm mat-input-money cfg-plano-pap" data-plano-id="${v.plano_id}" value="${fmtMatrizValor(v.valor_pap)}" placeholder="—" ${ro}></td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm mat-input-money cfg-plano-cnpj" data-plano-id="${v.plano_id}" value="${fmtMatrizValor(v.valor_cnpj)}" placeholder="—" ${ro}></td>
             </tr>`;
         });
         html += '</tbody></table></div></div>';
+        if (ativos.length === 0) {
+            html = '<div class="col-12"><div class="alert alert-warning py-2 small mb-2">Nenhum plano ativo encontrado. Cadastre ou reative planos em Cadastros Gerais → Planos.</div></div>' + html;
+        }
         box.innerHTML = html;
     }
 
