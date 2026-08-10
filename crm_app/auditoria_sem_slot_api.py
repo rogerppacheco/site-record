@@ -41,7 +41,12 @@ def _resposta_duplicado(registro: AuditoriaSemSlotGC | None, mensagem: str) -> R
             'erros': [],
             'duplicado': True,
         }, status=status.HTTP_200_OK)
-    sucesso = bool(registro.enviado_gc or registro.enviados_diretoria or registro.enviado_teams)
+    sucesso = bool(
+        registro.enviado_gc
+        or registro.enviados_diretoria
+        or getattr(registro, 'enviados_grupos', None)
+        or registro.enviado_teams
+    )
     return Response({
         'success': sucesso,
         'detail': mensagem,
@@ -53,7 +58,7 @@ def _resposta_duplicado(registro: AuditoriaSemSlotGC | None, mensagem: str) -> R
 
 
 class AuditoriaSemSlotEnviarView(APIView):
-    """POST multipart após venda CADASTRADA: envia WhatsApp ao GC + Diretoria."""
+    """POST multipart após venda CADASTRADA: envia WhatsApp aos destinos configurados."""
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     permission_classes = [permissions.IsAuthenticated]
 

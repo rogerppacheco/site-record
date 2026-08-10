@@ -16053,33 +16053,42 @@ class ConfigEsteiraVendasView(APIView):
 
 
 class ConfigAnteciparInstalacaoView(APIView):
-    """GET: retorna config (telefone_gc, grupo) + lista de grupos para o select. PATCH: atualiza config (só Admin/Diretoria/BackOffice)."""
+    """GET/PATCH: config GC + destinos WhatsApp (grupos/telefones) usados por Antecipação e Sem SLOT."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        config = _antecipar_instalacao_get_config()
-        _antecipar_instalacao_sync_grupos_zapi()
-        grupos = list(
-            GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
-        )
-        return Response({
+    def _payload(self, config, *, incluir_catalogo: bool = False):
+        from crm_app.services.destinos_operacionais_service import serializar_destinos_config
+
+        data = {
             'nome_gc': config.nome_gc or '',
             'telefone_gc': config.telefone_gc or '',
             'email_gc': config.email_gc or '',
-            'grupo_id': config.grupo_id,
-            'grupo_nome': config.grupo.nome if config.grupo else None,
-            'grupos': grupos,
-            'pode_editar': is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']),
+            'pode_editar': False,
             'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
             'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
             'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
             'teams_notificacao_ativo': bool(config.teams_notificacao_ativo),
             'teams_webhook_configurado': _teams_webhook_configurado(),
-        })
+        }
+        data.update(serializar_destinos_config(config))
+        if incluir_catalogo:
+            data['grupos'] = list(
+                GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
+            )
+        return data
+
+    def get(self, request):
+        config = _antecipar_instalacao_get_config()
+        _antecipar_instalacao_sync_grupos_zapi()
+        payload = self._payload(config, incluir_catalogo=True)
+        payload['pode_editar'] = is_member(request.user, ['Diretoria', 'Admin', 'BackOffice'])
+        return Response(payload)
 
     def patch(self, request):
         if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
             return Response({'detail': 'Sem permissão para alterar a configuração.'}, status=status.HTTP_403_FORBIDDEN)
+        from crm_app.services.destinos_operacionais_service import aplicar_destinos_config
+
         config = _antecipar_instalacao_get_config()
         if 'telefone_gc' in request.data:
             val = request.data.get('telefone_gc')
@@ -16090,17 +16099,36 @@ class ConfigAnteciparInstalacaoView(APIView):
         if 'email_gc' in request.data:
             val = request.data.get('email_gc')
             config.email_gc = (val if val is not None else '').strip()[:254]
-        if 'grupo_id' in request.data:
-            gid = request.data.get('grupo_id')
-            if gid is None or gid == '':
-                config.grupo_id = None
+
+        # Destinos compartilhados (Antecipação + Sem SLOT)
+        grupo_ids = None
+        if 'grupo_ids' in request.data:
+            raw = request.data.get('grupo_ids')
+            if raw is None or raw == '':
+                grupo_ids = []
+            elif isinstance(raw, list):
+                grupo_ids = raw
             else:
-                try:
-                    gid = int(gid)
-                    g = GrupoDisparo.objects.filter(id=gid, ativo=True).first()
-                    config.grupo = g
-                except (TypeError, ValueError):
-                    config.grupo_id = None
+                grupo_ids = [raw]
+        elif 'grupo_id' in request.data:
+            # Compat: um único grupo_id ainda atualiza a lista
+            gid = request.data.get('grupo_id')
+            grupo_ids = [] if gid is None or gid == '' else [gid]
+
+        telefones_destino = None
+        if 'telefones_destino' in request.data:
+            raw_tels = request.data.get('telefones_destino')
+            if raw_tels is None or raw_tels == '':
+                telefones_destino = []
+            elif isinstance(raw_tels, list):
+                telefones_destino = raw_tels
+            else:
+                # Aceita string "tel1, tel2" ou com quebras de linha
+                telefones_destino = [
+                    p.strip() for p in str(raw_tels).replace(';', ',').replace('\n', ',').split(',')
+                    if p.strip()
+                ]
+
         if 'relatorio_esteira_gc_ativo' in request.data:
             config.relatorio_esteira_gc_ativo = bool(request.data.get('relatorio_esteira_gc_ativo'))
         from crm_app.services.relatorio_esteira_gc_service import validar_horario_relatorio
@@ -16116,18 +16144,21 @@ class ConfigAnteciparInstalacaoView(APIView):
             config.teams_notificacao_ativo = bool(request.data.get('teams_notificacao_ativo'))
         config.atualizado_por = request.user
         config.save()
-        return Response({
-            'nome_gc': config.nome_gc or '',
-            'telefone_gc': config.telefone_gc or '',
-            'email_gc': config.email_gc or '',
-            'grupo_id': config.grupo_id,
-            'grupo_nome': config.grupo.nome if config.grupo else None,
-            'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
-            'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
-            'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
-            'teams_notificacao_ativo': bool(config.teams_notificacao_ativo),
-            'teams_webhook_configurado': _teams_webhook_configurado(),
-        })
+
+        if grupo_ids is not None or telefones_destino is not None:
+            aplicar_destinos_config(
+                config,
+                grupo_ids=grupo_ids,
+                telefones_destino=telefones_destino,
+            )
+            # FK legado `grupo` pode ter sido alterado em aplicar_destinos_config
+            if grupo_ids is not None:
+                config.save(update_fields=['grupo'])
+
+        payload = self._payload(config, incluir_catalogo=True)
+        payload['pode_editar'] = True
+        payload['detail'] = 'Configuração salva. Antecipação e Sem SLOT usarão estes destinos.'
+        return Response(payload)
 
 
 def _historico_antecipar_queryset(request):
@@ -16146,7 +16177,7 @@ def _historico_antecipar_queryset(request):
 def _status_envio_antecipar_label(s):
     partes = []
     if s.enviado_gc:
-        partes.append('GC')
+        partes.append('Contato')
     if s.enviado_grupo:
         partes.append('Grupo')
     if getattr(s, 'enviado_teams', False):
@@ -16549,40 +16580,53 @@ class SolicitarAnteciparInstalacaoView(APIView):
             )
             mensagem = mensagem.upper()
 
+        from crm_app.services.destinos_operacionais_service import obter_destinos_operacionais
+
         config = _antecipar_instalacao_get_config()
-        telefone_gc = (config.telefone_gc or '').strip()
-        grupo = config.grupo
+        destinos = obter_destinos_operacionais(config)
+        telefones = destinos['telefones']
+        grupos = destinos['grupos']
         enviados = []
         erros = []
+        enviado_telefone = False
+        enviado_grupo = False
         try:
+            if not telefones and not grupos:
+                return Response(
+                    {
+                        'detail': (
+                            'Nenhum destino configurado. Defina grupos e/ou telefones WhatsApp '
+                            'em Configuração.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             svc = WhatsAppService()
-            if telefone_gc:
-                ok1, resp1 = svc.enviar_mensagem_texto(telefone_gc, mensagem)
+            for tel in telefones:
+                ok1, resp1 = svc.enviar_mensagem_texto(tel, mensagem)
                 if ok1:
-                    enviados.append('número do GC')
+                    enviado_telefone = True
+                    enviados.append(tel)
                 else:
-                    erros.append(f'GC: {resp1}')
-            else:
-                erros.append('Telefone do GC não configurado.')
-            if grupo and grupo.chat_id:
+                    erros.append(f'{tel}: {resp1}')
+            for grupo in grupos:
                 ok2, resp2 = svc.enviar_mensagem_texto(grupo.chat_id, mensagem)
                 if ok2:
-                    enviados.append('grupo')
+                    enviado_grupo = True
+                    enviados.append(f'grupo {grupo.nome}')
                 else:
-                    erros.append(f'Grupo: {resp2}')
-            elif not grupo:
-                erros.append('Grupo não configurado.')
+                    erros.append(f'Grupo {grupo.nome}: {resp2}')
 
             caption_img = f"Anexo O.S {os_num} — instalação física / pendência"
             if img_data_url:
-                if telefone_gc:
-                    r = svc.enviar_imagem_b64(telefone_gc, img_data_url, caption=caption_img)
+                for tel in telefones:
+                    r = svc.enviar_imagem_b64(tel, img_data_url, caption=caption_img)
                     if not r:
-                        erros.append('GC: falha no envio da imagem.')
-                if grupo and grupo.chat_id:
+                        erros.append(f'{tel}: falha no envio da imagem.')
+                for grupo in grupos:
                     r2 = svc.enviar_imagem_b64(grupo.chat_id, img_data_url, caption=caption_img)
                     if not r2:
-                        erros.append('Grupo: falha no envio da imagem.')
+                        erros.append(f'Grupo {grupo.nome}: falha no envio da imagem.')
         except Exception as e:
             logger.exception("Erro ao enviar WhatsApp antecipar instalação/reparo: %s", e)
             obs_rep = (request.data.get('observacao_reparo') or '').strip()[:500] if tipo == 'reparo' else ''
@@ -16611,8 +16655,8 @@ class SolicitarAnteciparInstalacaoView(APIView):
             tipo_solicitacao=tipo,
             descricao_solicitacao=descricao,
             observacao_reparo=obs_rep_final,
-            enviado_gc=('número do GC' in enviados),
-            enviado_grupo=('grupo' in enviados),
+            enviado_gc=enviado_telefone,
+            enviado_grupo=enviado_grupo,
             erros=erros,
             mensagem_enviada=mensagem[:2000],
         )

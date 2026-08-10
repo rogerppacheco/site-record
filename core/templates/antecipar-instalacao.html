@@ -71,7 +71,7 @@
                 </div>
                 <!-- Painel Antecipação (pedido agendado) -->
                 <div id="painel-antecipacao" class="card card-modern" style="display:none;">
-                    <h6 class="fw-bold mb-3">Mensagem que será enviada ao GC e ao grupo configurado</h6>
+                    <h6 class="fw-bold mb-3">Mensagem que será enviada aos destinos configurados</h6>
                     <div class="mb-3">
                         <label class="form-label">Motivo da solicitação de antecipação <span class="text-danger">*</span></label>
                         <textarea id="descricao" class="form-control" rows="3" placeholder="Descreva o motivo da tentativa de antecipação..." maxlength="500"></textarea>
@@ -87,7 +87,7 @@
                 <!-- Painel Reparo (pedido instalado até 14 dias) -->
                 <div id="painel-reparo" class="card card-modern" style="display:none;">
                     <h6 class="fw-bold mb-3"><i class="bi bi-wrench text-warning"></i> Solicitar reparo - Internet pós-instalação</h6>
-                    <p class="text-muted small mb-3">Mensagem padrão de reparo será enviada ao GC e ao grupo. Informe duas opções de data/turno para retorno do técnico e detalhe a solicitação.</p>
+                    <p class="text-muted small mb-3">Mensagem padrão de reparo será enviada aos destinos configurados. Informe duas opções de data/turno para retorno do técnico e detalhe a solicitação.</p>
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
                             <label class="form-label">Opção 1 - Data <span class="text-danger">*</span></label>
@@ -165,13 +165,14 @@
             <!-- Aba Configuração -->
             <div class="tab-pane fade" id="tab-config" role="tabpanel">
                 <div class="card card-modern">
-                    <h6 class="fw-bold mb-3">Destino das mensagens (GC e grupo WhatsApp)</h6>
-                    <p class="text-muted small mb-3">Apenas Admin, Diretoria e BackOffice podem alterar. Os demais perfis apenas visualizam.</p>
+                    <h6 class="fw-bold mb-3">Dados do GC (ajuda / relatório)</h6>
+                    <p class="text-muted small mb-3">Usados em pedidos de ajuda e no relatório diário da esteira. Apenas Admin, Diretoria e BackOffice podem alterar.</p>
                     <div id="config-visualizar" class="mb-3">
                         <p class="mb-1"><strong>Nome do GC:</strong> <span id="config-nome-display">—</span></p>
                         <p class="mb-1"><strong>Telefone do GC:</strong> <span id="config-telefone-display">—</span></p>
                         <p class="mb-1"><strong>E-mail do GC:</strong> <span id="config-email-display">—</span></p>
-                        <p class="mb-1"><strong>Grupo WhatsApp:</strong> <span id="config-grupo-display">—</span></p>
+                        <p class="mb-1"><strong>Grupos de destino:</strong> <span id="config-grupo-display">—</span></p>
+                        <p class="mb-1"><strong>Telefones individuais:</strong> <span id="config-telefones-destino-display">—</span></p>
                         <p class="mb-1"><strong>Relatório diário esteira:</strong> <span id="config-relatorio-display">—</span></p>
                         <p class="mb-0"><strong>Horários do relatório:</strong> <span id="config-horarios-display">—</span></p>
                     </div>
@@ -183,19 +184,32 @@
                         <div class="mb-3">
                             <label class="form-label">Telefone do GC (WhatsApp)</label>
                             <input type="text" id="config-telefone" class="form-control" placeholder="Ex: 21979630377" maxlength="20">
+                            <div class="form-text">Identidade do GC para ajuda e relatório. Para receber Antecipação/Sem SLOT, inclua também em Telefones individuais abaixo.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">E-mail do GC</label>
                             <input type="email" id="config-email-gc" class="form-control" placeholder="Ex: gc@exemplo.com" maxlength="254">
                             <div class="form-text">Usado nos pedidos de ajuda/socorro (abrir chamado TI).</div>
                         </div>
+
+                        <hr class="my-3">
+                        <h6 class="fw-bold mb-2">Destinos das mensagens (Antecipação e Sem SLOT)</h6>
+                        <p class="text-muted small mb-3">Os mesmos destinos valem para Antecipação e para Sem SLOT na auditoria. Selecione um ou mais grupos e/ou informe telefones WhatsApp individuais.</p>
                         <div class="mb-3">
-                            <label class="form-label">Grupo WhatsApp</label>
-                            <select id="config-grupo" class="form-select">
-                                <option value="">— Nenhum —</option>
-                            </select>
+                            <label class="form-label">Grupos WhatsApp</label>
+                            <select id="config-grupo" class="form-select" multiple size="6"></select>
+                            <div class="form-text">Segure Ctrl (Windows) ou Cmd (Mac) para selecionar vários.</div>
                             <div id="config-grupos-aviso" class="form-text text-warning" style="display:none;">Nenhum grupo cadastrado. Cadastre em Integração &gt; Grupos de disparo (ou use a opção listar grupos da Z-API).</div>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label">Telefones WhatsApp individuais</label>
+                            <div id="config-telefones-destino-list" class="d-flex flex-column gap-2 mb-2"></div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-add-telefone-destino">
+                                <i class="bi bi-plus-lg"></i> Adicionar telefone
+                            </button>
+                            <div class="form-text">Um número por linha. Ex.: 21979630377</div>
+                        </div>
+
                         <hr class="my-3">
                         <h6 class="fw-bold mb-2">Relatório diário de vendas (esteira)</h6>
                         <p class="text-muted small mb-3">Envia ao GC o volume de ativados e a esteira de auditoria do dia (segunda a sexta).</p>
@@ -703,6 +717,50 @@
             // --- Aba Configuração ---
             document.getElementById('tab-config-btn').addEventListener('shown.bs.tab', carregarConfig);
 
+            function renderTelefonesDestinoInputs(telefones) {
+                const list = document.getElementById('config-telefones-destino-list');
+                list.innerHTML = '';
+                const items = (telefones && telefones.length) ? telefones : [''];
+                items.forEach(function(tel) {
+                    addTelefoneDestinoRow(tel);
+                });
+            }
+
+            function addTelefoneDestinoRow(valor) {
+                const list = document.getElementById('config-telefones-destino-list');
+                const row = document.createElement('div');
+                row.className = 'input-group';
+                row.innerHTML =
+                    '<input type="text" class="form-control config-telefone-destino-input" placeholder="Ex: 21979630377" maxlength="20">' +
+                    '<button type="button" class="btn btn-outline-danger" title="Remover"><i class="bi bi-trash"></i></button>';
+                row.querySelector('input').value = valor || '';
+                row.querySelector('button').addEventListener('click', function() {
+                    row.remove();
+                    if (!list.querySelector('.config-telefone-destino-input')) {
+                        addTelefoneDestinoRow('');
+                    }
+                });
+                list.appendChild(row);
+            }
+
+            function coletarTelefonesDestino() {
+                const tels = [];
+                document.querySelectorAll('.config-telefone-destino-input').forEach(function(inp) {
+                    const v = (inp.value || '').trim();
+                    if (v) tels.push(v);
+                });
+                return tels;
+            }
+
+            function formatarDestinosDisplay(data) {
+                const nomes = (data.grupos_destino || []).map(function(g) { return g.nome; });
+                document.getElementById('config-grupo-display').textContent =
+                    nomes.length ? nomes.join(', ') : 'Nenhum';
+                const tels = data.telefones_destino || [];
+                document.getElementById('config-telefones-destino-display').textContent =
+                    tels.length ? tels.join(', ') : 'Nenhum';
+            }
+
             async function carregarConfig() {
                 try {
                     const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader(true) });
@@ -712,30 +770,28 @@
                     document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-email-display').textContent = data.email_gc || 'Não configurado';
-                    document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
+                    formatarDestinosDisplay(data);
                     document.getElementById('config-relatorio-display').textContent = data.relatorio_esteira_gc_ativo ? 'Ativo' : 'Inativo';
                     document.getElementById('config-horarios-display').textContent =
                         (data.relatorio_esteira_horario_1 || '17:20') + ' e ' + (data.relatorio_esteira_horario_2 || '18:00');
                     const sel = document.getElementById('config-grupo');
-                    sel.innerHTML = '<option value="">— Nenhum —</option>';
+                    sel.innerHTML = '';
+                    const selectedIds = new Set((data.grupo_ids || []).map(Number));
                     (data.grupos || []).forEach(function(g) {
                         const opt = document.createElement('option');
                         opt.value = g.id;
                         opt.textContent = g.nome;
-                        if (Number(data.grupo_id) === Number(g.id)) opt.selected = true;
+                        if (selectedIds.has(Number(g.id))) opt.selected = true;
                         sel.appendChild(opt);
                     });
                     document.getElementById('config-grupos-aviso').style.display = (data.grupos && data.grupos.length) ? 'none' : 'block';
                     document.getElementById('config-nome-gc').value = data.nome_gc || '';
                     document.getElementById('config-telefone').value = data.telefone_gc || '';
                     document.getElementById('config-email-gc').value = data.email_gc || '';
+                    renderTelefonesDestinoInputs(data.telefones_destino || []);
                     document.getElementById('config-relatorio-ativo').checked = !!data.relatorio_esteira_gc_ativo;
                     document.getElementById('config-horario-1').value = data.relatorio_esteira_horario_1 || '17:20';
                     document.getElementById('config-horario-2').value = data.relatorio_esteira_horario_2 || '18:00';
-                    const relAtivo = !!data.relatorio_esteira_gc_ativo;
-                    document.getElementById('config-relatorio-display').textContent = relAtivo ? 'Ativo' : 'Inativo';
-                    document.getElementById('config-horarios-display').textContent =
-                        (data.relatorio_esteira_horario_1 || '17:20') + ' e ' + (data.relatorio_esteira_horario_2 || '18:00');
                     if (data.pode_editar) {
                         show('config-form', true);
                         show('config-visualizar', false);
@@ -747,8 +803,13 @@
                     document.getElementById('config-telefone-display').textContent = 'Erro ao carregar';
                     document.getElementById('config-nome-display').textContent = 'Erro ao carregar';
                     document.getElementById('config-grupo-display').textContent = '—';
+                    document.getElementById('config-telefones-destino-display').textContent = '—';
                 }
             }
+
+            document.getElementById('btn-add-telefone-destino').addEventListener('click', function() {
+                addTelefoneDestinoRow('');
+            });
 
             document.getElementById('btn-salvar-config').addEventListener('click', async function() {
                 const msgEl = document.getElementById('config-msg');
@@ -756,7 +817,10 @@
                 const nomeGc = document.getElementById('config-nome-gc').value.trim();
                 const telefone = document.getElementById('config-telefone').value.trim();
                 const emailGc = document.getElementById('config-email-gc').value.trim();
-                const grupoId = document.getElementById('config-grupo').value;
+                const grupoIds = Array.from(document.getElementById('config-grupo').selectedOptions).map(function(o) {
+                    return parseInt(o.value, 10);
+                });
+                const telefonesDestino = coletarTelefonesDestino();
                 const relatorioAtivo = document.getElementById('config-relatorio-ativo').checked;
                 const horario1 = document.getElementById('config-horario-1').value || '17:20';
                 const horario2 = document.getElementById('config-horario-2').value || '18:00';
@@ -765,7 +829,8 @@
                         nome_gc: nomeGc || null,
                         telefone_gc: telefone || null,
                         email_gc: emailGc || null,
-                        grupo_id: grupoId === '' ? null : parseInt(grupoId, 10),
+                        grupo_ids: grupoIds,
+                        telefones_destino: telefonesDestino,
                         relatorio_esteira_gc_ativo: relatorioAtivo,
                         relatorio_esteira_horario_1: horario1,
                         relatorio_esteira_horario_2: horario2
@@ -777,13 +842,13 @@
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Erro ao salvar');
-                    msgEl.textContent = 'Configuração salva. O próximo envio usará este número e grupo.';
+                    msgEl.textContent = data.detail || 'Configuração salva. Antecipação e Sem SLOT usarão estes destinos.';
                     msgEl.className = 'ms-2 small text-success';
                     configData = data;
                     document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-email-display').textContent = data.email_gc || 'Não configurado';
-                    document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
+                    formatarDestinosDisplay(data);
                     document.getElementById('config-relatorio-display').textContent = data.relatorio_esteira_gc_ativo ? 'Ativo' : 'Inativo';
                     document.getElementById('config-horarios-display').textContent =
                         (data.relatorio_esteira_horario_1 || '17:20') + ' e ' + (data.relatorio_esteira_horario_2 || '18:00');

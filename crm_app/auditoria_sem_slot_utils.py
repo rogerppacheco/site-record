@@ -1,10 +1,9 @@
-"""Utilitários para comunicação GC — agenda disponível não atende o cliente (auditoria)."""
+"""Utilitários para comunicação — agenda disponível não atende o cliente (auditoria)."""
 import base64
 import logging
 
-from django.contrib.auth import get_user_model
-
 from .models import AnteciparInstalacaoConfig, AuditoriaSemSlotGC
+from .services.destinos_operacionais_service import obter_destinos_operacionais
 from .whatsapp_service import WhatsAppService
 
 
@@ -114,27 +113,22 @@ def montar_mensagem_sem_slot(uf, ordem_servico, endereco, data_desejada, turno_d
     )
 
 
+def destinatarios_configurados():
+    """Telefones individuais + grupos WhatsApp da configuração operacional."""
+    return obter_destinos_operacionais(_get_config_gc())
+
+
 def destinatarios_gc_e_diretoria():
-    """Telefone do GC (config) + WhatsApp de usuários ativos do perfil Diretoria."""
-    config = _get_config_gc()
-    telefone_gc = (config.telefone_gc or '').strip()
-    User = get_user_model()
-    diretoria_users = User.objects.filter(
-        groups__name='Diretoria', is_active=True,
-    ).distinct()
-    diretoria_tels = []
-    vistos = set()
-    if telefone_gc:
-        vistos.add(''.join(c for c in telefone_gc if c.isdigit()))
-    for u in diretoria_users:
-        tel = (getattr(u, 'tel_whatsapp', None) or '').strip()
-        if not tel:
-            continue
-        key = ''.join(c for c in tel if c.isdigit())
-        if key and key not in vistos:
-            vistos.add(key)
-            diretoria_tels.append(tel)
-    return telefone_gc, diretoria_tels
+    """
+    Compatibilidade: retorna (primeiro_telefone, demais_telefones).
+
+    Diretoria não é mais destino automático — apenas telefones_destino.
+    """
+    destinos = destinatarios_configurados()
+    telefones = destinos['telefones']
+    if not telefones:
+        return '', []
+    return telefones[0], telefones[1:]
 
 
 def validar_endereco_completo_venda(venda):
@@ -165,7 +159,7 @@ def processar_envio_sem_slot(
     imagem_upload,
 ):
     """
-    Envia imagem com legenda (texto completo) ao GC e à Diretoria via Z-API.
+    Envia imagem com legenda (texto completo) aos destinos configurados (telefones e grupos).
     Se a mensagem exceder o limite da legenda, envia texto e imagem separados.
     Persiste AuditoriaSemSlotGC. Retorna (registro, sucesso_parcial, mensagem_resumo).
     """
@@ -179,18 +173,22 @@ def processar_envio_sem_slot(
         uf, ordem_servico, endereco, data_desejada_cliente,
         turno_desejado_cliente, telefone_contato,
     )
-    telefone_gc, tels_diretoria = destinatarios_gc_e_diretoria()
+    destinos_cfg = destinatarios_configurados()
     destinos = []
-    if telefone_gc:
-        destinos.append(('gc', telefone_gc))
-    for i, tel in enumerate(tels_diretoria):
-        destinos.append((f'diretoria_{i}', tel))
+    for i, tel in enumerate(destinos_cfg['telefones']):
+        destinos.append(('telefone', tel, tel))
+    for grupo in destinos_cfg['grupos']:
+        destinos.append(('grupo', grupo.chat_id, grupo.nome or grupo.chat_id))
 
     if not destinos:
-        return None, False, 'Nenhum destino configurado (telefone GC ou Diretoria com WhatsApp).'
+        return None, False, (
+            'Nenhum destino configurado. Defina grupos e/ou telefones WhatsApp '
+            'em Antecipar Instalação > Configuração.'
+        )
 
-    enviado_gc = False
-    enviados_diretoria = []
+    enviado_individual = False
+    enviados_individuais = []
+    enviados_grupos = []
     erros = []
     # WhatsApp limita legenda da imagem (~1024 caracteres)
     caption_max = 1024
@@ -199,22 +197,23 @@ def processar_envio_sem_slot(
 
     try:
         svc = WhatsAppService()
-        for tipo, telefone in destinos:
+        for tipo, destino, rotulo in destinos:
             if not img_data_url:
-                erros.append(f'{tipo}: imagem ausente')
+                erros.append(f'{rotulo}: imagem ausente')
                 continue
             if not usar_legenda_completa:
-                ok_txt, resp_txt = svc.enviar_mensagem_texto(telefone, mensagem)
+                ok_txt, resp_txt = svc.enviar_mensagem_texto(destino, mensagem)
                 if not ok_txt:
-                    erros.append(f'{tipo}: texto — {resp_txt}')
-            ok_img = svc.enviar_imagem_b64(telefone, img_data_url, caption=caption_img)
+                    erros.append(f'{rotulo}: texto — {resp_txt}')
+            ok_img = svc.enviar_imagem_b64(destino, img_data_url, caption=caption_img)
             if not ok_img:
-                erros.append(f'{tipo}: imagem — falha no envio')
+                erros.append(f'{rotulo}: imagem — falha no envio')
                 continue
-            if tipo == 'gc':
-                enviado_gc = True
-            elif tipo.startswith('diretoria'):
-                enviados_diretoria.append(telefone)
+            if tipo == 'telefone':
+                enviado_individual = True
+                enviados_individuais.append(destino)
+            else:
+                enviados_grupos.append({'chat_id': destino, 'nome': rotulo})
     except Exception as e:
         logger.exception("Erro ao enviar WhatsApp sem slot: %s", e)
         erros.append(str(e))
@@ -231,8 +230,9 @@ def processar_envio_sem_slot(
         turno_desejado_cliente=turno_desejado_cliente,
         telefone_contato=telefone_contato or '',
         mensagem_enviada=mensagem[:4000],
-        enviado_gc=enviado_gc,
-        enviados_diretoria=enviados_diretoria,
+        enviado_gc=enviado_individual,
+        enviados_diretoria=enviados_individuais,
+        enviados_grupos=enviados_grupos,
         erros=erros,
     )
     if img_bytes is not None:
@@ -262,14 +262,23 @@ def processar_envio_sem_slot(
         logger.warning("[Sem SLOT] Falha ao notificar Teams: %s", e)
         erros.append(f'Teams: {e}')
 
-    sucesso = enviado_gc or bool(enviados_diretoria) or enviado_teams
+    sucesso = enviado_individual or bool(enviados_grupos) or enviado_teams
     if sucesso and erros:
         msg = 'Enviado com avisos: ' + '; '.join(erros[:3])
     elif sucesso:
+        partes = []
+        if enviados_individuais:
+            partes.append(f'{len(enviados_individuais)} contato(s)')
+        if enviados_grupos:
+            partes.append(f'{len(enviados_grupos)} grupo(s)')
+        destino_txt = ' e '.join(partes) if partes else 'destinos configurados'
         msg = (
-            'Comunicação enviada ao GC e à Diretoria (texto na legenda da imagem).'
-            if usar_legenda_completa
-            else 'Comunicação enviada ao GC e à Diretoria (texto e imagem em mensagens separadas — legenda muito longa).'
+            f'Comunicação enviada aos destinos configurados ({destino_txt})'
+            + (
+                ' (texto na legenda da imagem).'
+                if usar_legenda_completa
+                else ' (texto e imagem em mensagens separadas — legenda muito longa).'
+            )
         )
     else:
         msg = 'Falha no envio: ' + ('; '.join(erros) if erros else 'erro desconhecido')

@@ -2138,7 +2138,7 @@ class EsteiraVendasConfig(models.Model):
 
 
 class AnteciparInstalacaoConfig(models.Model):
-    """Configuração única para a ferramenta Antecipar Instalação (número GC e grupo WhatsApp)."""
+    """Configuração única operacional (GC + destinos de Antecipação e Sem SLOT)."""
     nome_gc = models.CharField(max_length=100, blank=True, default='', verbose_name="Nome do GC")
     telefone_gc = models.CharField(max_length=20, blank=True, default='21979630377', verbose_name="Telefone do GC")
     email_gc = models.EmailField(
@@ -2150,7 +2150,21 @@ class AnteciparInstalacaoConfig(models.Model):
     )
     grupo = models.ForeignKey(
         GrupoDisparo, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='+', verbose_name="Grupo WhatsApp (ex: Record PAP)"
+        related_name='+', verbose_name="Grupo WhatsApp (legado)",
+        help_text="Campo legado. Preferir grupos_destino.",
+    )
+    grupos_destino = models.ManyToManyField(
+        GrupoDisparo,
+        blank=True,
+        related_name='+',
+        verbose_name='Grupos WhatsApp de destino',
+        help_text='Grupos que recebem Antecipação e Sem SLOT (um ou mais).',
+    )
+    telefones_destino = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name='Telefones WhatsApp individuais',
+        help_text='Números WhatsApp individuais que recebem Antecipação e Sem SLOT.',
     )
     relatorio_esteira_gc_ativo = models.BooleanField(
         default=False,
@@ -2186,7 +2200,12 @@ class AnteciparInstalacaoConfig(models.Model):
 
     def __str__(self):
         nome_gc = self.nome_gc or 'não definido'
-        return f"GC: {nome_gc} ({self.telefone_gc or 'não definido'}) | Grupo: {self.grupo.nome if self.grupo else 'não definido'}"
+        n_grupos = self.grupos_destino.count() if self.pk else 0
+        n_tels = len(self.telefones_destino or [])
+        return (
+            f"GC: {nome_gc} ({self.telefone_gc or 'não definido'}) | "
+            f"Destinos: {n_grupos} grupo(s), {n_tels} telefone(s)"
+        )
 
 
 class EtapaErroAjudaGc(models.Model):
@@ -2437,7 +2456,7 @@ class PendenciaIndevidaAnexo(models.Model):
 
 
 class AuditoriaSemSlotGC(models.Model):
-    """Registro de venda cadastrada sem slot de agenda compatível — comunicação ao GC e Diretoria."""
+    """Registro de venda cadastrada sem slot — comunicação aos destinos configurados."""
     TURNO_CHOICES = [
         ('MANHA', 'Manhã'),
         ('TARDE', 'Tarde'),
@@ -2460,7 +2479,16 @@ class AuditoriaSemSlotGC(models.Model):
     imagem_anexo = models.ImageField(upload_to='auditoria_sem_slot/%Y/%m/', blank=True, null=True)
     mensagem_enviada = models.TextField(blank=True)
     enviado_gc = models.BooleanField(default=False)
-    enviados_diretoria = models.JSONField(default=list, blank=True)
+    enviados_diretoria = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Telefones individuais que receberam o envio (legado: Diretoria).',
+    )
+    enviados_grupos = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Chat IDs / nomes dos grupos WhatsApp que receberam o envio.',
+    )
     enviado_teams = models.BooleanField(default=False, verbose_name="Enviado ao Teams")
     erros = models.JSONField(default=list, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)

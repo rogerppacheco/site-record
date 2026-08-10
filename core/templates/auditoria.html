@@ -3644,7 +3644,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             if (semSlotPayload) {
                 setBotoesAgendamentoTravados(
                     true,
-                    'Enviando comunicação Sem SLOT ao GC e Diretoria... Aguarde.'
+                    'Enviando comunicação Sem SLOT aos destinos configurados... Aguarde.'
                 );
             }
             return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { method: 'POST', body: JSON.stringify({ status: st, observacoes: obs, dados_atualizados: dados }) })
@@ -3653,7 +3653,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 if (semSlotPayload) {
                     try {
                         const r = await enviarSemSlotGC(semSlotPayload);
-                        msg += ' ' + (r.detail || 'Comunicação enviada ao GC e Diretoria.');
+                        msg += ' ' + (r.detail || 'Comunicação enviada aos destinos configurados.');
                         if (r.success === false) msg = 'Salvo, porém: ' + (r.detail || 'verifique o envio ao GC.');
                         if (r.duplicado) msg = 'Salvo! ' + (r.detail || 'Comunicação Sem SLOT já havia sido enviada.');
                     } catch (e) {
