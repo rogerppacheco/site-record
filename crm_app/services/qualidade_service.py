@@ -14,8 +14,8 @@ from typing import Any, Optional
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
-from django.db.models import Count, F, Q, QuerySet
-from django.db.models.functions import TruncMonth
+from django.db.models import CharField, Count, F, Func, Q, QuerySet, Value
+from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from crm_app.fpd_status_mapping import (
@@ -35,6 +35,15 @@ from crm_app.utils import is_member
 from crm_app.whatsapp_service import WhatsAppService
 
 logger = logging.getLogger(__name__)
+
+
+class _StripNonDigits(Func):
+    """PostgreSQL: normaliza telefone removendo tudo que não for dígito."""
+
+    function = 'REGEXP_REPLACE'
+    template = "%(function)s(%(expressions)s, '[^0-9]', '', 'g')"
+    output_field = CharField()
+
 
 # PAGO + OUTROS (Cancelada/Zerada/FECHADA): fechadas na visão FPD — entram em "Pagas"
 # sem alterar o status exibido (mantém OUTROS para rastrear cancelamento).
@@ -450,9 +459,44 @@ def _aplicar_filtros_contratos(
         )
         if busca_digits:
             filtros_busca |= Q(cpf_cliente__icontains=busca_digits)
+            # Celular 1/2 do cadastro da venda (com ou sem máscara / DDI 55).
+            # A busca geral (q com 2+ chars) já varre todas as safras FPD.
+            if len(busca_digits) >= 8:
+                queryset = queryset.annotate(
+                    _tel1_digitos=_StripNonDigits(
+                        Coalesce(F('venda__telefone1'), Value(''))
+                    ),
+                    _tel2_digitos=_StripNonDigits(
+                        Coalesce(F('venda__telefone2'), Value(''))
+                    ),
+                )
+                for variante in _variantes_busca_telefone(busca_digits):
+                    filtros_busca |= (
+                        Q(_tel1_digitos__contains=variante)
+                        | Q(_tel2_digitos__contains=variante)
+                    )
+                if _contrato_tem_campo('telefone'):
+                    queryset = queryset.annotate(
+                        _tel_contrato_digitos=_StripNonDigits(
+                            Coalesce(F('telefone'), Value(''))
+                        ),
+                    )
+                    for variante in _variantes_busca_telefone(busca_digits):
+                        filtros_busca |= Q(_tel_contrato_digitos__contains=variante)
         queryset = queryset.filter(filtros_busca)
 
     return queryset
+
+
+def _variantes_busca_telefone(busca_digits: str) -> set[str]:
+    """Variantes de dígitos para casar telefone digitado com o cadastro."""
+    variantes = {
+        v for v in _digitos_telefone_variantes(busca_digits) if len(v) >= 8
+    }
+    for n in (8, 9, 10, 11):
+        if len(busca_digits) >= n:
+            variantes.add(busca_digits[-n:])
+    return variantes
 
 
 def _q_promessa_pagamento(faixa: str, hoje: date) -> Q:
@@ -3486,13 +3530,30 @@ def listar_gestao_envios_qualidade(
         qs = qs.filter(sucesso=sucesso)
     q = (q or '').strip()
     if q:
-        qs = qs.filter(
+        q_digits = re.sub(r'\D', '', q)
+        filtros_gestao = (
             Q(contrato__ordem_servico__icontains=q)
             | Q(contrato__cliente_nome__icontains=q)
             | Q(contrato__numero_contrato__icontains=q)
             | Q(destinatario__icontains=q)
             | Q(template_nome__icontains=q)
         )
+        if q_digits and len(q_digits) >= 8:
+            qs = qs.annotate(
+                _gestao_tel1=_StripNonDigits(
+                    Coalesce(F('contrato__venda__telefone1'), Value(''))
+                ),
+                _gestao_tel2=_StripNonDigits(
+                    Coalesce(F('contrato__venda__telefone2'), Value(''))
+                ),
+            )
+            for variante in _variantes_busca_telefone(q_digits):
+                filtros_gestao |= (
+                    Q(_gestao_tel1__contains=variante)
+                    | Q(_gestao_tel2__contains=variante)
+                    | Q(destinatario__icontains=variante)
+                )
+        qs = qs.filter(filtros_gestao)
 
     # Resumo do dia (WhatsApp) independente dos filtros de listagem, exceto data
     base_dia = HistoricoEnvioQualidade.objects.filter(

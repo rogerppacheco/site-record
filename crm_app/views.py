@@ -1903,11 +1903,14 @@ class VendaViewSet(viewsets.ModelViewSet):
                     )
 
         # --- FILTRO DE STATUS ---
+        # Front envia prefixos parciais (ex.: CANCELAD, PENDENC) nas abas de status.
+        # CANCELAD deve usar icontains para casar CANCELADA/CANCELADO; iexact em
+        # 'CANCELAD' não encontra nenhum StatusCRM e esvazia a lista indevidamente.
         status_filter = self.request.query_params.get('status')
         status_instalada_exata = False
         if status_filter:
             status_upper = status_filter.upper()
-            if status_upper == 'CANCELADO':
+            if 'CANCELAD' in status_upper:
                 queryset = queryset.filter(status_esteira__nome__icontains='CANCELAD')
             elif 'PENDEN' in status_upper:
                 queryset = queryset.filter(status_esteira__nome__icontains='PENDEN')
