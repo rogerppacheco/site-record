@@ -635,7 +635,8 @@ from email_validator import validate_email, EmailNotValidError
 
 # --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
 from django.db import transaction, IntegrityError
-from django.db.models import Count, Q, Sum, F
+from django.db.models import Count, Q, Sum, F, Func, Value, CharField
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.timezone import now
 from django.contrib.auth import get_user_model, authenticate
@@ -1826,6 +1827,28 @@ def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs='', valor_ma
     }
 
 
+class _StripNonDigitsVenda(Func):
+    """PostgreSQL: normaliza telefone removendo tudo que não for dígito."""
+
+    function = 'REGEXP_REPLACE'
+    template = "%(function)s(%(expressions)s, '[^0-9]', '', 'g')"
+    output_field = CharField()
+
+
+def _variantes_busca_telefone_venda(busca_digits: str) -> set[str]:
+    """Variantes de dígitos para casar telefone digitado com o cadastro da venda."""
+    digitos: set[str] = set()
+    d = re.sub(r'\D', '', str(busca_digits or ''))
+    if not d:
+        return digitos
+    digitos.add(d)
+    if d.startswith('55') and len(d) > 11:
+        digitos.add(d[2:])
+    elif not d.startswith('55') and len(d) >= 10:
+        digitos.add('55' + d)
+    return {v for v in digitos if len(v) >= 8}
+
+
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission]
     resource_name = 'venda'
@@ -1872,6 +1895,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         data_fim_str = self.request.query_params.get('data_fim')
         data_tipo = (self.request.query_params.get('data_tipo') or '').strip().lower()
         status_filter_raw = (self.request.query_params.get('status') or '').strip().upper()
+        # Busca textual com 2+ chars: varre a base toda (ignora período Início/Fim),
+        # no mesmo espírito da busca geral do Qualidade.
+        busca_geral = len((search or '').strip()) >= 2
         
         # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
         grupos_livres = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
@@ -1880,7 +1906,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         hoje_local = timezone.localtime(timezone.now())
         hoje_d = hoje_local.date()
 
-        if not eh_gestao_total and not search:
+        if not eh_gestao_total and not busca_geral:
             hoje = hoje_local
             inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             aplica_padrao_mes_atual = True
@@ -1919,9 +1945,9 @@ class VendaViewSet(viewsets.ModelViewSet):
             status_instalada_exata = status_upper == 'INSTALADA'
 
         # --- FILTRO DE BUSCA GLOBAL ---
-        if search:
-            search_clean = re.sub(r'\D', '', search)
+        if busca_geral:
             search_strip = (search or '').strip()
+            search_clean = re.sub(r'\D', '', search_strip)
             filters = Q(ordem_servico__icontains=search_strip) | \
                       Q(cliente__nome_razao_social__icontains=search_strip) | \
                       Q(cliente__cpf_cnpj__icontains=search_strip)
@@ -1929,10 +1955,24 @@ class VendaViewSet(viewsets.ModelViewSet):
                 filters |= Q(cliente__cpf_cnpj__icontains=search_clean)
                 filters |= Q(ordem_servico__icontains=search_clean)
             # Incluir busca por consultor/vendedor (nome ou username)
-            if search_strip:
-                filters |= Q(vendedor__username__icontains=search_strip) | \
-                           Q(vendedor__first_name__icontains=search_strip) | \
-                           Q(vendedor__last_name__icontains=search_strip)
+            filters |= Q(vendedor__username__icontains=search_strip) | \
+                       Q(vendedor__first_name__icontains=search_strip) | \
+                       Q(vendedor__last_name__icontains=search_strip)
+            # Telefone 1/2 do cadastro (com ou sem máscara / DDI 55)
+            if len(search_clean) >= 8:
+                queryset = queryset.annotate(
+                    _tel1_digitos=_StripNonDigitsVenda(
+                        Coalesce(F('telefone1'), Value(''))
+                    ),
+                    _tel2_digitos=_StripNonDigitsVenda(
+                        Coalesce(F('telefone2'), Value(''))
+                    ),
+                )
+                for variante in _variantes_busca_telefone_venda(search_clean):
+                    filters |= (
+                        Q(_tel1_digitos__contains=variante)
+                        | Q(_tel2_digitos__contains=variante)
+                    )
             queryset = queryset.filter(filters)
 
         # --- PERMISSÕES DE VISUALIZAÇÃO ---
@@ -2052,7 +2092,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 pode_filtrar_datas = True
             elif eh_vs_mes and mes_completo_vendedor_supervisor_valido(dt_ini, dt_fim, hoje_d):
                 pode_filtrar_datas = True
-        if pode_filtrar_datas and dt_ini and dt_fim:
+        if pode_filtrar_datas and dt_ini and dt_fim and not busca_geral:
             try:
                 if flow == 'auditoria':
                     queryset = queryset.filter(

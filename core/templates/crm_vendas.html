@@ -253,7 +253,8 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                                     <label class="form-label small fw-bold text-muted mb-0">Buscar Global</label>
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text bg-white py-1"><i class="bi bi-search"></i></span>
-                                        <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="CPF, Nome ou OS...">
+                                        <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="CPF, nome, O.S. ou telefone..." title="Com 2+ caracteres busca em toda a base (ignora Início/Fim)">
+                                        <span id="busca-geral-hint" class="input-group-text d-none text-bg-info py-1" title="Resultados de toda a base">Busca geral</span>
                                     </div>
                                 </div>
 
@@ -1317,17 +1318,23 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
-            const busca = document.getElementById('filtro-busca').value;
+            const busca = (document.getElementById('filtro-busca').value || '').trim();
+            const buscaGeral = busca.length >= 2;
+            const hintBusca = document.getElementById('busca-geral-hint');
+            if (hintBusca) hintBusca.classList.toggle('d-none', !buscaGeral);
             const tabLista = document.querySelector('#abas-navegacao .nav-link.active');
             const tabView = tabLista ? tabLista.getAttribute('data-view') : 'minhas_vendas';
             const viewAtual = tabView === 'minhas_vendas' ? 'minhas_vendas' : 'geral';
             
             let url = `/crm/vendas/?view=${viewAtual}`;
-            if(inicio) url += `&data_inicio=${inicio}`;
-            if(fim) url += `&data_fim=${fim}`;
-            if(busca) url += `&search=${busca}`; 
-            if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
-            if(statusEsteiraAtual) url += `&status=${encodeURIComponent(statusEsteiraAtual)}`;
+            // Busca geral: não envia período — varre a base toda
+            if (!buscaGeral) {
+                if (inicio) url += `&data_inicio=${inicio}`;
+                if (fim) url += `&data_fim=${fim}`;
+            }
+            if (busca) url += `&search=${encodeURIComponent(busca)}`;
+            if (viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
+            if (statusEsteiraAtual) url += `&status=${encodeURIComponent(statusEsteiraAtual)}`;
 
             try {
                 // Busca todas as páginas de vendas automaticamente
@@ -1390,6 +1397,12 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
                 document.getElementById('count-instalados').textContent = `${counts.instalada}`;
                 document.getElementById('count-cancelados').textContent = `${counts.cancelado}`;
                 document.getElementById('contador-filtros-principais').textContent = `${counts.total}`;
+                if (hintBusca) {
+                    hintBusca.classList.toggle('d-none', !buscaGeral);
+                    hintBusca.textContent = buscaGeral
+                        ? `Busca geral · ${counts.total}`
+                        : 'Busca geral';
+                }
 
                 if (vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma venda encontrada.</td></tr>';
@@ -2047,14 +2060,17 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
-            const busca = document.getElementById('filtro-busca').value;
+            const busca = (document.getElementById('filtro-busca').value || '').trim();
+            const buscaGeral = busca.length >= 2;
             const tabLista = document.querySelector('#abas-navegacao .nav-link.active');
             const tabView = tabLista ? tabLista.getAttribute('data-view') : 'minhas_vendas';
             const view = tabView === 'minhas_vendas' ? 'minhas_vendas' : 'geral';
             const params = new URLSearchParams();
             params.set('view', view);
-            if (inicio) params.set('data_inicio', inicio);
-            if (fim) params.set('data_fim', fim);
+            if (!buscaGeral) {
+                if (inicio) params.set('data_inicio', inicio);
+                if (fim) params.set('data_fim', fim);
+            }
             if (busca) params.set('search', busca);
             if (view === 'geral' && vendedor) params.set('consultor_id', vendedor);
             if (statusEsteiraAtual) params.set('status', statusEsteiraAtual);
