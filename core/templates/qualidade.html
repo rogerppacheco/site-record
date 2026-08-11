@@ -193,6 +193,11 @@
     max-width: 13rem;
     font-size: 0.78rem;
 }
+.qualidade-toolbar .q-sel-vendedor {
+    min-width: 9.5rem;
+    max-width: 16rem;
+    flex: 0 0 auto;
+}
 .qualidade-toolbar .q-sel-status,
 .qualidade-toolbar .q-sel-elegivel { width: auto; min-width: 6.2rem; max-width: 8.5rem; }
 .qualidade-mais-filtros {
@@ -1073,6 +1078,9 @@
                     <option value="proximos">Próx. 3 dias</option>
                     <option value="todas">Todas com promessa</option>
                 </select>
+                <select id="filtro-vendedor" class="form-select form-select-sm q-sel-filtro q-sel-vendedor" onchange="page=1;carregarDashboard()" title="Filtrar por vendedor do CRM">
+                    <option value="">Todos os vendedores</option>
+                </select>
                 <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-mais-filtros" onclick="toggleMaisFiltrosQualidade()" title="Mais filtros">
                     <i class="bi bi-sliders"></i> Mais
                 </button>
@@ -1758,12 +1766,14 @@
         const st = (document.getElementById('filtro-status') || {}).value || '';
         const elig = (document.getElementById('filtro-elegivel') || {}).value || '';
         const promessa = (document.getElementById('filtro-promessa') || {}).value || '';
+        const vend = (document.getElementById('filtro-vendedor') || {}).value || '';
         const q = ((document.getElementById('filtro-q') || {}).value || '').trim();
         if (q) chips.push('busca');
         if (faixa) chips.push('atraso');
         if (pagas !== '') chips.push(`${pagas}/10`);
         if (stTrat) chips.push('status trat.');
         if (promessa) chips.push('promessa');
+        if (vend) chips.push('vendedor');
         if (conf) chips.push('conf. FPD');
         if (st) chips.push('contrato');
         if (elig) chips.push('elegível');
@@ -1789,6 +1799,8 @@
         if (pagas) pagas.value = '';
         const promessa = document.getElementById('filtro-promessa');
         if (promessa) promessa.value = '';
+        const vend = document.getElementById('filtro-vendedor');
+        if (vend) vend.value = '';
         const mais = document.getElementById('qualidade-mais-filtros');
         if (mais) mais.classList.remove('is-open');
         const btnMais = document.getElementById('btn-mais-filtros');
@@ -2151,6 +2163,17 @@
                 ).join('');
             if ([...selSt.options].some(o => o.value === atual)) selSt.value = atual;
         }
+
+        const vendList = c.vendedores || [];
+        const selVend = document.getElementById('filtro-vendedor');
+        if (selVend) {
+            const atual = selVend.value;
+            selVend.innerHTML = '<option value="">Todos os vendedores</option>' +
+                vendList.map(v =>
+                    `<option value="${v.id}">${labelComContagem(escapeHtml(v.nome), v.count)}</option>`
+                ).join('');
+            if ([...selVend.options].some(o => o.value === atual)) selVend.value = atual;
+        }
     }
 
     function formatDataBr(iso) {
@@ -2328,6 +2351,7 @@
         const faixaAtraso = (document.getElementById('filtro-faixa-atraso') || {}).value || '';
         const faturasPagas = (document.getElementById('filtro-faturas-pagas') || {}).value || '';
         const promessa = (document.getElementById('filtro-promessa') || {}).value || '';
+        const vendedor = (document.getElementById('filtro-vendedor') || {}).value || '';
         const hintBusca = document.getElementById('busca-geral-hint');
         if (hintBusca) hintBusca.classList.toggle('d-none', q.length < 2);
         atualizarResumoFiltrosAtivos();
@@ -2347,6 +2371,7 @@
         if (faixaAtraso) params.set('faixa_atraso', faixaAtraso);
         if (faturasPagas !== '') params.set('faturas_pagas', faturasPagas);
         if (promessa) params.set('promessa', promessa);
+        if (vendedor) params.set('vendedor', vendedor);
 
         const tbody = document.getElementById('tbody-contratos');
         tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Carregando…</td></tr>';

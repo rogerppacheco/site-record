@@ -394,8 +394,11 @@ def _aplicar_filtros_contratos(
     filtros: dict[str, Any],
 ) -> QuerySet[ContratoM10]:
     vendedor = filtros.get('vendedor')
-    if vendedor:
-        queryset = queryset.filter(vendedor_id=vendedor)
+    if vendedor not in (None, '', '0', 0, 'todos'):
+        try:
+            queryset = queryset.filter(vendedor_id=int(vendedor))
+        except (TypeError, ValueError):
+            pass
 
     status = filtros.get('status') or filtros.get('status_contrato')
     if status:
@@ -650,6 +653,7 @@ _FILTROS_OPCAO_CONTAGEM: frozenset[str] = frozenset({
     'status_tratamento_id',
     'status_tratamento',
     'promessa',
+    'vendedor',
 })
 
 
@@ -685,11 +689,30 @@ def contagens_opcoes_filtros(queryset: QuerySet[ContratoM10]) -> dict[str, Any]:
         key = 'sem' if row['status_tratamento_id'] is None else str(row['status_tratamento_id'])
         status_trat[key] = int(row['c'] or 0)
 
+    # Nickname operacional = username (mesmo padrão de _vendedor_nome)
+    vendedores: list[dict[str, Any]] = []
+    for row in (
+        queryset.filter(vendedor_id__isnull=False)
+        .values('vendedor_id', 'vendedor__username')
+        .annotate(c=Count('id', distinct=True))
+    ):
+        vid = row['vendedor_id']
+        if not vid:
+            continue
+        nick = (row.get('vendedor__username') or '').strip() or f'#{vid}'
+        vendedores.append({
+            'id': vid,
+            'nome': nick,
+            'count': int(row['c'] or 0),
+        })
+    vendedores.sort(key=lambda x: x['nome'].lower())
+
     return {
         'faixa_atraso': faixas,
         'faturas_pagas': faturas_pagas,
         'conferencia_fpd': conferencia,
         'status_tratamento': status_trat,
+        'vendedores': vendedores,
     }
 
 
