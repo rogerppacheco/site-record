@@ -1531,6 +1531,9 @@
     let modalEnvio = null;
     let modalOrfaos = null;
     let modalFaturas = null;
+    // Evita reaplicar o salto de fila a cada reload da mesma busca
+    // (permite o usuário clicar manualmente numa fila vazia depois).
+    let _qAutoFilaAplicada = '';
     const QUALIDADE_FOCO_POS_KEY = 'qualidade_foco_pos_acao';
 
     function obterLinhasContratoVisiveis() {
@@ -1699,13 +1702,21 @@
     }
     window.setAbaPrincipal = setAbaPrincipal;
 
-    function setFila(nova) {
+    function sincronizarRadioFila(nova) {
         fila = nova;
+        const elAtr = document.getElementById('fila-atrasados');
+        const elAbe = document.getElementById('fila-abertos');
+        const elPag = document.getElementById('fila-pagas');
+        const elTod = document.getElementById('fila-todos');
+        if (elAtr) elAtr.checked = nova === 'atrasados';
+        if (elAbe) elAbe.checked = nova === 'abertos';
+        if (elPag) elPag.checked = nova === 'pagas';
+        if (elTod) elTod.checked = nova === 'todos';
+    }
+
+    function setFila(nova) {
+        sincronizarRadioFila(nova);
         page = 1;
-        document.getElementById('fila-atrasados').checked = nova === 'atrasados';
-        document.getElementById('fila-abertos').checked = nova === 'abertos';
-        document.getElementById('fila-pagas').checked = nova === 'pagas';
-        document.getElementById('fila-todos').checked = nova === 'todos';
         if (abaPrincipal !== 'tratamento') {
             setAbaPrincipal('tratamento');
             return;
@@ -1713,6 +1724,20 @@
         carregarDashboard();
     }
     window.setFila = setFila;
+
+    /**
+     * Na busca textual, se a fila atual estiver vazia e outra tiver resultado,
+     * devolve a fila destino (prioridade: atrasados → abertos → pagas → todos).
+     */
+    function escolherFilaComResultado(filas, filaAtual) {
+        const f = filas || {};
+        const count = (k) => Number(f[k] || 0);
+        if (count(filaAtual) > 0) return null;
+        for (const k of ['atrasados', 'abertos', 'pagas', 'todos']) {
+            if (count(k) > 0) return k;
+        }
+        return null;
+    }
 
     window.toggleMaisFiltrosQualidade = function () {
         const box = document.getElementById('qualidade-mais-filtros');
@@ -1769,9 +1794,9 @@
         const btnMais = document.getElementById('btn-mais-filtros');
         if (btnMais) btnMais.classList.remove('active');
         if (abaPrincipal === 'tratamento') {
-            fila = 'atrasados';
-            document.getElementById('fila-atrasados').checked = true;
+            sincronizarRadioFila('atrasados');
         }
+        _qAutoFilaAplicada = '';
         page = 1;
         carregarDashboard();
     };
@@ -2339,6 +2364,22 @@
             }
             renderKpis(data.kpis || {});
             atualizarContagensFilas(data.filas);
+            // Busca: se a fila padrão (atrasados) estiver vazia e o registro
+            // estiver em outra (ex.: pagas), pula direto para a fila com resultado.
+            if (abaPrincipal === 'tratamento' && q.length >= 2) {
+                if (q !== _qAutoFilaAplicada) {
+                    const destino = escolherFilaComResultado(data.filas, fila);
+                    if (destino && destino !== fila) {
+                        _qAutoFilaAplicada = q;
+                        sincronizarRadioFila(destino);
+                        page = 1;
+                        return carregarDashboard();
+                    }
+                    _qAutoFilaAplicada = q;
+                }
+            } else if (q.length < 2) {
+                _qAutoFilaAplicada = '';
+            }
             atualizarReconciliacao(data.reconciliacao);
             atualizarLembretePromessas(data.promessas || {});
             statusTratamentoOpcoes = data.status_tratamento_opcoes || [];
