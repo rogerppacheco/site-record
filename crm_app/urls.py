@@ -187,6 +187,7 @@ from .views import (
     SolicitarAnteciparInstalacaoView,
     ConfigAnteciparInstalacaoView,
     ConfigEsteiraVendasView,
+    EnviarRelatorioPendenciaClienteView,
     HistoricoAnteciparInstalacaoView,
     ExportarHistoricoAnteciparInstalacaoView,
     RespostaGCAnteciparInstalacaoView,
@@ -546,6 +547,11 @@ urlpatterns = [
 
     # --- Esteira: config e pendência indevida ---
     path('esteira/config/', ConfigEsteiraVendasView.as_view(), name='esteira-vendas-config'),
+    path(
+        'esteira/relatorio-pendencia-cliente/enviar/',
+        EnviarRelatorioPendenciaClienteView.as_view(),
+        name='esteira-relatorio-pendencia-cliente-enviar',
+    ),
     path('pendencia-indevida/registrar/', PendenciaIndevidaRegistrarView.as_view(), name='pendencia-indevida-registrar'),
     path('pendencia-indevida/relatorio/', PendenciaIndevidaRelatorioView.as_view(), name='pendencia-indevida-relatorio'),
 

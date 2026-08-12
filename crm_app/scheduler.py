@@ -154,6 +154,18 @@ def processar_relatorio_esteira_gc_agendado():
         logger.error("Traceback: %s", traceback.format_exc())
 
 
+def processar_relatorio_pendencia_cliente_agendado():
+    try:
+        from crm_app.services.relatorio_pendencia_cliente_service import (
+            processar_envio_relatorio_pendencia_cliente,
+        )
+        processar_envio_relatorio_pendencia_cliente()
+    except Exception as e:
+        logger.error("❌ Erro no relatório pendência CLIENTE: %s", e)
+        import traceback
+        logger.error("Traceback: %s", traceback.format_exc())
+
+
 def processar_relatorio_tratamento_agendado():
     try:
         from crm_app.services.relatorio_tratamento_service import processar_envio_relatorio
@@ -197,6 +209,14 @@ def _registrar_jobs(scheduler):
         trigger=IntervalTrigger(minutes=1),
         id='processar_relatorio_esteira_gc',
         name='Relatório esteira GC ao WhatsApp (a cada minuto)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(processar_relatorio_pendencia_cliente_agendado),
+        trigger=IntervalTrigger(minutes=1),
+        id='processar_relatorio_pendencia_cliente',
+        name='Relatório pendências CLIENTE por vendedor (a cada minuto)',
         replace_existing=True,
         max_instances=1,
     )

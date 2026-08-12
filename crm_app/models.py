@@ -2123,6 +2123,31 @@ class EsteiraVendasConfig(models.Model):
         verbose_name='WhatsApp BackOffice (pendência cliente)',
         help_text='Número usado no botão/mensagem de dúvidas ao marcar pendência tipo CLIENTE.',
     )
+    relatorio_pendencia_cliente_ativo = models.BooleanField(
+        default=False,
+        verbose_name='Relatório pendências CLIENTE (WPP)',
+        help_text='Envia imagem com volume de pendências tipo CLIENTE por vendedor (seg–sex).',
+    )
+    relatorio_pendencia_cliente_horario_1 = models.TimeField(
+        default='12:00',
+        verbose_name='Horário 1º envio (pend. cliente)',
+    )
+    relatorio_pendencia_cliente_horario_2 = models.TimeField(
+        default='18:00',
+        verbose_name='Horário 2º envio (pend. cliente)',
+    )
+    relatorio_pendencia_cliente_controle_disparos = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Controle interno para evitar reenvio no mesmo slot diário.',
+    )
+    relatorio_pendencia_cliente_grupos = models.ManyToManyField(
+        'GrupoDisparo',
+        blank=True,
+        related_name='+',
+        verbose_name='Grupos WhatsApp (pend. cliente)',
+        help_text='Grupos que recebem a imagem de pendências CLIENTE por vendedor.',
+    )
     atualizado_em = models.DateTimeField(auto_now=True)
     atualizado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,

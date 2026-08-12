@@ -923,6 +923,11 @@ min-width: 100%;
                                     <i class="bi bi-gear"></i> WPP BackOffice
                                 </button>
                             </li>
+                            <li id="li-config-pend-cliente-wpp" style="display: none;">
+                                <button type="button" id="btn-config-pend-cliente-wpp" class="dropdown-item" onclick="abrirModalRelatorioPendCliente()" title="Relatório WhatsApp de pendências CLIENTE por vendedor">
+                                    <i class="bi bi-image"></i> Pend. Cliente (WPP)
+                                </button>
+                            </li>
                             <li>
                                 <button type="button" class="dropdown-item" onclick="abrirModalEnviarLembrete()" title="Enviar lembrete WhatsApp">
                                     <i class="bi bi-whatsapp"></i> Lembrete
@@ -1725,6 +1730,53 @@ min-width: 100%;
         </div>
     </div>
 
+    <div class="modal fade" id="modal-relatorio-pend-cliente" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Pendências CLIENTE — relatório WhatsApp</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Envia <strong>imagem</strong> com a quantidade de pendências tipo <strong>CLIENTE</strong> por vendedor
+                        (ordem alfabética), duas vezes ao dia (seg–sex), aos grupos selecionados.
+                    </p>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="config-pend-cliente-ativo">
+                        <label class="form-check-label" for="config-pend-cliente-ativo">Ativar envio automático</label>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold" for="config-pend-cliente-horario-1">1º envio</label>
+                            <input type="time" class="form-control form-control-sm" id="config-pend-cliente-horario-1" value="12:00">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold" for="config-pend-cliente-horario-2">2º envio</label>
+                            <input type="time" class="form-control form-control-sm" id="config-pend-cliente-horario-2" value="18:00">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold" for="config-pend-cliente-grupos">Grupos WhatsApp</label>
+                        <select id="config-pend-cliente-grupos" class="form-select form-select-sm" multiple size="6"></select>
+                        <div class="form-text">Segure Ctrl (Windows) ou Cmd (Mac) para selecionar vários.</div>
+                        <div id="config-pend-cliente-grupos-aviso" class="form-text text-warning" style="display:none;">
+                            Nenhum grupo cadastrado. Cadastre em Integração &gt; Grupos de disparo.
+                        </div>
+                    </div>
+                    <div id="config-pend-cliente-msg" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer flex-wrap gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-outline-success btn-sm" id="btn-enviar-teste-pend-cliente" onclick="enviarTesteRelatorioPendCliente()">
+                        <i class="bi bi-whatsapp me-1"></i>Enviar agora
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="salvarConfigRelatorioPendCliente()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-relatorio-pend-indevidas" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -1967,6 +2019,8 @@ min-width: 100%;
         const podeConfigEsteiraBackoffice = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const modalConfigEsteira = document.getElementById('modal-config-esteira')
             ? new bootstrap.Modal(document.getElementById('modal-config-esteira')) : null;
+        const modalRelatorioPendCliente = document.getElementById('modal-relatorio-pend-cliente')
+            ? new bootstrap.Modal(document.getElementById('modal-relatorio-pend-cliente')) : null;
 
         let pendenciaModalEhPendencia = false;
         const modalRelPendIndevidas = document.getElementById('modal-relatorio-pend-indevidas')
@@ -2324,6 +2378,7 @@ min-width: 100%;
 
             if (podeConfigEsteiraBackoffice) {
                 setEsteiraMenuItemVisivel('li-config-esteira-wpp', true);
+                setEsteiraMenuItemVisivel('li-config-pend-cliente-wpp', true);
                 const btnSync = document.getElementById('btn-sync-status-pap');
                 if (btnSync) btnSync.style.display = 'inline-flex';
                 pollSyncStatusPap();
@@ -2697,6 +2752,96 @@ min-width: 100%;
                     msgEl.textContent = e.message || 'Erro ao salvar.';
                     msgEl.className = 'small mt-2 text-danger';
                 }
+            }
+        }
+
+        async function abrirModalRelatorioPendCliente() {
+            if (!podeConfigEsteiraBackoffice || !modalRelatorioPendCliente) return;
+            const msgEl = document.getElementById('config-pend-cliente-msg');
+            if (msgEl) { msgEl.textContent = ''; msgEl.className = 'small mt-2'; }
+            try {
+                const data = await apiFetch('/crm/esteira/config/');
+                document.getElementById('config-pend-cliente-ativo').checked = !!data.relatorio_pendencia_cliente_ativo;
+                document.getElementById('config-pend-cliente-horario-1').value =
+                    data.relatorio_pendencia_cliente_horario_1 || '12:00';
+                document.getElementById('config-pend-cliente-horario-2').value =
+                    data.relatorio_pendencia_cliente_horario_2 || '18:00';
+                const sel = document.getElementById('config-pend-cliente-grupos');
+                sel.innerHTML = '';
+                const selectedIds = new Set((data.grupo_ids || []).map(Number));
+                (data.grupos || []).forEach(function (g) {
+                    const opt = document.createElement('option');
+                    opt.value = g.id;
+                    opt.textContent = g.nome;
+                    if (selectedIds.has(Number(g.id))) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                const aviso = document.getElementById('config-pend-cliente-grupos-aviso');
+                if (aviso) aviso.style.display = (data.grupos && data.grupos.length) ? 'none' : 'block';
+                modalRelatorioPendCliente.show();
+            } catch (e) {
+                alert(e.message || 'Erro ao carregar configuração.');
+            }
+        }
+
+        async function salvarConfigRelatorioPendCliente() {
+            const msgEl = document.getElementById('config-pend-cliente-msg');
+            const grupoIds = Array.from(
+                document.getElementById('config-pend-cliente-grupos').selectedOptions
+            ).map(function (o) { return parseInt(o.value, 10); });
+            try {
+                const data = await apiFetch('/crm/esteira/config/', {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        relatorio_pendencia_cliente_ativo: document.getElementById('config-pend-cliente-ativo').checked,
+                        relatorio_pendencia_cliente_horario_1: document.getElementById('config-pend-cliente-horario-1').value || '12:00',
+                        relatorio_pendencia_cliente_horario_2: document.getElementById('config-pend-cliente-horario-2').value || '18:00',
+                        grupo_ids: grupoIds,
+                    }),
+                });
+                if (msgEl) {
+                    msgEl.textContent = data.detail || 'Salvo.';
+                    msgEl.className = 'small mt-2 text-success';
+                }
+            } catch (e) {
+                if (msgEl) {
+                    msgEl.textContent = e.message || 'Erro ao salvar.';
+                    msgEl.className = 'small mt-2 text-danger';
+                }
+            }
+        }
+
+        async function enviarTesteRelatorioPendCliente() {
+            const msgEl = document.getElementById('config-pend-cliente-msg');
+            const btn = document.getElementById('btn-enviar-teste-pend-cliente');
+            if (btn) btn.disabled = true;
+            if (msgEl) {
+                msgEl.textContent = 'Enviando...';
+                msgEl.className = 'small mt-2 text-muted';
+            }
+            try {
+                // Salva destinos/horários antes do disparo manual para evitar surpresa
+                await salvarConfigRelatorioPendCliente();
+                const data = await apiFetch('/crm/esteira/relatorio-pendencia-cliente/enviar/', {
+                    method: 'POST',
+                    body: JSON.stringify({}),
+                });
+                if (msgEl) {
+                    const extra = [
+                        `${data.enviados || 0}/${data.total_grupos || 0} grupo(s)`,
+                        `${data.total_pendencias || 0} pendência(s)`,
+                        `${data.vendedores || 0} vendedor(es)`,
+                    ].join(' · ');
+                    msgEl.textContent = (data.detail || 'Enviado.') + ' — ' + extra;
+                    msgEl.className = 'small mt-2 text-success';
+                }
+            } catch (e) {
+                if (msgEl) {
+                    msgEl.textContent = e.message || 'Erro ao enviar.';
+                    msgEl.className = 'small mt-2 text-danger';
+                }
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 

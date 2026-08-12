@@ -16067,31 +16067,106 @@ def _esteira_vendas_get_config():
 
 
 class ConfigEsteiraVendasView(APIView):
-    """GET/PATCH: WhatsApp BackOffice para mensagem automática ao cliente (pendência tipo CLIENTE)."""
+    """GET/PATCH: WhatsApp BackOffice + relatório pendências CLIENTE por vendedor."""
     permission_classes = [permissions.IsAuthenticated]
+
+    def _payload(self, config, *, incluir_catalogo: bool = False) -> dict:
+        from crm_app.services.relatorio_pendencia_cliente_service import serializar_config_relatorio
+
+        data = {
+            'whatsapp_backoffice': config.whatsapp_backoffice or '',
+            'pode_editar': False,
+            'atualizado_em': config.atualizado_em.isoformat() if config.atualizado_em else None,
+        }
+        data.update(serializar_config_relatorio(config))
+        if incluir_catalogo:
+            data['grupos'] = list(
+                GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
+            )
+        return data
 
     def get(self, request):
         if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Supervisor']):
             return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
         config = _esteira_vendas_get_config()
-        return Response({
-            'whatsapp_backoffice': config.whatsapp_backoffice or '',
-            'pode_editar': is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']),
-            'atualizado_em': config.atualizado_em.isoformat() if config.atualizado_em else None,
-        })
+        payload = self._payload(config, incluir_catalogo=True)
+        payload['pode_editar'] = is_member(request.user, ['Diretoria', 'Admin', 'BackOffice'])
+        return Response(payload)
 
     def patch(self, request):
         if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
             return Response({'detail': 'Sem permissão para alterar a configuração.'}, status=status.HTTP_403_FORBIDDEN)
+        from crm_app.services.relatorio_pendencia_cliente_service import (
+            aplicar_grupos_destino,
+            validar_horario_relatorio,
+        )
+
         config = _esteira_vendas_get_config()
         if 'whatsapp_backoffice' in request.data:
             val = request.data.get('whatsapp_backoffice')
             config.whatsapp_backoffice = (val if val is not None else '').strip()[:20]
+        if 'relatorio_pendencia_cliente_ativo' in request.data:
+            config.relatorio_pendencia_cliente_ativo = bool(
+                request.data.get('relatorio_pendencia_cliente_ativo')
+            )
+        if 'relatorio_pendencia_cliente_horario_1' in request.data:
+            horario = validar_horario_relatorio(request.data.get('relatorio_pendencia_cliente_horario_1'))
+            if horario:
+                config.relatorio_pendencia_cliente_horario_1 = horario
+        if 'relatorio_pendencia_cliente_horario_2' in request.data:
+            horario = validar_horario_relatorio(request.data.get('relatorio_pendencia_cliente_horario_2'))
+            if horario:
+                config.relatorio_pendencia_cliente_horario_2 = horario
         config.atualizado_por = request.user
         config.save()
+
+        if 'grupo_ids' in request.data:
+            raw = request.data.get('grupo_ids')
+            if raw is None or raw == '':
+                grupo_ids: list = []
+            elif isinstance(raw, list):
+                grupo_ids = raw
+            else:
+                grupo_ids = [raw]
+            aplicar_grupos_destino(config, grupo_ids)
+
+        payload = self._payload(config, incluir_catalogo=True)
+        payload['pode_editar'] = True
+        payload['detail'] = 'Configuração salva.'
+        return Response(payload)
+
+
+class EnviarRelatorioPendenciaClienteView(APIView):
+    """POST: dispara agora a imagem de pendências CLIENTE aos grupos configurados (teste/manual)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        from crm_app.services.relatorio_pendencia_cliente_service import (
+            enviar_relatorio_pendencia_cliente,
+            _horario_para_slot,
+        )
+
+        config = _esteira_vendas_get_config()
+        agora = timezone.localtime(timezone.now())
+        slot = _horario_para_slot(agora.time()) or agora.strftime('%H:%M')
+        ok, msg, detalhe = enviar_relatorio_pendencia_cliente(
+            config,
+            slot,
+            agora=agora,
+            marcar_controle=False,
+        )
+        if not ok:
+            return Response({'detail': msg, **detalhe}, status=status.HTTP_400_BAD_REQUEST)
+        metricas = detalhe.get('metricas') or {}
         return Response({
-            'whatsapp_backoffice': config.whatsapp_backoffice or '',
-            'detail': 'Configuração salva. Próximas mensagens de pendência CLIENTE usarão este número.',
+            'detail': msg,
+            'enviados': detalhe.get('enviados', 0),
+            'total_grupos': detalhe.get('total', 0),
+            'erros': detalhe.get('erros') or [],
+            'total_pendencias': metricas.get('total', 0),
+            'vendedores': len(metricas.get('lista') or []),
         })
 
 
