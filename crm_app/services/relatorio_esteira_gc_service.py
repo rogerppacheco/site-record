@@ -18,6 +18,8 @@ from crm_app.whatsapp_service import WhatsAppService
 logger = logging.getLogger(__name__)
 
 JANELA_ATRASO_MINUTOS = 10
+MAX_HORARIOS_RELATORIO = 12
+HORARIOS_RELATORIO_PADRAO = ['17:20', '18:00']
 
 
 def _get_config() -> AnteciparInstalacaoConfig:
@@ -38,11 +40,11 @@ def _parse_horario_str(valor: str) -> time | None:
     if not texto:
         return None
     try:
-        hh_str, mm_str = texto.split(':')
-        hh, mm = int(hh_str), int(mm_str)
+        partes = texto.split(':')
+        hh, mm = int(partes[0]), int(partes[1])
         if 0 <= hh <= 23 and 0 <= mm <= 59:
             return time(hh, mm)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, IndexError):
         return None
     return None
 
@@ -126,7 +128,8 @@ def montar_mensagem_relatorio_esteira_gc(
     linhas = [
         f"{nome}, {saudacao}",
     ]
-    if slot == _horario_para_slot(config.relatorio_esteira_horario_2):
+    horarios = listar_horarios_relatorio(config)
+    if horarios and slot != horarios[0]:
         linhas.append(f"Atualização {slot} — segue resultado e esteira de vendas:")
     else:
         linhas.append("Segue resultado e esteira de vendas:")
@@ -144,13 +147,68 @@ def montar_mensagem_relatorio_esteira_gc(
     return '\n'.join(linhas)
 
 
-def _horarios_configurados(config: AnteciparInstalacaoConfig) -> list[str]:
+def normalizar_horarios_relatorio(valor: Any) -> list[str]:
+    """Aceita lista, string CSV ou time; devolve HH:MM únicos, ordenados e limitados."""
+    if valor is None or valor == '':
+        itens: list[Any] = []
+    elif isinstance(valor, list):
+        itens = valor
+    else:
+        texto = str(valor).replace(';', ',').replace('\n', ',')
+        itens = [p.strip() for p in texto.split(',') if p.strip()]
+
     slots: list[str] = []
-    for horario in (config.relatorio_esteira_horario_1, config.relatorio_esteira_horario_2):
-        slot = _horario_para_slot(horario)
+    for item in itens:
+        horario = validar_horario_relatorio(item)
+        slot = _horario_para_slot(horario) if horario else None
         if slot and slot not in slots:
             slots.append(slot)
+        if len(slots) >= MAX_HORARIOS_RELATORIO:
+            break
     return sorted(slots)
+
+
+def listar_horarios_relatorio(config: AnteciparInstalacaoConfig) -> list[str]:
+    """Horários efetivos do relatório: JSON primeiro; fallback nos dois campos legados."""
+    slots = normalizar_horarios_relatorio(config.relatorio_esteira_horarios)
+    if slots:
+        return slots
+    legado: list[str] = []
+    for horario in (config.relatorio_esteira_horario_1, config.relatorio_esteira_horario_2):
+        slot = _horario_para_slot(horario)
+        if slot and slot not in legado:
+            legado.append(slot)
+    return sorted(legado) or list(HORARIOS_RELATORIO_PADRAO)
+
+
+def aplicar_horarios_relatorio(config: AnteciparInstalacaoConfig, valor: Any) -> list[str]:
+    """Persiste a lista no JSON e espelha os dois primeiros nos campos TimeField legados."""
+    slots = normalizar_horarios_relatorio(valor)
+    if not slots:
+        slots = list(HORARIOS_RELATORIO_PADRAO)
+    config.relatorio_esteira_horarios = slots
+    h1 = validar_horario_relatorio(slots[0])
+    h2 = validar_horario_relatorio(slots[1] if len(slots) > 1 else slots[0])
+    if h1:
+        config.relatorio_esteira_horario_1 = h1
+    if h2:
+        config.relatorio_esteira_horario_2 = h2
+    return slots
+
+
+def serializar_horarios_relatorio_config(config: AnteciparInstalacaoConfig) -> dict[str, Any]:
+    horarios = listar_horarios_relatorio(config)
+    return {
+        'relatorio_esteira_horarios': horarios,
+        'relatorio_esteira_horario_1': horarios[0] if horarios else HORARIOS_RELATORIO_PADRAO[0],
+        'relatorio_esteira_horario_2': (
+            horarios[1] if len(horarios) > 1 else (horarios[0] if horarios else HORARIOS_RELATORIO_PADRAO[1])
+        ),
+    }
+
+
+def _horarios_configurados(config: AnteciparInstalacaoConfig) -> list[str]:
+    return listar_horarios_relatorio(config)
 
 
 def _slots_enviados_hoje(config: AnteciparInstalacaoConfig, hoje_str: str) -> set[str]:

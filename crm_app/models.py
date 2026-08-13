@@ -2342,10 +2342,18 @@ class AnteciparInstalacaoConfig(models.Model):
     relatorio_esteira_horario_1 = models.TimeField(
         default='17:20',
         verbose_name="Horário 1º envio (esteira GC)",
+        help_text="Campo legado. Preferir relatorio_esteira_horarios.",
     )
     relatorio_esteira_horario_2 = models.TimeField(
         default='18:00',
         verbose_name="Horário 2º envio (esteira GC)",
+        help_text="Campo legado. Preferir relatorio_esteira_horarios.",
+    )
+    relatorio_esteira_horarios = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Horários do relatório esteira (GC)",
+        help_text="Lista de horários HH:MM para disparo do relatório (seg–sex). Quantos forem necessários.",
     )
     relatorio_esteira_controle_disparos = models.JSONField(
         default=dict,

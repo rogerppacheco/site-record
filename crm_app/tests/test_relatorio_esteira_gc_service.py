@@ -10,7 +10,9 @@ from crm_app.services.relatorio_esteira_gc_service import (
     calcular_metricas,
     contar_ativados,
     contagem_esteira_auditoria,
+    listar_horarios_relatorio,
     montar_mensagem_relatorio_esteira_gc,
+    normalizar_horarios_relatorio,
     processar_envio_relatorio_esteira_gc,
 )
 from usuarios.models import Usuario
@@ -40,6 +42,7 @@ class RelatorioEsteiraGcServiceTest(TestCase):
             relatorio_esteira_gc_ativo=True,
             relatorio_esteira_horario_1=time(17, 20),
             relatorio_esteira_horario_2=time(18, 0),
+            relatorio_esteira_horarios=['17:20', '18:00'],
         )
 
     def _criar_venda(self, **kwargs):
@@ -173,3 +176,52 @@ class RelatorioEsteiraGcServiceTest(TestCase):
             with patch('crm_app.services.relatorio_esteira_gc_service.timezone.localtime', return_value=agora):
                 processar_envio_relatorio_esteira_gc()
             mock_svc_cls.return_value.enviar_mensagem_texto.assert_not_called()
+
+    def test_normalizar_horarios_deduplica_ordena_e_limita(self):
+        slots = normalizar_horarios_relatorio(['19:00', '14:00', '19:00', '14:00:00', '99:99'])
+        self.assertEqual(slots, ['14:00', '19:00'])
+
+    def test_listar_horarios_usa_json_quando_houver(self):
+        self.config.relatorio_esteira_horarios = ['09:30', '14:00', '17:45']
+        self.config.save(update_fields=['relatorio_esteira_horarios'])
+        self.assertEqual(listar_horarios_relatorio(self.config), ['09:30', '14:00', '17:45'])
+
+    def test_listar_horarios_fallback_campos_legados(self):
+        self.config.relatorio_esteira_horarios = []
+        self.config.save(update_fields=['relatorio_esteira_horarios'])
+        self.assertEqual(listar_horarios_relatorio(self.config), ['17:20', '18:00'])
+
+    def test_mensagem_atualizacao_nao_e_primeiro_slot(self):
+        hoje = timezone.localdate()
+        self.config.relatorio_esteira_horarios = ['14:00', '16:30', '18:00']
+        self.config.save(update_fields=['relatorio_esteira_horarios'])
+        metricas = calcular_metricas(hoje)
+        agora = timezone.make_aware(datetime.combine(hoje, time(16, 32)))
+        msg_primeiro = montar_mensagem_relatorio_esteira_gc(
+            self.config, metricas, slot='14:00', agora=agora,
+        )
+        msg_terceiro = montar_mensagem_relatorio_esteira_gc(
+            self.config, metricas, slot='18:00', agora=agora,
+        )
+        self.assertIn('Segue resultado e esteira de vendas:', msg_primeiro)
+        self.assertNotIn('Atualização', msg_primeiro)
+        self.assertIn('Atualização 18:00', msg_terceiro)
+
+    @patch('crm_app.services.relatorio_esteira_gc_service.WhatsAppService')
+    def test_processar_envio_terceiro_horario(self, mock_svc_cls):
+        mock_svc = mock_svc_cls.return_value
+        mock_svc.enviar_mensagem_texto.return_value = (True, 'ok')
+        self.config.relatorio_esteira_horarios = ['14:00', '17:20', '19:00']
+        self.config.save(update_fields=['relatorio_esteira_horarios'])
+
+        hoje = timezone.localdate()
+        agora = timezone.make_aware(datetime.combine(hoje, time(19, 2)))
+        if agora.weekday() > 4:
+            self.skipTest('Teste de slot seg-sex')
+
+        with patch('crm_app.services.relatorio_esteira_gc_service.timezone.localtime', return_value=agora):
+            processar_envio_relatorio_esteira_gc()
+
+        mock_svc.enviar_mensagem_texto.assert_called_once()
+        self.config.refresh_from_db()
+        self.assertIn('19:00', (self.config.relatorio_esteira_controle_disparos or {}).get('slots', []))

@@ -16183,12 +16183,12 @@ class ConfigAnteciparInstalacaoView(APIView):
             'email_gc': config.email_gc or '',
             'pode_editar': False,
             'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
-            'relatorio_esteira_horario_1': config.relatorio_esteira_horario_1.strftime('%H:%M') if config.relatorio_esteira_horario_1 else '17:20',
-            'relatorio_esteira_horario_2': config.relatorio_esteira_horario_2.strftime('%H:%M') if config.relatorio_esteira_horario_2 else '18:00',
             'teams_notificacao_ativo': bool(config.teams_notificacao_ativo),
             'teams_webhook_configurado': _teams_webhook_configurado(),
         }
         data.update(serializar_destinos_config(config))
+        from crm_app.services.relatorio_esteira_gc_service import serializar_horarios_relatorio_config
+        data.update(serializar_horarios_relatorio_config(config))
         if incluir_catalogo:
             data['grupos'] = list(
                 GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
@@ -16249,15 +16249,34 @@ class ConfigAnteciparInstalacaoView(APIView):
 
         if 'relatorio_esteira_gc_ativo' in request.data:
             config.relatorio_esteira_gc_ativo = bool(request.data.get('relatorio_esteira_gc_ativo'))
-        from crm_app.services.relatorio_esteira_gc_service import validar_horario_relatorio
-        if 'relatorio_esteira_horario_1' in request.data:
-            horario = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_1'))
-            if horario:
-                config.relatorio_esteira_horario_1 = horario
-        if 'relatorio_esteira_horario_2' in request.data:
-            horario = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_2'))
-            if horario:
-                config.relatorio_esteira_horario_2 = horario
+        from crm_app.services.relatorio_esteira_gc_service import (
+            aplicar_horarios_relatorio,
+            listar_horarios_relatorio,
+            normalizar_horarios_relatorio,
+            validar_horario_relatorio,
+        )
+        if 'relatorio_esteira_horarios' in request.data:
+            slots = normalizar_horarios_relatorio(request.data.get('relatorio_esteira_horarios'))
+            if not slots:
+                return Response(
+                    {'detail': 'Informe ao menos um horário válido (HH:MM) para o relatório diário.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            aplicar_horarios_relatorio(config, slots)
+        elif 'relatorio_esteira_horario_1' in request.data or 'relatorio_esteira_horario_2' in request.data:
+            atuais = listar_horarios_relatorio(config)
+            h1 = None
+            h2 = None
+            if 'relatorio_esteira_horario_1' in request.data:
+                h1 = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_1'))
+            if 'relatorio_esteira_horario_2' in request.data:
+                h2 = validar_horario_relatorio(request.data.get('relatorio_esteira_horario_2'))
+            slot1 = h1.strftime('%H:%M') if h1 else (atuais[0] if atuais else '17:20')
+            slot2 = h2.strftime('%H:%M') if h2 else (atuais[1] if len(atuais) > 1 else None)
+            legado = [slot1]
+            if slot2:
+                legado.append(slot2)
+            aplicar_horarios_relatorio(config, legado)
         if 'teams_notificacao_ativo' in request.data:
             config.teams_notificacao_ativo = bool(request.data.get('teams_notificacao_ativo'))
         config.atualizado_por = request.user
