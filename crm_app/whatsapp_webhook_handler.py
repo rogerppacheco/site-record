@@ -7392,6 +7392,23 @@ def _aplicar_resposta_botao_zapi(data, mensagem_texto):
             if pr.get('acao') == 'data' and pr.get('data'):
                 d = pr['data']
                 return d.strftime('%d/%m/%Y')
+    if bid.startswith('la_'):
+        from crm_app.esteira_lista_agendamento_vendedor_service import parse_button_id_lista_agendamento
+        la = parse_button_id_lista_agendamento(bid)
+        if la:
+            acao = la.get('acao')
+            if acao == 'ciente':
+                return 'Estou ciente'
+            if acao == 'reagendar':
+                return 'Reagendar pedido'
+            if acao == 'mais':
+                return 'Próximos'
+            if acao == 'turno':
+                return 'Manhã' if la.get('turno') == 'MANHA' else 'Tarde'
+            if acao == 'data' and la.get('data'):
+                return la['data'].strftime('%d/%m/%Y')
+            if acao == 'pedido':
+                return f"Pedido #{la.get('venda_id')}"
     if bid == "pap_confirmar_sim":
         return (msg or "SIM").strip()
     if not (mensagem_texto or "").strip() and msg:
@@ -7678,6 +7695,9 @@ def processar_webhook_whatsapp(data, request=None):
         buscar_solicitacao_por_mensagem_whatsapp,
     )
     from crm_app.esteira_posso_reagendar_service import buscar_sessao_por_mensagem_whatsapp as buscar_sessao_reagendar_ref
+    from crm_app.esteira_lista_agendamento_vendedor_service import (
+        buscar_sessao_por_mensagem_whatsapp as buscar_sessao_lista_agendamento_ref,
+    )
     _bid_early, _bmsg_early = _extrair_dados_botao_zapi(data)
     tem_resposta_botao = bool(_buscar_buttons_response_zapi(data) or _bid_early or _bmsg_early)
     ref_early = _ref_msg_zapi(data)
@@ -7708,6 +7728,15 @@ def processar_webhook_whatsapp(data, request=None):
                 ref_early,
                 (_bmsg_early or mensagem_texto or '')[:60],
             )
+        elif tel_early and buscar_sessao_lista_agendamento_ref(ref_early, tel_early):
+            tem_resposta_botao = True
+            if _bmsg_early:
+                mensagem_texto = _bmsg_early
+            logger.info(
+                '[Webhook] Clique em botão lista agendamento (ref=%r) texto=%r',
+                ref_early,
+                (_bmsg_early or mensagem_texto or '')[:60],
+            )
     if not mensagem_texto and not image_url and not document_url and not tem_resposta_botao:
         if 'reaction' in data:
             logger.debug("[Webhook] Reação (emoji) ignorada - sem texto/anexo")
@@ -7731,6 +7760,40 @@ def processar_webhook_whatsapp(data, request=None):
     # --- Resposta do GC (Antecipar Instalação): [O.S], antecipada|não antecipada|solicitado — atualiza sistema e manda msg ao vendedor
     if mensagem_texto and processar_resposta_gc_antecipar(telefone_formatado_usuario, mensagem_texto):
         return {'status': 'ok', 'mensagem': 'Resposta GC registrada'}
+
+    # --- Resposta vendedor (lista diária de agendamentos: ciência / reagendar)
+    button_id_la, texto_botao_la = _extrair_dados_botao_zapi(data)
+    if not mensagem_texto and texto_botao_la:
+        mensagem_texto = texto_botao_la
+    from crm_app.esteira_lista_agendamento_vendedor_service import (
+        _extrair_reference_message_id_zapi as _ref_msg_lista,
+        deve_tentar_lista_agendamento,
+        processar_resposta_lista_agendamento,
+    )
+    ref_msg_la = _ref_msg_lista(data)
+    if (button_id_la or '').startswith('la_') or deve_tentar_lista_agendamento(
+        mensagem_texto or '',
+        button_id=button_id_la,
+        reference_message_id=ref_msg_la,
+        telefone=telefone_formatado_usuario,
+    ):
+        try:
+            if ref_msg_la or button_id_la:
+                logger.info(
+                    '[Webhook] Lista agendamento: ref=%r buttonId=%r texto=%r',
+                    ref_msg_la or '-',
+                    button_id_la or '-',
+                    (mensagem_texto or '')[:60],
+                )
+            if processar_resposta_lista_agendamento(
+                telefone_formatado_usuario,
+                mensagem_texto,
+                button_id=button_id_la,
+                reference_message_id=ref_msg_la,
+            ):
+                return {'status': 'ok', 'mensagem': 'Resposta lista agendamento vendedor'}
+        except Exception as e:
+            logger.warning('[Webhook] Erro lista agendamento vendedor: %s', e, exc_info=True)
 
     # --- Resposta consultor (Posso reagendar? — pendência na esteira)
     button_id_pr, texto_botao_pr = _extrair_dados_botao_zapi(data)

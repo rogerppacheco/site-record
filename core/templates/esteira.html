@@ -1392,6 +1392,7 @@ min-width: 100%;
                                 <th data-esteira-col="conf" class="esteira-col-conf" title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
                                 <th data-esteira-col="posso_antecip" class="esteira-col-posso-antecip" title="Resposta do vendedor à consulta Posso antecipar?">Posso antecipar?</th>
                                 <th data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar" title="Resposta do consultor à consulta Posso reagendar?">Posso reagendar?</th>
+                                <th data-esteira-col="lista_agendamento" class="esteira-col-lista-agendamento" title="Resposta do vendedor à lista diária de agendamentos (ciência / reagendar)">Resp. lista agend.</th>
                                 <th data-esteira-col="resp" class="esteira-col-resp">Resp. Alteração</th>
                                 <th data-esteira-col="comissao" class="esteira-col-comissao-cb" title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
                             </tr>
@@ -1453,6 +1454,14 @@ min-width: 100%;
                                         <option value="">Todos</option>
                                         <option value="sim">Sim</option>
                                         <option value="nao">Não</option>
+                                        <option value="aguardando">Aguardando</option>
+                                    </select>
+                                </th>
+                                <th data-esteira-col="lista_agendamento" class="esteira-col-lista-agendamento">
+                                    <select id="fc-lista-agendamento" class="form-select form-select-sm esteira-fc-select">
+                                        <option value="">Todos</option>
+                                        <option value="ciente">Ciente</option>
+                                        <option value="reagendar">Reagendar</option>
                                         <option value="aguardando">Aguardando</option>
                                     </select>
                                 </th>
@@ -2042,6 +2051,7 @@ min-width: 100%;
             { key: 'conf', label: 'Conf. cliente' },
             { key: 'posso_antecip', label: 'Posso antecipar?' },
             { key: 'posso_reagendar', label: 'Posso reagendar?' },
+            { key: 'lista_agendamento', label: 'Resp. lista agend.' },
             { key: 'resp', label: 'Resp. Alteração' },
             { key: 'comissao', label: 'Comissão (instaladas)' },
         ];
@@ -2093,6 +2103,7 @@ min-width: 100%;
                 hide.add('agenda');
                 hide.add('conf');
                 hide.add('posso_reagendar');
+                hide.add('lista_agendamento');
                 show.add('adiant_cnpj');
                 show.add('adiant_comissao');
                 show.add('adiant_sabado');
@@ -2261,7 +2272,7 @@ min-width: 100%;
             'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
             'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado',
             'fc-plano', 'fc-status', 'fc-conf',
-            'fc-posso-antecip', 'fc-posso-reagendar',
+            'fc-posso-antecip', 'fc-posso-reagendar', 'fc-lista-agendamento',
             'fc-resp',
         ];
         let tempVendaId = null;
@@ -2418,6 +2429,7 @@ min-width: 100%;
                 'fc-conf': 'conf_cliente',
                 'fc-posso-antecip': 'posso_antecip',
                 'fc-posso-reagendar': 'posso_reagendar',
+                'fc-lista-agendamento': 'lista_agendamento',
                 'fc-resp': 'resp',
             };
             const colunas = {};
@@ -2495,6 +2507,7 @@ min-width: 100%;
                 conf_cliente: 'Conf.cliente',
                 posso_antecip: 'Posso antecipar',
                 posso_reagendar: 'Posso reagendar',
+                lista_agendamento: 'Resp.lista agend.',
                 resp: 'Resp.',
             };
             Object.keys(col).forEach((k) => {
@@ -4602,6 +4615,30 @@ min-width: 100%;
                         possoReagendar = '<span class="badge bg-info text-dark" title="' + possoReagendarTitle + '">' + prefixoConsultor + respReag + (v.consultor_reagendar_resposta.length > 40 ? '…' : '') + '</span>';
                     }
 
+                    let listaAgend = '-';
+                    const listaAgendStatus = (v.vendedor_lista_agendamento_status || '').toUpperCase();
+                    const listaAgendTitle = [
+                        v.vendedor_lista_agendamento_resposta,
+                        v.data_resposta_lista_agendamento
+                            ? ('Respondido em ' + new Date(v.data_resposta_lista_agendamento).toLocaleString('pt-BR'))
+                            : ''
+                    ].filter(Boolean).join(' | ').replace(/"/g, '&quot;');
+                    if (listaAgendStatus === 'CIENTE') {
+                        listaAgend = '<span class="badge bg-success" title="' + listaAgendTitle + '">Ciente</span>';
+                    } else if (listaAgendStatus === 'REAGENDAR') {
+                        let turnoLista = v.vendedor_lista_reagendar_turno === 'MANHA' ? 'Manhã' : (v.vendedor_lista_reagendar_turno === 'TARDE' ? 'Tarde' : '');
+                        let dataLista = v.vendedor_lista_reagendar_data ? formatarDataSemFuso(v.vendedor_lista_reagendar_data) : '';
+                        let txtLista = 'Reagendar';
+                        if (dataLista && turnoLista) txtLista += ' — ' + dataLista + ' ' + turnoLista;
+                        else if (dataLista) txtLista += ' — ' + dataLista;
+                        listaAgend = '<span class="badge bg-warning text-dark" title="' + listaAgendTitle + '">' + txtLista + '</span>';
+                    } else if (v.data_envio_lista_agendamento && !v.data_resposta_lista_agendamento) {
+                        listaAgend = '<span class="badge bg-secondary" title="Aguardando resposta do vendedor">Aguardando</span>';
+                    } else if (v.vendedor_lista_agendamento_resposta) {
+                        const respLista = (v.vendedor_lista_agendamento_resposta || '').substring(0, 40);
+                        listaAgend = '<span class="badge bg-info text-dark" title="' + listaAgendTitle + '">' + respLista + (v.vendedor_lista_agendamento_resposta.length > 40 ? '…' : '') + '</span>';
+                    }
+
                     {
                         const adCnpjTexto = v.flag_adiant_cnpj
                             ? 'realizado'
@@ -4620,6 +4657,12 @@ min-width: 100%;
                             if (v.consultor_pode_reagendar === true) return 'sim';
                             if (v.consultor_pode_reagendar === false) return 'nao';
                             if (v.data_solicitacao_reagendar_consultor && !v.data_resposta_reagendar_consultor) return 'aguardando';
+                            return '-';
+                        })();
+                        const listaAgendTexto = (function() {
+                            if (listaAgendStatus === 'CIENTE') return 'ciente';
+                            if (listaAgendStatus === 'REAGENDAR') return 'reagendar';
+                            if (v.data_envio_lista_agendamento && !v.data_resposta_lista_agendamento) return 'aguardando';
                             return '-';
                         })();
                         const passa =
@@ -4647,6 +4690,7 @@ min-width: 100%;
                             incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
                             correspondeFiltroSelectColuna(possoAntecipTexto, getFiltroColuna('fc-posso-antecip')) &&
                             correspondeFiltroSelectColuna(possoReagendarTexto, getFiltroColuna('fc-posso-reagendar')) &&
+                            correspondeFiltroSelectColuna(listaAgendTexto, getFiltroColuna('fc-lista-agendamento')) &&
                             incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
                         if (carregarAgendados) {
                             if (filtroAgendadosAplicado.vendedor_id && String(v.vendedor || '') !== String(filtroAgendadosAplicado.vendedor_id)) return;
@@ -4703,6 +4747,7 @@ min-width: 100%;
                             <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
                             <td data-esteira-col="posso_antecip" class="esteira-col-posso-antecip small" data-label="Posso antecipar?">${possoAntecip}</td>
                             <td data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar small" data-label="Posso reagendar?">${possoReagendar}</td>
+                            <td data-esteira-col="lista_agendamento" class="esteira-col-lista-agendamento small" data-label="Resp. lista agend.">${listaAgend}</td>
                             <td data-esteira-col="resp" class="esteira-col-resp" data-label="Resp. alteração"><small class="text-muted fw-bold">${alteradoPor}</small></td>
                             <td data-esteira-col="comissao" class="esteira-col-comissao-cb text-center" data-label="Comissão">${carregarInstaladas ? checkboxComissao : '-'}</td>
                         </tr>

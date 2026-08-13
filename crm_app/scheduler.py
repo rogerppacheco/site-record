@@ -144,6 +144,34 @@ def aplicar_faltas_presenca_12h():
         logger.error("❌ Erro na falta automática presença 12h: %s", e)
 
 
+def lista_agendamento_vendedor_manha():
+    try:
+        from crm_app.esteira_lista_agendamento_vendedor_service import (
+            processar_disparo_lista_agendamento,
+            SLOT_MANHA,
+        )
+        resultado = processar_disparo_lista_agendamento(SLOT_MANHA)
+        logger.info("[ListaAgendamento] Manhã: %s", resultado)
+    except Exception as e:
+        logger.error("❌ Erro lista agendamento vendedor (manhã): %s", e)
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+def lista_agendamento_vendedor_tarde():
+    try:
+        from crm_app.esteira_lista_agendamento_vendedor_service import (
+            processar_disparo_lista_agendamento,
+            SLOT_TARDE,
+        )
+        resultado = processar_disparo_lista_agendamento(SLOT_TARDE)
+        logger.info("[ListaAgendamento] Tarde: %s", resultado)
+    except Exception as e:
+        logger.error("❌ Erro lista agendamento vendedor (tarde): %s", e)
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 def processar_relatorio_esteira_gc_agendado():
     try:
         from crm_app.services.relatorio_esteira_gc_service import processar_envio_relatorio_esteira_gc
@@ -309,6 +337,22 @@ def _registrar_jobs(scheduler):
         trigger=CronTrigger.from_crontab('0 12 * * 1-5', timezone=tz_sp),
         id='aplicar_faltas_presenca_12h',
         name='Falta automática presença (12:00 seg-sex)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(lista_agendamento_vendedor_manha),
+        trigger=CronTrigger.from_crontab('30 7 * * *', timezone=tz_sp),
+        id='lista_agendamento_vendedor_manha',
+        name='Lista agendamentos vendedor — manhã (07:30)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(lista_agendamento_vendedor_tarde),
+        trigger=CronTrigger.from_crontab('30 12 * * *', timezone=tz_sp),
+        id='lista_agendamento_vendedor_tarde',
+        name='Lista agendamentos vendedor — tarde (12:30)',
         replace_existing=True,
         max_instances=1,
     )

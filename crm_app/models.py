@@ -543,6 +543,50 @@ class Venda(models.Model):
         verbose_name="Data/hora resposta reagendar consultor",
     )
 
+    # --- Lista diária de agendamentos (ciência / pedido de reagendar via WhatsApp) ---
+    STATUS_LISTA_AGENDAMENTO_CIENTE = 'CIENTE'
+    STATUS_LISTA_AGENDAMENTO_REAGENDAR = 'REAGENDAR'
+    STATUS_LISTA_AGENDAMENTO_CHOICES = [
+        (STATUS_LISTA_AGENDAMENTO_CIENTE, 'Estou ciente'),
+        (STATUS_LISTA_AGENDAMENTO_REAGENDAR, 'Solicitou reagendar'),
+    ]
+    vendedor_lista_agendamento_status = models.CharField(
+        max_length=16,
+        choices=STATUS_LISTA_AGENDAMENTO_CHOICES,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Status resposta lista agendamento",
+        help_text="Resposta do vendedor à lista diária (não altera o agendamento do CRM).",
+    )
+    vendedor_lista_reagendar_data = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Data sugerida (lista agendamento)",
+    )
+    vendedor_lista_reagendar_turno = models.CharField(
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        null=True,
+        blank=True,
+        verbose_name="Turno sugerido (lista agendamento)",
+    )
+    vendedor_lista_agendamento_resposta = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Resumo resposta lista agendamento",
+    )
+    data_envio_lista_agendamento = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora envio lista agendamento",
+    )
+    data_resposta_lista_agendamento = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora resposta lista agendamento",
+    )
+
     # --- Boas-vindas (mensagem pós-instalação) ---
     boas_vindas_enviado_em = models.DateTimeField(
         null=True,
@@ -790,6 +834,105 @@ class PossoReagendarConsultorSessao(models.Model):
         db_table = 'crm_posso_reagendar_consultor_sessao'
         verbose_name = "Sessão posso reagendar consultor"
         verbose_name_plural = "Sessões posso reagendar consultor"
+        ordering = ['-criado_em']
+
+
+class ListaAgendamentoVendedorEnviado(models.Model):
+    """Log de envio da lista diária de agendamentos ao vendedor (imagem + botões)."""
+    telefone = models.CharField(max_length=20, db_index=True, help_text="WhatsApp do vendedor (dígitos)")
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lista_agendamento_enviados',
+    )
+    data_referencia = models.DateField(db_index=True, help_text="Dia dos agendamentos listados")
+    periodo = models.CharField(
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        db_index=True,
+    )
+    venda_ids_json = models.TextField(
+        blank=True,
+        default='[]',
+        help_text="JSON com IDs das vendas incluídas no envio.",
+    )
+    whatsapp_message_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="messageId Z-API da mensagem com botões iniciais.",
+    )
+    data_envio = models.DateTimeField(auto_now_add=True)
+    respondido_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_lista_agendamento_vendedor_enviado'
+        verbose_name = "Lista agendamento enviada ao vendedor"
+        verbose_name_plural = "Listas agendamento enviadas ao vendedor"
+        ordering = ['-data_envio']
+        indexes = [
+            models.Index(fields=['data_referencia', 'periodo', 'vendedor']),
+        ]
+
+
+class ListaAgendamentoVendedorSessao(models.Model):
+    """Fluxo WhatsApp da lista diária: ciência ou reagendar (pedido → data → turno)."""
+    ETAPA_INICIAL = 'INICIAL'
+    ETAPA_ESCOLHER_PEDIDO = 'PEDIDO'
+    ETAPA_DATA = 'DATA'
+    ETAPA_TURNO = 'TURNO'
+    ETAPA_CIENTE = 'CIENTE'
+    ETAPA_CONCLUIDO = 'CONCLUIDO'
+    ETAPA_CHOICES = [
+        (ETAPA_INICIAL, 'Aguardando ciência/reagendar'),
+        (ETAPA_ESCOLHER_PEDIDO, 'Escolhendo pedido'),
+        (ETAPA_DATA, 'Aguardando data'),
+        (ETAPA_TURNO, 'Aguardando turno'),
+        (ETAPA_CIENTE, 'Ciente'),
+        (ETAPA_CONCLUIDO, 'Reagendar solicitado'),
+    ]
+
+    envio = models.ForeignKey(
+        ListaAgendamentoVendedorEnviado,
+        on_delete=models.CASCADE,
+        related_name='sessoes',
+    )
+    telefone = models.CharField(max_length=20, db_index=True)
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lista_agendamento_sessoes',
+    )
+    etapa = models.CharField(max_length=16, choices=ETAPA_CHOICES, default=ETAPA_INICIAL, db_index=True)
+    offset_pedidos = models.PositiveIntegerField(default=0, help_text="Página atual na escolha de pedidos.")
+    whatsapp_message_id = models.CharField(max_length=128, blank=True, default='', db_index=True)
+    venda_escolhida = models.ForeignKey(
+        Venda,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lista_agendamento_sessoes',
+    )
+    data_escolhida = models.DateField(null=True, blank=True)
+    periodo_escolhido = models.CharField(
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        null=True,
+        blank=True,
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_lista_agendamento_vendedor_sessao'
+        verbose_name = "Sessão lista agendamento vendedor"
+        verbose_name_plural = "Sessões lista agendamento vendedor"
         ordering = ['-criado_em']
 
 
