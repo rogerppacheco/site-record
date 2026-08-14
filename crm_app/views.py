@@ -15017,12 +15017,58 @@ class ExportarAgendamentosDiaView(APIView):
 
 
 class ExportarAgendadosPendentesEsteiraView(APIView):
-    """Exporta Excel com todas as vendas AGENDADAS e PENDENTES abertas na esteira."""
+    """Exporta Excel com vendas AGENDADAS e PENDENTES em abas separadas."""
     permission_classes = [permissions.IsAuthenticated]
+
+    _HEADERS: list[str] = [
+        'ID Venda',
+        'Status Esteira',
+        'O.S.',
+        'Data Venda',
+        'Data Agendamento',
+        'Turno',
+        'Vendedor',
+        'Cliente',
+        'CPF/CNPJ',
+        'Telefone 1',
+        'Telefone 2',
+        'Plano',
+        'Motivo Pendência',
+        'Posso Antecipar?',
+        'Obs. Posso Antecipar',
+        'Resposta completa vendedor',
+        'Data solicitação Posso Antecipar',
+        'Data resposta Posso Antecipar',
+        'Posso Reagendar?',
+        'Consultor respondeu',
+        'Resposta completa reagendar',
+        'Data solicitação Posso Reagendar',
+        'Data resposta Posso Reagendar',
+        'Conf. Cliente (lembrete)',
+        'Cidade',
+        'UF',
+        'Bairro',
+        'Logradouro',
+        'Número',
+        'Complemento',
+        'CEP',
+        'Observações Venda',
+    ]
+    _COLUMN_WIDTHS: list[int] = [
+        10, 18, 14, 16, 14, 10, 14, 28, 16, 14, 14, 18, 22,
+        18, 24, 36, 22, 22,
+        24, 16, 36, 22, 22,
+        16, 18, 6, 18, 28, 8, 14, 12, 30,
+    ]
 
     def get(self, request):
         from django.db.models import Q
         from django.utils import timezone
+        from crm_app.esteira_posso_antecipar_service import formatar_posso_antecipar_exibicao
+        from crm_app.esteira_posso_reagendar_service import (
+            consultor_respondeu_reagendar,
+            formatar_reagendar_consultor_exibicao_com_consultor,
+        )
 
         if not is_member(request.user, ['Diretoria', 'BackOffice', 'Supervisor', 'Admin']):
             return Response({'detail': 'Acesso negado.'}, status=status.HTTP_403_FORBIDDEN)
@@ -15039,108 +15085,43 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 | Q(status_esteira__nome__icontains='PENDÊN')
             )
             .select_related('cliente', 'vendedor', 'plano', 'status_esteira', 'motivo_pendencia')
-            .order_by('status_esteira__nome', 'data_agendamento', '-data_criacao')
+            .order_by('data_agendamento', '-data_criacao')
         )
 
         vendedor_id = request.query_params.get('vendedor_id')
         if vendedor_id and str(vendedor_id).isdigit():
             vendas = vendas.filter(vendedor_id=int(vendedor_id))
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Agendados e Pendentes'
+        agendados: list = []
+        pendentes: list = []
+        for venda in vendas:
+            nome = (venda.status_esteira.nome if venda.status_esteira else '').upper()
+            if 'AGENDADO' in nome:
+                agendados.append(venda)
+            elif 'PENDEN' in nome or 'PENDÊN' in nome:
+                pendentes.append(venda)
 
-        headers = [
-            'ID Venda',
-            'Status Esteira',
-            'O.S.',
-            'Data Venda',
-            'Data Agendamento',
-            'Turno',
-            'Vendedor',
-            'Cliente',
-            'CPF/CNPJ',
-            'Telefone 1',
-            'Telefone 2',
-            'Plano',
-            'Motivo Pendência',
-            'Posso Antecipar?',
-            'Obs. Posso Antecipar',
-            'Resposta completa vendedor',
-            'Data solicitação Posso Antecipar',
-            'Data resposta Posso Antecipar',
-            'Posso Reagendar?',
-            'Consultor respondeu',
-            'Resposta completa reagendar',
-            'Data solicitação Posso Reagendar',
-            'Data resposta Posso Reagendar',
-            'Conf. Cliente (lembrete)',
-            'Cidade',
-            'UF',
-            'Bairro',
-            'Logradouro',
-            'Número',
-            'Complemento',
-            'CEP',
-            'Observações Venda',
-        ]
-        ws.append(headers)
+        def _fmt_dt(valor) -> str:
+            if not valor:
+                return ''
+            if hasattr(valor, 'hour'):
+                return timezone.localtime(valor).strftime('%d/%m/%Y %H:%M')
+            return valor.strftime('%d/%m/%Y')
 
-        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
-        header_font = Font(bold=True, color='FFFFFF')
-        for cell in ws[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-
-        def _fmt_conf_cliente(v):
+        def _fmt_conf_cliente(v) -> str:
             if v.cliente_confirmou_lembrete_instalacao is True:
                 return 'Sim'
             if v.cliente_confirmou_lembrete_instalacao is False:
                 return 'Não'
             return ''
 
-        from crm_app.esteira_posso_antecipar_service import formatar_posso_antecipar_exibicao
-        from crm_app.esteira_posso_reagendar_service import (
-            consultor_respondeu_reagendar,
-            formatar_reagendar_consultor_exibicao_com_consultor,
-        )
-
-        total = vendas.count()
-        agendados = vendas.filter(status_esteira__nome__icontains='AGENDADO').count()
-        pendentes = vendas.filter(
-            Q(status_esteira__nome__icontains='PENDEN') | Q(status_esteira__nome__icontains='PENDÊN')
-        ).count()
-
-        for v in vendas:
-            dt_criacao = (
-                timezone.localtime(v.data_criacao).strftime('%d/%m/%Y %H:%M')
-                if v.data_criacao else ''
-            )
-            dt_agenda = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else ''
-            dt_sol_ant = (
-                timezone.localtime(v.data_solicitacao_posso_antecipar).strftime('%d/%m/%Y %H:%M')
-                if v.data_solicitacao_posso_antecipar else ''
-            )
-            dt_resp_ant = (
-                timezone.localtime(v.data_resposta_posso_antecipar).strftime('%d/%m/%Y %H:%M')
-                if v.data_resposta_posso_antecipar else ''
-            )
-            dt_sol_reag = (
-                timezone.localtime(v.data_solicitacao_reagendar_consultor).strftime('%d/%m/%Y %H:%M')
-                if v.data_solicitacao_reagendar_consultor else ''
-            )
-            dt_resp_reag = (
-                timezone.localtime(v.data_resposta_reagendar_consultor).strftime('%d/%m/%Y %H:%M')
-                if v.data_resposta_reagendar_consultor else ''
-            )
-
-            ws.append([
+        def _linha_venda(v) -> list:
+            return [
                 v.id,
                 v.status_esteira.nome if v.status_esteira else '',
                 v.ordem_servico or '',
-                dt_criacao,
-                dt_agenda,
+                _fmt_dt(v.data_criacao),
+                _fmt_dt(v.data_agendamento),
                 v.get_periodo_agendamento_display() or '',
                 v.vendedor.username if v.vendedor else '',
                 v.cliente.nome_razao_social if v.cliente else '',
@@ -15152,13 +15133,13 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 formatar_posso_antecipar_exibicao(v),
                 (v.vendedor_obs_posso_antecipar or '')[:500],
                 (v.vendedor_resposta_posso_antecipar or '')[:2000],
-                dt_sol_ant,
-                dt_resp_ant,
+                _fmt_dt(v.data_solicitacao_posso_antecipar),
+                _fmt_dt(v.data_resposta_posso_antecipar),
                 formatar_reagendar_consultor_exibicao_com_consultor(v),
                 consultor_respondeu_reagendar(v),
                 (v.consultor_reagendar_resposta or '')[:2000],
-                dt_sol_reag,
-                dt_resp_reag,
+                _fmt_dt(v.data_solicitacao_reagendar_consultor),
+                _fmt_dt(v.data_resposta_reagendar_consultor),
                 _fmt_conf_cliente(v),
                 v.cidade or '',
                 (v.estado or '').upper()[:2],
@@ -15168,38 +15149,52 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
                 v.complemento or '',
                 v.cep or '',
                 v.observacoes or '',
-            ])
+            ]
 
-        column_widths = [
-            10, 18, 14, 16, 14, 10, 14, 28, 16, 14, 14, 18, 22,
-            18, 24, 36, 22, 22,
-            24, 16, 36, 22, 22,
-            16, 18, 6, 18, 28, 8, 14, 12, 30,
-        ]
-        for i, width in enumerate(column_widths, 1):
-            ws.column_dimensions[get_column_letter(i)].width = width
+        def _preencher_aba(ws, registros: list, cor_cabecalho: str) -> None:
+            ws.append(self._HEADERS)
+            header_fill = PatternFill(start_color=cor_cabecalho, end_color=cor_cabecalho, fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF')
+            for cell in ws[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin'),
-        )
-        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, max_col=len(headers)):
-            for cell in row:
-                cell.border = thin_border
-                if cell.row > 1:
-                    cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+            for registro in registros:
+                ws.append(_linha_venda(registro))
 
-        ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:{get_column_letter(len(headers))}{max(ws.max_row, 1)}'
+            for i, width in enumerate(self._COLUMN_WIDTHS, 1):
+                ws.column_dimensions[get_column_letter(i)].width = width
 
-        ws_resumo = wb.create_sheet('Resumo', 0)
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin'),
+            )
+            for row in ws.iter_rows(min_row=1, max_row=ws.max_row, max_col=len(self._HEADERS)):
+                for cell in row:
+                    cell.border = thin_border
+                    if cell.row > 1:
+                        cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+            ws.freeze_panes = 'A2'
+            ws.auto_filter.ref = f'A1:{get_column_letter(len(self._HEADERS))}{max(ws.max_row, 1)}'
+
+        wb = openpyxl.Workbook()
+        ws_agendados = wb.active
+        ws_agendados.title = 'Agendados'
+        _preencher_aba(ws_agendados, agendados, '4472C4')
+
+        ws_pendentes = wb.create_sheet('Pendentes')
+        _preencher_aba(ws_pendentes, pendentes, 'C0392B')
+
+        ws_resumo = wb.create_sheet('Resumo')
         ws_resumo.append(['Relatório — Esteira de Vendas (Agendados e Pendentes)'])
         ws_resumo.append(['Gerado em', timezone.localtime(timezone.now()).strftime('%d/%m/%Y %H:%M')])
-        ws_resumo.append(['Total de registros', total])
-        ws_resumo.append(['Agendados', agendados])
-        ws_resumo.append(['Pendentes', pendentes])
+        ws_resumo.append(['Total de registros', len(agendados) + len(pendentes)])
+        ws_resumo.append(['Agendados', len(agendados)])
+        ws_resumo.append(['Pendentes', len(pendentes)])
         ws_resumo.column_dimensions['A'].width = 28
         ws_resumo.column_dimensions['B'].width = 22
 
