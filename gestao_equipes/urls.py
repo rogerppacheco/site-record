@@ -79,6 +79,7 @@ from crm_app.qualidade_api import (
     QualidadeBuscaNioStatusView,
     QualidadeCobrancaPreviewView,
     QualidadeGestaoEnviosView,
+    QualidadeEnviarAtrasadosView,
 )
 
 # --- CONFIGURAÇÃO DO ROUTER PARA REGRAS DE AUTOMAÇÃO ---
@@ -224,6 +225,7 @@ urlpatterns = [
     path('api/qualidade/busca-nio/<int:pk>/', QualidadeBuscaNioStatusView.as_view(), name='api-qualidade-busca-nio-status'),
     path('api/qualidade/cobranca/preview/', QualidadeCobrancaPreviewView.as_view(), name='api-qualidade-cobranca-preview'),
     path('api/qualidade/cobranca/envios/', QualidadeGestaoEnviosView.as_view(), name='api-qualidade-cobranca-envios'),
+    path('api/qualidade/cobranca/enviar-atrasados/', QualidadeEnviarAtrasadosView.as_view(), name='api-qualidade-enviar-atrasados'),
 ]
 
 if settings.DEBUG:

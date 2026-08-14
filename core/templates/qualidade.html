@@ -250,6 +250,14 @@
 .qualidade-filas .btn-outline-danger:not(.btn-check:checked + .btn) { color: #c62828; }
 .qualidade-filas .btn-outline-warning:not(.btn-check:checked + .btn) { color: #b86e00; }
 .qualidade-filas .btn-outline-success:not(.btn-check:checked + .btn) { color: #2e7d32; }
+.qualidade-filas .btn-outline-atrasado-lt60:not(.btn-check:checked + .btn) { color: #d84315; }
+.btn-check:checked + .btn-outline-atrasado-lt60 {
+    background-color: #d84315;
+    color: #fff;
+}
+.btn-enviar-atrasados {
+    white-space: nowrap;
+}
 .qualidade-pct-fpd {
     display: inline-flex;
     align-items: baseline;
@@ -1009,9 +1017,13 @@
             <div class="qualidade-toolbar-row">
                 <select id="sel-mes-tratamento" class="form-select form-select-sm q-sel-mes" title="Mês" onchange="selecionarMes(this.value)"></select>
                 <div class="qualidade-filas btn-group" role="group" aria-label="Fila de tratamento" id="filas-tratamento">
-                    <input type="radio" class="btn-check" name="fila-trat" id="fila-atrasados" autocomplete="off" checked>
-                    <label class="btn btn-outline-danger" for="fila-atrasados" onclick="setFila('atrasados')">
-                        Atrasados <span class="badge" id="cnt-atrasados">0</span>
+                    <input type="radio" class="btn-check" name="fila-trat" id="fila-atrasados-lt60" autocomplete="off" checked>
+                    <label class="btn btn-outline-atrasado-lt60" for="fila-atrasados-lt60" onclick="setFila('atrasados_lt60')" title="Atraso da 1ª fatura com menos de 60 dias — ainda dá para recuperar o FPD">
+                        Atrasados (−60d) <span class="badge" id="cnt-atrasados-lt60">0</span>
+                    </label>
+                    <input type="radio" class="btn-check" name="fila-trat" id="fila-atrasados-gte60" autocomplete="off">
+                    <label class="btn btn-outline-danger" for="fila-atrasados-gte60" onclick="setFila('atrasados_gte60')" title="Atraso de 60 dias ou mais — FPD já consolidado para a empresa">
+                        Atrasados (+60d) <span class="badge" id="cnt-atrasados-gte60">0</span>
                     </label>
                     <input type="radio" class="btn-check" name="fila-trat" id="fila-abertos" autocomplete="off">
                     <label class="btn btn-outline-warning" for="fila-abertos" onclick="setFila('abertos')">
@@ -1026,6 +1038,10 @@
                         Total <span class="badge" id="cnt-todos">0</span>
                     </label>
                 </div>
+                <button type="button" class="btn btn-success btn-sm btn-enviar-atrasados" id="btn-enviar-atrasados"
+                    onclick="enviarWhatsappAtrasados()" title="Envia template Meta aos atrasados do mês. Quem já recebeu hoje é pulado.">
+                    <i class="bi bi-whatsapp"></i> Reenviar atrasados
+                </button>
                 <span class="qualidade-pct-fpd d-none" id="pct-fpd" title="(Atrasados + Em aberto) ÷ Total">
                     <span class="q-pct-val" id="pct-fpd-val">—</span>
                     <span class="q-pct-lbl">% FPD</span>
@@ -1224,7 +1240,7 @@
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                     <div>
                         <h2 class="h6 mb-1"><i class="bi bi-send-check"></i> Gestão de envios automáticos</h2>
-                        <p class="small text-muted mb-0">Critérios iguais ao job das <strong>10:00</strong> (D−5 · D+5 · recorrente). Contador: <em>faltam / elegíveis</em>.</p>
+                        <p class="small text-muted mb-0">Critérios iguais ao job das <strong>10:00</strong> (D−5 · D+5 · recorrente). Envia o volume completo do dia. Contador: <em>faltam / elegíveis</em>.</p>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="carregarGestaoEnvios()">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar
@@ -1235,7 +1251,7 @@
                     <div class="kpi-item"><div class="kpi-val" id="g-kpi-elegiveis">—</div><div class="kpi-lbl">Elegíveis hoje</div></div>
                     <div class="kpi-item"><div class="kpi-val" id="g-kpi-enviados">—</div><div class="kpi-lbl">Já enviados (dia)</div></div>
                     <div class="kpi-item"><div class="kpi-val" id="g-kpi-bloqueados">—</div><div class="kpi-lbl">Bloqueados</div></div>
-                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-job">—</div><div class="kpi-lbl">Próx. job (máx.)</div></div>
+                    <div class="kpi-item"><div class="kpi-val" id="g-kpi-job">—</div><div class="kpi-lbl">Próx. job</div></div>
                     <div class="kpi-item"><div class="kpi-val" id="g-kpi-ok">—</div><div class="kpi-lbl">WA ok hoje</div></div>
                     <div class="kpi-item"><div class="kpi-val" id="g-kpi-erro">—</div><div class="kpi-lbl">WA erro hoje</div></div>
                 </div>
@@ -1533,7 +1549,7 @@
     let totalPages = 1;
     let podeVerBonus = false;
     let abaPrincipal = 'tratamento';
-    let fila = 'atrasados';
+    let fila = 'atrasados_lt60';
     let periodosCache = [];
     let statusTratamentoOpcoes = [];
     let modalEnvio = null;
@@ -1712,11 +1728,13 @@
 
     function sincronizarRadioFila(nova) {
         fila = nova;
-        const elAtr = document.getElementById('fila-atrasados');
+        const elLt = document.getElementById('fila-atrasados-lt60');
+        const elGt = document.getElementById('fila-atrasados-gte60');
         const elAbe = document.getElementById('fila-abertos');
         const elPag = document.getElementById('fila-pagas');
         const elTod = document.getElementById('fila-todos');
-        if (elAtr) elAtr.checked = nova === 'atrasados';
+        if (elLt) elLt.checked = nova === 'atrasados_lt60';
+        if (elGt) elGt.checked = nova === 'atrasados_gte60';
         if (elAbe) elAbe.checked = nova === 'abertos';
         if (elPag) elPag.checked = nova === 'pagas';
         if (elTod) elTod.checked = nova === 'todos';
@@ -1741,7 +1759,7 @@
         const f = filas || {};
         const count = (k) => Number(f[k] || 0);
         if (count(filaAtual) > 0) return null;
-        for (const k of ['atrasados', 'abertos', 'pagas', 'todos']) {
+        for (const k of ['atrasados_lt60', 'atrasados_gte60', 'atrasados', 'abertos', 'pagas', 'todos']) {
             if (count(k) > 0) return k;
         }
         return null;
@@ -1806,7 +1824,7 @@
         const btnMais = document.getElementById('btn-mais-filtros');
         if (btnMais) btnMais.classList.remove('active');
         if (abaPrincipal === 'tratamento') {
-            sincronizarRadioFila('atrasados');
+            sincronizarRadioFila('atrasados_lt60');
         }
         _qAutoFilaAplicada = '';
         page = 1;
@@ -1889,11 +1907,16 @@
 
     function atualizarContagensFilas(filas) {
         const f = filas || {};
-        const atr = f.atrasados || 0;
+        const atrLt = f.atrasados_lt60 != null ? f.atrasados_lt60 : 0;
+        const atrGt = f.atrasados_gte60 != null ? f.atrasados_gte60 : 0;
+        const atr = f.atrasados != null ? f.atrasados : (atrLt + atrGt);
         const abe = f.abertos || 0;
         const pag = f.pagas || 0;
         const tod = f.todos != null ? f.todos : (atr + abe + pag);
-        document.getElementById('cnt-atrasados').textContent = atr;
+        const elLt = document.getElementById('cnt-atrasados-lt60');
+        const elGt = document.getElementById('cnt-atrasados-gte60');
+        if (elLt) elLt.textContent = atrLt;
+        if (elGt) elGt.textContent = atrGt;
         document.getElementById('cnt-abertos').textContent = abe;
         const cntPagas = document.getElementById('cnt-pagas');
         if (cntPagas) cntPagas.textContent = pag;
@@ -1919,7 +1942,7 @@
             else if (pct <= 15) pctEl.classList.add('is-warn');
             else pctEl.classList.add('is-danger');
             pctEl.title = [
-                `(Atrasados ${atr} + Em aberto ${abe}) ÷ Total ${tod} = ${pct}% FPD`,
+                `(Atrasados −60d ${atrLt} + Atrasados +60d ${atrGt} + Em aberto ${abe}) ÷ Total ${tod} = ${pct}% FPD`,
                 faltam > 0
                     ? `Faltam ${faltam} pagamento(s) para chegar a ≤ ${metaPct}% FPD`
                     : `Já está em ≤ ${metaPct}% FPD (meta)`,
@@ -2389,7 +2412,7 @@
             }
             renderKpis(data.kpis || {});
             atualizarContagensFilas(data.filas);
-            // Busca: se a fila padrão (atrasados) estiver vazia e o registro
+            // Busca: se a fila padrão (atrasados −60d) estiver vazia e o registro
             // estiver em outra (ex.: pagas), pula direto para a fila com resultado.
             if (abaPrincipal === 'tratamento' && q.length >= 2) {
                 if (q !== _qAutoFilaAplicada) {
@@ -3051,7 +3074,9 @@
                 `Faltam ${faltam} de ${eleg} elegíveis`,
                 `Já enviados: ${p.ja_enviados_hoje || 0}`,
                 `Bloqueados: ${p.bloqueados || 0}`,
-                `Job 10:00 · limite ${p.limite_job || 80}`,
+                p.sem_limite || !p.limite_job
+                    ? 'Job 10:00 · envia todos os elegíveis'
+                    : `Job 10:00 · limite ${p.limite_job}/execução`,
                 p.templates_habilitados ? 'Templates ON' : 'Templates OFF',
             ].join(' · ');
         }
@@ -3073,6 +3098,75 @@
             ).join('');
         }
     }
+
+    window.enviarWhatsappAtrasados = async function () {
+        if (!mesAtual) {
+            alert('Selecione um mês antes de enviar.');
+            return;
+        }
+        const filaEnvio = (fila === 'atrasados_lt60' || fila === 'atrasados_gte60')
+            ? fila
+            : 'atrasados';
+        const labelFila = filaEnvio === 'atrasados_lt60'
+            ? 'atrasados (−60d)'
+            : (filaEnvio === 'atrasados_gte60' ? 'atrasados (+60d)' : 'atrasados');
+        let preview = { a_enviar: 0, ja_enviados_hoje: 0, bloqueados: 0, total: 0 };
+        try {
+            const params = new URLSearchParams({
+                mes: mesAtual,
+                lente,
+                fila: filaEnvio,
+            });
+            const rPrev = await fetch(`${API}/api/qualidade/cobranca/enviar-atrasados/?${params}`, {
+                headers: authHeaders(),
+            });
+            const dPrev = await rPrev.json();
+            if (!rPrev.ok) throw new Error(dPrev.error || 'Falha ao contar atrasados');
+            preview = dPrev;
+        } catch (e) {
+            alert(e.message || 'Não foi possível preparar o envio.');
+            return;
+        }
+        const aEnviar = Number(preview.a_enviar || 0);
+        const jaHoje = Number(preview.ja_enviados_hoje || 0);
+        if (aEnviar <= 0) {
+            alert(
+                jaHoje > 0
+                    ? `Nenhum ${labelFila} pendente. ${jaHoje} já receberam WhatsApp hoje.`
+                    : `Nenhum ${labelFila} elegível para envio neste mês.`
+            );
+            return;
+        }
+        const ok = window.confirm(
+            `Enviar WhatsApp para ${aEnviar} ${labelFila} de ${mesAtual}?\n\n` +
+            `Quem já recebeu hoje (${jaHoje}) será pulado.\n` +
+            `Acompanhe o resultado na aba Envios.`
+        );
+        if (!ok) return;
+        const btn = document.getElementById('btn-enviar-atrasados');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando…';
+        }
+        try {
+            const r = await fetch(`${API}/api/qualidade/cobranca/enviar-atrasados/`, {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mes: mesAtual, lente, fila: filaEnvio }),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Falha ao iniciar envio');
+            alert(data.mensagem || 'Envio iniciado. Acompanhe na aba Envios.');
+            setAbaPrincipal('envios');
+        } catch (e) {
+            alert(e.message || 'Erro ao enviar');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-whatsapp"></i> Reenviar atrasados';
+            }
+        }
+    };
 
     window.carregarPreviewCobranca = async function () {
         try {

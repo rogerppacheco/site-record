@@ -590,9 +590,10 @@ class QualidadeCobrancaPreviewView(APIView):
             except ValueError:
                 return Response({'error': 'data inválida (use YYYY-MM-DD)'}, status=400)
         try:
-            limite = int(request.GET.get('limite') or 80)
+            limite_raw = request.GET.get('limite')
+            limite = None if limite_raw in (None, '') else int(limite_raw)
         except (TypeError, ValueError):
-            limite = 80
+            limite = None
         try:
             return Response(qs.preview_cobranca_templates_dia(data_ref=data_ref, limite_job=limite))
         except Exception as e:
@@ -644,4 +645,65 @@ class QualidadeGestaoEnviosView(APIView):
             return Response(data)
         except Exception as e:
             logger.exception('Erro gestão envios Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+
+class QualidadeEnviarAtrasadosView(APIView):
+    """GET preview | POST dispara reenvio WhatsApp aos atrasados da aba Tratamento.
+
+    GET  /api/qualidade/cobranca/enviar-atrasados/?mes=YYYY-MM&lente=&fila=
+    POST /api/qualidade/cobranca/enviar-atrasados/  body: { mes, lente, fila, forcar? }
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        mes = (request.GET.get('mes') or '').strip()
+        if not mes:
+            return Response({'error': 'mes é obrigatório (YYYY-MM)'}, status=400)
+        try:
+            return Response(
+                qs.preview_envio_atrasados(
+                    lente=request.GET.get('lente') or qs.LENTE_VENCIMENTO,
+                    mes=mes,
+                    fila=request.GET.get('fila') or qs.FILA_ATRASADOS,
+                )
+            )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        except Exception as e:
+            logger.exception('Erro preview reenvio atrasados Qualidade')
+            return Response({'error': str(e)}, status=500)
+
+    def post(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        mes = (request.data.get('mes') or '').strip()
+        if not mes:
+            return Response({'error': 'mes é obrigatório (YYYY-MM)'}, status=400)
+        fila = request.data.get('fila') or qs.FILA_ATRASADOS
+        lente = request.data.get('lente') or qs.LENTE_VENCIMENTO
+        forcar = str(request.data.get('forcar') or '').lower() in ('1', 'true', 'sim')
+        try:
+            data = qs.iniciar_envio_atrasados_async(
+                lente=lente,
+                mes=mes,
+                user=request.user,
+                fila=fila,
+                forcar=forcar,
+            )
+            code = (
+                status.HTTP_202_ACCEPTED
+                if data.get('iniciado')
+                else status.HTTP_200_OK
+            )
+            return Response(data, status=code)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        except Exception as e:
+            logger.exception('Erro ao iniciar reenvio atrasados Qualidade')
             return Response({'error': str(e)}, status=500)

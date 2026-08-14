@@ -80,7 +80,11 @@ def enviar_templates_cobranca_nio():
             logger.info("[SCHEDULER] Templates Nio desabilitados — pulando cobrança")
             return
         logger.info("📬 Enviando templates Meta de cobrança Nio...")
-        call_command("enviar_templates_cobranca_nio", "--limite", "80")
+        limite = int(getattr(settings, "COBRANCA_NIO_LIMITE_JOB", 0) or 0)
+        if limite > 0:
+            call_command("enviar_templates_cobranca_nio", "--limite", str(limite))
+        else:
+            call_command("enviar_templates_cobranca_nio")
     except Exception as e:
         logger.error("❌ Erro templates cobrança Nio: %s", e)
         import traceback

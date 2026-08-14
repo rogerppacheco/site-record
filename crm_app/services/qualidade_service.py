@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
+import threading
+import time
+from datetime import date, timedelta
 from typing import Any, Optional
 
 from dateutil.relativedelta import relativedelta
@@ -54,6 +56,11 @@ STATUS_FATURA_ABERTA_PROMESSA: frozenset[str] = frozenset({'NAO_PAGO', 'ATRASADO
 MESES_OFFSET_LIMITE_VENCIMENTO = 2
 # Meta operacional de FPD (inadimplência da 1ª fatura) no mês.
 META_FPD_PCT = 11.0
+# Atraso da 1ª fatura a partir do qual o FPD da empresa já está consolidado.
+ATRASO_LIMITE_FPD_DIAS = 60
+FILA_ATRASADOS = 'atrasados'
+FILA_ATRASADOS_LT60 = 'atrasados_lt60'
+FILA_ATRASADOS_GTE60 = 'atrasados_gte60'
 
 
 def _fatura_esta_fechada(status: Optional[str]) -> bool:
@@ -583,6 +590,38 @@ def _q_fatura1_atrasada(hoje: date) -> Q:
     )
 
 
+def corte_vencimento_fpd(hoje: Optional[date] = None) -> date:
+    """Vencimento nesta data ou antes = atraso ≥ 60 dias (FPD consolidado)."""
+    ref = hoje or timezone.localdate()
+    return ref - timedelta(days=ATRASO_LIMITE_FPD_DIAS)
+
+
+def classificar_fila_atraso(dias_atraso: int) -> str:
+    """Bucket operacional: recuperável (< 60d) vs FPD consolidado (≥ 60d)."""
+    try:
+        d = int(dias_atraso or 0)
+    except (TypeError, ValueError):
+        d = 0
+    if d >= ATRASO_LIMITE_FPD_DIAS:
+        return FILA_ATRASADOS_GTE60
+    return FILA_ATRASADOS_LT60
+
+
+def _q_fatura1_atrasada_lt60(hoje: date) -> Q:
+    """Atrasado com menos de 60 dias — ainda dá para recuperar o FPD."""
+    corte = corte_vencimento_fpd(hoje)
+    return _q_fatura1_atrasada(hoje) & (
+        Q(faturas__data_vencimento__gt=corte)
+        | Q(faturas__data_vencimento__isnull=True)
+    )
+
+
+def _q_fatura1_atrasada_gte60(hoje: date) -> Q:
+    """Atrasado com 60+ dias — FPD já consolidado para a empresa."""
+    corte = corte_vencimento_fpd(hoje)
+    return _q_fatura1_atrasada(hoje) & Q(faturas__data_vencimento__lte=corte)
+
+
 def _q_fatura1_em_aberto(hoje: date) -> Q:
     """1ª fatura em aberto ainda no prazo (visão tratamento / BO)."""
     return (
@@ -601,9 +640,13 @@ def _q_fatura1_paga() -> Q:
 
 
 def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet[ContratoM10]:
-    """Filas de tratamento: atrasados x em aberto x pagas (total = união das três)."""
+    """Filas de tratamento: atrasados (−60d / +60d) x em aberto x pagas."""
     hoje = timezone.localdate()
-    if fila == 'atrasados':
+    if fila in (FILA_ATRASADOS_LT60, 'atrasados_-60', 'atrasados_menos_60'):
+        return queryset.filter(_q_fatura1_atrasada_lt60(hoje)).distinct()
+    if fila in (FILA_ATRASADOS_GTE60, 'atrasados_+60', 'atrasados_mais_60'):
+        return queryset.filter(_q_fatura1_atrasada_gte60(hoje)).distinct()
+    if fila == FILA_ATRASADOS:
         return queryset.filter(_q_fatura1_atrasada(hoje)).distinct()
     if fila in ('abertos', 'em_aberto'):
         return queryset.filter(_q_fatura1_em_aberto(hoje)).distinct()
@@ -619,7 +662,9 @@ def _aplicar_filtro_fila(queryset: QuerySet[ContratoM10], fila: str) -> QuerySet
 def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, Any]:
     """Contagens das filas sem aplicar o filtro de fila atual."""
     hoje = timezone.localdate()
-    atrasados = queryset.filter(_q_fatura1_atrasada(hoje)).distinct().count()
+    atrasados_lt60 = queryset.filter(_q_fatura1_atrasada_lt60(hoje)).distinct().count()
+    atrasados_gte60 = queryset.filter(_q_fatura1_atrasada_gte60(hoje)).distinct().count()
+    atrasados = atrasados_lt60 + atrasados_gte60
     abertos = queryset.filter(_q_fatura1_em_aberto(hoje)).distinct().count()
     pagas = queryset.filter(_q_fatura1_paga()).distinct().count()
     total = atrasados + abertos + pagas
@@ -630,6 +675,8 @@ def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, Any
     faltam_meta = faltam_pagamentos_meta_fpd(atrasados, abertos, total, META_FPD_PCT)
     return {
         'atrasados': atrasados,
+        'atrasados_lt60': atrasados_lt60,
+        'atrasados_gte60': atrasados_gte60,
         'abertos': abertos,
         'pagas': pagas,
         # Total operacional = soma das filas (bate com planilha quando vencimentos estão corretos)
@@ -640,6 +687,7 @@ def contagens_filas_tratamento(queryset: QuerySet[ContratoM10]) -> dict[str, Any
         'meta_fpd_pct': META_FPD_PCT,
         # Pagamentos necessários para chegar a FPD ≤ meta (denominador fixo)
         'faltam_para_meta_fpd': faltam_meta,
+        'atraso_limite_fpd_dias': ATRASO_LIMITE_FPD_DIAS,
     }
 
 
@@ -3309,6 +3357,30 @@ TIPO_COBRANCA_LABELS = {
 }
 
 
+def limite_job_cobranca_nio() -> int:
+    """0 = sem teto (envia todos os elegíveis). Valor > 0 limita a execução."""
+    try:
+        return max(0, int(getattr(settings, 'COBRANCA_NIO_LIMITE_JOB', 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def pausa_envio_cobranca_segundos() -> float:
+    try:
+        ms = max(0, int(getattr(settings, 'COBRANCA_NIO_PAUSA_MS', 300) or 0))
+    except (TypeError, ValueError):
+        ms = 300
+    return ms / 1000.0
+
+
+def proximos_no_job_cobranca(faltam: int, limite_job: int) -> int:
+    """Quantos o próximo job vai disparar. limite 0 = todos os faltantes."""
+    n = max(0, int(faltam or 0))
+    if limite_job and int(limite_job) > 0:
+        return min(n, int(limite_job))
+    return n
+
+
 def _qs_faturas_abertas_cobranca() -> QuerySet:
     return (
         FaturaM10.objects.filter(status__in=['NAO_PAGO', 'ATRASADO', 'AGUARDANDO'])
@@ -3374,7 +3446,7 @@ def listar_alvos_cobranca_templates(
 def preview_cobranca_templates_dia(
     *,
     data_ref: Optional[date] = None,
-    limite_job: int = 80,
+    limite_job: Optional[int] = None,
 ) -> dict[str, Any]:
     """
     Contadores objetivos para gestão do disparo automático das 10:00.
@@ -3388,6 +3460,13 @@ def preview_cobranca_templates_dia(
     from crm_app.services.whatsapp.nio_templates import templates_habilitados
 
     dia = data_ref or timezone.localdate()
+    if limite_job is None:
+        limite_job = limite_job_cobranca_nio()
+    else:
+        try:
+            limite_job = max(0, int(limite_job))
+        except (TypeError, ValueError):
+            limite_job = limite_job_cobranca_nio()
     por_tipo_bruto = {'d5_antes': 0, 'd5_depois': 0, 'recorrente': 0}
     por_tipo_elegivel = {'d5_antes': 0, 'd5_depois': 0, 'recorrente': 0}
     por_tipo_faltam = {'d5_antes': 0, 'd5_depois': 0, 'recorrente': 0}
@@ -3436,7 +3515,11 @@ def preview_cobranca_templates_dia(
         faltam += 1
         por_tipo_faltam[tipo] = por_tipo_faltam.get(tipo, 0) + 1
 
-    proximos_no_job = min(faltam, max(1, int(limite_job)))
+    proximos_no_job = proximos_no_job_cobranca(faltam, limite_job)
+    if limite_job > 0:
+        criterio_job = f'Job diário às 10:00 (limite {limite_job}/execução)'
+    else:
+        criterio_job = 'Job diário às 10:00 (envia todos os elegíveis: D−5 · D+5 · recorrente)'
 
     return {
         'data': dia.isoformat(),
@@ -3444,6 +3527,7 @@ def preview_cobranca_templates_dia(
         'timezone': 'America/Sao_Paulo',
         'templates_habilitados': bool(templates_habilitados()),
         'limite_job': limite_job,
+        'sem_limite': limite_job <= 0,
         'total_criterio': total_bruto,
         'elegiveis': elegiveis,
         'ja_enviados_hoje': enviados,
@@ -3462,7 +3546,7 @@ def preview_cobranca_templates_dia(
             'Contrato tratável (não órfão, com CPF)',
             'Valor > 0 e vencimento preenchidos',
             'Sem WhatsApp template com sucesso no dia',
-            f'Job diário às 10:00 (limite {limite_job}/execução)',
+            criterio_job,
         ],
         'exemplos_bloqueio': exemplos_bloqueio,
     }
@@ -3640,4 +3724,248 @@ def listar_gestao_envios_qualidade(
         'page_size': page_size,
         'total': total,
         'preview': preview_cobranca_templates_dia(data_ref=dia),
+    }
+
+
+def _normalizar_fila_envio_atrasados(fila: str) -> str:
+    """Fila do botão de reenvio: um bucket ou todos os atrasados do mês."""
+    f = (fila or '').strip().lower()
+    if f in (FILA_ATRASADOS_LT60, 'atrasados_-60', 'atrasados_menos_60'):
+        return FILA_ATRASADOS_LT60
+    if f in (FILA_ATRASADOS_GTE60, 'atrasados_+60', 'atrasados_mais_60'):
+        return FILA_ATRASADOS_GTE60
+    return FILA_ATRASADOS
+
+
+def _queryset_universo_tratamento(
+    lente: str,
+    mes: str,
+) -> QuerySet[ContratoM10]:
+    """Mesmo universo da aba Tratamento (planilha FPD MATCHED / safra instalação)."""
+    lente_norm = (lente or LENTE_VENCIMENTO).strip().lower()
+    data_inicio, data_fim = mes_range(mes)
+    if lente_norm == LENTE_INSTALACAO:
+        queryset = ContratoM10.objects.filter(
+            data_instalacao__gte=data_inicio,
+            data_instalacao__lt=data_fim,
+        )
+    else:
+        contrato_ids = (
+            ImportacaoFPD.objects.filter(
+                indicador='FPD',
+                dt_venc_orig__gte=data_inicio,
+                dt_venc_orig__lt=data_fim,
+                match_status='MATCHED',
+                contrato_m10_id__isnull=False,
+            )
+            .values_list('contrato_m10_id', flat=True)
+            .distinct()
+        )
+        queryset = ContratoM10.objects.filter(id__in=contrato_ids)
+    if _contrato_tem_campo('orfao'):
+        queryset = queryset.filter(orfao=False)
+    return queryset
+
+
+def _fatura1_aberta(contrato: ContratoM10) -> Optional[FaturaM10]:
+    fatura = next(
+        (f for f in contrato.faturas.all() if f.numero_fatura == 1),
+        None,
+    )
+    if fatura is None:
+        fatura = FaturaM10.objects.filter(contrato=contrato, numero_fatura=1).first()
+    if fatura is None or _fatura_esta_fechada(fatura.status):
+        return None
+    return fatura
+
+
+def preview_envio_atrasados(
+    *,
+    lente: str,
+    mes: str,
+    fila: str = FILA_ATRASADOS,
+) -> dict[str, Any]:
+    """Conta atrasados do mês que o botão da aba Tratamento vai disparar."""
+    fila_eff = _normalizar_fila_envio_atrasados(fila)
+    qs = _aplicar_filtro_fila(
+        _queryset_universo_tratamento(lente, mes),
+        fila_eff,
+    ).select_related('venda').prefetch_related('faturas')
+    total = 0
+    a_enviar = 0
+    ja_hoje = 0
+    bloqueados = 0
+    for contrato in qs:
+        fatura = _fatura1_aberta(contrato)
+        if fatura is None:
+            continue
+        total += 1
+        if not pode_tratar_contrato(contrato):
+            bloqueados += 1
+            continue
+        ok_dados, _motivo = validar_fatura_para_envio_cobranca(fatura)
+        if not ok_dados:
+            bloqueados += 1
+            continue
+        if ja_enviou_template_cobranca_hoje(fatura):
+            ja_hoje += 1
+            continue
+        a_enviar += 1
+    return {
+        'mes': mes,
+        'lente': (lente or LENTE_VENCIMENTO).strip().lower(),
+        'fila': fila_eff,
+        'total': total,
+        'a_enviar': a_enviar,
+        'ja_enviados_hoje': ja_hoje,
+        'bloqueados': bloqueados,
+    }
+
+
+def enviar_cobranca_atrasados_lote(
+    *,
+    lente: str,
+    mes: str,
+    user: Any,
+    fila: str = FILA_ATRASADOS,
+    forcar: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Envia template Meta aos atrasados do mês (aba Tratamento).
+
+    Pula quem já teve WhatsApp com sucesso no dia, salvo ``forcar``.
+    Não usa o recorte D−5/D+5/recorrente do job das 10:00 — cobre a fila
+    operacional de FPD.
+    """
+    fila_eff = _normalizar_fila_envio_atrasados(fila)
+    qs = _aplicar_filtro_fila(
+        _queryset_universo_tratamento(lente, mes),
+        fila_eff,
+    ).select_related('venda').prefetch_related('faturas').order_by('id')
+
+    enviados = 0
+    erros = 0
+    pulados = 0
+    pausa = 0.0 if dry_run else pausa_envio_cobranca_segundos()
+    detalhes: list[dict[str, Any]] = []
+
+    for contrato in qs:
+        fatura = _fatura1_aberta(contrato)
+        if fatura is None:
+            pulados += 1
+            continue
+        if not pode_tratar_contrato(contrato):
+            pulados += 1
+            continue
+        ok_dados, motivo = validar_fatura_para_envio_cobranca(fatura)
+        if not ok_dados:
+            pulados += 1
+            if len(detalhes) < 20:
+                detalhes.append({
+                    'contrato_id': contrato.id,
+                    'os': contrato.ordem_servico or '',
+                    'status': 'pulado',
+                    'motivo': motivo,
+                })
+            continue
+        if not forcar and ja_enviou_template_cobranca_hoje(fatura):
+            pulados += 1
+            continue
+        if dry_run:
+            enviados += 1
+            continue
+        result = enviar_cobranca_whatsapp(
+            contrato.id,
+            fatura.id,
+            user,
+            modo='template',
+        )
+        if result.get('ok'):
+            enviados += 1
+        else:
+            erros += 1
+            if len(detalhes) < 20:
+                detalhes.append({
+                    'contrato_id': contrato.id,
+                    'os': contrato.ordem_servico or '',
+                    'status': 'erro',
+                    'motivo': result.get('erro') or 'Falha no envio',
+                })
+        if pausa > 0:
+            time.sleep(pausa)
+
+    logger.info(
+        '[Qualidade] Reenvio atrasados mes=%s fila=%s enviados=%s erros=%s pulados=%s dry=%s',
+        mes, fila_eff, enviados, erros, pulados, dry_run,
+    )
+    return {
+        'ok': erros == 0,
+        'mes': mes,
+        'lente': (lente or LENTE_VENCIMENTO).strip().lower(),
+        'fila': fila_eff,
+        'enviados': enviados,
+        'erros': erros,
+        'pulados': pulados,
+        'dry_run': dry_run,
+        'detalhes': detalhes,
+    }
+
+
+def iniciar_envio_atrasados_async(
+    *,
+    lente: str,
+    mes: str,
+    user: Any,
+    fila: str = FILA_ATRASADOS,
+    forcar: bool = False,
+) -> dict[str, Any]:
+    """Dispara o lote em thread para não estourar timeout HTTP."""
+    preview = preview_envio_atrasados(lente=lente, mes=mes, fila=fila)
+    if int(preview.get('a_enviar') or 0) <= 0:
+        return {
+            'ok': True,
+            'iniciado': False,
+            'mensagem': 'Nenhum atrasado pendente de WhatsApp hoje neste recorte.',
+            **preview,
+        }
+    user_id = getattr(user, 'pk', None)
+
+    def _run() -> None:
+        import django.db
+
+        django.db.close_old_connections()
+        try:
+            usuario = None
+            if user_id:
+                from django.contrib.auth import get_user_model
+
+                usuario = get_user_model().objects.filter(pk=user_id).first()
+            enviar_cobranca_atrasados_lote(
+                lente=lente,
+                mes=mes,
+                user=usuario,
+                fila=fila,
+                forcar=forcar,
+            )
+        except Exception:
+            logger.exception(
+                '[Qualidade] Falha no reenvio async mes=%s fila=%s', mes, fila
+            )
+        finally:
+            django.db.close_old_connections()
+
+    thread = threading.Thread(
+        target=_run,
+        daemon=True,
+        name='qualidade-envio-atrasados',
+    )
+    thread.start()
+    return {
+        'ok': True,
+        'iniciado': True,
+        'mensagem': (
+            f"Envio iniciado para {preview.get('a_enviar') or 0} atrasado(s). "
+            'Acompanhe o resultado na aba Envios.'
+        ),
+        **preview,
     }

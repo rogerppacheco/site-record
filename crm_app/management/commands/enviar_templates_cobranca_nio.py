@@ -8,8 +8,10 @@ Uso:
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from crm_app.services.qualidade_service import (
@@ -26,7 +28,12 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser) -> None:
         parser.add_argument("--dry-run", action="store_true", help="Só lista, não envia")
-        parser.add_argument("--limite", type=int, default=50, help="Máximo de envios nesta execução")
+        parser.add_argument(
+            "--limite",
+            type=int,
+            default=0,
+            help="Máximo de envios nesta execução (0 = todos os elegíveis)",
+        )
         parser.add_argument(
             "--apenas",
             choices=["d5_antes", "d5_depois", "recorrente", "todos"],
@@ -35,7 +42,8 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         dry = bool(options["dry_run"])
-        limite = max(1, int(options["limite"]))
+        limite = max(0, int(options["limite"] or 0))
+        pausa_ms = max(0, int(getattr(settings, "COBRANCA_NIO_PAUSA_MS", 300) or 0))
         apenas = options["apenas"]
         enviados = 0
         erros = 0
@@ -45,7 +53,7 @@ class Command(BaseCommand):
         vistos: set[int] = set()
 
         for tipo, fatura in alvos:
-            if enviados >= limite:
+            if limite > 0 and enviados >= limite:
                 break
             if fatura.id in vistos:
                 continue
@@ -86,6 +94,8 @@ class Command(BaseCommand):
             else:
                 erros += 1
                 self.stdout.write(self.style.ERROR(f"  falha: {result.get('erro')}"))
+            if pausa_ms > 0:
+                time.sleep(pausa_ms / 1000.0)
 
         self.stdout.write(
             self.style.NOTICE(

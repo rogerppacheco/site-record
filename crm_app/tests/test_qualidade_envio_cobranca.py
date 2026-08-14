@@ -1,11 +1,19 @@
-"""Testes de validação de cobrança Qualidade."""
+"""Testes das filas de atraso FPD e do teto do job de cobrança."""
 from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
 from django.test import SimpleTestCase
 
-from crm_app.services.qualidade_service import validar_fatura_para_envio_cobranca
+from crm_app.services.qualidade_service import (
+    ATRASO_LIMITE_FPD_DIAS,
+    FILA_ATRASADOS_GTE60,
+    FILA_ATRASADOS_LT60,
+    classificar_fila_atraso,
+    corte_vencimento_fpd,
+    proximos_no_job_cobranca,
+    validar_fatura_para_envio_cobranca,
+)
 
 
 class TestValidarFaturaCobranca(SimpleTestCase):
@@ -26,3 +34,31 @@ class TestValidarFaturaCobranca(SimpleTestCase):
         ok, msg = validar_fatura_para_envio_cobranca(fatura)
         self.assertTrue(ok)
         self.assertEqual(msg, "")
+
+
+class TestFilasAtrasoFpd(SimpleTestCase):
+    def test_corte_60_dias(self) -> None:
+        hoje = date(2026, 8, 14)
+        self.assertEqual(corte_vencimento_fpd(hoje), date(2026, 6, 15))
+        self.assertEqual(ATRASO_LIMITE_FPD_DIAS, 60)
+
+    def test_59_dias_ainda_recuperavel(self) -> None:
+        self.assertEqual(classificar_fila_atraso(59), FILA_ATRASADOS_LT60)
+
+    def test_60_dias_fpd_consolidado(self) -> None:
+        self.assertEqual(classificar_fila_atraso(60), FILA_ATRASADOS_GTE60)
+
+    def test_acima_de_60(self) -> None:
+        self.assertEqual(classificar_fila_atraso(74), FILA_ATRASADOS_GTE60)
+
+
+class TestLimiteJobCobranca(SimpleTestCase):
+    def test_sem_teto_envia_todos(self) -> None:
+        self.assertEqual(proximos_no_job_cobranca(831, 0), 831)
+
+    def test_com_teto_respeita_limite(self) -> None:
+        self.assertEqual(proximos_no_job_cobranca(831, 80), 80)
+
+    def test_faltam_zero(self) -> None:
+        self.assertEqual(proximos_no_job_cobranca(0, 0), 0)
+        self.assertEqual(proximos_no_job_cobranca(0, 80), 0)

@@ -295,6 +295,11 @@ if str(_use_nio_tpl).strip() == '':
     WHATSAPP_USE_NIO_TEMPLATES = WHATSAPP_PROVIDER in ('whatsatende', 'hybrid')
 else:
     WHATSAPP_USE_NIO_TEMPLATES = config('WHATSAPP_USE_NIO_TEMPLATES', default=False, cast=bool)
+# Cobrança Nio (job 10:00): 0 = envia todos os elegíveis do dia (D−5 / D+5 / recorrente).
+# Limite 80 era proteção da época de WhatsApp não oficial; templates Meta aguentam o volume.
+COBRANCA_NIO_LIMITE_JOB = config('COBRANCA_NIO_LIMITE_JOB', default=0, cast=int)
+# Pausa entre disparos (ms) para não saturar a Cloud API / WhatsAtende.
+COBRANCA_NIO_PAUSA_MS = config('COBRANCA_NIO_PAUSA_MS', default=300, cast=int)
 # Outbound híbrido (Opção B): texto/mídia URL via n8n → Evolution
 N8N_OUTBOUND_WEBHOOK_URL = config('N8N_OUTBOUND_WEBHOOK_URL', default='')
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
