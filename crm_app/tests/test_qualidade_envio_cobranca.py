@@ -5,10 +5,12 @@ from datetime import date
 from types import SimpleNamespace
 from django.test import SimpleTestCase
 
+from crm_app.services.fpd_import_service import extrair_campos_linha_fpd
 from crm_app.services.qualidade_service import (
     ATRASO_LIMITE_FPD_DIAS,
     FILA_ATRASADOS_GTE60,
     FILA_ATRASADOS_LT60,
+    _id_contrato_fpd,
     classificar_fila_atraso,
     corte_vencimento_fpd,
     proximos_no_job_cobranca,
@@ -62,3 +64,33 @@ class TestLimiteJobCobranca(SimpleTestCase):
     def test_faltam_zero(self) -> None:
         self.assertEqual(proximos_no_job_cobranca(0, 0), 0)
         self.assertEqual(proximos_no_job_cobranca(0, 80), 0)
+
+
+class TestIdContratoFpd(SimpleTestCase):
+    def test_usa_numero_definitivo(self) -> None:
+        contrato = SimpleNamespace(numero_contrato_definitivo=' 123456789 ')
+        fatura = SimpleNamespace(id_contrato_fpd='999')
+        self.assertEqual(_id_contrato_fpd(contrato, fatura), '123456789')
+
+    def test_fallback_fatura(self) -> None:
+        contrato = SimpleNamespace(numero_contrato_definitivo='')
+        fatura = SimpleNamespace(id_contrato_fpd=' 987654 ')
+        self.assertEqual(_id_contrato_fpd(contrato, fatura), '987654')
+
+    def test_vazio_quando_ausente(self) -> None:
+        contrato = SimpleNamespace(numero_contrato_definitivo=None)
+        self.assertEqual(_id_contrato_fpd(contrato), '')
+
+
+class TestExtrairContratoFpd(SimpleTestCase):
+    def test_aceita_coluna_contrato(self) -> None:
+        campos = extrair_campos_linha_fpd({'contrato': '555111', 'indicador': 'FPD'})
+        self.assertEqual(campos['id_contrato'], '555111')
+
+    def test_id_contrato_tem_prioridade(self) -> None:
+        campos = extrair_campos_linha_fpd({
+            'id_contrato': '111',
+            'contrato': '222',
+            'indicador': 'FPD',
+        })
+        self.assertEqual(campos['id_contrato'], '111')

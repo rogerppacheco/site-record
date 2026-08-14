@@ -917,6 +917,25 @@ def _vendedor_nome(contrato: ContratoM10) -> str:
     return nome or '-'
 
 
+def _id_contrato_fpd(
+    contrato: ContratoM10,
+    fatura1: Optional[FaturaM10] = None,
+) -> str:
+    """Número CONTRATO/ID_CONTRATO da planilha FPD.
+
+    Preferência: ContratoM10.numero_contrato_definitivo (preenchido na importação);
+    fallback para FaturaM10.id_contrato_fpd da 1ª fatura.
+    """
+    val = (getattr(contrato, 'numero_contrato_definitivo', None) or '').strip()
+    if val:
+        return val
+    if fatura1 is not None:
+        val = (getattr(fatura1, 'id_contrato_fpd', None) or '').strip()
+        if val:
+            return val
+    return ''
+
+
 def listar_status_tratamento_qualidade() -> list[dict[str, Any]]:
     """Opções cadastradas em Cadastros Gerais (StatusCRM tipo Qualidade)."""
     return list(
@@ -1193,6 +1212,7 @@ def dashboard_qualidade(
             'id': c.id,
             'venda_id': c.venda_id,
             'ordem_servico': c.ordem_servico or '-',
+            'id_contrato': _id_contrato_fpd(c, f1),
             'cliente_nome': c.cliente_nome,
             'cpf_cliente': (c.cpf_cliente or '').strip(),
             'vendedor_nome': _vendedor_nome(c),
@@ -2523,6 +2543,7 @@ def listar_historico_contato_contrato(contrato_id: int, *, limite: int = 80) -> 
         'cliente_nome': contrato.cliente_nome or '',
         'cpf_cliente': (contrato.cpf_cliente or '').strip(),
         'ordem_servico': contrato.ordem_servico or '',
+        'id_contrato': _id_contrato_fpd(contrato),
         'itens': itens,
     }
 
@@ -2932,7 +2953,10 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
     )
     faturas: list[dict[str, Any]] = []
     pagas = 0
+    f1: Optional[FaturaM10] = None
     for f in faturas_qs:
+        if f.numero_fatura == 1:
+            f1 = f
         if _fatura_esta_fechada(f.status):
             pagas += 1
         tem_pdf = bool(f.arquivo_pdf) or bool(f.pdf_url)
@@ -2966,6 +2990,7 @@ def detalhe_contrato_faturas(contrato_id: int) -> dict[str, Any]:
     return {
         'id': contrato.id,
         'ordem_servico': contrato.ordem_servico or '-',
+        'id_contrato': _id_contrato_fpd(contrato, f1),
         'cliente_nome': contrato.cliente_nome,
         'cpf_cliente': contrato.cpf_cliente or '',
         'vendedor_nome': _vendedor_nome(contrato),

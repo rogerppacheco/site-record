@@ -146,6 +146,10 @@ def extrair_campos_linha_fpd(row: Any, hoje: Optional[date] = None) -> dict[str,
     id_contrato = str(row.get('id_contrato', '') if hasattr(row, 'get') else '').strip()
     if id_contrato.lower() == 'nan':
         id_contrato = ''
+    # Planilha da operadora às vezes rotula a coluna como CONTRATO, não ID_CONTRATO.
+    if not id_contrato:
+        alt = str(row.get('contrato', '') if hasattr(row, 'get') else getattr(row, 'contrato', '') or '').strip()
+        id_contrato = '' if alt.lower() == 'nan' else alt
 
     nr_fatura = str(row.get('nr_fatura', '') if hasattr(row, 'get') else '').strip()
     if nr_fatura.lower() == 'nan':

@@ -584,6 +584,13 @@
     font-size: 0.72rem;
     letter-spacing: 0.02em;
 }
+.table-qualidade .col-contrato {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .table-qualidade .col-cliente {
     white-space: normal;
     max-width: 14rem;
@@ -798,6 +805,7 @@
     display: block;
     line-height: 1.25;
 }
+.faturas-subtitulo .fat-contrato { font-variant-numeric: tabular-nums; }
 .faturas-subtitulo .fat-cli-nome { font-weight: 600; color: inherit; }
 .faturas-subtitulo .fat-cli-cpf {
     display: block;
@@ -1059,7 +1067,7 @@
                 <span class="qualidade-kpi-mini q-painel-only" id="kpi-mini"></span>
             </div>
             <div class="qualidade-toolbar-row">
-                <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="Buscar em toda a base (O.S., cliente, CPF ou telefone)" title="Busca em todas as safras — O.S., cliente, CPF e celulares 1/2 do cadastro" onkeydown="if(event.key==='Enter'){page=1;carregarDashboard()}">
+                <input type="search" id="filtro-q" class="form-control form-control-sm q-busca" placeholder="Buscar em toda a base (O.S., contrato, cliente, CPF ou telefone)" title="Busca em todas as safras — O.S., contrato FPD, cliente, CPF e celulares 1/2 do cadastro" onkeydown="if(event.key==='Enter'){page=1;carregarDashboard()}">
                 <span id="busca-geral-hint" class="badge text-bg-info d-none" title="Resultados de todas as safras">Busca geral</span>
                 <select id="filtro-faixa-atraso" class="form-select form-select-sm q-sel-filtro" onchange="page=1;carregarDashboard()" title="Faixa de atraso da 1ª fatura">
                     <option value="">Atraso (dias)</option>
@@ -1135,6 +1143,7 @@
                     <thead>
                         <tr>
                             <th>O.S.</th>
+                            <th title="ID_CONTRATO / CONTRATO da planilha FPD">Contrato</th>
                             <th>Cliente</th>
                             <th>Vendedor</th>
                             <th>Status</th>
@@ -1149,7 +1158,7 @@
                         </tr>
                     </thead>
                     <tbody id="tbody-contratos">
-                        <tr><td colspan="12" class="text-center text-muted py-4">Selecione um mês</td></tr>
+                        <tr><td colspan="13" class="text-center text-muted py-4">Selecione um mês</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -2217,6 +2226,16 @@
         return String(raw || '').trim();
     }
 
+    function idContratoFpd(c) {
+        return String((c && (c.id_contrato || c.numero_contrato_definitivo)) || '').trim();
+    }
+
+    function htmlCelulaContratoFpd(c) {
+        const n = idContratoFpd(c);
+        if (!n) return '<td class="col-contrato text-muted">—</td>';
+        return `<td class="col-contrato" title="${escapeAttr(n)}">${escapeHtml(n)}</td>`;
+    }
+
     function formatDataHoraBr(iso) {
         if (!iso) return '';
         const dt = new Date(iso);
@@ -2397,7 +2416,7 @@
         if (vendedor) params.set('vendedor', vendedor);
 
         const tbody = document.getElementById('tbody-contratos');
-        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Carregando…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Carregando…</td></tr>';
         try {
             const r = await fetch(`${API}/api/qualidade/dashboard/?${params}`, { headers: authHeaders() });
             const data = await r.json();
@@ -2456,7 +2475,7 @@
             window._qualidadeContratos = window._qualidadeContratos || {};
             rows.forEach((c) => { window._qualidadeContratos[c.id] = c; });
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">Nenhum contrato nesta fila</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-4">Nenhum contrato nesta fila</td></tr>';
             } else {
                 tbody.innerHTML = rows.map(c => {
                     const bonusCell = podeVerBonus
@@ -2480,6 +2499,7 @@
                     const promessaBadge = badgePromessaPagamento(c.data_promessa_pagamento, c.promessa_faixa);
                     return `<tr class="${c.orfao ? 'row-orfao' : ''}" data-contrato-id="${c.id}">
                         <td>${escapeHtml(c.ordem_servico || '-')}${orfaoBadge}${mesRefHtml}</td>
+                        ${htmlCelulaContratoFpd(c)}
                         <td class="col-cliente"><div class="cliente-nome">${escapeHtml(c.cliente_nome || '-')}</div>${cpfHtml}${promessaBadge}</td>
                         <td>${escapeHtml(c.vendedor_nome || '-')}</td>
                         <td>${escapeHtml(c.status_contrato || '-')}</td>
@@ -2512,7 +2532,7 @@
             document.getElementById('btn-next').disabled = page >= totalPages;
             aplicarFocoAposAcao();
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="12" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="13" class="text-danger text-center">${escapeHtml(e.message)}</td></tr>`;
         }
     }
     window.carregarDashboard = carregarDashboard;
@@ -2574,6 +2594,7 @@
             if (!r.ok) throw new Error(data.error || 'Falha ao carregar histórico');
             sub.textContent = [
                 data.ordem_servico ? `O.S. ${data.ordem_servico}` : '',
+                data.id_contrato ? `Contrato ${data.id_contrato}` : '',
                 data.cliente_nome || '',
                 data.cpf_cliente || '',
             ].filter(Boolean).join(' · ');
@@ -3748,8 +3769,10 @@
         document.getElementById('faturas-contrato-id').value = data.id;
         const cpfFmt = formatarCpfCnpj(data.cpf_cliente);
         const sub = document.getElementById('faturas-subtitulo');
+        const idContrato = idContratoFpd(data);
         sub.innerHTML =
             `O.S. ${escapeHtml(data.ordem_servico || '-')} · ` +
+            `<span class="fat-contrato" title="Contrato da planilha FPD">Contrato ${escapeHtml(idContrato || '—')}</span> · ` +
             `<span class="fat-cli-nome">${escapeHtml(data.cliente_nome || '')}</span>` +
             (data.vendedor_nome ? ` · ${escapeHtml(data.vendedor_nome)}` : '') +
             `<span class="fat-cli-cpf">${escapeHtml(cpfFmt || 'CPF/CNPJ —')}</span>`;

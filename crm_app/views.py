@@ -13046,6 +13046,7 @@ class ImportarFPDView(APIView):
 
             dtype_spec = {
                 'ID_CONTRATO': str,
+                'CONTRATO': str,
                 'NR_FATURA': str,
                 'NR_ORDEM': str,
                 'nr_ordem': str,
@@ -13068,6 +13069,8 @@ class ImportarFPDView(APIView):
                 df = pd.read_excel(arquivo_io, dtype=dtype_spec)
 
             df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
+            if 'id_contrato' not in df.columns and 'contrato' in df.columns:
+                df['id_contrato'] = df['contrato']
 
             if 'nr_ordem' not in df.columns:
                 colunas_encontradas = ', '.join(sorted(df.columns[:15]))
