@@ -1989,10 +1989,15 @@ class VendaViewSet(viewsets.ModelViewSet):
             'desmarcar_adiantamento_sabado',
             'marcar_adiantamento_sabado_lote',
         ]
+        acoes_gestao_leitura = frozenset({
+            'retrieve', 'pendentes_auditoria', 'resumo_auditoria', 'verificar_os_cadastrada',
+        })
 
         if self.action in acoes_gestao:
             grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
             if user.is_superuser or is_member(user, grupos_gestao_acao):
+                return queryset
+            if self.action in acoes_gestao_leitura and is_somente_leitura(user):
                 return queryset
             q_vs_retrieve = q_venda_acesso_retrieve_vendedor_supervisor()
             if is_member(user, ['Supervisor']):
