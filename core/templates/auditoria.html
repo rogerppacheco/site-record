@@ -1561,7 +1561,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                     <label class="form-check-label fw-bold" for="agenda-sem-slot-check">Agenda disponível não atende o cliente</label>
                 </div>
                 <div id="campos-sem-slot" style="display:none;">
-                    <p class="small text-muted mb-2">Use <strong>Tela inteira</strong> no diálogo do Edge. Após Compartilhar, você terá <strong>5 segundos</strong> para ir à aba do PAP (Alt+Tab). O relógio do Windows deve aparecer na captura.</p>
+                    <p class="small text-muted mb-2">A máscara também é enviada ao <strong>e-mail do GC</strong> cadastrado em Antecipar Instalação (com o print em anexo). Use <strong>Tela inteira</strong> no diálogo do Edge. Após Compartilhar, você terá <strong>5 segundos</strong> para ir à aba do PAP (Alt+Tab). O relógio do Windows deve aparecer na captura.</p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label class="form-label fw-bold small">Data desejada pelo cliente <span class="text-danger">*</span></label>
@@ -1696,6 +1696,12 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         });
         let auditoriaVoiceConfig = { voice_provider: 'sonax', sonax_ramais: [] };
         let opcoesLigacaoCarregadas = false;
+        let perfilSomenteLeitura = false;
+
+        function aplicarModoSomenteLeituraAuditoria() {
+            document.querySelectorAll('#modalAuditoria .btn-success, #modalAuditoria .btn-primary, #modalAuditoria .btn-outline-success, #modalAuditoria .btn-outline-primary')
+                .forEach((btn) => { if (!btn.classList.contains('btn-secondary')) btn.classList.add('d-none'); });
+        }
 
         // =========================================================================
         // FUNÇÃO FETCH PADRONIZADA (SUBSTITUI API CLIENT EXTERNO)
@@ -1914,8 +1920,10 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 try {
                     const tok = jwt_decode(localStorage.getItem('accessToken') || '');
                     const role = tok.user_role || tok.perfil || '';
-                    podeZap = ['Diretoria', 'Admin', 'Supervisor'].includes(role);
+                    perfilSomenteLeitura = role === 'Gerente de Contas';
+                    podeZap = !perfilSomenteLeitura && ['Diretoria', 'Admin', 'Supervisor'].includes(role);
                 } catch (e) {}
+                if (perfilSomenteLeitura) aplicarModoSomenteLeituraAuditoria();
                 if (window.PainelTempoTratamento) {
                     PainelTempoTratamento.init({
                         modulo: 'AUDITORIA',
@@ -2377,7 +2385,9 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 var produto = v.plano_nome || '—';
                 var dataStr = formatarDataResumo(v.data_criacao);
                 var statusNome = v.status_tratamento_nome || '—';
-                var acao = '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
+                var acao = perfilSomenteLeitura
+                    ? '<span class="text-muted small">Somente leitura</span>'
+                    : '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
                 var row = '<tr><td class="fw-bold text-primary">#' + v.id + '</td><td>' + dataStr + '</td><td>' + nome + '</td><td class="small">' + cpf + '</td><td>' + vendedor + '</td><td>' + produto + '</td>';
                 if (comStatus) row += '<td><span class="badge bg-secondary">' + statusNome + '</span></td>';
                 row += '<td class="text-end">' + acao + '</td></tr>';
@@ -2399,7 +2409,9 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                 var vendedor = v.vendedor_nome || '—';
                 var produto = v.plano_nome || '—';
                 var dataConf = formatarDataResumo(v.data_confirmacao_auditoria);
-                var acao = '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
+                var acao = perfilSomenteLeitura
+                    ? '<span class="text-muted small">Somente leitura</span>'
+                    : '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
                 var row = '<tr><td class="fw-bold text-primary">#' + v.id + '</td><td>' + dataConf + '</td><td>' + nome + '</td><td class="small">' + cpf + '</td><td>' + vendedor + '</td><td>' + produto + '</td><td class="text-end">' + acao + '</td></tr>';
                 tbody.insertAdjacentHTML('beforeend', row);
             });
@@ -2623,7 +2635,9 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                     
                     let auditorInfo = '-'; let btnHtml = ''; let classeLinha = '';
                     
-                    if (v.auditor_atual && v.auditor_atual !== myId) {
+                    if (perfilSomenteLeitura) {
+                        btnHtml = '<span class="text-muted small">Somente leitura</span>';
+                    } else if (v.auditor_atual && v.auditor_atual !== myId) {
                         classeLinha = 'locked-row';
                         auditorInfo = `<div class="d-flex align-items-center gap-2"><span class="auditor-badge text-truncate" style="max-width: 100px;" title="${nomeAuditor}"><i class="bi bi-lock-fill"></i> ${nomeAuditor}</span><button class="btn btn-icon btn-icon-danger" onclick="forcarLiberacao(${v.id})" title="Desbloquear" aria-label="Desbloquear auditoria"><i class="bi bi-unlock" aria-hidden="true"></i></button></div>`;
                         btnHtml = `<span class="badge bg-secondary">Em uso</span>`;

@@ -2,6 +2,8 @@
 
 from rest_framework import permissions
 
+from crm_app.perfis_acesso import is_somente_leitura
+
 class CheckAPIPermission(permissions.BasePermission):
     """
     Verifica as permissões do usuário usando o sistema nativo do Django (Grupos e Permissions).
@@ -81,6 +83,9 @@ class VendaPermission(permissions.BasePermission):
 
         # 3. Métodos de Escrita (PUT, PATCH - Edição)
         if request.method in ['PUT', 'PATCH']:
+            if is_somente_leitura(request.user):
+                return False
+
             # A) O Vendedor dono da venda pode editar
             if obj.vendedor == request.user:
                 return True

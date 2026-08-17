@@ -1,13 +1,14 @@
 """
 Comando para popular perfis em produção
-Cria os perfis básicos: Diretoria, BackOffice, Supervisor, Vendedor
+Cria os perfis básicos: Diretoria, BackOffice, Supervisor, Vendedor, Gerente de Contas
 """
 from django.core.management.base import BaseCommand
+from crm_app.perfis_acesso import PERFIL_GERENTE_CONTAS
 from usuarios.models import Perfil
 
 
 class Command(BaseCommand):
-    help = 'Cria os perfis básicos em produção (Diretoria, BackOffice, Supervisor, Vendedor)'
+    help = 'Cria os perfis básicos em produção (Diretoria, BackOffice, Supervisor, Vendedor, Gerente de Contas)'
 
     def handle(self, *args, **options):
         perfis_data = [
@@ -15,6 +16,11 @@ class Command(BaseCommand):
             {'nome': 'BackOffice', 'cod_perfil': 'backoffice', 'descricao': 'BackOffice'},
             {'nome': 'Supervisor', 'cod_perfil': 'supervisor', 'descricao': 'Supervisor'},
             {'nome': 'Vendedor', 'cod_perfil': 'vendedor', 'descricao': 'Vendedor'},
+            {
+                'nome': PERFIL_GERENTE_CONTAS,
+                'cod_perfil': 'gerente_contas',
+                'descricao': 'Visualização de Performance, Esteira, Auditoria e Dashboard FPD (somente leitura)',
+            },
         ]
         
         criados = 0

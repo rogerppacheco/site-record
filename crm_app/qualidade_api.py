@@ -22,6 +22,12 @@ def _exige_acesso(user) -> Optional[Response]:
     return None
 
 
+def _exige_acesso_fpd(user) -> Optional[Response]:
+    if not qs.pode_acessar_fpd_dashboard(user):
+        return Response({'error': 'Sem permissão para o Dashboard FPD'}, status=403)
+    return None
+
+
 class PageQualidadeMixin:
     """Helper para checagem de grupo nas pages HTML (JWT no front; reforço no back nas APIs)."""
 
@@ -306,7 +312,7 @@ class QualidadeDashboardFpdNioView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        bloqueio = _exige_acesso(request.user)
+        bloqueio = _exige_acesso_fpd(request.user)
         if bloqueio:
             return bloqueio
         try:

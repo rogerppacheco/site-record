@@ -120,6 +120,13 @@ def pode_acessar_qualidade(user: Any) -> bool:
     return is_member(user, GRUPOS_QUALIDADE)
 
 
+def pode_acessar_fpd_dashboard(user: Any) -> bool:
+    """Dashboard FPD (inclui Gerente de Contas — somente leitura)."""
+    from crm_app.perfis_acesso import GRUPOS_FPD_DASHBOARD
+
+    return is_member(user, GRUPOS_FPD_DASHBOARD)
+
+
 def pode_ver_valor_bonus(user: Any) -> bool:
     """Valor R$ do bônus M-10 só para Diretoria e Admin (padrão já usado no M-10)."""
     return is_member(user, GRUPOS_VALOR_BONUS)

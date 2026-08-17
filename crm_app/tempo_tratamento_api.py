@@ -17,10 +17,11 @@ from .models import SessaoTratamento, Venda
 from .services import relatorio_tratamento_service as relatorio_svc
 from .services import tempo_tratamento_service as tt_svc
 from .utils import is_member
+from crm_app.perfis_acesso import is_somente_leitura
 
 logger = logging.getLogger(__name__)
 
-GRUPOS_TRATAMENTO = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
+GRUPOS_TRATAMENTO = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade', 'Gerente de Contas']
 GRUPOS_RELATORIO = ['Diretoria', 'Admin', 'Supervisor']
 
 MOTIVOS_FRONTEND = {
@@ -34,6 +35,8 @@ MOTIVOS_FRONTEND = {
 @permission_classes([permissions.IsAuthenticated])
 def iniciar_sessao_view(request):
     """Abre uma sessão de tratamento para (venda, usuário, módulo)."""
+    if is_somente_leitura(request.user):
+        return Response({'detail': 'Perfil somente leitura.'}, status=status.HTTP_403_FORBIDDEN)
     if not is_member(request.user, GRUPOS_TRATAMENTO):
         return Response({'detail': 'Permissão negada.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -51,6 +54,8 @@ def iniciar_sessao_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def ping_sessao_view(request):
     """Heartbeat: mantém viva a sessão aberta mais recente do usuário."""
+    if is_somente_leitura(request.user):
+        return Response({'detail': 'Perfil somente leitura.'}, status=status.HTTP_403_FORBIDDEN)
     venda_id = request.data.get('venda_id')
     modulo = tt_svc.normalizar_modulo(request.data.get('modulo'))
     if not venda_id:
@@ -64,6 +69,8 @@ def ping_sessao_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def encerrar_sessao_view(request):
     """Encerra a sessão do usuário (ex.: saída da tela). Idempotente."""
+    if is_somente_leitura(request.user):
+        return Response({'detail': 'Perfil somente leitura.'}, status=status.HTTP_403_FORBIDDEN)
     venda_id = request.data.get('venda_id')
     modulo = tt_svc.normalizar_modulo(request.data.get('modulo'))
     motivo = MOTIVOS_FRONTEND.get(

@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 TURNO_LABEL = {'MANHA': 'Manhã', 'TARDE': 'Tarde'}
 
-PERFIS_AUDITORIA = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
+PERFIS_AUDITORIA = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade', 'Gerente de Contas']
 
 
 def endereco_completo_venda(venda):

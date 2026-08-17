@@ -692,7 +692,7 @@ from .nio_api import consultar_dividas_nio
 
 
 # Funções de Mapa (Geometria e Busca)
-from .utils import (
+from crm_app.utils import (
     is_member,
     verificar_viabilidade_por_cep,
     verificar_viabilidade_por_coordenadas,
@@ -705,6 +705,7 @@ from .utils import (
     mes_completo_vendedor_supervisor_valido,
     q_venda_acesso_retrieve_vendedor_supervisor,
 )
+from crm_app.perfis_acesso import GRUPOS_VISUALIZACAO_GESTAO, PERFIL_GERENTE_CONTAS, is_somente_leitura
 
 # Modelos do App
 from .models import (
@@ -824,7 +825,7 @@ class StatusCRMListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         # Listar status: quem gerencia cadastros (Diretoria, BackOffice, Admin, Supervisor) ou quem usa na auditoria (Auditoria, Qualidade)
-        if is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Supervisor', 'Auditoria', 'Qualidade']):
+        if is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Supervisor', 'Auditoria', 'Qualidade', PERFIL_GERENTE_CONTAS]):
             queryset = StatusCRM.objects.all()
             tipo = self.request.query_params.get('tipo', None)
             if tipo:
@@ -1900,7 +1901,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         busca_geral = len((search or '').strip()) >= 2
         
         # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
-        grupos_livres = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        grupos_livres = list(GRUPOS_VISUALIZACAO_GESTAO)
         eh_gestao_total = is_member(user, grupos_livres)
         eh_vs_mes = vendedor_ou_supervisor_restrito_mes(user)
         hoje_local = timezone.localtime(timezone.now())
@@ -2007,7 +2008,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             return qs_v
 
         if not view_type:
-            if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            if flow and is_member(user, GRUPOS_VISUALIZACAO_GESTAO):
                 view_type = 'geral'
             else:
                 view_type = 'minhas_vendas'
@@ -2018,7 +2019,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         elif view_type == 'visao_equipe' or view_type == 'geral':
             if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 pass 
-            elif is_member(user, ['Auditoria', 'Qualidade']):
+            elif is_member(user, ['Auditoria', 'Qualidade', PERFIL_GERENTE_CONTAS]):
                 pass # Já filtrado no inicio
             elif is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
@@ -2174,6 +2175,11 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         return queryset
     def update(self, request, *args, **kwargs):
+        if is_somente_leitura(request.user):
+            return Response(
+                {'detail': 'Perfil somente leitura. Edição não permitida.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
@@ -6709,7 +6715,7 @@ class PerformanceVendasView(APIView):
         # Filtra apenas usuários ativos e remove robôs/admins que não vendem
         base_users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
 
-        if is_member(current_user, ['Diretoria', 'BackOffice', 'Admin', 'Auditoria', 'Qualidade']):
+        if is_member(current_user, GRUPOS_VISUALIZACAO_GESTAO):
             users_to_process = base_users.select_related('supervisor')
         elif is_member(current_user, ['Supervisor']):
             # Supervisor vê a si mesmo e seus liderados
@@ -8047,7 +8053,7 @@ def enviar_resultado_campanha_whatsapp(request):
 
 
 def _perf_grupos_gestao():
-    return ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+    return list(GRUPOS_VISUALIZACAO_GESTAO)
 
 
 def _aplicar_filtro_vendedor_ativo_perf(users_qs, user, vendedor_ativo_raw):
@@ -16181,6 +16187,7 @@ class ConfigAnteciparInstalacaoView(APIView):
             'email_gc': config.email_gc or '',
             'pode_editar': False,
             'relatorio_esteira_gc_ativo': bool(config.relatorio_esteira_gc_ativo),
+            'sem_slot_email_gc_ativo': bool(getattr(config, 'sem_slot_email_gc_ativo', True)),
             'teams_notificacao_ativo': bool(config.teams_notificacao_ativo),
             'teams_webhook_configurado': _teams_webhook_configurado(),
         }
@@ -16247,6 +16254,8 @@ class ConfigAnteciparInstalacaoView(APIView):
 
         if 'relatorio_esteira_gc_ativo' in request.data:
             config.relatorio_esteira_gc_ativo = bool(request.data.get('relatorio_esteira_gc_ativo'))
+        if 'sem_slot_email_gc_ativo' in request.data:
+            config.sem_slot_email_gc_ativo = bool(request.data.get('sem_slot_email_gc_ativo'))
         from crm_app.services.relatorio_esteira_gc_service import (
             aplicar_horarios_relatorio,
             listar_horarios_relatorio,

@@ -1557,6 +1557,7 @@
     let page = 1;
     let totalPages = 1;
     let podeVerBonus = false;
+    let modoSomenteFpd = false;
     let abaPrincipal = 'tratamento';
     let fila = 'atrasados_lt60';
     let periodosCache = [];
@@ -1646,6 +1647,19 @@
     let modalNio = null;
     let statusChoicesFatura = [];
     let nioBuscaContexto = null;
+
+    function aplicarModoSomenteFpd() {
+        ['tab-painel', 'tab-tratamento', 'tab-faltam', 'tab-envios'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.closest('.nav-item')?.classList.add('d-none');
+        });
+        document.querySelector('.qualidade-lente')?.classList.add('d-none');
+        document.querySelector('.qualidade-toolbar-acoes')?.classList.add('d-none');
+        document.querySelectorAll('.q-painel-only').forEach((el) => el.classList.add('d-none'));
+        const tb = document.getElementById('qualidade-toolbar');
+        if (tb) tb.style.display = 'none';
+        setAbaPrincipal('dash_nio');
+    }
 
     function authHeaders() {
         const token = localStorage.getItem('accessToken');
@@ -4069,12 +4083,20 @@
     document.addEventListener('DOMContentLoaded', () => {
         const token = localStorage.getItem('accessToken');
         if (!token) { window.location.href = '/'; return; }
+        try {
+            const payload = jwt_decode(token);
+            modoSomenteFpd = (payload.user_role || payload.perfil || '') === 'Gerente de Contas';
+        } catch (_) { /* ignore */ }
         modalEnvio = new bootstrap.Modal(document.getElementById('modalEnvio'));
         modalOrfaos = new bootstrap.Modal(document.getElementById('modalOrfaos'));
         modalFaturas = new bootstrap.Modal(document.getElementById('modalFaturas'));
         modalNio = new bootstrap.Modal(document.getElementById('modalNioOpcoes'));
         modalLigacaoQualidade = new bootstrap.Modal(document.getElementById('modalLigacaoQualidade'));
         modalHistoricoContato = new bootstrap.Modal(document.getElementById('modalHistoricoContato'));
+        if (modoSomenteFpd) {
+            aplicarModoSomenteFpd();
+            return;
+        }
         document.getElementById('qualidade-page').classList.add('modo-tratamento');
         const tb = document.getElementById('qualidade-toolbar');
         if (tb) tb.style.display = '';

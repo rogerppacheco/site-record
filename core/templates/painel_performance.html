@@ -980,7 +980,7 @@
             try {
                 const p = jwt_decode(token);
                 const role = (p.user_role || p.perfil || '').toString();
-                const gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade'];
+                const gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade', 'Gerente de Contas'];
                 perfilExportExcel = ['Diretoria', 'Admin', 'BackOffice'].some(g => role.includes(g));
                 perfilFiltroPeriodoLivre = perfilExportExcel;
                 if (gestao.some(g => role.includes(g))) {

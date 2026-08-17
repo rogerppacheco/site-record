@@ -2010,8 +2010,9 @@ min-width: 100%;
         if(!token) window.location.href = '/';
         const decodedToken = jwt_decode(token);
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
-        const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
+        const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin', 'Auditoria', 'Qualidade', 'Gerente de Contas'];
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
+        const perfilSomenteLeitura = userProfile === 'Gerente de Contas';
         const podeAcessarVendasTotais = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const podeAcessarGestaoAproveitamento = podeAcessarVendasTotais;
         const podeAcessarChurnTratamento = podeAcessarVendasTotais;
@@ -2019,13 +2020,13 @@ min-width: 100%;
         let churnTratamentoPagina = 1;
         let churnTratamentoSubaba = 'lista';
         let churnTratamentoUltimoTotalPaginas = 1;
-        const podeEditarAdiantamentosFinanceiros = ['Diretoria', 'Admin'].includes(userProfile);
+        const podeEditarAdiantamentosFinanceiros = !perfilSomenteLeitura && ['Diretoria', 'Admin'].includes(userProfile);
 
-        const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
-        const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
-        const podeMarcarAdiantSabado = ['Diretoria', 'Admin', 'BackOffice'].includes(userProfile);
-        const podeBloquearOsab = ['Diretoria', 'Admin'].includes(userProfile);
-        const podeConfigEsteiraBackoffice = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
+        const podeConfigurarZap = !perfilSomenteLeitura && ['Diretoria', 'Admin'].includes(userProfile);
+        const podeEditarAntecipacaoInstaladas = !perfilSomenteLeitura && ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
+        const podeMarcarAdiantSabado = !perfilSomenteLeitura && ['Diretoria', 'Admin', 'BackOffice'].includes(userProfile);
+        const podeBloquearOsab = !perfilSomenteLeitura && ['Diretoria', 'Admin'].includes(userProfile);
+        const podeConfigEsteiraBackoffice = !perfilSomenteLeitura && ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         const modalConfigEsteira = document.getElementById('modal-config-esteira')
             ? new bootstrap.Modal(document.getElementById('modal-config-esteira')) : null;
         const modalRelatorioPendCliente = document.getElementById('modal-relatorio-pend-cliente')
