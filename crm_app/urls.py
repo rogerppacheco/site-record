@@ -226,6 +226,12 @@ from .esteira_consulta_status_pap_api import (
     ConsultaStatusEsteiraIniciarView,
     ConsultaStatusEsteiraStatusView,
 )
+from .esteira_nio_reagendamento_api import (
+    NioReagendamentoCancelarView,
+    NioReagendamentoIniciarView,
+    NioReagendamentoStatusView,
+    NioReagendamentoUnitarioView,
+)
 from .tempo_tratamento_api import (
     encerrar_sessao_view,
     enviar_relatorio_tratamento_view,
@@ -411,6 +417,10 @@ urlpatterns = [
     path('esteira/consulta-status-pap/iniciar/', ConsultaStatusEsteiraIniciarView.as_view(), name='esteira-consulta-status-pap-iniciar'),
     path('esteira/consulta-status-pap/cancelar/', ConsultaStatusEsteiraCancelarView.as_view(), name='esteira-consulta-status-pap-cancelar'),
     path('esteira/consulta-status-pap/status/', ConsultaStatusEsteiraStatusView.as_view(), name='esteira-consulta-status-pap-status'),
+    path('esteira/nio-reagendamento/iniciar/', NioReagendamentoIniciarView.as_view(), name='esteira-nio-reagendamento-iniciar'),
+    path('esteira/nio-reagendamento/cancelar/', NioReagendamentoCancelarView.as_view(), name='esteira-nio-reagendamento-cancelar'),
+    path('esteira/nio-reagendamento/status/', NioReagendamentoStatusView.as_view(), name='esteira-nio-reagendamento-status'),
+    path('esteira/nio-reagendamento/<int:venda_id>/', NioReagendamentoUnitarioView.as_view(), name='esteira-nio-reagendamento-unitario'),
     path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
     path('esteira/churn-tratamento/', EsteiraChurnTratamentoView.as_view(), name='esteira-churn-tratamento'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),

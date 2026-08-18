@@ -495,6 +495,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'motivo_pendencia', 'motivo_pendencia_nome', 'motivo_pendencia_tipo',
             'status_agendamento', 'status_agendamento_nome', 'status_agendamento_cor',
             'pap_status_consultado_em', 'pap_status_consultado_matricula', 'pap_status_consulta_erro',
+            'nio_reagendamento_status', 'nio_reagendamento_em', 'nio_reagendamento_msg',
             'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
             'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
             'complemento', 'bairro', 'cidade', 'estado',             'data_abertura', 'ordem_servico', 'data_agendamento',

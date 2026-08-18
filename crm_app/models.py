@@ -370,6 +370,26 @@ class Venda(models.Model):
         verbose_name="Consulta PAP (erro)",
         help_text="Último erro da consulta STATUS PAP na Esteira (vazio = sucesso).",
     )
+    nio_reagendamento_status = models.CharField(
+        max_length=32,
+        blank=True,
+        default='',
+        db_index=True,
+        verbose_name="Reagendamento Nio (status)",
+        help_text="Último resultado da automação WhatsApp Nio (7029).",
+    )
+    nio_reagendamento_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Reagendamento Nio (data/hora)",
+    )
+    nio_reagendamento_msg = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name="Reagendamento Nio (mensagem)",
+    )
 
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
     data_pagamento_comissao = models.DateField(null=True, blank=True, verbose_name="Data Pagamento Comissão")
@@ -2314,7 +2334,7 @@ class AnteciparInstalacaoConfig(models.Model):
         blank=True,
         default='',
         verbose_name="E-mail do GC",
-        help_text="Destino dos pedidos de ajuda/socorro (abrir chamado TI, etc.).",
+        help_text="Destino dos pedidos de ajuda/socorro (abrir chamado TI) e da máscara Sem SLOT.",
     )
     grupo = models.ForeignKey(
         GrupoDisparo, on_delete=models.SET_NULL, null=True, blank=True,
@@ -2359,6 +2379,11 @@ class AnteciparInstalacaoConfig(models.Model):
         default=dict,
         blank=True,
         help_text="Controle interno para evitar reenvio no mesmo slot diário.",
+    )
+    sem_slot_email_gc_ativo = models.BooleanField(
+        default=True,
+        verbose_name="Enviar Sem SLOT por e-mail do GC",
+        help_text="Quando a auditoria dispara a máscara Sem SLOT, envia também ao e-mail do GC (com o print em anexo).",
     )
     teams_notificacao_ativo = models.BooleanField(
         default=False,
@@ -2666,6 +2691,7 @@ class AuditoriaSemSlotGC(models.Model):
         help_text='Chat IDs / nomes dos grupos WhatsApp que receberam o envio.',
     )
     enviado_teams = models.BooleanField(default=False, verbose_name="Enviado ao Teams")
+    enviado_email = models.BooleanField(default=False, verbose_name="Enviado por e-mail ao GC")
     erros = models.JSONField(default=list, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -2945,6 +2971,110 @@ class SyncStatusEsteiraExecucao(models.Model):
 
     def __str__(self):
         return f"Sync esteira #{self.id} ({self.modo}) — {self.status}"
+
+
+class NioReagendamentoExecucao(models.Model):
+    """Job de reagendamento via bot WhatsApp oficial Nio (7029)."""
+
+    MODO_UNITARIO = 'unitario'
+    MODO_MASSA = 'massa'
+    MODOS = (
+        (MODO_UNITARIO, 'Unitário'),
+        (MODO_MASSA, 'Em massa'),
+    )
+
+    STATUS_PENDENTE = 'pendente'
+    STATUS_EM_ANDAMENTO = 'em_andamento'
+    STATUS_CONCLUIDO = 'concluido'
+    STATUS_INTERROMPIDO = 'interrompido'
+    STATUS_ERRO = 'erro'
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, 'Pendente'),
+        (STATUS_EM_ANDAMENTO, 'Em andamento'),
+        (STATUS_CONCLUIDO, 'Concluído'),
+        (STATUS_INTERROMPIDO, 'Interrompido'),
+        (STATUS_ERRO, 'Erro'),
+    )
+
+    modo = models.CharField(max_length=16, choices=MODOS, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDENTE, db_index=True)
+    iniciado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='nio_reagendamento_iniciados',
+    )
+    iniciado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+    total_pedidos = models.PositiveIntegerField(default=0)
+    processados = models.PositiveIntegerField(default=0)
+    sucessos = models.PositiveIntegerField(default=0)
+    falhas = models.PositiveIntegerField(default=0)
+    cancelar_solicitado = models.BooleanField(default=False)
+    relatorio_json = models.JSONField(default=dict, blank=True)
+    mensagem_erro = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'crm_nio_reagendamento_execucao'
+        verbose_name = 'Reagendamento Nio (execução)'
+        verbose_name_plural = 'Reagendamento Nio (execuções)'
+        ordering = ['-iniciado_em']
+
+    def __str__(self) -> str:
+        return f"Nio reagendamento #{self.id} ({self.modo}) — {self.status}"
+
+
+class NioReagendamentoItem(models.Model):
+    """Resultado por venda dentro de uma execução Nio."""
+
+    STATUS_PENDENTE = 'pendente'
+    STATUS_EM_ANDAMENTO = 'em_andamento'
+    STATUS_SUCESSO = 'sucesso'
+    STATUS_SEM_SLOT = 'sem_slot'
+    STATUS_ERRO_CPF = 'erro_cpf'
+    STATUS_ERRO_CONSULTA = 'erro_consulta'
+    STATUS_ERRO = 'erro'
+    STATUS_CANCELADO = 'cancelado'
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, 'Pendente'),
+        (STATUS_EM_ANDAMENTO, 'Em andamento'),
+        (STATUS_SUCESSO, 'Sucesso'),
+        (STATUS_SEM_SLOT, 'Sem slot'),
+        (STATUS_ERRO_CPF, 'Erro CPF'),
+        (STATUS_ERRO_CONSULTA, 'Consulta indisponível'),
+        (STATUS_ERRO, 'Erro'),
+        (STATUS_CANCELADO, 'Cancelado'),
+    )
+
+    execucao = models.ForeignKey(
+        NioReagendamentoExecucao,
+        on_delete=models.CASCADE,
+        related_name='itens',
+    )
+    venda = models.ForeignKey(
+        'Venda',
+        on_delete=models.CASCADE,
+        related_name='nio_reagendamento_itens',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDENTE, db_index=True)
+    mensagem = models.CharField(max_length=500, blank=True, default='')
+    dados_json = models.JSONField(default=dict, blank=True)
+    iniciado_em = models.DateTimeField(null=True, blank=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_nio_reagendamento_item'
+        verbose_name = 'Reagendamento Nio (item)'
+        verbose_name_plural = 'Reagendamento Nio (itens)'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['execucao', 'status']),
+            models.Index(fields=['venda', '-finalizado_em']),
+        ]
+
+    def __str__(self) -> str:
+        return f"Nio item #{self.id} venda={self.venda_id} — {self.status}"
 
 
 # No arquivo site-record/crm_app/models.py

@@ -227,7 +227,7 @@ class AuditoriaSemSlotRelatorioView(APIView):
             'Data/Hora registro', 'O.S.', 'UF', 'Cliente', 'Vendedor', 'Auditor',
             'Endereço', 'Data agendada (cadastro)', 'Turno agendado (cadastro)',
             'Data desejada (cliente)', 'Turno desejado (cliente)', 'Telefones',
-            'Enviado GC', 'Erros',
+            'Enviado GC', 'Enviado e-mail', 'Erros',
         ]
         ws.append(headers)
         for r in qs:
@@ -255,6 +255,7 @@ class AuditoriaSemSlotRelatorioView(APIView):
                 r.get_turno_desejado_cliente_display() if r.turno_desejado_cliente else '',
                 r.telefone_contato or '',
                 'Sim' if r.enviado_gc else 'Não',
+                'Sim' if r.enviado_email else 'Não',
                 '; '.join(r.erros) if r.erros else '',
             ])
 

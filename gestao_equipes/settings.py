@@ -401,6 +401,28 @@ RECAPTCHA_SOLVER_API_URL = config('RECAPTCHA_SOLVER_API_URL', default='')
 # Caminho para armazenar/reusar cookies da Nio (storage state do Playwright)
 NIO_STORAGE_STATE = os.path.join(BASE_DIR, '.playwright_state.json')
 
+# WhatsApp Web — bot oficial Nio (reagendamento 7029 na esteira)
+WHATSAPP_NIO_PROFILE_DIR = config(
+    'WHATSAPP_NIO_PROFILE_DIR',
+    default=os.path.join(BASE_DIR, '.playwright_whatsapp_profile'),
+)
+WHATSAPP_NIO_STATE_PATH = config(
+    'WHATSAPP_NIO_STATE_PATH',
+    default=os.path.join(BASE_DIR, '.playwright_whatsapp_state.json'),
+)
+WHATSAPP_NIO_HEADLESS = config(
+    'WHATSAPP_NIO_HEADLESS',
+    default=True,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+NIO_REAGENDAMENTO_ENABLED = config(
+    'NIO_REAGENDAMENTO_ENABLED',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+NIO_REAGENDAMENTO_INTERVALO_MIN_SEG = config('NIO_REAGENDAMENTO_INTERVALO_MIN_SEG', default=30, cast=int)
+NIO_REAGENDAMENTO_INTERVALO_MAX_SEG = config('NIO_REAGENDAMENTO_INTERVALO_MAX_SEG', default=60, cast=int)
+
 # --- SmartRiser / V.top (Gestão CDOI) ---
 # Sessão OAuth V.tal persistida (NÃO apagar entre testes — evita relogar IdP corporativo).
 # Em produção, apontar para volume persistente.

@@ -863,6 +863,13 @@ min-width: 100%;
                         <i class="bi bi-x-circle"></i>
                     </button>
                     <span id="sync-status-pap-badge" class="badge bg-secondary" style="display: none; font-size: 0.65rem;"></span>
+                    <button type="button" id="btn-nio-reagendamento-massa" class="btn btn-sm btn-outline-success" style="display: none;" onclick="iniciarNioReagendamentoMassa()" title="Reagendar em massa via bot Nio (7029 CLIENTE)">
+                        <i class="bi bi-whatsapp"></i>
+                    </button>
+                    <button type="button" id="btn-cancel-nio-reagendamento" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="cancelarNioReagendamento()" title="Cancelar reagendamento Nio">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                    <span id="nio-reagendamento-badge" class="badge bg-secondary" style="display: none; font-size: 0.65rem;"></span>
                     <button type="button" onclick="carregarVendas()" class="btn btn-sm btn-primary" title="Recarregar a lista da esteira">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
@@ -896,6 +903,11 @@ min-width: 100%;
                             <li id="li-adiant-sabado-lote" style="display: none;">
                                 <button type="button" id="btn-adiant-sabado-lote" class="dropdown-item" onclick="abrirModalAdiantSabadoLote()" title="Marcar em lote as vendas de um sábado">
                                     <i class="bi bi-calendar-check"></i> Adiant. sábado
+                                </button>
+                            </li>
+                            <li id="li-nio-reagendamento-massa" style="display: none;">
+                                <button type="button" class="dropdown-item" onclick="iniciarNioReagendamentoMassa()" title="Reagendar pedidos 7029 CLIENTE via bot WhatsApp Nio">
+                                    <i class="bi bi-whatsapp"></i> Reagendar Nio (7029)
                                 </button>
                             </li>
                             <li>
@@ -2391,9 +2403,13 @@ min-width: 100%;
             if (podeConfigEsteiraBackoffice) {
                 setEsteiraMenuItemVisivel('li-config-esteira-wpp', true);
                 setEsteiraMenuItemVisivel('li-config-pend-cliente-wpp', true);
+                setEsteiraMenuItemVisivel('li-nio-reagendamento-massa', true);
                 const btnSync = document.getElementById('btn-sync-status-pap');
                 if (btnSync) btnSync.style.display = 'inline-flex';
+                const btnNioMassa = document.getElementById('btn-nio-reagendamento-massa');
+                if (btnNioMassa) btnNioMassa.style.display = 'inline-flex';
                 pollSyncStatusPap();
+                pollNioReagendamentoStatus();
             }
             if (podeConfigurarZap) {
                 setEsteiraMenuItemVisivel('li-toggle-wpp', true);
@@ -2978,6 +2994,17 @@ min-width: 100%;
             return !!(venda.motivo_pendencia || venda.motivo_pendencia_id || venda.motivo_pendencia_nome);
         }
 
+        function vendaElegivelNioReagendar(venda, nomeStatus) {
+            if (!venda) return false;
+            const st = String(nomeStatus || '').toUpperCase();
+            if (!st.includes('PENDEN')) return false;
+            const motivo = String(venda.motivo_pendencia_nome || '');
+            if (!motivo.startsWith('7029')) return false;
+            const tipo = String(venda.motivo_pendencia_tipo || '').toUpperCase();
+            if (!tipo.includes('CLIENTE')) return false;
+            return !!(venda.cliente_cpf_cnpj && String(venda.cliente_cpf_cnpj).replace(/\D/g, '').length === 11);
+        }
+
         function montarGridAcoesEsteira(vendaId, opts) {
             const slot = '<span class="btn-icon-slot" aria-hidden="true"></span>';
             const sm = 'btn btn-icon btn-icon-sm';
@@ -2993,9 +3020,14 @@ min-width: 100%;
             } else if (opts.mostrarAntecip) {
                 btnFluxo = `<button type="button" class="${sm} btn-icon-warning" onclick="enviarPossoAntecipar(${vendaId}, this)" title="Posso antecipar?" aria-label="Posso antecipar?"><i class="bi bi-lightning" aria-hidden="true"></i></button>`;
             }
+            let btnNio = slot;
+            if (opts.mostrarNioReagendar) {
+                const nioTitle = (opts.nioReagendamentoMsg || 'Reagendar via bot Nio (7029)').replace(/"/g, '&quot;');
+                btnNio = `<button type="button" class="${sm} btn-icon-success" onclick="reagendarNioPedido(${vendaId}, this)" title="${nioTitle}" aria-label="Reagendar Nio"><i class="bi bi-whatsapp" aria-hidden="true"></i></button>`;
+            }
             const btnEdit = `<button type="button" class="${sm} btn-icon-primary" onclick="abrirEdicao(${vendaId})" title="Editar venda #${vendaId}" aria-label="Editar venda #${vendaId}"><i class="bi bi-pencil" aria-hidden="true"></i></button>`;
             const btnAjuda = `<button type="button" class="${sm} btn-icon-danger" onclick="abrirPedidoAjudaGc(${vendaId}, 'esteira')" title="Pedido de ajuda ao GC (TI)" aria-label="Pedido de ajuda ao GC"><i class="bi bi-life-preserver" aria-hidden="true"></i></button>`;
-            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, editar, ajuda">${btnEnd}${btnTel}${btnFluxo}${btnEdit}${btnAjuda}</div>`;
+            return `<div class="btn-icon-grid btn-icon-grid-sm esteira-acoes-grid" title="Ações: endereço, telefone, fluxo, Nio, editar, ajuda">${btnEnd}${btnTel}${btnFluxo}${btnNio}${btnEdit}${btnAjuda}</div>`;
         }
 
         var esteiraScrollSyncLock = false;
@@ -4711,6 +4743,8 @@ min-width: 100%;
                         telefone: (v.telefone1 && v.telefone1.trim()) ? String(v.telefone1).replace(/"/g, '&quot;') : '',
                         mostrarReagendar: vendaElegivelPossoReagendar(v, nomeStatus),
                         mostrarAntecip: vendaElegivelPossoAntecipar(v, nomeStatus),
+                        mostrarNioReagendar: podeConfigEsteiraBackoffice && vendaElegivelNioReagendar(v, nomeStatus),
+                        nioReagendamentoMsg: v.nio_reagendamento_msg || '',
                     });
 
                     htmlContent += `
@@ -5085,6 +5119,93 @@ min-width: 100%;
                 alert('Erro: ' + (e.message || e));
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+            }
+        }
+
+        let nioReagendamentoPollTimer = null;
+        let nioReagendamentoEstavaRodando = false;
+
+        function atualizarUiNioReagendamento(data) {
+            const badge = document.getElementById('nio-reagendamento-badge');
+            const btnMassa = document.getElementById('btn-nio-reagendamento-massa');
+            const btnCancel = document.getElementById('btn-cancel-nio-reagendamento');
+            const rodando = !!(data && data.em_andamento);
+            if (btnMassa) btnMassa.disabled = rodando;
+            if (btnCancel) btnCancel.style.display = rodando ? 'inline-flex' : 'none';
+            if (!badge) return;
+            if (rodando) {
+                const p = data.processados || 0;
+                const t = data.total_pedidos || 0;
+                badge.style.display = 'inline';
+                badge.className = 'badge bg-success';
+                badge.textContent = 'Nio ' + p + '/' + t;
+                badge.title = (data.ultimo_mensagem || '') + (data.ultimo_venda_id ? ' (# ' + data.ultimo_venda_id + ')' : '');
+            } else {
+                badge.style.display = 'none';
+                badge.textContent = '';
+            }
+        }
+
+        async function pollNioReagendamentoStatus() {
+            if (!podeConfigEsteiraBackoffice) return;
+            try {
+                const data = await apiFetch('/crm/esteira/nio-reagendamento/status/');
+                const rodando = !!(data && data.em_andamento);
+                atualizarUiNioReagendamento(data);
+                if (nioReagendamentoEstavaRodando && !rodando) {
+                    carregarVendas(true);
+                }
+                nioReagendamentoEstavaRodando = rodando;
+            } catch (e) {
+                /* silencioso */
+            }
+            clearTimeout(nioReagendamentoPollTimer);
+            nioReagendamentoPollTimer = setTimeout(pollNioReagendamentoStatus, nioReagendamentoEstavaRodando ? 4000 : 15000);
+        }
+
+        async function reagendarNioPedido(vendaId, btn) {
+            if (!confirm('Reagendar este pedido 7029 via bot WhatsApp Nio (21 3605-1000)?\n\nConfirma a primeira data disponível oferecida pelo bot.')) return;
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+            try {
+                const res = await apiFetch('/crm/esteira/nio-reagendamento/' + vendaId + '/', { method: 'POST' });
+                alert('Reagendamento Nio iniciado (execução #' + (res.execucao_id || '?') + '). Acompanhe o badge verde.');
+                pollNioReagendamentoStatus();
+            } catch (e) {
+                alert('Erro: ' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+            }
+        }
+
+        async function iniciarNioReagendamentoMassa() {
+            if (!podeConfigEsteiraBackoffice) return;
+            if (!confirm('Reagendar em massa todos os pedidos 7029 CLIENTE visíveis na aba/filtros atuais?\n\nUm pedido por vez via bot Nio.')) return;
+            const btn = document.getElementById('btn-nio-reagendamento-massa');
+            if (btn) btn.disabled = true;
+            try {
+                const filtros = montarFiltrosConsultaStatusPap();
+                const data = await apiFetch('/crm/esteira/nio-reagendamento/iniciar/', {
+                    method: 'POST',
+                    body: JSON.stringify(filtros),
+                });
+                alert('Reagendamento Nio em massa iniciado: ' + (data.total_pedidos || 0) + ' pedido(s).');
+                pollNioReagendamentoStatus();
+            } catch (e) {
+                alert('Erro: ' + (e.message || e));
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function cancelarNioReagendamento() {
+            if (!podeConfigEsteiraBackoffice) return;
+            if (!confirm('Cancelar o reagendamento Nio em andamento?')) return;
+            try {
+                await apiFetch('/crm/esteira/nio-reagendamento/cancelar/', { method: 'POST' });
+                pollNioReagendamentoStatus();
+            } catch (e) {
+                alert('Erro: ' + (e.message || e));
             }
         }
 
