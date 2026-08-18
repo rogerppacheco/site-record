@@ -58,6 +58,8 @@ MESES_OFFSET_LIMITE_VENCIMENTO = 2
 META_FPD_PCT = 11.0
 # Atraso da 1ª fatura a partir do qual o FPD da empresa já está consolidado.
 ATRASO_LIMITE_FPD_DIAS = 60
+# Horário local (TIME_ZONE) do job de templates D−5 / D+5 / recorrente.
+HORARIO_JOB_COBRANCA = '09:00'
 FILA_ATRASADOS = 'atrasados'
 FILA_ATRASADOS_LT60 = 'atrasados_lt60'
 FILA_ATRASADOS_GTE60 = 'atrasados_gte60'
@@ -2587,6 +2589,105 @@ def registrar_ligacao_qualidade(
     return {'ok': True, 'contrato_id': contrato_id, 'destino': telefone}
 
 
+def escolher_template_fatura_cobranca(
+    fatura: Any,
+    *,
+    modo: str = 'auto',
+    hoje: Optional[date] = None,
+) -> tuple[str, bool]:
+    """Escolhe o template Meta e se inclui {{6}} (dias de atraso).
+
+    modo:
+      reducao_sinal — tela Qualidade (envio manual e lote da aba Tratamento)
+      template | auto — job D−5 / D+5 / recorrente
+    """
+    from crm_app.services.whatsapp.nio_templates import (
+        TEMPLATE_FATURA_LEMBRETE_5D,
+        TEMPLATE_FATURA_RECORRENTE,
+        TEMPLATE_FATURA_REDUCAO_SINAL,
+        TEMPLATE_FATURA_VENCIDA_5D,
+    )
+
+    modo_eff = (modo or 'auto').strip().lower()
+    if modo_eff in ('reducao', 'reducao_sinal'):
+        return TEMPLATE_FATURA_REDUCAO_SINAL, False
+
+    ref = hoje or timezone.localdate()
+    venc = getattr(fatura, 'data_vencimento', None)
+    if venc is None:
+        return TEMPLATE_FATURA_RECORRENTE, True
+    dias_ate = (venc - ref).days
+    dias_atraso = (ref - venc).days
+    if dias_ate >= 0:
+        return TEMPLATE_FATURA_LEMBRETE_5D, False
+    if dias_atraso <= 7:
+        return TEMPLATE_FATURA_VENCIDA_5D, False
+    return TEMPLATE_FATURA_RECORRENTE, True
+
+
+def extrair_data_promessa_texto(
+    texto: str,
+    *,
+    hoje: Optional[date] = None,
+) -> Optional[date]:
+    """Interpreta mensagem só com data (DD/MM ou DD/MM/AAAA) como previsão de pagamento."""
+    raw = (texto or '').strip()
+    match = re.fullmatch(
+        r'(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?',
+        raw,
+    )
+    if not match:
+        return None
+    dia = int(match.group(1))
+    mes = int(match.group(2))
+    ref = hoje or timezone.localdate()
+    ano_txt = match.group(3)
+    if ano_txt:
+        ano = int(ano_txt)
+        if ano < 100:
+            ano += 2000
+    else:
+        ano = ref.year
+    try:
+        prevista = date(ano, mes, dia)
+    except ValueError:
+        return None
+    if not ano_txt and prevista < ref:
+        try:
+            prevista = date(ano + 1, mes, dia)
+        except ValueError:
+            return None
+    if prevista < ref:
+        return None
+    if prevista > ref + timedelta(days=120):
+        return None
+    return prevista
+
+
+def gravar_promessa_pagamento_qualidade(
+    fatura: FaturaM10,
+    data_promessa: date,
+    *,
+    contrato: Optional[ContratoM10] = None,
+    telefone: str = '',
+) -> bool:
+    """Grava data de promessa na fatura e registra no histórico da Qualidade."""
+    try:
+        fatura.data_promessa_pagamento = data_promessa
+        fatura.save(update_fields=['data_promessa_pagamento'])
+    except Exception:
+        logger.exception('[Qualidade] Falha ao gravar promessa fatura=%s', getattr(fatura, 'id', None))
+        return False
+    registrar_resposta_cliente_qualidade(
+        contrato=contrato or fatura.contrato,
+        fatura=fatura,
+        telefone=telefone,
+        texto=f'Promessa de pagamento: {data_promessa.strftime("%d/%m/%Y")}',
+        origem='texto',
+    )
+    return True
+
+
 def enviar_cobranca_whatsapp(
     contrato_id: int,
     fatura_id: int,
@@ -2600,7 +2701,8 @@ def enviar_cobranca_whatsapp(
 
     modo:
       - auto: template Meta se habilitado; senão Roteiro 1 (PIX/barras)
-      - template: só template (lembrete/vencida/recorrente conforme dias)
+      - template: só template (lembrete/vencida/recorrente conforme dias) — job 09:00
+      - reducao_sinal: nio_fatura_reducao_sinal_v1 (tela Qualidade)
       - roteiro1: texto completo com 2ª via (janela 24h / após botão)
     """
     try:
@@ -2628,6 +2730,16 @@ def enviar_cobranca_whatsapp(
     contato = enriquecer_contato_contrato(contrato)
     telefone = (telefone_override or '').strip() or contato.get('telefone')
     if not telefone:
+        _registrar_historico_envio(
+            contrato=contrato,
+            fatura=fatura,
+            canal='WHATSAPP',
+            destinatario='—',
+            mensagem='Telefone não informado',
+            user=user,
+            sucesso=False,
+            erro='Telefone não informado. Informe e grave o contato do cliente.',
+        )
         return {'ok': False, 'erro': 'Telefone não informado. Informe e grave o contato do cliente.'}
 
     if telefone_override:
@@ -2647,15 +2759,16 @@ def enviar_cobranca_whatsapp(
     )
 
     from crm_app.services.whatsapp.nio_templates import (
-        TEMPLATE_FATURA_LEMBRETE_5D,
-        TEMPLATE_FATURA_RECORRENTE,
-        TEMPLATE_FATURA_VENCIDA_5D,
+        TEMPLATE_FATURA_REDUCAO_SINAL,
         enviar_template_fatura,
+        montar_fallback_fatura_reducao_sinal,
         templates_habilitados,
     )
 
     modo_eff = (modo or 'auto').strip().lower()
-    usar_template = modo_eff == 'template' or (
+    if modo_eff in ('reducao', 'reducao_sinal'):
+        modo_eff = 'reducao_sinal'
+    usar_template = modo_eff in ('template', 'reducao_sinal') or (
         modo_eff == 'auto' and templates_habilitados()
     )
 
@@ -2665,27 +2778,20 @@ def enviar_cobranca_whatsapp(
     resp: Any = None
     try:
         if usar_template and modo_eff != 'roteiro1':
-            hoje = timezone.localdate()
-            venc = fatura.data_vencimento
-            dias_ate = (venc - hoje).days
-            dias_atraso = (hoje - venc).days
             nome_cli = (contrato.cliente_nome or 'Cliente').strip()
-            if dias_ate >= 0:
-                tpl = TEMPLATE_FATURA_LEMBRETE_5D
-                incluir_atraso = False
-            elif dias_atraso <= 7:
-                tpl = TEMPLATE_FATURA_VENCIDA_5D
-                incluir_atraso = False
-            else:
-                tpl = TEMPLATE_FATURA_RECORRENTE
-                incluir_atraso = True
+            tpl, incluir_atraso = escolher_template_fatura_cobranca(
+                fatura, modo=modo_eff
+            )
             template_usado = tpl
+            fallback = mensagem
+            if tpl == TEMPLATE_FATURA_REDUCAO_SINAL:
+                fallback = montar_fallback_fatura_reducao_sinal(nome_cli, fatura)
             ok, resp, canal = enviar_template_fatura(
                 telefone,
                 tpl,
                 nome_cli,
                 fatura,
-                fallback_texto=mensagem,
+                fallback_texto=fallback,
                 incluir_dias_atraso=incluir_atraso,
             )
         else:
@@ -2728,7 +2834,10 @@ def enviar_cobranca_whatsapp(
         'template_nome': template_usado,
         'resposta': resp,
         'detail': (
-            f'Cobrança enviada via {canal}.'
+            (
+                f'Cobrança enviada via {canal}'
+                + (f' ({template_usado}).' if template_usado else '.')
+            )
             if ok
             else None
         ),
@@ -3417,9 +3526,21 @@ def _qs_faturas_abertas_cobranca() -> QuerySet:
     return (
         FaturaM10.objects.filter(status__in=['NAO_PAGO', 'ATRASADO', 'AGUARDANDO'])
         .exclude(status='PAGO')
-        .select_related('contrato')
+        .select_related('contrato', 'contrato__venda')
         .order_by('id')
     )
+
+
+def classificar_motivo_bloqueio_cobranca(ok_tratar: bool, motivo_dados: str) -> str:
+    """Agrupa o motivo do KPI Bloqueados (órfão/CPF vs dados da fatura)."""
+    if not ok_tratar:
+        return 'Órfão / sem CPF'
+    motivo = (motivo_dados or '').lower()
+    if 'vencimento' in motivo:
+        return 'Sem data de vencimento'
+    if 'valor' in motivo:
+        return 'Valor zerado ou vazio'
+    return (motivo_dados or 'Dados incompletos')[:80]
 
 
 def ja_enviou_template_cobranca_hoje(fatura: FaturaM10, *, dia: Optional[date] = None) -> bool:
@@ -3481,7 +3602,7 @@ def preview_cobranca_templates_dia(
     limite_job: Optional[int] = None,
 ) -> dict[str, Any]:
     """
-    Contadores objetivos para gestão do disparo automático das 10:00.
+    Contadores objetivos para gestão do disparo automático das 09:00.
 
     Critérios (iguais ao management command):
     - fatura aberta com vencimento em D−5 / D+5 / D+12,19…
@@ -3510,6 +3631,9 @@ def preview_cobranca_templates_dia(
     faltam = 0
     vistos: set[int] = set()
     exemplos_bloqueio: list[dict[str, Any]] = []
+    por_motivo_bloqueio: dict[str, int] = {}
+    faltam_fatura_ids: list[int] = []
+    faltam_contratos: dict[int, Any] = {}
 
     for tipo, fatura in listar_alvos_cobranca_templates(hoje=dia):
         if fatura.id in vistos:
@@ -3523,17 +3647,15 @@ def preview_cobranca_templates_dia(
         ok_dados, motivo = validar_fatura_para_envio_cobranca(fatura)
         if not ok_tratar or not ok_dados:
             bloqueados += 1
+            motivo_bloc = classificar_motivo_bloqueio_cobranca(ok_tratar, motivo)
+            por_motivo_bloqueio[motivo_bloc] = por_motivo_bloqueio.get(motivo_bloc, 0) + 1
             if len(exemplos_bloqueio) < 8:
                 exemplos_bloqueio.append({
                     'fatura_id': fatura.id,
                     'contrato_id': contrato.id,
                     'os': getattr(contrato, 'ordem_servico', '') or '',
                     'cliente': (contrato.cliente_nome or '')[:60],
-                    'motivo': (
-                        'Órfão / sem CPF'
-                        if not ok_tratar
-                        else motivo
-                    ),
+                    'motivo': motivo_bloc,
                 })
             continue
 
@@ -3546,16 +3668,47 @@ def preview_cobranca_templates_dia(
 
         faltam += 1
         por_tipo_faltam[tipo] = por_tipo_faltam.get(tipo, 0) + 1
+        faltam_fatura_ids.append(fatura.id)
+        faltam_contratos[fatura.id] = contrato
+
+    faltam_sem_telefone = 0
+    faltam_com_erro_hoje = 0
+    faltam_nao_tentados = 0
+    if faltam_fatura_ids and HistoricoEnvioQualidade is not None:
+        erros_hoje = set(
+            HistoricoEnvioQualidade.objects.filter(
+                fatura_id__in=faltam_fatura_ids,
+                canal='WHATSAPP',
+                sucesso=False,
+                criado_em__date=dia,
+            ).values_list('fatura_id', flat=True)
+        )
+    else:
+        erros_hoje = set()
+    for fid in faltam_fatura_ids:
+        contrato = faltam_contratos.get(fid)
+        tel = ''
+        if contrato is not None:
+            tel = (enriquecer_contato_contrato(contrato).get('telefone') or '').strip()
+        if not tel:
+            faltam_sem_telefone += 1
+        elif fid in erros_hoje:
+            faltam_com_erro_hoje += 1
+        else:
+            faltam_nao_tentados += 1
 
     proximos_no_job = proximos_no_job_cobranca(faltam, limite_job)
+    horario = HORARIO_JOB_COBRANCA
     if limite_job > 0:
-        criterio_job = f'Job diário às 10:00 (limite {limite_job}/execução)'
+        criterio_job = f'Job diário às {horario} (limite {limite_job}/execução)'
     else:
-        criterio_job = 'Job diário às 10:00 (envia todos os elegíveis: D−5 · D+5 · recorrente)'
+        criterio_job = (
+            f'Job diário às {horario} (envia todos os elegíveis: D−5 · D+5 · recorrente)'
+        )
 
     return {
         'data': dia.isoformat(),
-        'horario_automatico': '10:00',
+        'horario_automatico': horario,
         'timezone': 'America/Sao_Paulo',
         'templates_habilitados': bool(templates_habilitados()),
         'limite_job': limite_job,
@@ -3564,7 +3717,13 @@ def preview_cobranca_templates_dia(
         'elegiveis': elegiveis,
         'ja_enviados_hoje': enviados,
         'faltam': faltam,
+        'faltam_detalhe': {
+            'sem_telefone': faltam_sem_telefone,
+            'com_erro_hoje': faltam_com_erro_hoje,
+            'nao_tentados': faltam_nao_tentados,
+        },
         'bloqueados': bloqueados,
+        'por_motivo_bloqueio': por_motivo_bloqueio,
         'proximos_no_job': proximos_no_job,
         'por_tipo': {
             'criterio': por_tipo_bruto,
@@ -3863,10 +4022,10 @@ def enviar_cobranca_atrasados_lote(
     forcar: bool = False,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Envia template Meta aos atrasados do mês (aba Tratamento).
+    """Envia nio_fatura_reducao_sinal_v1 aos atrasados do mês (aba Tratamento).
 
     Pula quem já teve WhatsApp com sucesso no dia, salvo ``forcar``.
-    Não usa o recorte D−5/D+5/recorrente do job das 10:00 — cobre a fila
+    Não usa o recorte D−5/D+5/recorrente do job das 09:00 — cobre a fila
     operacional de FPD.
     """
     fila_eff = _normalizar_fila_envio_atrasados(fila)
@@ -3910,7 +4069,7 @@ def enviar_cobranca_atrasados_lote(
             contrato.id,
             fatura.id,
             user,
-            modo='template',
+            modo='reducao_sinal',
         )
         if result.get('ok'):
             enviados += 1

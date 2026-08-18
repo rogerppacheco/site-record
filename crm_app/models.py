@@ -3580,6 +3580,7 @@ class HistoricoBuscaFatura(models.Model):
         ('SAFRA', 'Busca por Safra'),
         ('INDIVIDUAL', 'Busca Individual'),
         ('RETRY', 'Retry de Erro'),
+        ('MATCH_NOTURNO', 'Match noturno Nio (22h–7h)'),
     ]
     
     STATUS_CHOICES = [

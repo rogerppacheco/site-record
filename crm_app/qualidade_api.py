@@ -188,6 +188,8 @@ class QualidadeRegistrarLigacaoView(APIView):
 class QualidadeEnviarCobrancaView(APIView):
     """POST /api/qualidade/contratos/<id>/enviar/
     body: { canal: whatsapp|email, fatura_id?, telefone?, email? }
+
+    WhatsApp da tela Qualidade dispara nio_fatura_reducao_sinal_v1.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -228,6 +230,7 @@ class QualidadeEnviarCobrancaView(APIView):
                     fatura_id,
                     request.user,
                     telefone_override=request.data.get('telefone'),
+                    modo='reducao_sinal',
                 )
             elif canal in ('email', 'e-mail', 'mail'):
                 resultado = qs.enviar_cobranca_email(
@@ -578,6 +581,24 @@ class QualidadeBuscaNioStatusView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+class QualidadeMatchNioUltimoView(APIView):
+    """GET /api/qualidade/match-nio/ultimo/ — último relatório do job 22h–7h."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        try:
+            from crm_app.services.nio_match_service import ultimo_relatorio_match_noturno
+
+            return Response(ultimo_relatorio_match_noturno())
+        except Exception as e:
+            logger.exception('Erro relatório match Nio')
+            return Response({'error': str(e)}, status=500)
+
+
 class QualidadeCobrancaPreviewView(APIView):
     """GET /api/qualidade/cobranca/preview/?data=YYYY-MM-DD — contadores do dia."""
 
@@ -655,7 +676,7 @@ class QualidadeGestaoEnviosView(APIView):
 
 
 class QualidadeEnviarAtrasadosView(APIView):
-    """GET preview | POST dispara reenvio WhatsApp aos atrasados da aba Tratamento.
+    """GET preview | POST dispara nio_fatura_reducao_sinal_v1 aos atrasados da aba Tratamento.
 
     GET  /api/qualidade/cobranca/enviar-atrasados/?mes=YYYY-MM&lente=&fila=
     POST /api/qualidade/cobranca/enviar-atrasados/  body: { mes, lente, fila, forcar? }

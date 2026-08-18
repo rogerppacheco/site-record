@@ -10,11 +10,23 @@ from crm_app.services.qualidade_service import (
     ATRASO_LIMITE_FPD_DIAS,
     FILA_ATRASADOS_GTE60,
     FILA_ATRASADOS_LT60,
+    HORARIO_JOB_COBRANCA,
     _id_contrato_fpd,
     classificar_fila_atraso,
+    classificar_motivo_bloqueio_cobranca,
     corte_vencimento_fpd,
+    escolher_template_fatura_cobranca,
+    extrair_data_promessa_texto,
     proximos_no_job_cobranca,
     validar_fatura_para_envio_cobranca,
+)
+from crm_app.services.whatsapp.nio_templates import (
+    BTN_INFORMAR_PREVISAO,
+    TEMPLATE_FATURA_LEMBRETE_5D,
+    TEMPLATE_FATURA_RECORRENTE,
+    TEMPLATE_FATURA_REDUCAO_SINAL,
+    TEMPLATE_FATURA_VENCIDA_5D,
+    classificar_botao,
 )
 
 
@@ -94,3 +106,89 @@ class TestExtrairContratoFpd(SimpleTestCase):
             'indicador': 'FPD',
         })
         self.assertEqual(campos['id_contrato'], '111')
+
+
+class TestTemplateReducaoSinalQualidade(SimpleTestCase):
+    def test_tela_qualidade_sempre_reducao_sinal(self) -> None:
+        fatura = SimpleNamespace(data_vencimento=date(2026, 8, 10))
+        tpl, incluir = escolher_template_fatura_cobranca(
+            fatura, modo='reducao_sinal', hoje=date(2026, 8, 18)
+        )
+        self.assertEqual(tpl, TEMPLATE_FATURA_REDUCAO_SINAL)
+        self.assertFalse(incluir)
+
+    def test_job_d5_antes_continua_lembrete(self) -> None:
+        fatura = SimpleNamespace(data_vencimento=date(2026, 8, 23))
+        tpl, incluir = escolher_template_fatura_cobranca(
+            fatura, modo='template', hoje=date(2026, 8, 18)
+        )
+        self.assertEqual(tpl, TEMPLATE_FATURA_LEMBRETE_5D)
+        self.assertFalse(incluir)
+
+    def test_job_vencida_ate_7_dias(self) -> None:
+        fatura = SimpleNamespace(data_vencimento=date(2026, 8, 13))
+        tpl, _ = escolher_template_fatura_cobranca(
+            fatura, modo='template', hoje=date(2026, 8, 18)
+        )
+        self.assertEqual(tpl, TEMPLATE_FATURA_VENCIDA_5D)
+
+    def test_job_recorrente_apos_7_dias(self) -> None:
+        fatura = SimpleNamespace(data_vencimento=date(2026, 8, 1))
+        tpl, incluir = escolher_template_fatura_cobranca(
+            fatura, modo='template', hoje=date(2026, 8, 18)
+        )
+        self.assertEqual(tpl, TEMPLATE_FATURA_RECORRENTE)
+        self.assertTrue(incluir)
+
+    def test_botao_informar_previsao(self) -> None:
+        self.assertEqual(classificar_botao('Informar previsão'), BTN_INFORMAR_PREVISAO)
+        self.assertEqual(classificar_botao('INFORMAR PREVISAO'), BTN_INFORMAR_PREVISAO)
+
+    def test_extrai_data_completa(self) -> None:
+        self.assertEqual(
+            extrair_data_promessa_texto('25/08/2026', hoje=date(2026, 8, 18)),
+            date(2026, 8, 25),
+        )
+
+    def test_extrai_data_sem_ano_no_futuro(self) -> None:
+        self.assertEqual(
+            extrair_data_promessa_texto('25/08', hoje=date(2026, 8, 18)),
+            date(2026, 8, 25),
+        )
+
+    def test_rejeita_data_passada(self) -> None:
+        self.assertIsNone(
+            extrair_data_promessa_texto('10/08/2026', hoje=date(2026, 8, 18))
+        )
+
+    def test_rejeita_texto_que_nao_e_so_data(self) -> None:
+        self.assertIsNone(
+            extrair_data_promessa_texto('pago dia 25/08/2026', hoje=date(2026, 8, 18))
+        )
+
+
+class TestMotivoBloqueioCobranca(SimpleTestCase):
+    def test_orfao_sem_cpf(self) -> None:
+        self.assertEqual(
+            classificar_motivo_bloqueio_cobranca(False, ''),
+            'Órfão / sem CPF',
+        )
+
+    def test_sem_vencimento(self) -> None:
+        self.assertEqual(
+            classificar_motivo_bloqueio_cobranca(
+                True, 'Fatura sem data de vencimento. Atualize a fatura.'
+            ),
+            'Sem data de vencimento',
+        )
+
+    def test_valor_zerado(self) -> None:
+        self.assertEqual(
+            classificar_motivo_bloqueio_cobranca(
+                True, 'Fatura sem valor válido (R$ 0,00 ou vazio).'
+            ),
+            'Valor zerado ou vazio',
+        )
+
+    def test_job_agora_as_nove(self) -> None:
+        self.assertEqual(HORARIO_JOB_COBRANCA, '09:00')

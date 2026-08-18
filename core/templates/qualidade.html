@@ -1047,7 +1047,7 @@
                     </label>
                 </div>
                 <button type="button" class="btn btn-success btn-sm btn-enviar-atrasados" id="btn-enviar-atrasados"
-                    onclick="enviarWhatsappAtrasados()" title="Envia template Meta aos atrasados do mês. Quem já recebeu hoje é pulado.">
+                    onclick="enviarWhatsappAtrasados()" title="Envia o template nio_fatura_reducao_sinal_v1 aos atrasados da fila selecionada. Quem já recebeu hoje é pulado.">
                     <i class="bi bi-whatsapp"></i> Reenviar atrasados
                 </button>
                 <span class="qualidade-pct-fpd d-none" id="pct-fpd" title="(Atrasados + Em aberto) ÷ Total">
@@ -1249,7 +1249,7 @@
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                     <div>
                         <h2 class="h6 mb-1"><i class="bi bi-send-check"></i> Gestão de envios automáticos</h2>
-                        <p class="small text-muted mb-0">Critérios iguais ao job das <strong>10:00</strong> (D−5 · D+5 · recorrente). Envia o volume completo do dia. Contador: <em>faltam / elegíveis</em>.</p>
+                        <p class="small text-muted mb-0">Critérios iguais ao job das <strong>09:00</strong> (D−5 · D+5 · recorrente). Envia o volume completo do dia. Contador: <em>faltam / elegíveis</em>.</p>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="carregarGestaoEnvios()">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar
@@ -1265,7 +1265,19 @@
                     <div class="kpi-item"><div class="kpi-val" id="g-kpi-erro">—</div><div class="kpi-lbl">WA erro hoje</div></div>
                 </div>
                 <ul class="gestao-criterios" id="gestao-criterios"></ul>
-                <div class="small mb-2" id="gestao-tipos"></div>
+                <div class="small mb-1" id="gestao-tipos"></div>
+                <div class="small text-muted mb-1" id="gestao-faltam-detalhe"></div>
+                <div class="small text-muted mb-2" id="gestao-bloqueios"></div>
+                <div class="border rounded p-2 mb-2 small" id="gestao-match-nio">
+                    <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
+                        <div>
+                            <strong><i class="bi bi-link-45deg"></i> Match Nio noturno (22h–7h)</strong>
+                            <div class="text-muted" id="gestao-match-nio-txt">Carregando…</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary d-none" id="btn-gestao-match-nio"
+                            onclick="abrirRelatorioMatchNio()">Ver relatório</button>
+                    </div>
+                </div>
                 <div class="gestao-envios-filtros">
                     <input type="date" class="form-control form-control-sm" id="gestao-data" onchange="gestaoPage=1;carregarGestaoEnvios()">
                     <select class="form-select form-select-sm" id="gestao-origem" onchange="gestaoPage=1;carregarGestaoEnvios()">
@@ -1344,6 +1356,7 @@
                 <div class="border rounded p-2 mb-3 small bg-light" id="envio-preview-dados">
                     <div><strong>Valor:</strong> <span id="envio-preview-valor">—</span></div>
                     <div><strong>Vencimento:</strong> <span id="envio-preview-venc">—</span></div>
+                    <div class="text-muted mt-1" id="envio-preview-template"></div>
                 </div>
                 <div class="alert alert-warning d-none" id="envio-alerta-orfao">
                     Contrato órfão ou sem CPF — vincule/preencha o CPF antes de cobrar.
@@ -2723,6 +2736,12 @@
             : 'R$ 0,00 / sem valor';
         document.getElementById('envio-preview-valor').textContent = valorTxt;
         document.getElementById('envio-preview-venc').textContent = formatDataBr(opts.vencimento) || '—';
+        const tplEl = document.getElementById('envio-preview-template');
+        if (tplEl) {
+            tplEl.textContent = opts.canal === 'whatsapp'
+                ? 'Template: nio_fatura_reducao_sinal_v1'
+                : '';
+        }
 
         const alertaDados = document.getElementById('envio-alerta-dados');
         const podeEnviar = !!opts.podeTratar && opts.podeEnviar !== false;
@@ -2788,7 +2807,7 @@
         if (em) body.email = em;
 
         setEnvioLoading(true, canal === 'whatsapp'
-            ? 'Enviando template WhatsApp… aguarde a API.'
+            ? 'Enviando template nio_fatura_reducao_sinal_v1… aguarde a API.'
             : 'Enviando e-mail…');
         try {
             if (tel || em) {
@@ -3110,8 +3129,8 @@
                 `Já enviados: ${p.ja_enviados_hoje || 0}`,
                 `Bloqueados: ${p.bloqueados || 0}`,
                 p.sem_limite || !p.limite_job
-                    ? 'Job 10:00 · envia todos os elegíveis'
-                    : `Job 10:00 · limite ${p.limite_job}/execução`,
+                    ? `Job ${p.horario_automatico || '09:00'} · envia todos os elegíveis`
+                    : `Job ${p.horario_automatico || '09:00'} · limite ${p.limite_job}/execução`,
                 p.templates_habilitados ? 'Templates ON' : 'Templates OFF',
             ].join(' · ');
         }
@@ -3131,6 +3150,31 @@
             tipos.innerHTML = Object.keys(p.labels_tipo).map((k) =>
                 `<span class="badge text-bg-light border me-1">${escapeHtml(p.labels_tipo[k])}: <strong>${f[k] || 0}</strong> faltam</span>`
             ).join('');
+        }
+        const detFaltam = document.getElementById('gestao-faltam-detalhe');
+        if (detFaltam) {
+            const d = p.faltam_detalhe || {};
+            const partes = [];
+            if (Number(d.sem_telefone || 0) > 0) {
+                partes.push(`sem telefone: ${d.sem_telefone}`);
+            }
+            if (Number(d.com_erro_hoje || 0) > 0) {
+                partes.push(`falha da API hoje: ${d.com_erro_hoje}`);
+            }
+            if (Number(d.nao_tentados || 0) > 0) {
+                partes.push(`ainda não tentados: ${d.nao_tentados}`);
+            }
+            detFaltam.textContent = partes.length
+                ? `Dos ${faltam} que faltam — ${partes.join(' · ')}.`
+                : '';
+        }
+        const detBloc = document.getElementById('gestao-bloqueios');
+        if (detBloc) {
+            const motivos = p.por_motivo_bloqueio || {};
+            const chaves = Object.keys(motivos);
+            detBloc.textContent = chaves.length
+                ? `Bloqueados: ${chaves.map((k) => `${k} (${motivos[k]})`).join(' · ')}.`
+                : '';
         }
     }
 
@@ -3173,7 +3217,7 @@
             return;
         }
         const ok = window.confirm(
-            `Enviar WhatsApp para ${aEnviar} ${labelFila} de ${mesAtual}?\n\n` +
+            `Enviar o template de redução de sinal (nio_fatura_reducao_sinal_v1) para ${aEnviar} ${labelFila} de ${mesAtual}?\n\n` +
             `Quem já recebeu hoje (${jaHoje}) será pulado.\n` +
             `Acompanhe o resultado na aba Envios.`
         );
@@ -3203,6 +3247,38 @@
         }
     };
 
+    let _matchNioLogId = null;
+
+    window.carregarRelatorioMatchNio = async function () {
+        const txt = document.getElementById('gestao-match-nio-txt');
+        const btn = document.getElementById('btn-gestao-match-nio');
+        try {
+            const r = await fetch(`${API}/api/qualidade/match-nio/ultimo/`, { headers: authHeaders() });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Falha no relatório');
+            if (!d.existe) {
+                _matchNioLogId = null;
+                if (txt) txt.textContent = 'Ainda não rodou. O job entra às 22:00 e segue até 07:00, de 20 em 20 min.';
+                if (btn) btn.classList.add('d-none');
+                return;
+            }
+            _matchNioLogId = d.id;
+            const res = d.resumo || {};
+            if (txt) {
+                txt.textContent = d.mensagem
+                    || `${d.status === 'EM_ANDAMENTO' ? 'Em andamento' : 'Última execução'}: match ${res.match || 0} · ambíguo ${res.ambiguo || 0} · sem match ${res.sem_match || 0} · divergência ${res.divergencia_valor || 0}`;
+            }
+            if (btn) btn.classList.toggle('d-none', !d.id);
+        } catch (e) {
+            if (txt) txt.textContent = e.message || 'Não foi possível carregar o match Nio.';
+        }
+    };
+
+    window.abrirRelatorioMatchNio = function () {
+        if (!_matchNioLogId) return;
+        abrirModalBuscaNio(_matchNioLogId, 'noturno');
+    };
+
     window.carregarPreviewCobranca = async function () {
         try {
             const r = await fetch(`${API}/api/qualidade/cobranca/preview/`, { headers: authHeaders() });
@@ -3220,6 +3296,7 @@
             const hoje = new Date();
             dataEl.value = hoje.toISOString().slice(0, 10);
         }
+        if (typeof carregarRelatorioMatchNio === 'function') carregarRelatorioMatchNio();
         const params = new URLSearchParams({
             page: String(gestaoPage),
             page_size: '40',

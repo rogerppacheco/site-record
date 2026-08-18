@@ -7873,6 +7873,7 @@ def processar_webhook_whatsapp(data, request=None):
         BTN_ENTENDI,
         BTN_FALAR_ATENDENTE,
         BTN_FALAR_SUPORTE,
+        BTN_INFORMAR_PREVISAO,
         BTN_JA_PAGUEI,
         BTN_REAGENDAR,
         BTN_SEGUNDA_VIA,
@@ -8137,7 +8138,7 @@ def processar_webhook_whatsapp(data, request=None):
         logger.warning(f"[Webhook] Erro ao processar lembrete instalação: {e}", exc_info=True)
 
     # --- Botões de cobrança (template Meta fatura) ---
-    if botao_meta in (BTN_SEGUNDA_VIA, BTN_JA_PAGUEI, BTN_FALAR_SUPORTE):
+    if botao_meta in (BTN_SEGUNDA_VIA, BTN_JA_PAGUEI, BTN_FALAR_SUPORTE, BTN_INFORMAR_PREVISAO):
         try:
             from crm_app.services.qualidade_service import (
                 montar_mensagem_cobranca_roteiro1,
@@ -8165,6 +8166,22 @@ def processar_webhook_whatsapp(data, request=None):
                 )
                 return {"status": "ok", "mensagem": "Cobrança — suporte"}
 
+            if botao_meta == BTN_INFORMAR_PREVISAO:
+                if contrato_ctx:
+                    registrar_resposta_cliente_qualidade(
+                        contrato=contrato_ctx,
+                        fatura=fatura_ctx,
+                        telefone=telefone_formatado,
+                        texto=BTN_INFORMAR_PREVISAO,
+                        origem="botao",
+                    )
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
+                    telefone_formatado,
+                    "Perfeito. Qual a *data prevista de pagamento*?\n"
+                    "Responda no formato *DD/MM/AAAA* (exemplo: 25/08/2026).",
+                )
+                return {"status": "ok", "mensagem": "Cobrança — informar previsão"}
+
             if botao_meta == BTN_JA_PAGUEI:
                 if contrato_ctx:
                     registrar_resposta_cliente_qualidade(
@@ -8181,7 +8198,7 @@ def processar_webhook_whatsapp(data, request=None):
                 )
                 return {"status": "ok", "mensagem": "Cobrança — já paguei"}
 
-            # Quero a 2ª via
+            # Quero a 2ª via — consulta PIX fresco na Nio (o do CRM pode ter expirado)
             if fatura_ctx and contrato_ctx:
                 registrar_resposta_cliente_qualidade(
                     contrato=contrato_ctx,
@@ -8190,11 +8207,51 @@ def processar_webhook_whatsapp(data, request=None):
                     texto=BTN_SEGUNDA_VIA,
                     origem="botao",
                 )
-                msg = montar_mensagem_cobranca_roteiro1(contrato_ctx, fatura_ctx)
-                WhatsAppService.para_cliente().enviar_mensagem_texto(
-                    telefone_formatado, msg, variar=False
+                try:
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(
+                        telefone_formatado,
+                        "Consultando a *2ª via atualizada* na Nio. Um instante…",
+                        variar=False,
+                    )
+                except Exception:
+                    logger.warning("[Webhook] Falha aviso 2ª via", exc_info=True)
+                from crm_app.services.nio_match_service import (
+                    STATUS_AMBIGUO,
+                    obter_segunda_via_atualizada,
                 )
-                return {"status": "ok", "mensagem": "Cobrança — 2ª via enviada"}
+
+                via = obter_segunda_via_atualizada(contrato_ctx, fatura_ctx)
+                fatura_msg = via.get("fatura") or fatura_ctx
+                pix = (via.get("codigo_pix") or getattr(fatura_msg, "codigo_pix", None) or "").strip()
+                barras = (
+                    via.get("codigo_barras") or getattr(fatura_msg, "codigo_barras", None) or ""
+                ).strip()
+                if pix:
+                    fatura_msg.codigo_pix = pix
+                if barras:
+                    fatura_msg.codigo_barras = barras
+                if pix or barras:
+                    msg = montar_mensagem_cobranca_roteiro1(contrato_ctx, fatura_msg)
+                    if via.get("status") == STATUS_AMBIGUO:
+                        msg = (
+                            "Encontramos mais de uma fatura na mesma data, "
+                            "então não atualizamos o PIX automaticamente. "
+                            "Segue o que temos no cadastro — se não funcionar, "
+                            "fale com o suporte.\n\n"
+                            + msg
+                        )
+                    elif via.get("fonte") == "nio_fresco":
+                        msg = "Segue a *2ª via atualizada* (PIX gerado agora na Nio).\n\n" + msg
+                    WhatsAppService.para_cliente().enviar_mensagem_texto(
+                        telefone_formatado, msg, variar=False
+                    )
+                    return {"status": "ok", "mensagem": "Cobrança — 2ª via enviada"}
+                WhatsAppService.para_cliente().enviar_mensagem_texto(
+                    telefone_formatado,
+                    "Não localizei um PIX atualizado nesta consulta. "
+                    "Um especialista vai te atender em breve.",
+                )
+                return {"status": "ok", "mensagem": "Cobrança — 2ª via sem PIX"}
             WhatsAppService.para_cliente().enviar_mensagem_texto(
                 telefone_formatado,
                 "Para enviar a 2ª via, responda com o *CPF* do titular "
@@ -8211,8 +8268,11 @@ def processar_webhook_whatsapp(data, request=None):
             BTN_SEGUNDA_VIA,
             BTN_JA_PAGUEI,
             BTN_FALAR_SUPORTE,
+            BTN_INFORMAR_PREVISAO,
         ):
             from crm_app.services.qualidade_service import (
+                extrair_data_promessa_texto,
+                gravar_promessa_pagamento_qualidade,
                 registrar_resposta_cliente_qualidade,
                 resolver_contexto_cobranca_por_telefone,
             )
@@ -8221,9 +8281,27 @@ def processar_webhook_whatsapp(data, request=None):
                 telefone_formatado_usuario, dias=14
             )
             if ctx_txt and ctx_txt.get("contrato"):
+                fatura_txt = ctx_txt.get("fatura")
+                data_promessa = extrair_data_promessa_texto(texto_livre_cob)
+                if data_promessa and fatura_txt:
+                    gravou = gravar_promessa_pagamento_qualidade(
+                        fatura_txt,
+                        data_promessa,
+                        contrato=ctx_txt["contrato"],
+                        telefone=telefone_formatado,
+                    )
+                    if gravou:
+                        WhatsAppService.para_cliente().enviar_mensagem_texto(
+                            telefone_formatado,
+                            "Previsão registrada: *"
+                            f"{data_promessa.strftime('%d/%m/%Y')}*. "
+                            "Obrigado! Assim que o pagamento for identificado, "
+                            "o sinal é regularizado.",
+                        )
+                        return {"status": "ok", "mensagem": "Cobrança — promessa gravada"}
                 registrar_resposta_cliente_qualidade(
                     contrato=ctx_txt["contrato"],
-                    fatura=ctx_txt.get("fatura"),
+                    fatura=fatura_txt,
                     telefone=telefone_formatado,
                     texto=texto_livre_cob,
                     origem="texto",

@@ -24,6 +24,7 @@ TEMPLATE_INSTALACAO_CONFIRMADA = "nio_instalacao_confirmada_v1_2"
 TEMPLATE_FATURA_LEMBRETE_5D = "nio_fatura_lembrete_5d_antes_v1"
 TEMPLATE_FATURA_VENCIDA_5D = "nio_fatura_vencida_5d_v1"
 TEMPLATE_FATURA_RECORRENTE = "nio_fatura_cobranca_recorrente_v1"
+TEMPLATE_FATURA_REDUCAO_SINAL = "nio_fatura_reducao_sinal_v1"
 TEMPLATE_PENDENCIA_REAGENDAMENTO = "nio_pendencia_reagendamento_v1"
 TEMPLATE_BOAS_VINDAS = "nio_boas_vindas_v1"
 
@@ -42,6 +43,7 @@ BTN_ENTENDI = "ENTENDI"
 BTN_SEGUNDA_VIA = "QUERO A 2A VIA"
 BTN_JA_PAGUEI = "JA PAGUEI"
 BTN_FALAR_SUPORTE = "FALAR COM SUPORTE"
+BTN_INFORMAR_PREVISAO = "INFORMAR PREVISAO"
 
 
 def templates_habilitados() -> bool:
@@ -154,6 +156,8 @@ def classificar_botao(texto: Optional[str]) -> Optional[str]:
         "QUERO A 2 VIA": BTN_SEGUNDA_VIA,
         "JA PAGUEI": BTN_JA_PAGUEI,
         "FALAR COM SUPORTE": BTN_FALAR_SUPORTE,
+        "INFORMAR PREVISAO": BTN_INFORMAR_PREVISAO,
+        "INFORMAR PREVISAO DE PAGAMENTO": BTN_INFORMAR_PREVISAO,
     }
     if n in mapa:
         return mapa[n]
@@ -368,6 +372,33 @@ def referencia_fatura(fatura: Any) -> str:
         return f"{meses.get(venc.month, venc.month)}/{venc.year}"
     num = getattr(fatura, "numero_fatura", None)
     return f"Fatura {num}" if num else "Fatura Nio"
+
+
+def montar_fallback_fatura_reducao_sinal(
+    nome_cliente: str,
+    fatura: Any,
+) -> str:
+    """Texto livre equivalente a nio_fatura_reducao_sinal_v1 (janela 24h / fallback)."""
+    params = body_params_fatura(
+        nome_cliente,
+        referencia_fatura(fatura),
+        getattr(fatura, "valor", 0),
+        getattr(fatura, "data_vencimento", None),
+    )
+    saudacao, nome, ref, valor, venc = params[:5]
+    return (
+        f"Olá, {saudacao}!\n\n"
+        f"{nome},\n\n"
+        "Parceiro oficial da Nio Fibra.\n"
+        "Sua internet está com a velocidade reduzida devido a uma pendência de pagamento.\n\n"
+        f"Referência: *{ref}*\n"
+        f"Valor: *{valor}*\n"
+        f"Vencimento: *{venc}*\n\n"
+        "Precisamos do seu retorno para programar a regularização e liberar "
+        "novamente 100% do seu sinal de fibra óptica.\n\n"
+        "Informe sua previsão de pagamento.\n\n"
+        "SAC: 0800 001 1000 | WhatsApp: 21 3605-1000"
+    )
 
 
 def enviar_template_cliente(

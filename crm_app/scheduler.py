@@ -45,11 +45,21 @@ def _wrap_scheduler_job(func: _F) -> _F:
 
 def buscar_faturas_automatico():
     try:
-        logger.info("🤖 Iniciando busca automática de faturas no Nio...")
-        call_command('buscar_faturas_nio_automatico')
-        logger.info("✅ Busca automática concluída com sucesso!")
+        logger.info("🤖 Iniciando lote de match Nio noturno...")
+        call_command('match_faturas_nio_noturno')
+        logger.info("✅ Lote de match Nio noturno concluído")
     except Exception as e:
-        logger.error(f"❌ Erro na busca automática: {str(e)}")
+        logger.error(f"❌ Erro no match Nio noturno: {str(e)}")
+
+
+def finalizar_match_nio_noturno():
+    try:
+        from crm_app.services.nio_match_service import finalizar_janela_noturna
+
+        logger.info("🌅 Encerrando janela de match Nio noturno")
+        finalizar_janela_noturna()
+    except Exception as e:
+        logger.error("❌ Erro ao finalizar match Nio noturno: %s", e)
 
 
 def processar_envio_performance_agendado():
@@ -220,11 +230,20 @@ def encerrar_sessoes_tratamento_ociosas():
 
 
 def _registrar_jobs(scheduler):
+    tz_match = getattr(settings, "TIME_ZONE", None) or "America/Sao_Paulo"
     scheduler.add_job(
         _wrap_scheduler_job(buscar_faturas_automatico),
-        trigger=CronTrigger.from_crontab('5 0 * * *'),
+        trigger=CronTrigger.from_crontab('*/20 22-23,0-6 * * *', timezone=tz_match),
         id='buscar_faturas_diario',
-        name='Busca automática de faturas Nio (00:05)',
+        name='Match Nio noturno (22h–7h a cada 20 min)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(finalizar_match_nio_noturno),
+        trigger=CronTrigger.from_crontab('0 7 * * *', timezone=tz_match),
+        id='finalizar_match_nio_noturno',
+        name='Encerra relatório do match Nio (07:00)',
         replace_existing=True,
         max_instances=1,
     )
@@ -263,9 +282,9 @@ def _registrar_jobs(scheduler):
     tz_cob = getattr(settings, "TIME_ZONE", None) or "America/Sao_Paulo"
     scheduler.add_job(
         _wrap_scheduler_job(enviar_templates_cobranca_nio),
-        trigger=CronTrigger.from_crontab("0 10 * * *", timezone=tz_cob),
+        trigger=CronTrigger.from_crontab("0 9 * * *", timezone=tz_cob),
         id="enviar_templates_cobranca_nio",
-        name="Templates Meta cobrança Nio (10:00)",
+        name="Templates Meta cobrança Nio (09:00)",
         replace_existing=True,
         max_instances=1,
     )
