@@ -3520,6 +3520,18 @@ class HistoricoEnvioQualidade(models.Model):
         ('MANUAL', 'Manual'),
         ('SISTEMA', 'Sistema'),
     ]
+    STATUS_ENTREGA_ACEITO = 'ACEITO'
+    STATUS_ENTREGA_ENVIADO = 'ENVIADO'
+    STATUS_ENTREGA_ENTREGUE = 'ENTREGUE'
+    STATUS_ENTREGA_LIDO = 'LIDO'
+    STATUS_ENTREGA_FALHOU = 'FALHOU'
+    STATUS_ENTREGA_CHOICES = [
+        (STATUS_ENTREGA_ACEITO, 'Aceito pela API'),
+        (STATUS_ENTREGA_ENVIADO, 'Enviado'),
+        (STATUS_ENTREGA_ENTREGUE, 'Entregue'),
+        (STATUS_ENTREGA_LIDO, 'Lido'),
+        (STATUS_ENTREGA_FALHOU, 'Falha de entrega'),
+    ]
 
     contrato = models.ForeignKey(
         ContratoM10,
@@ -3558,6 +3570,26 @@ class HistoricoEnvioQualidade(models.Model):
     )
     sucesso = models.BooleanField(default=True)
     erro = models.TextField(null=True, blank=True)
+    message_id = models.CharField(
+        max_length=191,
+        blank=True,
+        default='',
+        help_text='wamid / messageId retornado no aceite do envio (correlação com webhook da Meta)',
+    )
+    status_entrega = models.CharField(
+        max_length=20,
+        choices=STATUS_ENTREGA_CHOICES,
+        blank=True,
+        default='',
+        help_text='ACEITO = HTTP 200 da API; ENVIADO/ENTREGUE/LIDO/FALHOU = webhook posterior',
+    )
+    erro_codigo = models.CharField(
+        max_length=32,
+        blank=True,
+        default='',
+        help_text='Código Meta (ex.: 131048 spam, 131047 janela 24h)',
+    )
+    status_atualizado_em = models.DateTimeField(null=True, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -3567,6 +3599,7 @@ class HistoricoEnvioQualidade(models.Model):
         indexes = [
             models.Index(fields=['contrato', 'canal', '-criado_em']),
             models.Index(fields=['-criado_em', 'canal', 'origem']),
+            models.Index(fields=['message_id'], name='crm_app_his_msgid_idx'),
         ]
 
     def __str__(self) -> str:

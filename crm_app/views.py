@@ -180,21 +180,21 @@ class WebhookWhatsAppView(APIView):
             logger_webhook.exception(f"[WebhookWhatsAppView] Erro ao ler request.data: {e}")
             return Response({'status': 'ok', 'mensagem': 'Payload inválido'}, status=200)
 
+        from crm_app.services.whatsapp.status_entrega_service import (
+            processar_webhook_status,
+        )
+
+        status_resp = processar_webhook_status(data if isinstance(data, dict) else {})
+        if status_resp is not None:
+            return Response(status_resp, status=200)
+
         from crm_app.whatsapp_webhook_normalizer import normalizar_webhook
         data = normalizar_webhook(data)
 
-        # Callbacks de entrega/status: sync no web (não fila async).
-        tipo_evento = str((data or {}).get('type') or '').strip().lower()
-        if tipo_evento == 'deliverycallback' and isinstance(data, dict):
-            from crm_app.services.whatsapp.delivery_tracker import processar_delivery_callback
-
-            return Response(processar_delivery_callback(data), status=200)
-        if tipo_evento == 'messagestatuscallback' and isinstance(data, dict):
-            from crm_app.services.whatsapp.delivery_tracker import (
-                processar_message_status_callback,
-            )
-
-            return Response(processar_message_status_callback(data), status=200)
+        # Fallback: normalizador converteu status que o extrator do raw não viu.
+        status_resp = processar_webhook_status(data if isinstance(data, dict) else {})
+        if status_resp is not None:
+            return Response(status_resp, status=200)
 
         if getattr(settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
             from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_webhook

@@ -33,13 +33,244 @@ _WHATSATENDE_EVENTS_STATUS = frozenset(
         "message.delivered",
         "message.read",
         "message.failed",
+        "messages.failed",
     }
 )
+
+
+def _eh_webhook_cloud_api_meta(payload: Dict[str, Any]) -> bool:
+    if payload.get("object") == "whatsapp_business_account":
+        return True
+    entry = payload.get("entry")
+    if not isinstance(entry, list) or not entry:
+        return False
+    first = entry[0]
+    if not isinstance(first, dict):
+        return False
+    changes = first.get("changes")
+    if not isinstance(changes, list) or not changes:
+        return False
+    change0 = changes[0]
+    if not isinstance(change0, dict):
+        return False
+    value = change0.get("value")
+    if not isinstance(value, dict):
+        return False
+    return bool(value.get("statuses"))
+
+
+def extrair_callbacks_status(payload: Any) -> list:
+    """
+    Extrai DeliveryCallback / MessageStatusCallback de:
+    - Z-API (type já canônico)
+    - WhatsAtende event=message.failed / message.status
+    - Cloud API Meta (object=whatsapp_business_account + statuses)
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    tipo = str(payload.get("type") or "").strip().lower()
+    if tipo == "deliverycallback":
+        return [payload]
+    if tipo == "messagestatuscallback":
+        return [payload]
+
+    if _eh_webhook_cloud_api_meta(payload):
+        return _callbacks_from_meta_cloud(payload)
+
+    nested = payload.get("data")
+    if isinstance(nested, dict) and (
+        _eh_webhook_cloud_api_meta(nested) or nested.get("statuses")
+    ):
+        if nested.get("statuses") and not _eh_webhook_cloud_api_meta(nested):
+            return _callbacks_from_statuses_lista(
+                nested.get("statuses"),
+                phone=_digitos_telefone(
+                    nested.get("recipient_id")
+                    or payload.get("senderNumber")
+                    or payload.get("phone")
+                ),
+            )
+        return _callbacks_from_meta_cloud(nested)
+
+    evento = str(payload.get("event") or "").lower()
+    if evento in _WHATSATENDE_EVENTS_STATUS:
+        cb = _callback_from_whatsatende_status(payload)
+        return [cb] if cb else []
+
+    # Payload misto: id + errors[] (Cloud API / WhatsAtende)
+    if payload.get("errors") and (
+        payload.get("id") or payload.get("messageId") or payload.get("wamid")
+    ):
+        cb = _callback_from_whatsatende_status({**payload, "event": "message.failed"})
+        return [cb] if cb else []
+
+    return []
+
+
+def _callbacks_from_meta_cloud(payload: Dict[str, Any]) -> list:
+    out: list = []
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+            statuses = value.get("statuses")
+            if not isinstance(statuses, list):
+                continue
+            out.extend(_callbacks_from_statuses_lista(statuses))
+    return out
+
+
+def _callbacks_from_statuses_lista(statuses: Any, phone: str = "") -> list:
+    out: list = []
+    if not isinstance(statuses, list):
+        return out
+    for st in statuses:
+        if not isinstance(st, dict):
+            continue
+        mid = st.get("id") or st.get("messageId") or st.get("wamid")
+        status_raw = str(st.get("status") or "").strip().lower()
+        dest = phone or _digitos_telefone(
+            st.get("recipient_id") or st.get("recipientId") or st.get("phone")
+        )
+        errors = st.get("errors") if isinstance(st.get("errors"), list) else []
+        err0 = errors[0] if errors and isinstance(errors[0], dict) else {}
+        code = err0.get("code")
+        details = ""
+        err_data = err0.get("error_data")
+        if isinstance(err_data, dict):
+            details = str(err_data.get("details") or "").strip()
+        err_msg = (
+            details
+            or str(err0.get("message") or "").strip()
+            or str(err0.get("title") or "").strip()
+        )
+        if status_raw in ("failed", "error", "fail") or errors:
+            out.append(
+                {
+                    "type": "DeliveryCallback",
+                    "messageId": mid,
+                    "phone": dest,
+                    "error": err_msg or "falha de entrega",
+                    "errorCode": str(code) if code is not None else "",
+                    "errors": errors,
+                    "_meta_status": status_raw,
+                }
+            )
+            continue
+        mapped = "SENT"
+        if status_raw in ("delivered", "delivery_ack"):
+            mapped = "RECEIVED"
+        elif status_raw in ("read", "played"):
+            mapped = "READ"
+        elif status_raw in ("sent", "server"):
+            mapped = "SENT"
+        else:
+            continue
+        out.append(
+            {
+                "type": "MessageStatusCallback",
+                "ids": [mid] if mid else [],
+                "messageId": mid,
+                "status": mapped,
+                "phone": dest,
+                "_meta_status": status_raw,
+            }
+        )
+    return out
+
+
+def _callback_from_whatsatende_status(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    mid = (
+        payload.get("messageId")
+        or payload.get("id")
+        or payload.get("wamid")
+    )
+    phone = _digitos_telefone(
+        payload.get("senderNumber")
+        or payload.get("recipient_id")
+        or payload.get("number")
+        or payload.get("phone")
+    )
+    status_raw = str(
+        payload.get("ackStatus")
+        or payload.get("deliveryStatus")
+        or payload.get("status")
+        or payload.get("event")
+        or ""
+    ).lower()
+    errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
+    code = payload.get("errorCode") or payload.get("error_code") or payload.get("code")
+    if errors and isinstance(errors[0], dict) and not code:
+        code = errors[0].get("code")
+    err_msg = payload.get("error") or payload.get("message")
+    if isinstance(err_msg, dict):
+        err_msg = err_msg.get("message") or err_msg.get("title") or str(err_msg)
+    failed_tokens = (
+        "failed",
+        "error",
+        "fail",
+        "message.failed",
+        "messages.failed",
+    )
+    if status_raw in failed_tokens or errors or payload.get("error"):
+        return {
+            "type": "DeliveryCallback",
+            "messageId": mid,
+            "phone": phone,
+            "error": str(err_msg or "falha de entrega"),
+            "errorCode": str(code) if code is not None else "",
+            "errors": errors,
+            "_whatsatende_raw": payload,
+        }
+    if status_raw in (
+        "delivered",
+        "delivery_ack",
+        "read",
+        "played",
+        "message.delivered",
+        "message.read",
+        "sent",
+        "message.sent",
+    ):
+        mapped = "SENT"
+        if "read" in status_raw or status_raw == "played":
+            mapped = "READ"
+        elif "deliver" in status_raw:
+            mapped = "RECEIVED"
+        return {
+            "type": "MessageStatusCallback",
+            "ids": [mid] if mid else [],
+            "messageId": mid,
+            "status": mapped,
+            "phone": phone,
+            "_whatsatende_raw": payload,
+        }
+    evento = str(payload.get("event") or "").lower()
+    if evento in ("message.failed", "messages.failed"):
+        return {
+            "type": "DeliveryCallback",
+            "messageId": mid,
+            "phone": phone,
+            "error": str(err_msg or "falha de entrega"),
+            "errorCode": str(code) if code is not None else "",
+            "errors": errors,
+            "_whatsatende_raw": payload,
+        }
+    return None
 
 
 def detectar_provedor(payload: Any) -> str:
     if not isinstance(payload, dict):
         return _PROVEDOR_ZAPI
+
+    if _eh_webhook_cloud_api_meta(payload):
+        return _PROVEDOR_WHATSATENDE
 
     source = str(
         payload.get("source")
@@ -124,37 +355,11 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     evento = str(payload.get("event") or "").lower()
 
-    # Só trata como ACK se o evento for explicitamente de status (não oferecido hoje)
+    # ACK explícito (hoje a WhatsAtende não documenta; manter se o suporte ativar)
     if evento in _WHATSATENDE_EVENTS_STATUS:
-        mid = payload.get("messageId") or payload.get("id")
-        phone = _digitos_telefone(
-            payload.get("senderNumber")
-            or payload.get("number")
-            or payload.get("phone")
-        )
-        status_raw = str(payload.get("ackStatus") or payload.get("deliveryStatus") or "").lower()
-        if status_raw in ("failed", "error", "fail"):
-            return {
-                "type": "DeliveryCallback",
-                "messageId": mid,
-                "phone": phone,
-                "error": payload.get("error") or "falha de entrega",
-                "_whatsatende_raw": payload,
-            }
-        if status_raw in ("delivered", "delivery_ack", "read", "played"):
-            return {
-                "type": "MessageStatusCallback",
-                "ids": [mid] if mid else [],
-                "status": "READ" if status_raw in ("read", "played") else "DELIVERY_ACK",
-                "phone": phone,
-                "_whatsatende_raw": payload,
-            }
-        return {
-            "type": "DeliveryCallback",
-            "messageId": mid,
-            "phone": phone,
-            "_whatsatende_raw": payload,
-        }
+        cb = _callback_from_whatsatende_status(payload)
+        if cb:
+            return cb
 
     # Payload bruto opcional (sendMsgWhatsapp): objeto original em "msg"
     msg_bruto = payload.get("msg") if isinstance(payload.get("msg"), dict) else {}

@@ -2405,6 +2405,9 @@ def _registrar_historico_envio(
     erro: Optional[str] = None,
     origem: Optional[str] = None,
     template_nome: str = '',
+    message_id: str = '',
+    status_entrega: str = '',
+    erro_codigo: str = '',
 ) -> None:
     if HistoricoEnvioQualidade is None:
         return
@@ -2415,6 +2418,10 @@ def _registrar_historico_envio(
         origem_eff = 'MANUAL'
     else:
         origem_eff = 'AUTO'
+    mid = (message_id or '')[:191]
+    status_eff = (status_entrega or '').strip().upper()
+    if not status_eff and canal == 'WHATSAPP':
+        status_eff = 'ACEITO' if sucesso else 'FALHOU'
     try:
         HistoricoEnvioQualidade.objects.create(
             contrato=contrato,
@@ -2427,6 +2434,10 @@ def _registrar_historico_envio(
             enviado_por=user if getattr(user, 'pk', None) else None,
             sucesso=sucesso,
             erro=erro or '',
+            message_id=mid,
+            status_entrega=status_eff,
+            erro_codigo=(erro_codigo or '')[:32],
+            status_atualizado_em=timezone.now() if status_eff else None,
         )
     except Exception:
         logger.exception('[Qualidade] Falha ao registrar HistoricoEnvioQualidade')
@@ -2538,6 +2549,9 @@ def listar_historico_contato_contrato(contrato_id: int, *, limite: int = 80) -> 
                 'mensagem': h.mensagem or '',
                 'sucesso': bool(h.sucesso),
                 'erro': h.erro or '',
+                'message_id': h.message_id or '',
+                'status_entrega': h.status_entrega or '',
+                'erro_codigo': h.erro_codigo or '',
                 'criado_em': _iso_dt_local(h.criado_em),
                 'enviado_por': (
                     (h.enviado_por.get_full_name() or h.enviado_por.username)
@@ -2811,9 +2825,18 @@ def enviar_cobranca_whatsapp(
             sucesso=False,
             erro=str(exc),
             template_nome=template_usado,
+            status_entrega='FALHOU',
         )
         return {'ok': False, 'erro': str(exc)}
 
+    from crm_app.services.whatsapp.status_entrega_service import (
+        extrair_erro_meta,
+        extrair_message_id_resposta,
+    )
+
+    message_id = extrair_message_id_resposta(resp)
+    erro_codigo, erro_meta = extrair_erro_meta(resp)
+    erro_txt = None if ok else (erro_meta or str(resp) if resp else 'Falha no envio WhatsApp')
     _registrar_historico_envio(
         contrato=contrato,
         fatura=fatura,
@@ -2822,8 +2845,11 @@ def enviar_cobranca_whatsapp(
         mensagem=f'[{canal}] {mensagem[:500]}',
         user=user,
         sucesso=bool(ok),
-        erro=None if ok else str(resp),
+        erro=erro_txt,
         template_nome=template_usado or (canal if canal != 'roteiro1' else ''),
+        message_id=message_id,
+        status_entrega='ACEITO' if ok else 'FALHOU',
+        erro_codigo=erro_codigo,
     )
     return {
         'ok': bool(ok),
@@ -2832,16 +2858,20 @@ def enviar_cobranca_whatsapp(
         'mensagem': mensagem,
         'canal': canal,
         'template_nome': template_usado,
+        'message_id': message_id or None,
+        'status_entrega': 'ACEITO' if ok else 'FALHOU',
+        'erro_codigo': erro_codigo or None,
         'resposta': resp,
         'detail': (
             (
                 f'Cobrança enviada via {canal}'
                 + (f' ({template_usado}).' if template_usado else '.')
+                + ' Aguardando confirmação de entrega da Meta.'
             )
             if ok
             else None
         ),
-        'erro': None if ok else (str(resp) if resp else 'Falha no envio WhatsApp'),
+        'erro': None if ok else (erro_txt or 'Falha no envio WhatsApp'),
     }
 
 
@@ -3544,15 +3574,22 @@ def classificar_motivo_bloqueio_cobranca(ok_tratar: bool, motivo_dados: str) -> 
 
 
 def ja_enviou_template_cobranca_hoje(fatura: FaturaM10, *, dia: Optional[date] = None) -> bool:
-    """Dedup do job automático: WhatsApp sucesso com template no dia local."""
+    """Dedup do job automático: tentativa de template no dia local.
+
+    Conta aceite da API e falha posterior da Meta (ex.: 131048). Sem isso o job
+    reenviaria cobrança no mesmo dia e agravaria bloqueio de spam.
+    """
     if HistoricoEnvioQualidade is None:
         return False
     alvo = dia or timezone.localdate()
     return HistoricoEnvioQualidade.objects.filter(
         fatura=fatura,
         canal='WHATSAPP',
-        sucesso=True,
         criado_em__date=alvo,
+    ).filter(
+        Q(sucesso=True)
+        | Q(message_id__gt='')
+        | Q(status_entrega='FALHOU')
     ).filter(
         Q(template_nome__gt='')
         | Q(mensagem__icontains='template')
@@ -3863,6 +3900,7 @@ def listar_gestao_envios_qualidade(
         'whatsapp_total': base_dia.count(),
         'whatsapp_sucesso': base_dia.filter(sucesso=True).count(),
         'whatsapp_erro': base_dia.filter(sucesso=False).count(),
+        'whatsapp_falhou_entrega': base_dia.filter(status_entrega='FALHOU').count(),
         'auto_sucesso': base_dia.filter(origem='AUTO', sucesso=True).count(),
         'manual_sucesso': base_dia.filter(origem='MANUAL', sucesso=True).count(),
         # Legado sem origem/template: conta como auto se sem usuário
@@ -3888,6 +3926,9 @@ def listar_gestao_envios_qualidade(
             'template_nome': h.template_nome or '',
             'sucesso': bool(h.sucesso),
             'erro': (h.erro or '')[:300],
+            'message_id': h.message_id or '',
+            'status_entrega': h.status_entrega or '',
+            'erro_codigo': h.erro_codigo or '',
             'destinatario': h.destinatario or '',
             'mensagem': (h.mensagem or '')[:180],
             'contrato_id': h.contrato_id,

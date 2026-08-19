@@ -2647,9 +2647,20 @@
                 const canal = it.canal || '';
                 const title = canalLabel[canal] || canal;
                 const cls = canalClass[canal] || '';
-                const status = it.sucesso === false
-                    ? '<span class="badge bg-danger ms-1">falhou</span>'
-                    : '';
+                const statusEntrega = it.status_entrega || '';
+                let status = '';
+                if (statusEntrega === 'FALHOU' || it.sucesso === false) {
+                    const cod = it.erro_codigo ? ` ${escapeHtml(it.erro_codigo)}` : '';
+                    status = `<span class="badge bg-danger ms-1">não entregue${cod}</span>`;
+                } else if (statusEntrega === 'LIDO') {
+                    status = '<span class="badge bg-success ms-1">lido</span>';
+                } else if (statusEntrega === 'ENTREGUE') {
+                    status = '<span class="badge bg-success ms-1">entregue</span>';
+                } else if (statusEntrega === 'ENVIADO') {
+                    status = '<span class="badge bg-success ms-1">enviado</span>';
+                } else if (statusEntrega === 'ACEITO') {
+                    status = '<span class="badge bg-warning text-dark ms-1">aceito (API)</span>';
+                }
                 const erro = it.erro ? `<div class="small text-danger mt-1">${escapeHtml(it.erro)}</div>` : '';
                 const por = it.enviado_por ? `<div class="small text-muted">por ${escapeHtml(it.enviado_por)}</div>` : '';
                 return `<div class="list-group-item px-0">
@@ -3324,9 +3335,21 @@
                 const origemCls = h.origem === 'AUTO' ? 'badge-origem-auto'
                     : (h.origem === 'SISTEMA' ? 'badge-origem-sistema' : 'badge-origem-manual');
                 const quando = (h.criado_em || '').replace('T', ' ').slice(0, 16);
-                const result = h.sucesso
-                    ? '<span class="text-success">OK</span>'
-                    : `<span class="text-danger" title="${escapeHtml(h.erro || '')}">Erro</span>`;
+                const result = (() => {
+                    if (h.status_entrega === 'FALHOU') {
+                        const cod = h.erro_codigo ? ` ${escapeHtml(h.erro_codigo)}` : '';
+                        return `<span class="text-danger" title="${escapeHtml(h.erro || '')}">Não entregue${cod}</span>`;
+                    }
+                    if (h.status_entrega === 'LIDO') return '<span class="text-success">Lido</span>';
+                    if (h.status_entrega === 'ENTREGUE') return '<span class="text-success">Entregue</span>';
+                    if (h.status_entrega === 'ENVIADO') return '<span class="text-success">Enviado</span>';
+                    if (h.status_entrega === 'ACEITO') {
+                        return '<span class="text-warning" title="Aceito pela API; entrega ainda não confirmada pela Meta">Aceito (API)</span>';
+                    }
+                    return h.sucesso
+                        ? '<span class="text-success">OK</span>'
+                        : `<span class="text-danger" title="${escapeHtml(h.erro || '')}">Erro</span>`;
+                })();
                 return `<tr>
                     <td class="small">${escapeHtml(quando)}</td>
                     <td><span class="badge ${origemCls}">${escapeHtml(h.origem || '—')}</span></td>
