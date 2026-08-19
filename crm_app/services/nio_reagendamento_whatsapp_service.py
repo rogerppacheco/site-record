@@ -290,91 +290,149 @@ def _marcar_execucao_erro(execucao_id: int, msg: str) -> None:
     )
 
 
-def executar_job(execucao_id: int) -> bool:
+def _carregar_job(execucao_id: int) -> Tuple[int, Optional[int], List[int]]:
     from crm_app.models import NioReagendamentoExecucao, NioReagendamentoItem
+
+    execucao = NioReagendamentoExecucao.objects.select_related('iniciado_por').get(pk=execucao_id)
+    execucao.status = NioReagendamentoExecucao.STATUS_EM_ANDAMENTO
+    execucao.save(update_fields=['status'])
+    item_ids = list(
+        execucao.itens.filter(status=NioReagendamentoItem.STATUS_PENDENTE)
+        .order_by('id')
+        .values_list('id', flat=True)
+    )
+    return execucao.id, execucao.iniciado_por_id, item_ids
+
+
+def _preparar_item_nio(item_id: int, execucao_id: int) -> dict:
+    from crm_app.models import NioReagendamentoExecucao, NioReagendamentoItem
+
+    execucao = NioReagendamentoExecucao.objects.get(pk=execucao_id)
+    item = NioReagendamentoItem.objects.select_related(
+        'venda', 'venda__cliente', 'venda__motivo_pendencia', 'venda__status_esteira'
+    ).get(pk=item_id)
+    if execucao.cancelar_solicitado:
+        item.status = NioReagendamentoItem.STATUS_CANCELADO
+        item.mensagem = 'Cancelado pelo usuário.'
+        item.finalizado_em = timezone.now()
+        item.save(update_fields=['status', 'mensagem', 'finalizado_em'])
+        return {'acao': 'pular'}
+
+    venda = item.venda
+    ok_eleg, motivo_eleg = venda_elegivel_nio_reagendamento(venda)
+    if not ok_eleg:
+        item.status = NioReagendamentoItem.STATUS_ERRO
+        item.mensagem = motivo_eleg
+        item.finalizado_em = timezone.now()
+        item.save(update_fields=['status', 'mensagem', 'finalizado_em'])
+        _marcar_falha_venda(venda, 'erro', motivo_eleg)
+        execucao.processados += 1
+        execucao.falhas += 1
+        execucao.save(update_fields=['processados', 'falhas'])
+        return {'acao': 'pular'}
+
+    item.status = NioReagendamentoItem.STATUS_EM_ANDAMENTO
+    item.iniciado_em = timezone.now()
+    item.save(update_fields=['status', 'iniciado_em'])
+    cpf = re.sub(r'\D', '', venda.cliente.cpf_cnpj or '')
+    nome = (venda.cliente.nome_razao_social or '')[:80]
+    return {'acao': 'reagendar', 'cpf': cpf, 'nome': nome, 'venda_id': venda.id}
+
+
+def _salvar_resultado_item_nio(
+    item_id: int,
+    execucao_id: int,
+    usuario_id: Optional[int],
+    resultado,
+) -> None:
+    from django.contrib.auth import get_user_model
+
+    from crm_app.models import NioReagendamentoExecucao, NioReagendamentoItem
+
+    execucao = NioReagendamentoExecucao.objects.get(pk=execucao_id)
+    item = NioReagendamentoItem.objects.select_related('venda').get(pk=item_id)
+    venda = item.venda
+    usuario = get_user_model().objects.filter(pk=usuario_id).first() if usuario_id else None
+
+    item.finalizado_em = timezone.now()
+    item.dados_json = resultado.dados or {}
+    item.mensagem = resultado.mensagem[:500]
+    item.status = resultado.status
+    item.save(update_fields=['status', 'mensagem', 'dados_json', 'finalizado_em'])
+
+    if resultado.ok and resultado.dados:
+        _aplicar_sucesso_venda(venda, resultado.dados, usuario=usuario)
+        execucao.sucessos += 1
+    else:
+        _marcar_falha_venda(venda, resultado.status, resultado.mensagem)
+        execucao.falhas += 1
+
+    execucao.processados += 1
+    execucao.save(update_fields=['processados', 'sucessos', 'falhas'])
+
+
+def _finalizar_job_nio(execucao_id: int, *, erro: Optional[str] = None) -> bool:
+    from crm_app.models import NioReagendamentoExecucao
+
+    execucao = NioReagendamentoExecucao.objects.get(pk=execucao_id)
+    execucao.finalizado_em = timezone.now()
+    if erro:
+        execucao.status = NioReagendamentoExecucao.STATUS_ERRO
+        execucao.mensagem_erro = erro[:2000]
+        execucao.save(update_fields=['status', 'mensagem_erro', 'finalizado_em'])
+        return False
+    execucao.refresh_from_db(fields=['cancelar_solicitado'])
+    if execucao.cancelar_solicitado:
+        execucao.status = NioReagendamentoExecucao.STATUS_INTERROMPIDO
+    else:
+        execucao.status = NioReagendamentoExecucao.STATUS_CONCLUIDO
+    execucao.save(update_fields=['status', 'finalizado_em'])
+    return True
+
+
+def _job_foi_cancelado(execucao_id: int) -> bool:
+    from crm_app.models import NioReagendamentoExecucao
+
+    return bool(
+        NioReagendamentoExecucao.objects.filter(
+            pk=execucao_id, cancelar_solicitado=True
+        ).exists()
+    )
+
+
+def executar_job(execucao_id: int) -> bool:
     from crm_app.services.whatsapp.nio_bot_web import NioWhatsAppSession
 
     with _job_lock:
-        execucao = NioReagendamentoExecucao.objects.select_related('iniciado_por').get(pk=execucao_id)
-        execucao.status = NioReagendamentoExecucao.STATUS_EM_ANDAMENTO
-        execucao.save(update_fields=['status'])
-
-        itens = list(
-            execucao.itens.select_related('venda', 'venda__cliente', 'venda__motivo_pendencia')
-            .filter(status=NioReagendamentoItem.STATUS_PENDENTE)
-            .order_by('id')
-        )
-        usuario = execucao.iniciado_por
+        _execucao_id, usuario_id, item_ids = _carregar_job(execucao_id)
 
         try:
             with NioWhatsAppSession() as sessao:
-                for idx, item in enumerate(itens):
-                    execucao.refresh_from_db(fields=['cancelar_solicitado'])
-                    if execucao.cancelar_solicitado:
-                        item.status = NioReagendamentoItem.STATUS_CANCELADO
-                        item.mensagem = 'Cancelado pelo usuário.'
-                        item.finalizado_em = timezone.now()
-                        item.save(update_fields=['status', 'mensagem', 'finalizado_em'])
+                for idx, item_id in enumerate(item_ids):
+                    estado = _run_django_sync(
+                        lambda iid=item_id: _preparar_item_nio(iid, _execucao_id)
+                    )
+                    if estado.get('acao') != 'reagendar':
                         continue
 
-                    venda = item.venda
-                    ok_eleg, motivo_eleg = venda_elegivel_nio_reagendamento(venda)
-                    if not ok_eleg:
-                        item.status = NioReagendamentoItem.STATUS_ERRO
-                        item.mensagem = motivo_eleg
-                        item.finalizado_em = timezone.now()
-                        item.save(update_fields=['status', 'mensagem', 'finalizado_em'])
-                        _marcar_falha_venda(venda, 'erro', motivo_eleg)
-                        execucao.processados += 1
-                        execucao.falhas += 1
-                        execucao.save(update_fields=['processados', 'falhas'])
-                        continue
+                    resultado = sessao.reagendar(
+                        cpf=estado['cpf'], nome_esperado=estado['nome']
+                    )
+                    _run_django_sync(
+                        lambda iid=item_id, res=resultado: _salvar_resultado_item_nio(
+                            iid, _execucao_id, usuario_id, res
+                        )
+                    )
 
-                    item.status = NioReagendamentoItem.STATUS_EM_ANDAMENTO
-                    item.iniciado_em = timezone.now()
-                    item.save(update_fields=['status', 'iniciado_em'])
-
-                    cpf = re.sub(r'\D', '', venda.cliente.cpf_cnpj or '')
-                    nome = (venda.cliente.nome_razao_social or '')[:80]
-                    resultado = sessao.reagendar(cpf=cpf, nome_esperado=nome)
-
-                    item.finalizado_em = timezone.now()
-                    item.dados_json = resultado.dados or {}
-                    item.mensagem = resultado.mensagem[:500]
-                    item.status = resultado.status
-                    item.save(update_fields=['status', 'mensagem', 'dados_json', 'finalizado_em'])
-
-                    if resultado.ok and resultado.dados:
-                        _aplicar_sucesso_venda(venda, resultado.dados, usuario=usuario)
-                        execucao.sucessos += 1
-                    else:
-                        _marcar_falha_venda(venda, resultado.status, resultado.mensagem)
-                        execucao.falhas += 1
-
-                    execucao.processados += 1
-                    execucao.save(update_fields=['processados', 'sucessos', 'falhas'])
-
-                    if idx < len(itens) - 1:
-                        execucao.refresh_from_db(fields=['cancelar_solicitado'])
-                        if not execucao.cancelar_solicitado:
+                    if idx < len(item_ids) - 1:
+                        if not _run_django_sync(lambda: _job_foi_cancelado(_execucao_id)):
                             _pausa_entre_pedidos()
 
         except Exception as e:
             logger.exception('[NIO REAGENDAMENTO] Falha sessão WhatsApp: %s', e)
-            execucao.status = NioReagendamentoExecucao.STATUS_ERRO
-            execucao.mensagem_erro = str(e)[:2000]
-            execucao.finalizado_em = timezone.now()
-            execucao.save(update_fields=['status', 'mensagem_erro', 'finalizado_em'])
-            return False
+            return _run_django_sync(lambda: _finalizar_job_nio(_execucao_id, erro=str(e)))
 
-        execucao.refresh_from_db()
-        if execucao.cancelar_solicitado:
-            execucao.status = NioReagendamentoExecucao.STATUS_INTERROMPIDO
-        else:
-            execucao.status = NioReagendamentoExecucao.STATUS_CONCLUIDO
-        execucao.finalizado_em = timezone.now()
-        execucao.save(update_fields=['status', 'finalizado_em'])
-        return True
+        return _run_django_sync(lambda: _finalizar_job_nio(_execucao_id))
 
 
 def serializar_execucao(execucao, *, em_andamento: bool) -> dict:

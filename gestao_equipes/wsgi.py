@@ -11,6 +11,8 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
+from gestao_equipes.wsgi_loop_guard import WsgiLoopGuard
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gestao_equipes.settings')
 
-application = get_wsgi_application()
+application = WsgiLoopGuard(get_wsgi_application())

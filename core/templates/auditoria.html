@@ -2562,6 +2562,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             const query = params.toString();
             apiFetch(`${API_BASE}/pendentes_auditoria/?${query}`)
             .then(data => {
+                if (!data) { throw new Error('Sessão expirada. Faça login novamente.'); }
                 const tbody = $('#listaVendasBody'); tbody.empty();
                 // Normalização (resposta pode ser paginada ou lista direta)
                 const lista = Array.isArray(data) ? data : (data.results || []);
@@ -2654,7 +2655,16 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                     tbody.append(`<tr class="${classeLinha}" data-venda-id="${v.id}"><td class="fw-bold text-primary">#${v.id}</td><td>${dataFormatada}</td><td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div></td><td>${nomeVendedor}</td><td>${produto}</td><td><span class="badge bg-warning text-dark">${statusNome}</span></td><td>${infoEdicao}</td><td>${auditorInfo}</td><td class="text-center" id="bio-cell-${v.id}">${bioHtml}</td><td class="text-end">${btnHtml}</td></tr>`);
                 });
             })
-            .catch(e => { console.error(e); alert('Erro ao carregar vendas.'); })
+            .catch(e => {
+                console.error(e);
+                const msg = mensagemErroAmigavel(e, '');
+                const low = String(msg).toLowerCase();
+                if (!msg || msg.length > 180 || msg.includes('<') || low.includes('internal server error')) {
+                    alert('Erro ao carregar vendas. Tente atualizar a lista.');
+                } else {
+                    alert('Erro ao carregar vendas: ' + msg);
+                }
+            })
             .finally(() => $('#loadingOverlay').hide());
         }
 
@@ -2717,7 +2727,15 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
             .then(() => { TratamentoTempo.monitorar(id, 'AUDITORIA'); return carregarDadosNoScript(id); })
             .catch(err => { 
                 $('#loadingOverlay').hide(); 
-                alert('Erro ao alocar venda (talvez já esteja em uso).'); 
+                const msg = mensagemErroAmigavel(err, '');
+                const low = String(msg).toLowerCase();
+                if (low.includes('já está sendo auditada') || low.includes('permissão')) {
+                    alert(msg);
+                } else if (!msg || msg.length > 180 || msg.includes('<') || low.includes('internal server error')) {
+                    alert('Erro ao alocar venda. Tente novamente.');
+                } else {
+                    alert(msg);
+                }
                 carregarVendasPendentes(); 
             }); 
         }

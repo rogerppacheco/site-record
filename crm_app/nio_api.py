@@ -83,9 +83,13 @@ def get_cached_params(headless: bool = True, storage_state: Optional[str] = None
         if params:
             logger.info("[NIO CACHE] ✅ Token obtido via requests (sem Playwright)")
         else:
-            # 4. Fallback: usar Playwright (apenas esta thread, outras aguardam)
+            # 4. Fallback: Playwright em thread dedicada. A API sync deixa um
+            # event loop na OS thread; se rodar na thread do Gunicorn, o JWT/ORM
+            # dos próximos requests falha com SynchronousOnlyOperation.
             logger.info("[NIO CACHE] ⚠️ Requests falhou. Usando Playwright (apenas 1 instância)...")
-            params = fetch_params_playwright(headless=headless, storage_state=storage_state)
+            params = _fetch_params_playwright_isolado(
+                headless=headless, storage_state=storage_state
+            )
             
             if params:
                 logger.info("[NIO CACHE] ✅ Token obtido via Playwright")
@@ -177,6 +181,32 @@ def _try_solve_recaptcha_nio(page, solver: RecaptchaSolver) -> None:
         )
     except Exception:
         pass
+
+
+def _fetch_params_playwright_isolado(
+    headless: bool = True, storage_state: Optional[str] = None, timeout_seconds: int = 120
+) -> Optional[dict]:
+    """Roda Playwright fora da thread HTTP para não envenenar o Gunicorn."""
+    resultado: list[Optional[dict]] = [None]
+    erro: list[Optional[BaseException]] = [None]
+
+    def alvo() -> None:
+        try:
+            resultado[0] = fetch_params_playwright(
+                headless=headless, storage_state=storage_state
+            )
+        except BaseException as exc:  # noqa: BLE001 - repassado à chamadora
+            erro[0] = exc
+
+    thread = threading.Thread(target=alvo, name="nio-token-playwright", daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+    if erro[0] is not None:
+        raise erro[0]
+    if thread.is_alive():
+        logger.error("[NIO CACHE] Playwright de token expirou após %ss", timeout_seconds)
+        return None
+    return resultado[0]
 
 
 def fetch_params_playwright(headless: bool = True, storage_state: Optional[str] = None) -> Optional[dict]:
