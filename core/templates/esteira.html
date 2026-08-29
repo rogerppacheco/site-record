@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Esteira de Vendas - Record PAP{% endblock %}
+{% block title %}Esteira de Vendas - {{ SITE_BRAND }}{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
@@ -2026,7 +2026,7 @@ min-width: 100%;
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
         const perfilSomenteLeitura = userProfile === 'Gerente de Contas';
         const podeAcessarVendasTotais = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
-        const podeAcessarGestaoAproveitamento = podeAcessarVendasTotais;
+        const podeAcessarGestaoAproveitamento = ['Diretoria', 'BackOffice', 'Admin', 'Gerente de Contas'].includes(userProfile);
         const podeAcessarChurnTratamento = podeAcessarVendasTotais;
         const totalAbasFixas = podeAcessarVendasTotais ? 8 : 5;
         let churnTratamentoPagina = 1;
