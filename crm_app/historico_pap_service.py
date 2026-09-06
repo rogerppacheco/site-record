@@ -76,6 +76,14 @@ def _cache_delete(key: str) -> None:
         pass
 
 
+def limpar_jwt(token: str) -> str:
+    """Extrai a sequência pura de Base64URL do JWT, eliminando aspas, espaços ou lixo acidental."""
+    if not token or not isinstance(token, str):
+        return ""
+    m = re.search(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", token)
+    return m.group(0) if m else ""
+
+
 def validar_e_decodificar_jwt(token: str) -> tuple[bool, Optional[dict], str]:
     """
     Valida formato de JWT e verifica se está expirado.
@@ -83,12 +91,10 @@ def validar_e_decodificar_jwt(token: str) -> tuple[bool, Optional[dict], str]:
     """
     if not token or not isinstance(token, str):
         return False, None, "Token vazio ou formato inválido."
-    t = token.strip()
-    if t.lower().startswith("bearer "):
-        t = t[7:].strip()
-    parts = t.split(".")
-    if len(parts) != 3 or not parts[0].startswith("eyJ"):
+    clean = limpar_jwt(token)
+    if not clean:
         return False, None, "Token não possui estrutura de JWT válido (esperado eyJ...)."
+    parts = clean.split(".")
     payload_b64 = parts[1]
     rem = len(payload_b64) % 4
     if rem > 0:
@@ -111,7 +117,7 @@ def validar_e_decodificar_jwt(token: str) -> tuple[bool, Optional[dict], str]:
                 return False, payload, "Token expirando em menos de 30 segundos."
         except (ValueError, TypeError):
             pass
-    return True, payload, t
+    return True, payload, clean
 
 
 def obter_token_cache(matricula: str) -> tuple[Optional[str], Optional[dict]]:
@@ -351,12 +357,11 @@ def _fetch_json_http(url: str, headers: dict[str, str]) -> dict:
 def _fetch_json(page, url: str, token: str = "") -> dict:
     """
     Busca JSON da API do PAP.
-    Prioriza APIRequestContext do Playwright (usa contexto Chromium, cookies e TLS da sessão, sem restrições de CORS do DOM).
-    Fallback para evaluate fetch ou requests HTTP direto.
+    1) Tenta via APIRequestContext do Playwright.
+    2) Se der 401/403 ou falhar (ex: conflito de cookies do browser), tenta direto via requests HTTP (sem cookies).
+    3) Fallback para evaluate fetch no browser.
     """
-    tok = (token or "").strip()
-    if not tok and page:
-        tok = _extrair_token(page)
+    tok = limpar_jwt((token or "").strip() or (_extrair_token(page) if page else ""))
     headers = _headers_auth(tok)
 
     # 1) APIRequestContext do Playwright — imune a CORS do DOM, usa mesmo IP/cookies/TLS
@@ -372,40 +377,33 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
                 try:
                     json_body = json.loads(text)
                 except Exception:
-                    return {
-                        "ok": False,
-                        "status": status,
-                        "error": "parse",
-                        "preview": (text or "")[:280],
-                    }
+                    json_body = None
+            if 200 <= status < 300:
+                return {"ok": True, "status": status, "json": json_body}
             if status in (401, 403):
                 logger.warning(
-                    "[HISTORICO PAP] API %s — preview=%s",
+                    "[HISTORICO PAP] context.request API %s — preview=%s (tentando fallback HTTP direto)",
                     status,
                     (text or "")[:180].replace("\n", " "),
                 )
-            return {"ok": 200 <= status < 300, "status": status, "json": json_body}
         except Exception as exc:
-            logger.warning("[HISTORICO PAP] context.request falhou (%s); tentando evaluate fetch", exc)
+            logger.warning("[HISTORICO PAP] context.request falhou (%s); tentando fallback HTTP direto", exc)
 
-    # 2) Fallback para fetch nativo dentro do browser
+    # 2) Fallback direto HTTP sem browser (evita conflitos de cookies do Chromium)
+    resp_http = _fetch_json_http(url, headers)
+    if resp_http.get("ok"):
+        return resp_http
+
+    # 3) Fallback para fetch nativo dentro do browser
     if page:
         try:
             auth_val = headers.get("Authorization", "")
             res = page.evaluate("""
             async ({ url, authVal }) => {
                 try {
-                    const hdrs = {
-                        'Accept': 'application/json, text/plain, */*'
-                    };
-                    if (authVal) {
-                        hdrs['Authorization'] = authVal;
-                    }
-                    const r = await fetch(url, {
-                        method: 'GET',
-                        credentials: 'include',
-                        headers: hdrs
-                    });
+                    const hdrs = { 'Accept': 'application/json, text/plain, */*' };
+                    if (authVal) hdrs['Authorization'] = authVal;
+                    const r = await fetch(url, { method: 'GET', headers: hdrs });
                     const text = await r.text();
                     let json = null;
                     try { json = JSON.parse(text); } catch(e) {}
@@ -415,27 +413,21 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
                 }
             }
             """, {"url": url, "authVal": auth_val})
-            if isinstance(res, dict) and (res.get("ok") or res.get("status") in (401, 403, 404, 500)):
-                if res.get("status") in (401, 403):
-                    logger.warning(
-                        "[HISTORICO PAP] evaluate API %s — preview=%s",
-                        res.get("status"),
-                        (res.get("preview") or "")[:180].replace("\n", " "),
-                    )
+            if isinstance(res, dict) and res.get("ok"):
                 return res
         except Exception as exc:
-            logger.warning("[HISTORICO PAP] evaluate fetch falhou (%s); tentando requests direto", exc)
+            logger.warning("[HISTORICO PAP] evaluate fetch falhou (%s)", exc)
 
-    # 3) Fallback direto HTTP sem browser
-    return _fetch_json_http(url, headers)
+    return resp_http
 
 
 def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
     """
-    Vai ao Histórico e espera a SPA disparar chamada autenticada à API.
-    Captura apenas tokens de requisições que retornam status 200 OK (evita tokens rejeitados/stale).
+    Obtém o token JWT da sessão autenticada.
+    Prioriza o token do usuário autenticado salvo no storage da página pós-login,
+    ou captura de chamadas autenticadas de rede da SPA.
     """
-    captured: dict[str, Any] = {"auth": "", "status": 0, "url": ""}
+    captured: dict[str, Any] = {"auth": "", "status": 0, "url": "", "payload": {}}
 
     def _on_response(response):
         try:
@@ -444,17 +436,20 @@ def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
                 return
             if "/api/portal/" not in url:
                 return
-            # Se a resposta foi bem-sucedida, o token utilizado é 100% válido
             if 200 <= response.status < 300:
                 req = response.request
                 auth = req.headers.get("authorization") or req.headers.get("Authorization") or ""
-                if auth and len(auth) > 20:
-                    captured["auth"] = auth
-                    captured["status"] = response.status
-                    captured["url"] = response.url
+                clean = limpar_jwt(auth)
+                if clean:
+                    ok, pay, _ = validar_e_decodificar_jwt(clean)
+                    if ok and pay:
+                        captured["auth"] = clean
+                        captured["status"] = response.status
+                        captured["url"] = response.url
+                        captured["payload"] = pay
             elif response.status in (401, 403):
                 logger.warning(
-                    "[HISTORICO PAP] SPA recebeu HTTP %s em %s — token associado será descartado",
+                    "[HISTORICO PAP] SPA recebeu HTTP %s em %s",
                     response.status,
                     (response.url or "")[:100],
                 )
@@ -463,61 +458,57 @@ def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
 
     page.on("response", _on_response)
     try:
+        # 1) Checar primeiro se a página já possui token de usuário no storage pós-login
+        for _ in range(4):
+            tok_storage = _extrair_token(page)
+            if tok_storage:
+                ok_s, pay_s, clean_s = validar_e_decodificar_jwt(tok_storage)
+                if ok_s and pay_s and (pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username")):
+                    logger.info(
+                        "[HISTORICO PAP] Token de usuário autenticado extraído do storage da página! Usuário=%s",
+                        pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username"),
+                    )
+                    return clean_s
+            page.wait_for_timeout(500)
+
+        # 2) Navegar até o Histórico
         try:
-            with page.expect_response(
-                lambda r: "pap-api.niointernet.com.br" in (r.url or "")
-                and "/api/portal/" in (r.url or "")
-                and 200 <= r.status < 300,
-                timeout=timeout_ms,
-            ) as ri:
-                page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
-            try:
-                resp = ri.value
-                auth = resp.request.headers.get("authorization") or resp.request.headers.get("Authorization") or ""
-                if auth:
-                    captured["auth"] = auth
-                    captured["status"] = resp.status
-                    captured["url"] = resp.url
-            except Exception:
-                pass
+            page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
         except Exception as exc:
-            logger.warning("[HISTORICO PAP] timeout/espera SPA no goto (%s) — tentando goto direto", exc)
-            try:
-                page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
-            except Exception as exc2:
-                logger.warning("[HISTORICO PAP] goto histórico: %s", exc2)
+            logger.warning("[HISTORICO PAP] goto histórico: %s", exc)
 
         page.wait_for_timeout(2000)
-        try:
-            page.wait_for_load_state("networkidle", timeout=8000)
-        except Exception:
-            pass
 
-        # 1) Preferência máxima: token de requisição respondida com 200 OK
-        if captured["auth"]:
-            raw = captured["auth"]
-            if raw.lower().startswith("bearer "):
-                raw = raw[7:].strip()
-            ok_cap, pay_cap, clean_cap = validar_e_decodificar_jwt(raw)
-            if ok_cap:
+        # 3) Verificar storage no Histórico
+        for _ in range(6):
+            tok_storage = _extrair_token(page)
+            if tok_storage:
+                ok_s, pay_s, clean_s = validar_e_decodificar_jwt(tok_storage)
+                if ok_s and pay_s and (pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username")):
+                    logger.info(
+                        "[HISTORICO PAP] Token de usuário extraído do storage no Histórico: Usuário=%s",
+                        pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username"),
+                    )
+                    return clean_s
+            if captured.get("auth") and captured.get("payload") and (captured["payload"].get("sub") or "vendas" in (captured.get("url") or "")):
                 logger.info(
-                    "[HISTORICO PAP] Token real capturado de resposta HTTP %s da SPA (%s). Usuário: %s",
-                    captured.get("status", 200),
+                    "[HISTORICO PAP] Token de usuário capturado de chamada da SPA (%s): Usuário=%s",
                     (captured.get("url") or "")[:80],
-                    pay_cap.get("sub", "?") if pay_cap else "?",
+                    captured["payload"].get("sub", "?"),
                 )
-                return clean_cap
+                return captured["auth"]
+            page.wait_for_timeout(1000)
 
-        # 2) Fallback: extrair das stores da página já carregada no Histórico
-        tok = _extrair_token(page)
-        ok_t, pay_t, clean_t = validar_e_decodificar_jwt(tok)
-        if ok_t:
-            logger.info(
-                "[HISTORICO PAP] Token extraído do storage da página. Usuário: %s",
-                pay_t.get("sub", "?") if pay_t else "?",
-            )
-            return clean_t
-        return tok
+        # 4) Fallback para qualquer token capturado válido
+        if captured.get("auth"):
+            logger.info("[HISTORICO PAP] Usando token capturado da rede da SPA: url=%s", (captured.get("url") or "")[:80])
+            return captured["auth"]
+
+        tok_final = _extrair_token(page)
+        clean_final = limpar_jwt(tok_final)
+        if clean_final:
+            return clean_final
+        return tok_final or ""
     finally:
         try:
             page.remove_listener("response", _on_response)
