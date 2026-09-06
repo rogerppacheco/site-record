@@ -60,7 +60,7 @@ class HistoricoPapTokenValidationTest(SimpleTestCase):
         tok = _gerar_jwt_mock(3600)
         h = _headers_auth(tok)
         self.assertEqual(h["Authorization"], f"Bearer {tok}")
-        self.assertEqual(h["Origem"], "BO")
+        self.assertNotIn("Origem", h)
         self.assertIn("pap.niointernet.com.br", h["Origin"])
         self.assertIn("administrativo/historico", h["Referer"])
 
@@ -128,4 +128,4 @@ class HistoricoPapFetchDirectHttpTest(SimpleTestCase):
         mock_get.assert_called_once()
         _, kwargs = mock_get.call_args
         self.assertEqual(kwargs["headers"]["Authorization"], f"Bearer {tok}")
-        self.assertEqual(kwargs["headers"]["Origem"], "BO")
+        self.assertNotIn("Origem", kwargs["headers"])

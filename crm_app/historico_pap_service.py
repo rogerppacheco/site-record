@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import random
 import re
 import threading
@@ -311,7 +312,6 @@ def _headers_auth(token: str) -> dict[str, str]:
         "Accept": "application/json, text/plain, */*",
         "Origin": "https://pap.niointernet.com.br",
         "Referer": "https://pap.niointernet.com.br/administrativo/historico",
-        "Origem": "BO",
     }
     if not token:
         return headers
@@ -351,58 +351,19 @@ def _fetch_json_http(url: str, headers: dict[str, str]) -> dict:
 def _fetch_json(page, url: str, token: str = "") -> dict:
     """
     Busca JSON da API do PAP.
-    Prioriza fetch nativo no contexto Chromium da página (evita bloqueios de WAF TLS / CORS do F5).
-    Fallback via context.request ou requests HTTP direto.
+    Prioriza APIRequestContext do Playwright (usa contexto Chromium, cookies e TLS da sessão, sem restrições de CORS do DOM).
+    Fallback para evaluate fetch ou requests HTTP direto.
     """
     tok = (token or "").strip()
     if not tok and page:
         tok = _extrair_token(page)
     headers = _headers_auth(tok)
 
-    # 1) Fetch nativo dentro da página Chromium aberta (imune a fingerprinting WAF)
-    if page:
-        try:
-            auth_val = headers.get("Authorization", "")
-            res = page.evaluate("""
-            async ({ url, authVal }) => {
-                try {
-                    const hdrs = {
-                        'Accept': 'application/json, text/plain, */*',
-                        'Origem': 'BO'
-                    };
-                    if (authVal) {
-                        hdrs['Authorization'] = authVal;
-                    }
-                    const r = await fetch(url, {
-                        method: 'GET',
-                        credentials: 'include',
-                        headers: hdrs
-                    });
-                    const text = await r.text();
-                    let json = null;
-                    try { json = JSON.parse(text); } catch(e) {}
-                    return { ok: r.ok, status: r.status, json: json, preview: text.slice(0, 280) };
-                } catch(e) {
-                    return { ok: false, status: 0, error: String((e && e.message) || e) };
-                }
-            }
-            """, {"url": url, "authVal": auth_val})
-            if isinstance(res, dict) and (res.get("ok") or res.get("status") in (401, 403, 404, 500)):
-                if res.get("status") in (401, 403):
-                    logger.warning(
-                        "[HISTORICO PAP] API %s — preview=%s",
-                        res.get("status"),
-                        (res.get("preview") or "")[:180].replace("\n", " "),
-                    )
-                return res
-        except Exception as exc:
-            logger.warning("[HISTORICO PAP] fetch nativo browser falhou (%s); tentando context.request", exc)
-
-    # 2) Fallback para APIRequestContext do Playwright
+    # 1) APIRequestContext do Playwright — imune a CORS do DOM, usa mesmo IP/cookies/TLS
     if page:
         try:
             api = page.context.request
-            resp = api.get(url, headers=headers, timeout=30000)
+            resp = api.get(url, headers=headers, timeout=45000)
             status = resp.status
             text = resp.text()
             try:
@@ -425,35 +386,88 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
                 )
             return {"ok": 200 <= status < 300, "status": status, "json": json_body}
         except Exception as exc:
-            logger.warning("[HISTORICO PAP] context.request falhou (%s); tentando requests direto", exc)
+            logger.warning("[HISTORICO PAP] context.request falhou (%s); tentando evaluate fetch", exc)
+
+    # 2) Fallback para fetch nativo dentro do browser
+    if page:
+        try:
+            auth_val = headers.get("Authorization", "")
+            res = page.evaluate("""
+            async ({ url, authVal }) => {
+                try {
+                    const hdrs = {
+                        'Accept': 'application/json, text/plain, */*'
+                    };
+                    if (authVal) {
+                        hdrs['Authorization'] = authVal;
+                    }
+                    const r = await fetch(url, {
+                        method: 'GET',
+                        credentials: 'include',
+                        headers: hdrs
+                    });
+                    const text = await r.text();
+                    let json = null;
+                    try { json = JSON.parse(text); } catch(e) {}
+                    return { ok: r.ok, status: r.status, json: json, preview: text.slice(0, 280) };
+                } catch(e) {
+                    return { ok: false, status: 0, error: String((e && e.message) || e) };
+                }
+            }
+            """, {"url": url, "authVal": auth_val})
+            if isinstance(res, dict) and (res.get("ok") or res.get("status") in (401, 403, 404, 500)):
+                if res.get("status") in (401, 403):
+                    logger.warning(
+                        "[HISTORICO PAP] evaluate API %s — preview=%s",
+                        res.get("status"),
+                        (res.get("preview") or "")[:180].replace("\n", " "),
+                    )
+                return res
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] evaluate fetch falhou (%s); tentando requests direto", exc)
 
     # 3) Fallback direto HTTP sem browser
     return _fetch_json_http(url, headers)
 
 
-def _aguardar_token_spa(page, timeout_ms: int = 20000) -> str:
+def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
     """
-    Vai ao Histórico e espera a própria SPA disparar chamada autenticada à API,
-    capturando o Bearer token real da requisição de rede da SPA.
+    Vai ao Histórico e espera a SPA disparar chamada autenticada à API.
+    Captura apenas tokens de requisições que retornam status 200 OK (evita tokens rejeitados/stale).
     """
-    captured: dict[str, str] = {"auth": ""}
+    captured: dict[str, Any] = {"auth": "", "status": 0, "url": ""}
 
-    def _on_request(request):
+    def _on_response(response):
         try:
-            url = (request.url or "").lower()
+            url = (response.url or "").lower()
             if "pap-api.niointernet.com.br" not in url:
                 return
-            auth = request.headers.get("authorization") or request.headers.get("Authorization") or ""
-            if auth and len(auth) > 20:
-                captured["auth"] = auth
+            if "/api/portal/" not in url:
+                return
+            # Se a resposta foi bem-sucedida, o token utilizado é 100% válido
+            if 200 <= response.status < 300:
+                req = response.request
+                auth = req.headers.get("authorization") or req.headers.get("Authorization") or ""
+                if auth and len(auth) > 20:
+                    captured["auth"] = auth
+                    captured["status"] = response.status
+                    captured["url"] = response.url
+            elif response.status in (401, 403):
+                logger.warning(
+                    "[HISTORICO PAP] SPA recebeu HTTP %s em %s — token associado será descartado",
+                    response.status,
+                    (response.url or "")[:100],
+                )
         except Exception:
             pass
 
-    page.on("request", _on_request)
+    page.on("response", _on_response)
     try:
         try:
             with page.expect_response(
-                lambda r: "pap-api.niointernet.com.br" in (r.url or ""),
+                lambda r: "pap-api.niointernet.com.br" in (r.url or "")
+                and "/api/portal/" in (r.url or "")
+                and 200 <= r.status < 300,
                 timeout=timeout_ms,
             ) as ri:
                 page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
@@ -462,6 +476,8 @@ def _aguardar_token_spa(page, timeout_ms: int = 20000) -> str:
                 auth = resp.request.headers.get("authorization") or resp.request.headers.get("Authorization") or ""
                 if auth:
                     captured["auth"] = auth
+                    captured["status"] = resp.status
+                    captured["url"] = resp.url
             except Exception:
                 pass
         except Exception as exc:
@@ -473,30 +489,38 @@ def _aguardar_token_spa(page, timeout_ms: int = 20000) -> str:
 
         page.wait_for_timeout(2000)
         try:
-            page.wait_for_load_state("networkidle", timeout=10000)
+            page.wait_for_load_state("networkidle", timeout=8000)
         except Exception:
             pass
 
-        # 1) Preferência máxima: token real capturado da chamada da SPA à API
+        # 1) Preferência máxima: token de requisição respondida com 200 OK
         if captured["auth"]:
             raw = captured["auth"]
             if raw.lower().startswith("bearer "):
                 raw = raw[7:].strip()
-            ok_cap, _, clean_cap = validar_e_decodificar_jwt(raw)
+            ok_cap, pay_cap, clean_cap = validar_e_decodificar_jwt(raw)
             if ok_cap:
-                logger.info("[HISTORICO PAP] Token real capturado da rede da SPA com sucesso.")
+                logger.info(
+                    "[HISTORICO PAP] Token real capturado de resposta HTTP %s da SPA (%s). Usuário: %s",
+                    captured.get("status", 200),
+                    (captured.get("url") or "")[:80],
+                    pay_cap.get("sub", "?") if pay_cap else "?",
+                )
                 return clean_cap
 
         # 2) Fallback: extrair das stores da página já carregada no Histórico
         tok = _extrair_token(page)
-        ok_t, _, clean_t = validar_e_decodificar_jwt(tok)
+        ok_t, pay_t, clean_t = validar_e_decodificar_jwt(tok)
         if ok_t:
-            logger.info("[HISTORICO PAP] Token extraído da página do Histórico.")
+            logger.info(
+                "[HISTORICO PAP] Token extraído do storage da página. Usuário: %s",
+                pay_t.get("sub", "?") if pay_t else "?",
+            )
             return clean_t
         return tok
     finally:
         try:
-            page.remove_listener("request", _on_request)
+            page.remove_listener("response", _on_response)
         except Exception:
             pass
 
@@ -957,7 +981,7 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         )
         return
 
-    # 5) Browser Playwright com REÚSO ESTRITO de sessão salva (NÃO invalidar storage state)
+    # 5) Browser Playwright: login limpo no PAP
     senha = (getattr(login_pap, "senha_pap", None) or "").strip()
     automacao = PAPNioAutomation(
         matricula_pap=matricula,
@@ -967,6 +991,13 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         capture_screenshots=False,
         optimize_for_credit=False,
     )
+    # Remove storage_state antigo para que o Chromium inicie sem tokens stale/expirados em disco
+    if hasattr(automacao, "storage_state_path") and os.path.exists(automacao.storage_state_path):
+        try:
+            os.remove(automacao.storage_state_path)
+            logger.info("[HISTORICO PAP] Storage state antigo removido para login limpo de %s", matricula)
+        except Exception:
+            pass
     try:
         ok, msg = automacao.iniciar_sessao()
         if not ok:
@@ -1012,9 +1043,9 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
             token=token,
         )
         if not sucesso and "401" in err_msg:
-            # Se tomou 401 mesmo logado, ativar cooldown de segurança
+            # Token falhou na API: remove do cache mas NÃO ativa cooldown de login de 15 min,
+            # pois o login no SSO foi um sucesso (não houve erro de senha/credencial).
             remover_token_cache(matricula)
-            registrar_cooldown_login(matricula, 900)
     finally:
         try:
             automacao._fechar_sessao()
