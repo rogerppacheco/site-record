@@ -77,11 +77,19 @@ def _cache_delete(key: str) -> None:
 
 
 def limpar_jwt(token: str) -> str:
-    """Extrai a sequência pura de Base64URL do JWT, eliminando aspas, espaços ou lixo acidental."""
+    """Extrai a sequência pura de Base64/Base64URL do JWT, eliminando Bearer, aspas ou espaços."""
     if not token or not isinstance(token, str):
         return ""
-    m = re.search(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", token)
-    return m.group(0) if m else ""
+    t = token.strip()
+    if t.lower().startswith("bearer "):
+        t = t[7:].strip()
+    t = t.strip("\"'`")
+    m = re.search(r"eyJ[A-Za-z0-9_\-\+\/=]{5,}\.[A-Za-z0-9_\-\+\/=]{5,}\.[A-Za-z0-9_\-\+\/=]{5,}", t)
+    if m:
+        return m.group(0)
+    if t.startswith("eyJ") and t.count(".") == 2:
+        return t
+    return ""
 
 
 def validar_e_decodificar_jwt(token: str) -> tuple[bool, Optional[dict], str]:
@@ -220,7 +228,7 @@ JS_TOKEN = """
 () => {
   const cleanJwt = (s) => {
     if (!s || typeof s !== 'string') return '';
-    const m = s.match(/eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}/);
+    const m = s.match(/eyJ[A-Za-z0-9_\\-\\+\\/=]{5,}\\.[A-Za-z0-9_\\-\\+\\/=]{5,}\\.[A-Za-z0-9_\\-\\+\\/=]{5,}/);
     return m ? m[0] : '';
   };
 
@@ -304,13 +312,38 @@ async (url) => {
 """
 
 
+def _extrair_token_cookies(page) -> str:
+    """Extrai o cookie 'token' diretamente dos cookies do Playwright (imune ao path /administrativo)."""
+    if not page:
+        return ""
+    try:
+        cookies = page.context.cookies()
+        for c in cookies:
+            if c.get("name") == "token" and "pap.niointernet.com.br" in (c.get("domain") or ""):
+                val = (c.get("value") or "").strip()
+                clean = limpar_jwt(val)
+                if clean:
+                    return clean
+    except Exception as exc:
+        logger.warning("[HISTORICO PAP] Não foi possível ler cookies do contexto: %s", exc)
+    return ""
+
+
 def _extrair_token(page) -> str:
+    if not page:
+        return ""
+    # 1. Tentar ler do cookie "token" gerenciado pelo Playwright (imune ao path /administrativo)
+    c_tok = _extrair_token_cookies(page)
+    if c_tok:
+        return c_tok
+    # 2. Tentar via JS evaluation em localStorage/sessionStorage/document.cookie
     try:
         raw = page.evaluate(JS_TOKEN)
+        if raw:
+            return limpar_jwt((raw or "").strip())
     except Exception as exc:
         logger.warning("[HISTORICO PAP] Não foi possível ler token da página: %s", exc)
-        return ""
-    return (raw or "").strip()
+    return ""
 
 
 def _headers_auth(token: str) -> dict[str, str]:
@@ -403,7 +436,7 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
                 try {
                     const hdrs = { 'Accept': 'application/json, text/plain, */*' };
                     if (authVal) hdrs['Authorization'] = authVal;
-                    const r = await fetch(url, { method: 'GET', headers: hdrs });
+                    const r = await fetch(url, { method: 'GET', credentials: 'include', headers: hdrs });
                     const text = await r.text();
                     let json = null;
                     try { json = JSON.parse(text); } catch(e) {}
@@ -421,10 +454,41 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
     return resp_http
 
 
+def _navegar_ao_historico_spa(page) -> None:
+    """Navega para o Histórico de Pedidos via menu lateral da SPA ou goto direto."""
+    if not page:
+        return
+    url_atual = (page.url or "").lower()
+    if "administrativo/historico" in url_atual:
+        return
+    # Tentar navegação suave pelo menu da SPA (como a Ana faz)
+    try:
+        btn_pedidos = page.query_selector('text="Pedidos"') or page.query_selector('div:has-text("Pedidos")')
+        if btn_pedidos and btn_pedidos.is_visible():
+            btn_pedidos.click()
+            page.wait_for_timeout(800)
+            btn_hist = page.query_selector('text="Histórico de Pedidos"') or page.query_selector('a[href*="historico"]')
+            if btn_hist and btn_hist.is_visible():
+                btn_hist.click()
+                page.wait_for_timeout(2000)
+                if "historico" in (page.url or "").lower():
+                    logger.info("[HISTORICO PAP] Navegação ao Histórico via menu SPA concluída com sucesso!")
+                    return
+    except Exception as exc:
+        logger.debug("[HISTORICO PAP] Navegação por menu SPA falhou (%s); usando goto direto", exc)
+
+    # Fallback: goto direto
+    try:
+        page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(2000)
+    except Exception as exc:
+        logger.warning("[HISTORICO PAP] goto histórico: %s", exc)
+
+
 def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
     """
     Obtém o token JWT da sessão autenticada.
-    Prioriza o token do usuário autenticado salvo no storage da página pós-login,
+    Prioriza o token do usuário autenticado salvo nos cookies / storage pós-login,
     ou captura de chamadas autenticadas de rede da SPA.
     """
     captured: dict[str, Any] = {"auth": "", "status": 0, "url": "", "payload": {}}
@@ -458,43 +522,56 @@ def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
 
     page.on("response", _on_response)
     try:
-        # 1) Checar primeiro se a página já possui token de usuário no storage pós-login
+        # 1) Checar primeiro se a página já possui token de usuário nos cookies ou storage pós-login
         for _ in range(4):
             tok_storage = _extrair_token(page)
             if tok_storage:
                 ok_s, pay_s, clean_s = validar_e_decodificar_jwt(tok_storage)
-                if ok_s and pay_s and (pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username")):
+                if ok_s and pay_s and (
+                    pay_s.get("uuid")
+                    or pay_s.get("origem")
+                    or pay_s.get("sub")
+                    or pay_s.get("matricula")
+                    or pay_s.get("usuario")
+                    or pay_s.get("username")
+                ):
                     logger.info(
-                        "[HISTORICO PAP] Token de usuário autenticado extraído do storage da página! Usuário=%s",
-                        pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username"),
+                        "[HISTORICO PAP] Token de usuário autenticado extraído dos cookies/storage! UUID/Usuário=%s",
+                        pay_s.get("uuid") or pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario"),
                     )
                     return clean_s
             page.wait_for_timeout(500)
 
         # 2) Navegar até o Histórico
-        try:
-            page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
-        except Exception as exc:
-            logger.warning("[HISTORICO PAP] goto histórico: %s", exc)
+        _navegar_ao_historico_spa(page)
 
-        page.wait_for_timeout(2000)
-
-        # 3) Verificar storage no Histórico
+        # 3) Verificar cookies/storage no Histórico
         for _ in range(6):
             tok_storage = _extrair_token(page)
             if tok_storage:
                 ok_s, pay_s, clean_s = validar_e_decodificar_jwt(tok_storage)
-                if ok_s and pay_s and (pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username")):
+                if ok_s and pay_s and (
+                    pay_s.get("uuid")
+                    or pay_s.get("origem")
+                    or pay_s.get("sub")
+                    or pay_s.get("matricula")
+                    or pay_s.get("usuario")
+                    or pay_s.get("username")
+                ):
                     logger.info(
-                        "[HISTORICO PAP] Token de usuário extraído do storage no Histórico: Usuário=%s",
-                        pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario") or pay_s.get("username"),
+                        "[HISTORICO PAP] Token de usuário extraído no Histórico: UUID/Usuário=%s",
+                        pay_s.get("uuid") or pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario"),
                     )
                     return clean_s
-            if captured.get("auth") and captured.get("payload") and (captured["payload"].get("sub") or "vendas" in (captured.get("url") or "")):
+            if captured.get("auth") and captured.get("payload") and (
+                captured["payload"].get("uuid")
+                or captured["payload"].get("sub")
+                or "vendas" in (captured.get("url") or "")
+            ):
                 logger.info(
-                    "[HISTORICO PAP] Token de usuário capturado de chamada da SPA (%s): Usuário=%s",
+                    "[HISTORICO PAP] Token de usuário capturado de chamada da SPA (%s): UUID/Usuário=%s",
                     (captured.get("url") or "")[:80],
-                    captured["payload"].get("sub", "?"),
+                    captured["payload"].get("uuid") or captured["payload"].get("sub", "?"),
                 )
                 return captured["auth"]
             page.wait_for_timeout(1000)
@@ -981,6 +1058,7 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         headless=getattr(settings, "PAP_HEADLESS", True),
         capture_screenshots=False,
         optimize_for_credit=False,
+        url_pos_login=PAP_HISTORICO_URL,
     )
     # Remove storage_state antigo para que o Chromium inicie sem tokens stale/expirados em disco
     if hasattr(automacao, "storage_state_path") and os.path.exists(automacao.storage_state_path):

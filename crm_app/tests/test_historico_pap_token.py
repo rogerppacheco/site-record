@@ -69,6 +69,24 @@ class HistoricoPapTokenValidationTest(SimpleTestCase):
         h = _headers_auth(f"Bearer {tok}")
         self.assertEqual(h["Authorization"], f"Bearer {tok}")
 
+    def test_token_com_payload_nio_uuid(self):
+        # Tokens emitidos pelo PAP Nio possuem "uuid" e "origem: bo", não "sub"
+        tok = _gerar_jwt_mock(3600, payload_extra={"uuid": "TT713110-1234", "origem": "bo"})
+        ok, payload, clean = validar_e_decodificar_jwt(tok)
+        self.assertTrue(ok)
+        self.assertEqual(payload.get("uuid"), "TT713110-1234")
+        self.assertEqual(payload.get("origem"), "bo")
+
+    def test_token_assinatura_com_caracteres_base64(self):
+        # Assinaturas com +, / ou padding = não devem ser truncadas
+        header = base64.urlsafe_b64encode(b'{"alg":"HS256"}').decode().rstrip("=")
+        payload = base64.urlsafe_b64encode(b'{"uuid":"TT713110"}').decode().rstrip("=")
+        sig = "sig123+abc/xyz=="
+        tok = f"eyJ{header[3:]}.{payload}.{sig}"
+        ok, payload_dict, clean = validar_e_decodificar_jwt(tok)
+        self.assertTrue(ok)
+        self.assertEqual(clean, tok)
+
 
 class HistoricoPapCacheECooldownTest(SimpleTestCase):
     def setUp(self):

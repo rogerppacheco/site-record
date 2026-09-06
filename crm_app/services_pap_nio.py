@@ -267,6 +267,7 @@ class PAPNioAutomation:
         optimize_for_credit: bool = False,
         slow_mo: Optional[int] = None,
         record_trace: bool = False,
+        url_pos_login: Optional[str] = None,
     ):
         """
         Inicializa a automação PAP.
@@ -297,6 +298,7 @@ class PAPNioAutomation:
         self.optimize_for_credit = optimize_for_credit
         self.slow_mo = slow_mo
         self.record_trace = record_trace
+        self.url_pos_login = url_pos_login
 
         self.playwright = None  # sync_playwright instance; precisa .stop() para encerrar event loop
         self.browser: Optional[Browser] = None
@@ -586,6 +588,8 @@ class PAPNioAutomation:
 
     def _url_validacao_sessao_pos_login(self) -> str:
         """Rota para provar sessão após login. Crédito vai direto ao novo-pedido (evita Consulta OS)."""
+        if self.url_pos_login:
+            return self.url_pos_login
         if self.optimize_for_credit:
             return PAP_NOVO_PEDIDO_URL
         return PAP_CONSULTA_OS_URL
