@@ -431,17 +431,11 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
     return _fetch_json_http(url, headers)
 
 
-def _aguardar_token_spa(page, timeout_ms: int = 6000) -> str:
+def _aguardar_token_spa(page, timeout_ms: int = 20000) -> str:
     """
     Vai ao Histórico e espera a própria SPA disparar chamada autenticada à API,
-    ou extrai o token JWT das stores da página.
+    capturando o Bearer token real da requisição de rede da SPA.
     """
-    tok_imediato = _extrair_token(page)
-    valido, _, clean = validar_e_decodificar_jwt(tok_imediato)
-    if valido:
-        logger.info("[HISTORICO PAP] Token JWT extraído imediatamente da sessão.")
-        return clean
-
     captured: dict[str, str] = {"auth": ""}
 
     def _on_request(request):
@@ -462,7 +456,7 @@ def _aguardar_token_spa(page, timeout_ms: int = 6000) -> str:
                 lambda r: "pap-api.niointernet.com.br" in (r.url or ""),
                 timeout=timeout_ms,
             ) as ri:
-                page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=35000)
+                page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
             try:
                 resp = ri.value
                 auth = resp.request.headers.get("authorization") or resp.request.headers.get("Authorization") or ""
@@ -470,25 +464,36 @@ def _aguardar_token_spa(page, timeout_ms: int = 6000) -> str:
                     captured["auth"] = auth
             except Exception:
                 pass
-        except Exception:
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] timeout/espera SPA no goto (%s) — tentando goto direto", exc)
             try:
-                page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=35000)
+                page.goto(PAP_HISTORICO_URL, wait_until="domcontentloaded", timeout=45000)
             except Exception as exc2:
                 logger.warning("[HISTORICO PAP] goto histórico: %s", exc2)
 
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
 
+        # 1) Preferência máxima: token real capturado da chamada da SPA à API
         if captured["auth"]:
             raw = captured["auth"]
             if raw.lower().startswith("bearer "):
                 raw = raw[7:].strip()
             ok_cap, _, clean_cap = validar_e_decodificar_jwt(raw)
             if ok_cap:
+                logger.info("[HISTORICO PAP] Token real capturado da rede da SPA com sucesso.")
                 return clean_cap
 
+        # 2) Fallback: extrair das stores da página já carregada no Histórico
         tok = _extrair_token(page)
         ok_t, _, clean_t = validar_e_decodificar_jwt(tok)
-        return clean_t if ok_t else tok
+        if ok_t:
+            logger.info("[HISTORICO PAP] Token extraído da página do Histórico.")
+            return clean_t
+        return tok
     finally:
         try:
             page.remove_listener("request", _on_request)
@@ -771,6 +776,8 @@ def _salvar_novo(numero: str, tipo: str, pdv: str, payload: dict) -> bool:
 
 
 def _executar_loop_busca(page, *, busca_id: int, busca, token: str) -> tuple[bool, str]:
+    from crm_app.models import HistoricoPapBusca, HistoricoPapPedido
+
     encontrados = 0
     novos = 0
     ignorados = 0
