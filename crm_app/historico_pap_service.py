@@ -317,8 +317,9 @@ def _headers_auth(token: str) -> dict[str, str]:
         return headers
     t = token.strip()
     if t.lower().startswith("bearer "):
-        t = t[7:].strip()
-    headers["Authorization"] = t
+        headers["Authorization"] = t
+    else:
+        headers["Authorization"] = f"Bearer {t}"
     return headers
 
 
@@ -871,21 +872,31 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
     if token_manual:
         ok_jwt, pay_jwt, clean_jwt = validar_e_decodificar_jwt(token_manual)
         if not ok_jwt:
-            msg_jwt = f"Token manual rejeitado: {clean_jwt}"
-            _run_django_sync(
-                lambda: _atualizar(
-                    busca_id,
-                    status=HistoricoPapBusca.STATUS_ERRO,
-                    mensagem=msg_jwt,
-                    finalizado_em=timezone.now(),
+            if matricula:
+                logger.warning(
+                    "[HISTORICO PAP] Token manual informado não é um JWT válido (%s). "
+                    "Desconsiderando e utilizando login do pool Diretoria (%s).",
+                    clean_jwt,
+                    getattr(login_pap, "username", matricula),
                 )
-            )
-            return
-        token = clean_jwt
-        origem_token = "manual"
-        salvar_token_cache(matricula, token, pay_jwt.get("exp") if pay_jwt else None)
-        limpar_cooldown_login(matricula)
-        logger.info("[HISTORICO PAP] Usando Token Manual fornecido pelo usuário.")
+                token = ""
+            else:
+                msg_jwt = f"Token manual rejeitado: {clean_jwt}"
+                _run_django_sync(
+                    lambda: _atualizar(
+                        busca_id,
+                        status=HistoricoPapBusca.STATUS_ERRO,
+                        mensagem=msg_jwt,
+                        finalizado_em=timezone.now(),
+                    )
+                )
+                return
+        else:
+            token = clean_jwt
+            origem_token = "manual"
+            salvar_token_cache(matricula, token, pay_jwt.get("exp") if pay_jwt else None)
+            limpar_cooldown_login(matricula)
+            logger.info("[HISTORICO PAP] Usando Token Manual fornecido pelo usuário.")
 
     # 2) Caso não tenha manual, verificar cache de token válido
     if not token:

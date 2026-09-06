@@ -132,8 +132,8 @@
                                     Bearer Token do PAP (copiado do DevTools do navegador onde o PAP já está aberto):
                                 </label>
                                 <div class="input-group input-group-sm">
-                                    <input type="password" id="hist-token-manual" class="form-control" placeholder="Cole o token eyJhbGciOi...">
-                                    <button class="btn btn-outline-secondary" type="button" id="btn-ver-token" title="Mostrar/Ocultar">👁️</button>
+                                    <input type="text" id="hist-token-manual" class="form-control font-monospace" placeholder="Cole o token eyJhbGciOi..." autocomplete="off" spellcheck="false">
+                                    <button class="btn btn-outline-secondary" type="button" id="btn-ver-token" title="Limpar">✖</button>
                                 </div>
                                 <div class="form-text small text-muted">
                                     💡 <strong>Como pegar o token:</strong> No PAP aberto no Chrome, pressione <kbd>F12</kbd> &gt; aba <strong>Application</strong> &gt; <strong>Local Storage</strong> &gt; chave <code>token</code>, ou copie o cabeçalho <code>Authorization</code> na aba <strong>Network</strong>.
@@ -458,10 +458,12 @@
             if (!token) { window.location.href = '/'; return; }
             document.getElementById('btn-hist-buscar').disabled = true;
             histBlob = null;
-            const tokenManual = (document.getElementById('hist-token-manual')?.value || '').trim();
+            const wrapManual = document.getElementById('wrap-token-manual');
+            const isManualVisivel = wrapManual && !wrapManual.classList.contains('d-none');
+            const tokenManual = isManualVisivel ? (document.getElementById('hist-token-manual')?.value || '').trim() : '';
             status.textContent = tokenManual
                 ? 'Validando token e buscando histórico diretamente na API (sem abrir navegador)...'
-                : 'Verificando sessão PAP e iniciando busca...';
+                : 'Verificando sessão PAP e iniciando busca com login de Diretoria...';
             try {
                 const r = await fetch(API_HIST, {
                     method: 'POST',
@@ -488,12 +490,19 @@
 
         document.getElementById('btn-toggle-token-manual')?.addEventListener('click', () => {
             const wrap = document.getElementById('wrap-token-manual');
-            if (wrap) wrap.classList.toggle('d-none');
+            if (wrap) {
+                const estaraFechado = !wrap.classList.contains('d-none');
+                wrap.classList.toggle('d-none');
+                if (estaraFechado) {
+                    const inp = document.getElementById('hist-token-manual');
+                    if (inp) inp.value = '';
+                }
+            }
         });
 
         document.getElementById('btn-ver-token')?.addEventListener('click', () => {
             const inp = document.getElementById('hist-token-manual');
-            if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+            if (inp) inp.value = '';
         });
 
         document.getElementById('btn-hist-buscar').addEventListener('click', () => {
