@@ -219,38 +219,43 @@ class FunilHistoricoPapPedidosView(APIView):
         busca_id = request.query_params.get("busca_id")
         tipo = request.query_params.get("tipo")
         
-        if not busca_id:
-            busca = HistoricoPapBusca.objects.order_by("-iniciado_em").first()
-        else:
+        busca = None
+        novos_set = set()
+        if busca_id:
             busca = HistoricoPapBusca.objects.filter(pk=busca_id).first()
+        else:
+            busca = HistoricoPapBusca.objects.order_by("-iniciado_em").first()
             
-        if not busca:
-            return Response([])
+        if busca and busca.novos_numeros:
+            novos_set = {normalizar_pedido(n) for n in busca.novos_numeros if n}
 
-        numeros = [normalizar_pedido(n) for n in (busca.novos_numeros or []) if n]
-        if not numeros:
-            return Response([])
-
-        qs = HistoricoPapPedido.objects.filter(numero_pedido__in=numeros)
+        qs = HistoricoPapPedido.objects.all()
         if tipo:
-            qs = qs.filter(tipo_venda=tipo)
+            qs = qs.filter(tipo_venda__iexact=tipo)
             
-        qs = qs.order_by("-id")[:500] # Limite para não travar navegador
+        qs = qs.order_by("-capturado_em")[:500]
         
         res = []
         for p in qs:
             payload = p.payload or {}
             mapped = map_pedido_api(payload, p.tipo_venda)
+            num_norm = normalizar_pedido(p.numero_pedido)
+            
+            cliente_val = mapped.get("cliente") or payload.get("cliente") or payload.get("nomeCliente") or "Desconhecido"
+            doc_val = mapped.get("cpf") or mapped.get("documento") or payload.get("cpf") or payload.get("documento") or ""
+            status_val = mapped.get("status_primario") or p.status or payload.get("chaveStatusPrimario") or payload.get("status") or "Desconhecido"
+            
             res.append({
                 "id": p.id,
-                "protocolo": mapped.get("Protocolo", p.numero_pedido),
-                "cliente": mapped.get("Cliente", "Desconhecido"),
-                "documento": mapped.get("Documento", ""),
+                "protocolo": mapped.get("pedido") or p.numero_pedido,
+                "cliente": cliente_val,
+                "documento": doc_val,
                 "tipo_venda": p.tipo_venda,
-                "status_primario": mapped.get("Status", p.status),
-                "novo_nesta_busca": True,
-                "data_status": mapped.get("Data", ""),
+                "status_primario": status_val,
+                "novo_nesta_busca": num_norm in novos_set,
+                "data_status": mapped.get("data_pedido") or "",
             })
             
         return Response(res)
+
 

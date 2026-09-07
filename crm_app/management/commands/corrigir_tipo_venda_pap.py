@@ -20,71 +20,28 @@ VTAL_TO_INTERNO = {
 
 
 class Command(BaseCommand):
-    help = "Corrige o campo tipo_venda nos registros HistoricoPapPedido com base no payload da Vtal"
+    help = "Diagnóstico e correção dos registros HistoricoPapPedido"
 
     def handle(self, *args, **options):
         from crm_app.models import HistoricoPapPedido
+        from crm_app.historico_pap_service import map_pedido_api
 
         total = HistoricoPapPedido.objects.count()
-        self.stdout.write(f"Total de registros: {total}")
+        self.stdout.write(f"Total de registros na tabela: {total}")
 
-        self.stdout.write("\nDistribuição ATUAL por tipo_venda:")
+        self.stdout.write("\nDistribuição REAL por tipo_venda:")
         for pt in HistoricoPapPedido.objects.values('tipo_venda').annotate(n=Count('id')):
-            self.stdout.write(f"  tipo_venda={pt['tipo_venda']}: {pt['n']} registros")
+            self.stdout.write(f"  tipo_venda='{pt['tipo_venda']}': {pt['n']} registros")
 
-        # Mostra amostra para diagnóstico
-        self.stdout.write("\nAmostra dos primeiros 5 payloads:")
-        for p in HistoricoPapPedido.objects.all()[:5]:
-            payload = p.payload or {}
-            tv = payload.get('tipoVenda') or payload.get('tipo_venda') or payload.get('type')
-            csp = payload.get('chaveStatusPrimario') or payload.get('status')
+        vendas = HistoricoPapPedido.objects.filter(tipo_venda="VENDA")[:5]
+        self.stdout.write(f"\nAmostra de 5 registros com tipo_venda='VENDA':")
+        for p in vendas:
+            mapped = map_pedido_api(p.payload or {}, p.tipo_venda)
             self.stdout.write(
-                f"  {p.numero_pedido}: tipo_venda={p.tipo_venda}, "
-                f"tipoVenda={tv}, chaveStatus={csp}"
+                f"  ID={p.id} Pedido={p.numero_pedido} tipo_venda={p.tipo_venda} "
+                f"mapped_pedido={mapped.get('pedido')} mapped_cliente={mapped.get('cliente')} "
+                f"mapped_cpf={mapped.get('cpf')} status_primario={mapped.get('status_primario')}"
             )
 
-        self.stdout.write("\nCorrigindo registros...")
-        corrigidos = 0
-        sem_info = 0
-        ja_corretos = 0
+        self.stdout.write(self.style.SUCCESS("Diagnóstico concluído!"))
 
-        todos = HistoricoPapPedido.objects.all()
-        for pedido in todos:
-            payload = pedido.payload or {}
-            tipo_real = None
-
-            tv = payload.get("tipoVenda") or payload.get("tipo_venda") or payload.get("type")
-            if tv:
-                tipo_real = VTAL_TO_INTERNO.get(str(tv).strip())
-
-            if not tipo_real:
-                csp = payload.get("chaveStatusPrimario") or payload.get("status")
-                if csp:
-                    tipo_real = VTAL_TO_INTERNO.get(str(csp).strip())
-
-            if not tipo_real:
-                sem_info += 1
-                continue
-
-            if pedido.tipo_venda == tipo_real:
-                ja_corretos += 1
-                continue
-
-            self.stdout.write(
-                f"  Corrigindo {pedido.numero_pedido}: "
-                f"{pedido.tipo_venda} -> {tipo_real} (tipoVenda={tv})"
-            )
-            pedido.tipo_venda = tipo_real
-            pedido.save(update_fields=['tipo_venda'])
-            corrigidos += 1
-
-        self.stdout.write(f"\n--- Resultado ---")
-        self.stdout.write(f"  Corrigidos:    {corrigidos}")
-        self.stdout.write(f"  Já corretos:   {ja_corretos}")
-        self.stdout.write(f"  Sem info:      {sem_info}")
-
-        self.stdout.write("\nDistribuição APÓS correção:")
-        for pt in HistoricoPapPedido.objects.values('tipo_venda').annotate(n=Count('id')):
-            self.stdout.write(f"  tipo_venda={pt['tipo_venda']}: {pt['n']} registros")
-
-        self.stdout.write(self.style.SUCCESS("Concluído!"))

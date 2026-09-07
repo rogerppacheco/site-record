@@ -330,6 +330,24 @@
         });
     });
 
+    async function atualizarBadgesCount(busca_id) {
+        const tipos = ['INTERESSE', 'PRE_VENDA', 'VENDA'];
+        const badgeMap = { 'INTERESSE': 'count-interesse', 'PRE_VENDA': 'count-prevenda', 'VENDA': 'count-venda' };
+        
+        tipos.forEach(async (t) => {
+            try {
+                const url = API_HIST + `pedidos/?tipo=${t}` + (busca_id ? `&busca_id=${busca_id}` : '');
+                const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+                if (r.ok) {
+                    const data = await r.json();
+                    if (badgeMap[t]) {
+                        document.getElementById(badgeMap[t]).textContent = data.length;
+                    }
+                }
+            } catch(e) {}
+        });
+    }
+
     async function carregarConfigHist() {
         if (!podeAcessar()) {
             document.getElementById('alert-403').classList.remove('d-none');
@@ -350,8 +368,10 @@
                 currentBuscaId = cfg.ultima_busca.id;
                 atualizarMetricas(cfg.ultima_busca);
                 carregarPedidos(currentBuscaId, activeTipo);
+                atualizarBadgesCount(currentBuscaId);
             } else {
                 carregarPedidos(null, activeTipo);
+                atualizarBadgesCount(null);
             }
         } catch (e) {}
     }
