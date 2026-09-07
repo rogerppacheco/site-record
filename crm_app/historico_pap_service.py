@@ -373,19 +373,12 @@ def _headers_auth(token: str) -> dict[str, str]:
         
     t = token.strip()
     
-    # MAGIC BYPASS: A API de vendas exige que um hash XOR do timestamp atual (36 chars)
-    # seja concatenado no final do JWT. Sem isso (ou se for velho), ela retorna 401 jwt malformed.
+    # Se o token já tiver o hash antigo acoplado (length > 297 aprox), limpamos
     parts = t.split(".")
     if len(parts) == 3:
         sig = parts[2]
         if len(sig) > 43:
-            # Token já tem um hash acoplado (veio do XHR), vamos arrancar o hash velho (últimos 36 chars)
-            base_jwt = t[:-36]
-        else:
-            # Token puro JWT (veio do cookie manualmente)
-            base_jwt = t
-            
-        t = base_jwt + _gerar_anti_replay_hash()
+            t = t[:-36]
 
     headers["Authorization"] = t if t.startswith("Bearer") else f"Bearer {t}"
     return headers
