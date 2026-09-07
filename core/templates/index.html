@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Record PAP - Internet Fibra Ótica{% endblock %}
+{% block title %}{{ SITE_BRAND }} - Internet Fibra Ótica{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -245,9 +245,13 @@
 {% block footer %}
 <footer id="contato" class="landing-footer py-5 text-center">
     <div class="container">
-        <p class="h4 mb-3">Record PAP - Internet Fibra Ótica</p>
-        <p class="mb-2">Contato: (31) 99458-8810</p>
-        <p class="mb-4">E-mail: <a href="mailto:suporte@recordpap.com.br">suporte@recordpap.com.br</a></p>
+        <p class="h4 mb-3">{{ SITE_BRAND }} - Internet Fibra Ótica</p>
+        {% if SITE_CONTACT_PHONE %}
+        <p class="mb-2">Contato: {{ SITE_CONTACT_PHONE }}</p>
+        {% endif %}
+        {% if SITE_CONTACT_EMAIL %}
+        <p class="mb-4">E-mail: <a href="mailto:{{ SITE_CONTACT_EMAIL }}">{{ SITE_CONTACT_EMAIL }}</a></p>
+        {% endif %}
         <p class="small mb-0" style="color: var(--text-muted);">
             <a href="#" class="text-decoration-none" style="color: var(--text-muted);">Política de Privacidade</a>
             |

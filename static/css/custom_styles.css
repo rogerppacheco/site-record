@@ -353,6 +353,16 @@ body[data-theme="dark"] .logo-img,
     opacity: 0.96;
 }
 
+.brand-text-logo {
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    line-height: 1;
+    white-space: nowrap;
+}
+
 .brand-link {
     display: inline-flex;
     align-items: center;

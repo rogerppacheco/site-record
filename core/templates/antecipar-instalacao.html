@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Antecipar Instalação / Reparo / Instalação Física - Record PAP{% endblock %}
+{% block title %}Antecipar Instalação / Reparo / Instalação Física - {{ SITE_BRAND }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -171,6 +171,7 @@
                         <p class="mb-1"><strong>Nome do GC:</strong> <span id="config-nome-display">—</span></p>
                         <p class="mb-1"><strong>Telefone do GC:</strong> <span id="config-telefone-display">—</span></p>
                         <p class="mb-1"><strong>E-mail do GC:</strong> <span id="config-email-display">—</span></p>
+                        <p class="mb-1"><strong>Sem SLOT por e-mail:</strong> <span id="config-sem-slot-email-display">—</span></p>
                         <p class="mb-1"><strong>Grupos de destino:</strong> <span id="config-grupo-display">—</span></p>
                         <p class="mb-1"><strong>Telefones individuais:</strong> <span id="config-telefones-destino-display">—</span></p>
                         <p class="mb-1"><strong>Relatório diário esteira:</strong> <span id="config-relatorio-display">—</span></p>
@@ -189,12 +190,16 @@
                         <div class="mb-3">
                             <label class="form-label">E-mail do GC</label>
                             <input type="email" id="config-email-gc" class="form-control" placeholder="Ex: gc@exemplo.com" maxlength="254">
-                            <div class="form-text">Usado nos pedidos de ajuda/socorro (abrir chamado TI).</div>
+                            <div class="form-text">Usado nos pedidos de ajuda/socorro (abrir chamado TI) e no envio da máscara Sem SLOT.</div>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="config-sem-slot-email" checked>
+                            <label class="form-check-label" for="config-sem-slot-email">Enviar máscara Sem SLOT também por e-mail do GC</label>
                         </div>
 
                         <hr class="my-3">
                         <h6 class="fw-bold mb-2">Destinos das mensagens (Antecipação e Sem SLOT)</h6>
-                        <p class="text-muted small mb-3">Os mesmos destinos valem para Antecipação e para Sem SLOT na auditoria. Selecione um ou mais grupos e/ou informe telefones WhatsApp individuais.</p>
+                        <p class="text-muted small mb-3">Os mesmos destinos WhatsApp valem para Antecipação e para Sem SLOT na auditoria. A máscara Sem SLOT também pode ir ao e-mail do GC (interruptor acima).</p>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <label class="form-label mb-0">Grupos WhatsApp</label>
@@ -887,6 +892,7 @@
                     document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-email-display').textContent = data.email_gc || 'Não configurado';
+                    document.getElementById('config-sem-slot-email-display').textContent = data.sem_slot_email_gc_ativo === false ? 'Inativo' : 'Ativo';
                     formatarDestinosDisplay(data);
                     document.getElementById('config-relatorio-display').textContent = data.relatorio_esteira_gc_ativo ? 'Ativo' : 'Inativo';
                     document.getElementById('config-horarios-display').textContent = formatarHorariosDisplay(data);
@@ -894,6 +900,7 @@
                     document.getElementById('config-nome-gc').value = data.nome_gc || '';
                     document.getElementById('config-telefone').value = data.telefone_gc || '';
                     document.getElementById('config-email-gc').value = data.email_gc || '';
+                    document.getElementById('config-sem-slot-email').checked = data.sem_slot_email_gc_ativo !== false;
                     renderTelefonesDestinoInputs(data.telefones_destino || []);
                     document.getElementById('config-relatorio-ativo').checked = !!data.relatorio_esteira_gc_ativo;
                     renderHorariosRelatorioInputs(data.relatorio_esteira_horarios || []);
@@ -935,6 +942,7 @@
                 });
                 const telefonesDestino = coletarTelefonesDestino();
                 const relatorioAtivo = document.getElementById('config-relatorio-ativo').checked;
+                const semSlotEmailAtivo = document.getElementById('config-sem-slot-email').checked;
                 const horariosRelatorio = coletarHorariosRelatorio();
                 if (!horariosRelatorio.length) {
                     msgEl.textContent = 'Informe ao menos um horário para o relatório diário.';
@@ -948,6 +956,7 @@
                         email_gc: emailGc || null,
                         grupo_ids: grupoIds,
                         telefones_destino: telefonesDestino,
+                        sem_slot_email_gc_ativo: semSlotEmailAtivo,
                         relatorio_esteira_gc_ativo: relatorioAtivo,
                         relatorio_esteira_horarios: horariosRelatorio
                     };
@@ -964,6 +973,7 @@
                     document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-email-display').textContent = data.email_gc || 'Não configurado';
+                    document.getElementById('config-sem-slot-email-display').textContent = data.sem_slot_email_gc_ativo === false ? 'Inativo' : 'Ativo';
                     formatarDestinosDisplay(data);
                     document.getElementById('config-relatorio-display').textContent = data.relatorio_esteira_gc_ativo ? 'Ativo' : 'Inativo';
                     document.getElementById('config-horarios-display').textContent = formatarHorariosDisplay(data);

@@ -84,6 +84,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'gestao_equipes.context_processors.branding',
             ],
         },
     },
@@ -148,7 +149,8 @@ if database_url:
     _h = DATABASES['default'].get('HOST') or 'localhost'
     _n = DATABASES['default'].get('NAME')
     _pool_label = "PgBouncer" if _pgbouncer_active else "direct"
-    print(f"OK - PostgreSQL ({_pool_label}): host={_h!r} db={_n!r}")
+    _schema = (os.environ.get("POSTGRES_SCHEMA") or "public").strip() or "public"
+    print(f"OK - PostgreSQL ({_pool_label}): host={_h!r} db={_n!r} schema={_schema!r}")
 
 else:
     print("[WARNING] Nenhuma variável de ambiente de banco encontrada. Usando SQLite.")
@@ -310,6 +312,19 @@ OUTBOUND_WEBHOOK_URL = config('OUTBOUND_WEBHOOK_URL', default='')
 # Teams: Django → n8n → Incoming Webhook do canal Teams
 N8N_TEAMS_WEBHOOK_URL = config('N8N_TEAMS_WEBHOOK_URL', default='')
 SITE_URL = config('SITE_URL', default='https://www.recordpap.com.br')
+SITE_BRAND = config('SITE_BRAND', default='Record PAP')
+# Prefixo dos módulos (Record Vendas, Record Apoia…). Default preserva a Record.
+SITE_MODULE_PREFIX = config('SITE_MODULE_PREFIX', default='Record')
+# True = mostra o nome da marca no header em vez do logo.png da Record.
+SITE_TEXT_LOGO = config('SITE_TEXT_LOGO', default=False, cast=bool)
+SITE_CONTACT_PHONE = config('SITE_CONTACT_PHONE', default='(31) 99458-8810')
+SITE_CONTACT_EMAIL = config('SITE_CONTACT_EMAIL', default='suporte@recordpap.com.br')
+_site_origin = str(SITE_URL).rstrip('/')
+if _site_origin.startswith('http://') or _site_origin.startswith('https://'):
+    if _site_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_site_origin)
+    if _site_origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(_site_origin)
 # Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
 WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
 
@@ -343,6 +358,16 @@ DFV_POWERBI_SUL_RESOURCE_KEY = config(
     default='cc212c25-1b6a-4301-877b-703e2c7aa788',
 )
 DFV_POWERBI_SUL_MODEL_ID = config('DFV_POWERBI_SUL_MODEL_ID', default=6062850, cast=int)
+DFV_POWERBI_CO_RESOURCE_KEY = config(
+    'DFV_POWERBI_CO_RESOURCE_KEY',
+    default='a321b404-8186-4645-8070-507a8fea6abb',
+)
+DFV_POWERBI_CO_MODEL_ID = config('DFV_POWERBI_CO_MODEL_ID', default=6063900, cast=int)
+DFV_POWERBI_NN_RESOURCE_KEY = config(
+    'DFV_POWERBI_NN_RESOURCE_KEY',
+    default='7b6cd391-63ef-4af2-9b09-1b0b1caa29a9',
+)
+DFV_POWERBI_NN_MODEL_ID = config('DFV_POWERBI_NN_MODEL_ID', default=6064171, cast=int)
 DFV_POWERBI_TIMEOUT_SECONDS = config('DFV_POWERBI_TIMEOUT_SECONDS', default=18, cast=float)
 DFV_POWERBI_CACHE_TTL_SECONDS = config('DFV_POWERBI_CACHE_TTL_SECONDS', default=600, cast=int)
 DFV_POWERBI_WINDOW_COUNT = config('DFV_POWERBI_WINDOW_COUNT', default=5000, cast=int)

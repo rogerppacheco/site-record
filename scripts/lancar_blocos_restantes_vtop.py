@@ -51,13 +51,24 @@ from crm_app.services_vtop_smartriser import (  # noqa: E402
 def _abrir_brownfield(page, *, obrigatorio: bool = True) -> bool:
     page.goto(VTOP_SMARTRISER_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
-    # Sessão expirada → IdP
+    # Sessão expirada → IdP: espera login manual no Chromium local
     url = (page.url or "").lower()
     if "login" in url and "vtal" in url:
-        print(f"AVISO: redirecionou para login ({page.url})")
-        if obrigatorio:
-            raise RuntimeError("Sessão V.top expirada — faça login e rode de novo.")
-        return False
+        print(
+            "\n*** LOGIN V.tal necessário ***\n"
+            "Digite usuário/senha no Chromium e conclua o login.\n"
+            "Aguardando até 5 minutos…\n"
+        )
+        try:
+            page.wait_for_url("**/appvtop/**", timeout=300_000)
+            page.wait_for_timeout(2000)
+            page.goto(VTOP_SMARTRISER_URL, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
+        except Exception:
+            print(f"AVISO: login não concluído a tempo ({page.url})")
+            if obrigatorio:
+                raise RuntimeError("Sessão V.top expirada — faça login e rode de novo.")
+            return False
 
     if page.locator("text=SmartRiser").count() and not page.locator("#addUmaObra").count():
         try:
@@ -88,9 +99,12 @@ def _abrir_brownfield(page, *, obrigatorio: bool = True) -> bool:
     )
     page.wait_for_timeout(5000)
     try:
-        page.locator("text=Dezoito").first.wait_for(state="visible", timeout=60_000)
+        # Trecho do endereço pode ser Diamante / Dezoito etc. — espera a grade
+        page.locator("#addUmaObra, i.fa-square-plus.icone_obra").first.wait_for(
+            state="visible", timeout=60_000
+        )
     except Exception:
-        print(f"AVISO: 'Dezoito' não apareceu. URL={page.url}")
+        print(f"AVISO: FAB não apareceu. URL={page.url}")
         if obrigatorio:
             return False
         return False
@@ -111,7 +125,15 @@ def _garantir_smartriser_sessao(page) -> None:
     page.wait_for_timeout(1500)
     url = (page.url or "").lower()
     if "login" in url and "vtal" in url:
-        raise RuntimeError("Sessão V.top expirada — faça login e rode de novo.")
+        print(
+            "\n*** LOGIN V.tal necessário ***\n"
+            "Digite usuário/senha no Chromium e conclua o login.\n"
+            "Aguardando até 5 minutos…\n"
+        )
+        page.wait_for_url("**/appvtop/**", timeout=300_000)
+        page.wait_for_timeout(2000)
+        page.goto(VTOP_SMARTRISER_URL, wait_until="domcontentloaded")
+        page.wait_for_timeout(1500)
     if page.locator("text=SmartRiser").count() and "smartriser" not in url:
         try:
             page.get_by_text("SmartRiser", exact=False).first.click(timeout=5000)
@@ -125,7 +147,8 @@ def _obras_no_endereco(page, logradouro: str, numero: str) -> Dict[str, str]:
     """
     Retorna mapa norm(complemento) → obra_id a partir da grade Brownfield.
     """
-    trecho = (logradouro or "").split()[-1] if logradouro else "Dezoito"
+    tokens = [t for t in re.split(r"\s+", (logradouro or "").strip()) if len(t) >= 4]
+    trecho = tokens[-1] if tokens else (logradouro or "Diamante")
     rows = page.evaluate(
         """(args) => {
           const { trecho, numero } = args;
@@ -193,11 +216,17 @@ def _lista_tem_bloco(lista: Dict[str, str], nome: str) -> bool:
 
 
 def _seed_ids_conhecidos(cdoi_id: int) -> int:
-    """Importa obra_ids já capturados nos JSONs tmp (não sobrescreve se já tiver)."""
+    """Importa obra_ids já capturados nos JSONs tmp do próprio CDOI."""
     arquivos = [
-        BASE / "tmp_vtop_resultado_blocos_1a4.json",
-        BASE / "tmp_vtop_resultado_lancar_restantes.json",
+        BASE / f"tmp_vtop_resultado_cdoi_{cdoi_id}.json",
     ]
+    if cdoi_id == 20:
+        arquivos.extend(
+            [
+                BASE / "tmp_vtop_resultado_blocos_1a4.json",
+                BASE / "tmp_vtop_resultado_lancar_restantes.json",
+            ]
+        )
     gravados = 0
     for path in arquivos:
         if not path.exists():
@@ -247,6 +276,11 @@ def main() -> int:
     parser.add_argument("--sem-validar", action="store_true")
     parser.add_argument("--seed-only", action="store_true", help="Só grava IDs dos JSONs no banco")
     parser.add_argument(
+        "--pasta-anexos",
+        default="",
+        help="Pasta local com CARTA* e FACHADA* (OneDrive CDOI_Record_Vertical/...)",
+    )
+    parser.add_argument(
         "--nao-criar",
         action="store_true",
         help="Só reusa se achar o complemento na lista; nunca cria obra nova.",
@@ -281,15 +315,44 @@ def main() -> int:
     if filtro:
         nomes = [n for n in nomes if _norm_nome_bloco(n) in filtro]
 
-    pasta = Path(
-        r"C:\Users\rogge\OneDrive - Parceiros Oi\CDOI_Record_Vertical\CONQUISTA MONTE BELO_32113535"
-    )
+    pasta = Path(args.pasta_anexos) if args.pasta_anexos else Path()
+    if not pasta.exists():
+        # Fallback: pasta tipada pelo nome do condomínio no OneDrive CDOI
+        nome_condo = str(base.get("nome_condominio") or "").strip()
+        cep = re.sub(r"\D", "", str(base.get("cep") or ""))
+        root = Path(r"C:\Users\rogge\OneDrive - Parceiros Oi\CDOI_Record_Vertical")
+        if nome_condo and root.exists():
+            candidatos = [
+                p for p in root.iterdir()
+                if p.is_dir() and nome_condo.upper() in p.name.upper()
+            ]
+            if cep:
+                por_cep = [p for p in candidatos if cep[:5] in p.name.replace("-", "")]
+                if por_cep:
+                    candidatos = por_cep
+            if candidatos:
+                pasta = candidatos[0]
     carta = fachada = ""
     if not args.sem_anexos and pasta.exists():
-        c = list(pasta.glob("CARTA*.jfif"))
-        f = list(pasta.glob("FACHADA*.jfif"))
+        print(f"Pasta anexos: {pasta}")
+        c = (
+            list(pasta.glob("CARTA*.jfif"))
+            + list(pasta.glob("CARTA*.jpg"))
+            + list(pasta.glob("CARTA*.jpeg"))
+            + list(pasta.glob("CARTA*.png"))
+            + list(pasta.glob("CARTA*.PNG"))
+        )
+        f = (
+            list(pasta.glob("FACHADA*.jfif"))
+            + list(pasta.glob("FACHADA*.jpg"))
+            + list(pasta.glob("FACHADA*.jpeg"))
+            + list(pasta.glob("FACHADA*.png"))
+            + list(pasta.glob("FACHADA*.PNG"))
+        )
         carta = str(c[0]) if c else ""
         fachada = str(f[0]) if f else ""
+        print(f"  carta={carta or '(não achou)'}")
+        print(f"  fachada={fachada or '(não achou)'}")
     if not carta:
         carta = str(base.get("link_carta") or "")
     if not fachada:
@@ -332,14 +395,29 @@ def main() -> int:
         svc._dialog_via_context = True
 
         # Se precisar criar/descobrir, tenta Brownfield; senão só valida sessão
+        brownfield_ok = False
         if sem_id:
-            ok_lista = _abrir_brownfield(page, obrigatorio=False)
-            if ok_lista:
-                lista_obras = _obras_no_endereco(page, logradouro, numero)
+            brownfield_ok = _abrir_brownfield(page, obrigatorio=False)
+            if brownfield_ok:
+                # Inventário paginado (mesma lógica do serviço)
+                mapa_det = svc._listar_obras_endereco(logradouro, numero)
+                lista_obras = {}
+                for chave, items in (mapa_det or {}).items():
+                    if not items:
+                        continue
+                    melhor = sorted(
+                        items, key=lambda x: int(str(x.get("id") or "0") or 0)
+                    )[0]
+                    lista_obras[chave] = str(melhor["id"])
+                    comp = str(melhor.get("complemento") or "").strip()
+                    if comp:
+                        lista_obras[_norm_nome_bloco(comp)] = str(melhor["id"])
                 print("Obras na lista:", sorted(lista_obras.items()))
+                Path(BASE / f"tmp_vtop_lista_cdoi_{cdoi_id}.json").write_text(
+                    json.dumps(mapa_det, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
                 for nome_comp, oid in lista_obras.items():
                     persistir_vtop_obra_bloco(cdoi_id, nome_comp, oid)
-                # Atualiza resolver após sync
                 for n in list(sem_id):
                     oid = _resolver_obra_id(cdoi_id=cdoi_id, nome=n, lista=lista_obras)
                     if oid:
@@ -364,7 +442,7 @@ def main() -> int:
             obra_id = ids_banco.get(nome) or _resolver_obra_id(
                 cdoi_id=cdoi_id, nome=nome, lista=lista_obras
             )
-            if not obra_id and nome in sem_id and not lista_obras:
+            if not obra_id and nome in sem_id and not brownfield_ok:
                 resultados.append(
                     {
                         "bloco": nome,
@@ -434,9 +512,9 @@ def main() -> int:
                         raise RuntimeError(
                             "Sem obra_id e criação bloqueada (--nao-criar ou env)."
                         )
-                    if not lista_obras:
+                    if not brownfield_ok:
                         raise RuntimeError(
-                            "Inventário vazio — não é seguro criar (não validou complemento)."
+                            "Inventário indisponível — não é seguro criar."
                         )
                     if _lista_tem_bloco(lista_obras, nome):
                         # Deveria ter resolvido ID acima; aborta em vez de duplicar
@@ -499,7 +577,7 @@ def main() -> int:
                     print("Falha ao recuperar:", exc2)
                     break
 
-        out = BASE / "tmp_vtop_resultado_lancar_restantes.json"
+        out = BASE / f"tmp_vtop_resultado_cdoi_{cdoi_id}.json"
         prev: List[Dict[str, Any]] = []
         if out.exists():
             try:
@@ -513,6 +591,10 @@ def main() -> int:
         ]
         merged.extend(resultados)
         out.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Compat: também espelha no caminho legado se for o default histórico
+        legado = BASE / "tmp_vtop_resultado_lancar_restantes.json"
+        if cdoi_id == 20:
+            legado.write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
         context.storage_state(path=_storage_state_path())
         print("\nResultado:", out)
         time.sleep(2)

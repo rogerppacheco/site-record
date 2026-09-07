@@ -1,8 +1,8 @@
 {% load static %}
 <header class="main-header">
     <div class="header-container">
-        <a href="{% block brand_url %}/{% endblock %}" class="brand-link" aria-label="Record PAP - Início">
-            <img src="{% static 'logo.png' %}" alt="Record PAP" class="logo logo-img">
+        <a href="{% block brand_url %}/{% endblock %}" class="brand-link" aria-label="{{ SITE_BRAND }} - Início">
+            {% include "partials/brand_mark.html" %}
         </a>
 
         <nav class="main-nav" id="main-nav" aria-label="Navegação principal">

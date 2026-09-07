@@ -17,6 +17,8 @@ db.sqlite3
 .playwright_google_form_state.json
 .playwright_vtop_state.json
 .playwright_google_profile/
+.playwright_whatsapp_profile/
+.playwright_whatsapp_state.json
 chrome_extension_inclusao_forms/.dev_private_key.pem
 .tmp_google_form_state.b64
 scripts/_teste_inclusao_foto.jpg

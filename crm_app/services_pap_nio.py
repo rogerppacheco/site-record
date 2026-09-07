@@ -746,6 +746,17 @@ class PAPNioAutomation:
                 )
             
             self.page = self.context.new_page()
+            
+            # Global XHR Interceptor for Debugging 
+            self.captured_global_xhrs = []
+            def _log_req(req):
+                try:
+                    if req.resource_type in ["xhr", "fetch"]:
+                        self.captured_global_xhrs.append(f"{req.method} {req.url}")
+                except:
+                    pass
+            self.page.on("request", _log_req)
+            
             # Timeout padrão alto para evitar "Timeout 5000ms" em produção (rede/React lentos)
             self.page.set_default_timeout(25000)
             self.sessao_iniciada = True

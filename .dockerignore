@@ -15,5 +15,8 @@ media/
 site-record.git/
 .env
 .playwright_state.json
+.playwright_whatsapp_profile/
+.playwright_whatsapp_state.json
+.playwright_google_profile/
 node_modules/
 *.zip

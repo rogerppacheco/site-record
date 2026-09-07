@@ -6,8 +6,11 @@ Railway nativo: DATABASE_URL → pooler; DATABASE_UNPOOLED_URL → Postgres dire
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+_SCHEMA_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def is_pgbouncer_enabled() -> bool:
@@ -71,6 +74,19 @@ def build_prisma_urls(pooled_base: str, unpooled_base: str, schema: str) -> dict
 
 
 def django_database_options(*, pooled: bool) -> dict[str, Any]:
-    """OPTIONS do Django para Postgres com ou sem PgBouncer."""
+    """OPTIONS do Django para Postgres com ou sem PgBouncer.
+
+    Se POSTGRES_SCHEMA estiver definido (ex.: rosso), força search_path
+    exclusivo nesse schema. Sem a variável, o comportamento permanece o
+    da Record (search_path padrão / public).
+    """
     _ = pooled
-    return {"connect_timeout": 10}
+    opts: dict[str, Any] = {"connect_timeout": 10}
+    schema = (os.environ.get("POSTGRES_SCHEMA") or "").strip()
+    if schema:
+        if not _SCHEMA_NAME_RE.match(schema):
+            raise ValueError(
+                f"POSTGRES_SCHEMA inválido: {schema!r}. Use apenas letras, números e underscore."
+            )
+        opts["options"] = f"-c search_path={schema}"
+    return opts

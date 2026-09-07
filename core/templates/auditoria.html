@@ -858,6 +858,11 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                             </li>
                             <li><hr class="dropdown-divider"></li>
                             <li>
+                                <button type="button" class="dropdown-item" onclick="abrirModalConfigPap()" title="Configurar período da busca online">
+                                    <i class="bi bi-gear"></i> Config. Busca PAP
+                                </button>
+                            </li>
+                            <li>
                                 <button type="button" class="dropdown-item" id="btn-atualizar-lista" onclick="carregarVendasPendentes(); carregarProximoTTBanner();">
                                     <i class="bi bi-arrow-clockwise"></i> Atualizar lista
                                 </button>
@@ -1667,6 +1672,34 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         </div>
     </div>
 
+<!-- Modal Configurar Busca PAP -->
+<div class="modal fade" id="modal-config-pap" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">Configurar Busca PAP</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Período de busca</label>
+                    <select id="config-pap-periodo" class="form-select">
+                        <option value="hoje">Hoje</option>
+                        <option value="ontem">Ontem e Hoje</option>
+                        <option value="semana">Últimos 7 dias</option>
+                        <option value="mes">Mês atual</option>
+                    </select>
+                    <div class="form-text mt-2">Escolha qual intervalo de tempo o robô deve consultar na Vtal. "Hoje" é mais rápido.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="salvarConfigPap()">Salvar Configuração</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% include "partials/pedido_ajuda_gc_modal.html" %}
 {% include "partials/pedido_ajuda_gc_export_modal.html" %}
 
@@ -1678,6 +1711,19 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
 <script src="{% static 'js/menu.js' %}?v=8.0"></script>
 <script src="{% static 'js/painel_tempo_tratamento.js' %}?v=1.0"></script>
 <script>
+function abrirModalConfigPap() {
+    const periodo = localStorage.getItem('pap_busca_periodo') || 'hoje';
+    document.getElementById('config-pap-periodo').value = periodo;
+    new bootstrap.Modal(document.getElementById('modal-config-pap')).show();
+}
+
+function salvarConfigPap() {
+    const periodo = document.getElementById('config-pap-periodo').value;
+    localStorage.setItem('pap_busca_periodo', periodo);
+    bootstrap.Modal.getInstance(document.getElementById('modal-config-pap')).hide();
+    alert('Configuração salva! A próxima busca usará este período.');
+}
+
 async function iniciarBuscaPapOnline() {
     const btn = document.getElementById('btn-sync-pap');
     btn.disabled = true;
@@ -1685,38 +1731,28 @@ async function iniciarBuscaPapOnline() {
     
     try {
         const token = localStorage.getItem('accessToken');
+        const periodo = localStorage.getItem('pap_busca_periodo') || 'hoje';
         const resp = await fetch('/api/crm/historico/importar-vendas/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'Content-Type': 'application/json',
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-            }
+            },
+            body: JSON.stringify({ periodo: periodo })
         });
         
         const data = await resp.json();
         
         if (resp.ok) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Importação concluída',
-                text: data.mensagem || 'Vendas importadas com sucesso!',
-            });
+            alert('Importação concluída: ' + (data.mensagem || 'Vendas importadas com sucesso!'));
             carregarVendasPendentes();
         } else {
-            Swal.fire({
-                icon: 'error',
-                title: 'Erro na importação',
-                text: data.error || 'Ocorreu um erro ao importar vendas.',
-            });
+            alert('Erro na importação: ' + (data.error || 'Ocorreu um erro ao importar vendas.'));
         }
     } catch (err) {
         console.error(err);
-        Swal.fire({
-            icon: 'error',
-            title: 'Erro de conexão',
-            text: 'Não foi possível conectar ao servidor.',
-        });
+        alert('Erro de conexão. Não foi possível conectar ao servidor.');
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-cloud-download"></i><span class="d-none d-md-inline ms-1">Buscar do PAP</span>';

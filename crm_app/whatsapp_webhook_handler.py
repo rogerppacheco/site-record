@@ -8807,7 +8807,7 @@ def processar_webhook_whatsapp(data, request=None):
             _registrar_estatistica(telefone_formatado, 'DFV')
             resposta = (
                 "Por favor, digite o *CEP* para consultar fachadas no Power BI ao vivo "
-                "(Sudeste, SP e Sul — apenas números; hífen é aceito):"
+                "(todas as regionais — apenas números; hífen é aceito):"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 

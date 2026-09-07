@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Governança - Record PAP{% endblock %}
+{% block title %}Governança - {{ SITE_BRAND }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -622,7 +622,7 @@
                                     <input type="hidden" id="regra_auto_id">
                                     <div class="mb-3"><label class="form-label fw-bold">Nome da Regra</label><input type="text" class="form-control" id="regra_nome" placeholder="Ex: Aviso Backoffice - Novo CDOI" required></div>
                                     <div class="row g-2 mb-3">
-                                        <div class="col-md-8"><label class="form-label fw-bold">Evento Gatilho</label><select id="regra_evento" class="form-select" required><option value="NOVO_CDOI">Novo CDOI Cadastrado (Record Vertical)</option></select></div>
+                                        <div class="col-md-8"><label class="form-label fw-bold">Evento Gatilho</label><select id="regra_evento" class="form-select" required><option value="NOVO_CDOI">Novo CDOI Cadastrado ({{ SITE_MODULE_PREFIX }} Vertical)</option></select></div>
                                         <div class="col-md-4"><label class="form-label fw-bold">Status</label><select id="regra_ativo" class="form-select"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
                                     </div>
                                     <div class="mb-3"><label class="form-label fw-bold d-flex justify-content-between">Grupos de Destino (WhatsApp) <button type="button" class="btn btn-xs btn-outline-secondary" onclick="carregarGruposExternos()"><i class="bi bi-arrow-clockwise"></i> Atualizar Lista</button></label><select id="regra_grupos" class="form-select" multiple style="height: 120px;"><option value="" disabled>Clique em atualizar para buscar...</option></select><div class="form-text small">Segure Ctrl para selecionar vários.</div></div>

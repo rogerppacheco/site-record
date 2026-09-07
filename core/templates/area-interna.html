@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Área Interna - Record PAP{% endblock %}
+{% block title %}Área Interna - {{ SITE_BRAND }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -255,7 +255,7 @@
             <!-- R -->
             <a href="/record-apoia/" class="app-card card-modern" id="card-apoia">
                 <i class="bi bi-folder-fill app-icon icon-apoia"></i>
-                <span class="app-title">Record Apoia</span>
+                <span class="app-title">{{ SITE_MODULE_PREFIX }} Apoia</span>
             </a>
 
             <a href="/conhecimento-ia/" class="app-card card-modern" id="card-conhecimento-ia">
@@ -265,17 +265,17 @@
 
             <a href="/record-informa/" class="app-card card-modern" id="card-informa">
                 <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
-                <span class="app-title">Record Informa</span>
+                <span class="app-title">{{ SITE_MODULE_PREFIX }} Informa</span>
             </a>
 
             <a href="/crm-vendas/" class="app-card card-modern" id="card-vendas">
                 <i class="bi bi-people-fill app-icon icon-vendas"></i>
-                <span class="app-title">Record Vendas</span>
+                <span class="app-title">{{ SITE_MODULE_PREFIX }} Vendas</span>
             </a>
 
             <a href="{% url 'page_cdoi_novo' %}" class="app-card card-modern" id="card-cdoi">
                 <i class="bi bi-building app-icon icon-cdoi"></i>
-                <span class="app-title">Record Vertical</span>
+                <span class="app-title">{{ SITE_MODULE_PREFIX }} Vertical</span>
             </a>
         </div>
 </main>

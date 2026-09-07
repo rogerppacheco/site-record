@@ -274,7 +274,7 @@ class FunilHistoricoPapImportarView(APIView):
         from crm_app.historico_pap_service import criar_e_iniciar_busca, busca_em_andamento
         from crm_app.services_sincronizacao import sincronizar_pedido_pap_para_venda
         from crm_app.models import HistoricoPapPedido
-        from datetime import date
+        from datetime import date, timedelta
 
         # 1. Verifica se já tem busca rolando
         if busca_em_andamento():
@@ -282,10 +282,20 @@ class FunilHistoricoPapImportarView(APIView):
 
         # 2. Inicia uma busca APENAS para VENDA para garantir dados frescos
         try:
+            periodo = request.data.get("periodo", "hoje")
             hoje = date.today()
+            if periodo == "mes":
+                data_inicio = date(hoje.year, hoje.month, 1)
+            elif periodo == "semana":
+                data_inicio = hoje - timedelta(days=7)
+            elif periodo == "ontem":
+                data_inicio = hoje - timedelta(days=1)
+            else:
+                data_inicio = hoje
+
             criar_e_iniciar_busca(
                 request.user,
-                data_inicio=hoje,
+                data_inicio=data_inicio,
                 data_fim=hoje,
                 pdv="",
                 tipos=["VENDA"],

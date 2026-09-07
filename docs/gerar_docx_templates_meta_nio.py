@@ -256,6 +256,29 @@ T8 = [
     "de ajuda agora.",
 ]
 
+T9 = [
+    "Olá, {{1}}!",
+    "",
+    "{{2}},",
+    "",
+    "Parceiro oficial da Nio Fibra.",
+    "Sua internet está com a velocidade reduzida",
+    "devido a uma pendência de pagamento.",
+    "",
+    "Referência: *{{3}}*",
+    "Valor: *{{4}}*",
+    "Vencimento: *{{5}}*",
+    "",
+    "Precisamos do seu retorno para programar a",
+    "regularização e liberar novamente 100% do",
+    "seu sinal de fibra óptica.",
+    "",
+    "Informe sua previsão de pagamento pelos",
+    "botões abaixo.",
+    "",
+    "SAC: 0800 001 1000 | WhatsApp: 21 3605-1000",
+]
+
 
 def main() -> None:
     doc = Document()
@@ -509,6 +532,31 @@ def main() -> None:
         ],
     )
 
+    _template(
+        doc,
+        titulo="9. Redução de sinal — fatura em aberto",
+        nome="nio_fatura_reducao_sinal_v1",
+        finalidade="Avisar velocidade reduzida por pendência e pedir previsão de pagamento",
+        body=T9,
+        botoes=["Informar previsão", "Já paguei", "Falar com suporte"],
+        variaveis=[
+            "{{1}} saudação",
+            "{{2}} primeiro nome",
+            "{{3}} referência da fatura",
+            "{{4}} valor",
+            "{{5}} data de vencimento",
+        ],
+        notas=[
+            "Não citar SPC/Serasa, negativação ou “prazo de 2 dias antes do encaminhamento” "
+            "no corpo — a Meta recusa UTILITY com tom de ameaça.",
+            "Notificação legal de órgãos de proteção ao crédito: enviar em texto livre "
+            "depois que o cliente responder (janela 24h).",
+            "CRM: Informar previsão → pede data (promessa de pagamento); "
+            "Já paguei → comprovante/análise; Falar com suporte → fila humana.",
+            "Amostra: Bom dia / Maria / Agosto/2026 / R$ 99,90 / 10/08/2026.",
+        ],
+    )
+
     _h(doc, "Mapa rápido — texto do botão → ação CRM", 1)
     for row in [
         "CORRETO → avança pedido",
@@ -517,6 +565,7 @@ def main() -> None:
         "Entendi → encerra interação ok",
         "Quero a 2ª via → envia fatura (PIX/barras/PDF)",
         "Já paguei → solicita comprovante / fila de baixa",
+        "Informar previsão → pede data de pagamento (promessa)",
         "Suporte / Falar com suporte / Falar com atendente → fila humana",
     ]:
         _p(doc, f"• {row}")
