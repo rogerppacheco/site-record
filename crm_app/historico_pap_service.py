@@ -346,22 +346,6 @@ def _extrair_token(page) -> str:
     return ""
 
 
-def _headers_auth(token: str) -> dict[str, str]:
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://pap.niointernet.com.br",
-        "Referer": "https://pap.niointernet.com.br/administrativo/historico",
-    }
-    if not token:
-        return headers
-    t = token.strip()
-    if t.lower().startswith("bearer "):
-        headers["Authorization"] = t
-    else:
-        headers["Authorization"] = f"Bearer {t}"
-    return headers
-
-
 def _fetch_json_http(url: str, headers: dict[str, str]) -> dict:
     try:
         resp = requests.get(url, headers=headers, timeout=60)
@@ -387,21 +371,76 @@ def _fetch_json_http(url: str, headers: dict[str, str]) -> dict:
         return {"ok": False, "status": 0, "error": f"requests: {exc}"}
 
 
+def _log_cookies_debug(page, dominio: str = "pap-api.niointernet.com.br") -> None:
+    """Loga os cookies e Web Storage (local/session) presentes no contexto Playwright para diagnóstico."""
+    if not page:
+        return
+    try:
+        all_cookies = page.context.cookies()
+        api_cookies = [c for c in all_cookies if dominio in (c.get("domain") or "")]
+        front_cookies = [c for c in all_cookies if "pap.niointernet.com.br" in (c.get("domain") or "")]
+        logger.warning(
+            "[HISTORICO PAP][DEBUG] Cookies no contexto: total=%d pap-api=%d pap-front=%d",
+            len(all_cookies), len(api_cookies), len(front_cookies),
+        )
+        for c in api_cookies:
+            val = (c.get("value") or "")[:50]
+            logger.warning(
+                "[HISTORICO PAP][DEBUG] Cookie API: name=%s domain=%s path=%s val_inicio=%s",
+                c.get("name"), c.get("domain"), c.get("path"), val,
+            )
+        for c in front_cookies:
+            val = (c.get("value") or "")
+            logger.warning(
+                "[HISTORICO PAP][DEBUG] Cookie FRONT: name=%s domain=%s path=%s dots=%d len=%d val_inicio=%s val_fim=%s",
+                c.get("name"), c.get("domain"), c.get("path"),
+                val.count("."), len(val), val[:40], val[-20:],
+            )
+        
+        # Dump Web Storage (LocalStorage e SessionStorage)
+        try:
+            ls_data = page.evaluate("() => { let d={}; for(let i=0; i<localStorage.length; i++) { let k=localStorage.key(i); d[k] = localStorage.getItem(k); } return d; }")
+            ss_data = page.evaluate("() => { let d={}; for(let i=0; i<sessionStorage.length; i++) { let k=sessionStorage.key(i); d[k] = sessionStorage.getItem(k); } return d; }")
+            
+            logger.warning("[HISTORICO PAP][DEBUG] LocalStorage keys: %s", list(ls_data.keys()))
+            for k, v in ls_data.items():
+                if v and len(v) > 20:
+                    logger.warning("[HISTORICO PAP][DEBUG] LocalStorage[%s] (len=%d): %s...%s", k, len(v), v[:40], v[-20:])
+                else:
+                    logger.warning("[HISTORICO PAP][DEBUG] LocalStorage[%s]: %s", k, v)
+                    
+            logger.warning("[HISTORICO PAP][DEBUG] SessionStorage keys: %s", list(ss_data.keys()))
+        except Exception as exc_ws:
+            logger.warning("[HISTORICO PAP][DEBUG] Falha ao ler Web Storage: %s", exc_ws)
+            
+    except Exception as exc:
+        logger.warning("[HISTORICO PAP][DEBUG] Falha ao listar cookies: %s", exc)
+
+
 def _fetch_json(page, url: str, token: str = "") -> dict:
     """
     Busca JSON da API do PAP.
-    1) Tenta via APIRequestContext do Playwright.
-    2) Se der 401/403 ou falhar (ex: conflito de cookies do browser), tenta direto via requests HTTP (sem cookies).
-    3) Fallback para evaluate fetch no browser.
+    Estratégia (em ordem):
+    1) APIRequestContext do Playwright SEM Authorization (só cookies do contexto — a API usa cookie de sessão).
+    2) APIRequestContext do Playwright COM Authorization Bearer (se o token for válido JWT).
+    3) HTTP direto via requests com Bearer.
+    4) Evaluate fetch nativo do browser (com credentials: include).
     """
-    tok = limpar_jwt((token or "").strip() or (_extrair_token(page) if page else ""))
-    headers = _headers_auth(tok)
+    tok = (token or "").strip()
+    if not tok and page:
+        tok = limpar_jwt(_extrair_token(page))
+    headers_bearer = _headers_auth(tok)
+    headers_sem_auth = {
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://pap.niointernet.com.br",
+        "Referer": "https://pap.niointernet.com.br/administrativo/historico",
+    }
 
-    # 1) APIRequestContext do Playwright — imune a CORS do DOM, usa mesmo IP/cookies/TLS
+    # 1) APIRequestContext SEM Authorization — a API usa cookie de sessão set no login
     if page:
         try:
             api = page.context.request
-            resp = api.get(url, headers=headers, timeout=45000)
+            resp = api.get(url, headers=headers_sem_auth, timeout=45000)
             status = resp.status
             text = resp.text()
             try:
@@ -412,25 +451,61 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
                 except Exception:
                     json_body = None
             if 200 <= status < 300:
+                logger.info("[HISTORICO PAP] context.request (só cookies) OK: %s", status)
                 return {"ok": True, "status": status, "json": json_body}
             if status in (401, 403):
                 logger.warning(
-                    "[HISTORICO PAP] context.request API %s — preview=%s (tentando fallback HTTP direto)",
-                    status,
-                    (text or "")[:180].replace("\n", " "),
+                    "[HISTORICO PAP] context.request (só cookies) %s — preview=%s → tentando com Bearer",
+                    status, (text or "")[:180].replace("\n", " "),
+                )
+                # Debug: logar todos os cookies ao falhar
+                _log_cookies_debug(page)
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] context.request (só cookies) falhou (%s)", exc)
+
+    # 2) APIRequestContext COM Authorization Bearer
+    if page and tok:
+        logger.info(
+            "[HISTORICO PAP] Tentando context.request com Bearer (primeiros 30 chars): %s...",
+            tok[:30],
+        )
+        try:
+            api = page.context.request
+            resp = api.get(url, headers=headers_bearer, timeout=45000)
+            status = resp.status
+            text = resp.text()
+            try:
+                json_body = resp.json()
+            except Exception:
+                try:
+                    json_body = json.loads(text)
+                except Exception:
+                    json_body = None
+            if 200 <= status < 300:
+                logger.info("[HISTORICO PAP] context.request (Bearer) OK: %s", status)
+                return {"ok": True, "status": status, "json": json_body}
+            if status in (401, 403):
+                logger.warning(
+                    "[HISTORICO PAP] context.request (Bearer) %s — preview=%s (tentando fallback HTTP)",
+                    status, (text or "")[:180].replace("\n", " "),
                 )
         except Exception as exc:
-            logger.warning("[HISTORICO PAP] context.request falhou (%s); tentando fallback HTTP direto", exc)
+            logger.warning("[HISTORICO PAP] context.request (Bearer) falhou (%s); tentando fallback HTTP direto", exc)
 
-    # 2) Fallback direto HTTP sem browser (evita conflitos de cookies do Chromium)
-    resp_http = _fetch_json_http(url, headers)
+    # 3) Fallback direto HTTP sem browser (evita conflitos de cookies do Chromium)
+    resp_http = _fetch_json_http(url, headers_bearer)
     if resp_http.get("ok"):
         return resp_http
+    if resp_http.get("status") in (401, 403):
+        logger.warning(
+            "[HISTORICO PAP] HTTP direto (Bearer) %s — tok_len=%d tok_dots=%d tok_inicio=%s",
+            resp_http.get("status"), len(tok), tok.count(".") if tok else 0, tok[:30],
+        )
 
-    # 3) Fallback para fetch nativo dentro do browser
+    # 4) Fallback para fetch nativo dentro do browser (com credentials: include)
     if page:
         try:
-            auth_val = headers.get("Authorization", "")
+            auth_val = headers_bearer.get("Authorization", "")
             res = page.evaluate("""
             async ({ url, authVal }) => {
                 try {
@@ -446,8 +521,13 @@ def _fetch_json(page, url: str, token: str = "") -> dict:
                 }
             }
             """, {"url": url, "authVal": auth_val})
-            if isinstance(res, dict) and res.get("ok"):
-                return res
+            if isinstance(res, dict):
+                logger.warning(
+                    "[HISTORICO PAP] evaluate fetch resultado: status=%s ok=%s preview=%s",
+                    res.get("status"), res.get("ok"), (res.get("preview") or "")[:180],
+                )
+                if res.get("ok"):
+                    return res
         except Exception as exc:
             logger.warning("[HISTORICO PAP] evaluate fetch falhou (%s)", exc)
 
@@ -485,112 +565,88 @@ def _navegar_ao_historico_spa(page) -> None:
         logger.warning("[HISTORICO PAP] goto histórico: %s", exc)
 
 
-def _aguardar_token_spa(page, timeout_ms: int = 25000) -> str:
-    """
-    Obtém o token JWT da sessão autenticada.
-    Prioriza o token do usuário autenticado salvo nos cookies / storage pós-login,
-    ou captura de chamadas autenticadas de rede da SPA.
-    """
-    captured: dict[str, Any] = {"auth": "", "status": 0, "url": "", "payload": {}}
-
-    def _on_response(response):
+def _tentar_clicar_filtrar(page) -> None:
+    """Simula o clique no botão de filtrar/buscar preenchendo os inputs para disparar XHR da SPA."""
+    if not page:
+        return
+        
+    def _force_click(btn):
         try:
-            url = (response.url or "").lower()
-            if "pap-api.niointernet.com.br" not in url:
-                return
-            if "/api/portal/" not in url:
-                return
-            if 200 <= response.status < 300:
-                req = response.request
-                auth = req.headers.get("authorization") or req.headers.get("Authorization") or ""
-                clean = limpar_jwt(auth)
-                if clean:
-                    ok, pay, _ = validar_e_decodificar_jwt(clean)
-                    if ok and pay:
-                        captured["auth"] = clean
-                        captured["status"] = response.status
-                        captured["url"] = response.url
-                        captured["payload"] = pay
-            elif response.status in (401, 403):
-                logger.warning(
-                    "[HISTORICO PAP] SPA recebeu HTTP %s em %s",
-                    response.status,
-                    (response.url or "")[:100],
-                )
+            btn.click(timeout=2000)
+        except Exception:
+            try:
+                page.evaluate("el => el.click()", btn)
+            except Exception:
+                pass
+                
+    seletores_filtro = [
+        'button:has-text("Filtrar")',
+        'button:has-text("Buscar")',
+        'button:has-text("FILTRAR")',
+        'button:has-text("BUSCAR")',
+        'button[class*="filtrar"]',
+        'button.btn-filters-new',
+        'button:has-text("Pesquisar")',
+        'button:has-text("Aplicar")',
+    ]
+    seletores_abrir_filtro = [
+        'span:has-text("Filtros")',
+        'div:has-text("Filtro")',
+    ]
+    
+    # 1. Tentar abrir o modal de filtros primeiro (se existir)
+    for sel in seletores_abrir_filtro:
+        try:
+            btn = page.query_selector(sel)
+            if btn and btn.is_visible():
+                logger.info("[HISTORICO PAP] Abrindo filtros com '%s'...", sel)
+                _force_click(btn)
+                page.wait_for_timeout(1500)
+                break
         except Exception:
             pass
-
-    page.on("response", _on_response)
+            
+    # 2. Forçar preenchimento de inputs para passar na validação do frontend (Bypass React 16+)
     try:
-        # 1) Checar primeiro se a página já possui token de usuário nos cookies ou storage pós-login
-        for _ in range(4):
-            tok_storage = _extrair_token(page)
-            if tok_storage:
-                ok_s, pay_s, clean_s = validar_e_decodificar_jwt(tok_storage)
-                if ok_s and pay_s and (
-                    pay_s.get("uuid")
-                    or pay_s.get("origem")
-                    or pay_s.get("sub")
-                    or pay_s.get("matricula")
-                    or pay_s.get("usuario")
-                    or pay_s.get("username")
-                ):
-                    logger.info(
-                        "[HISTORICO PAP] Token de usuário autenticado extraído dos cookies/storage! UUID/Usuário=%s",
-                        pay_s.get("uuid") or pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario"),
-                    )
-                    return clean_s
-            page.wait_for_timeout(500)
+        page.evaluate("""() => {
+            const inputs = document.querySelectorAll('input');
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            
+            inputs.forEach(i => {
+                if (!i.disabled) {
+                    if (i.type === 'date') {
+                        nativeInputValueSetter.call(i, `${yyyy}-${mm}-${dd}`);
+                    } else if (i.type === 'text' || i.className.toLowerCase().includes('data') || i.placeholder.toLowerCase().includes('data')) {
+                        nativeInputValueSetter.call(i, `${dd}/${mm}/${yyyy}`);
+                    }
+                    i.dispatchEvent(new Event('input', { bubbles: true }));
+                    i.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        }""")
+        logger.info("[HISTORICO PAP] Inputs preenchidos via JS (React Bypass) para disparar validacao.")
+        page.wait_for_timeout(500)
+    except Exception as e:
+        logger.debug("[HISTORICO PAP] Falha ao preencher inputs: %s", e)
 
-        # 2) Navegar até o Histórico
-        _navegar_ao_historico_spa(page)
-
-        # 3) Verificar cookies/storage no Histórico
-        for _ in range(6):
-            tok_storage = _extrair_token(page)
-            if tok_storage:
-                ok_s, pay_s, clean_s = validar_e_decodificar_jwt(tok_storage)
-                if ok_s and pay_s and (
-                    pay_s.get("uuid")
-                    or pay_s.get("origem")
-                    or pay_s.get("sub")
-                    or pay_s.get("matricula")
-                    or pay_s.get("usuario")
-                    or pay_s.get("username")
-                ):
-                    logger.info(
-                        "[HISTORICO PAP] Token de usuário extraído no Histórico: UUID/Usuário=%s",
-                        pay_s.get("uuid") or pay_s.get("sub") or pay_s.get("matricula") or pay_s.get("usuario"),
-                    )
-                    return clean_s
-            if captured.get("auth") and captured.get("payload") and (
-                captured["payload"].get("uuid")
-                or captured["payload"].get("sub")
-                or "vendas" in (captured.get("url") or "")
-            ):
-                logger.info(
-                    "[HISTORICO PAP] Token de usuário capturado de chamada da SPA (%s): UUID/Usuário=%s",
-                    (captured.get("url") or "")[:80],
-                    captured["payload"].get("uuid") or captured["payload"].get("sub", "?"),
-                )
-                return captured["auth"]
-            page.wait_for_timeout(1000)
-
-        # 4) Fallback para qualquer token capturado válido
-        if captured.get("auth"):
-            logger.info("[HISTORICO PAP] Usando token capturado da rede da SPA: url=%s", (captured.get("url") or "")[:80])
-            return captured["auth"]
-
-        tok_final = _extrair_token(page)
-        clean_final = limpar_jwt(tok_final)
-        if clean_final:
-            return clean_final
-        return tok_final or ""
-    finally:
+    # 3. Clicar no botão de Filtro/Buscar
+    for sel in seletores_filtro:
         try:
-            page.remove_listener("response", _on_response)
+            btn = page.query_selector(sel)
+            if btn and btn.is_visible():
+                logger.info("[HISTORICO PAP] Clicando em '%s' para disparar XHR...", sel)
+                _force_click(btn)
+                page.wait_for_timeout(2000)
+                return
         except Exception:
             pass
+            
+    logger.warning("[HISTORICO PAP] Nao encontrou botao de filtrar/buscar na pagina historico.")
+
 
 
 def _run_django_sync(func, timeout_seconds: int = 120):
@@ -867,75 +923,268 @@ def _salvar_novo(numero: str, tipo: str, pdv: str, payload: dict) -> bool:
     return True
 
 
-def _executar_loop_busca(page, *, busca_id: int, busca, token: str) -> tuple[bool, str]:
+
+
+
+def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
     from crm_app.models import HistoricoPapBusca, HistoricoPapPedido
+    from crm_app.historico_pap import normalizar_pedido
+    import re
+    from django.utils import timezone
 
     encontrados = 0
     novos = 0
     ignorados = 0
-    novos_numeros: list[str] = []
-    por_tipo: dict[str, dict[str, int]] = {}
+    novos_numeros = []
+    por_tipo = {}
 
     data_ini = _iso_inicio(busca.data_inicio)
     data_fim = _iso_fim(busca.data_fim)
     pdv = busca.pdv
     tipos = list(busca.tipos or [])
+    
+    _navegar_ao_historico_spa(page)
+    
+    def _force_click(btn):
+        try:
+            btn.click(timeout=2000)
+        except Exception:
+            try:
+                page.evaluate("el => el.click()", btn)
+            except Exception:
+                pass
+                
+    vendas_para_processar = []
+    
+    for tipo_alvo in (tipos or ["VENDA", "INTERESSE", "PRE_VENDA"]):
+        import urllib.parse
+        from crm_app.historico_pap import TIPO_API_ALIASES
+        from crm_app.models import HistoricoPapPedido
+        
+        tipos_list = TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,))
+        current_tipo_api_str = urllib.parse.quote(",".join(tipos_list))
+        
+        def modify_request(route):
+            try:
+                if route.request.method == "OPTIONS":
+                    route.continue_()
+                    return
+                url = route.request.url
+                if "api/portal/vendas" in url.lower():
+                    if "limit=" in url:
+                        url = re.sub(r'limit=\d+', 'limit=2000', url)
+                    else:
+                        url += "&limit=2000" if "?" in url else "?limit=2000"
+                        
+                    if "tipoVenda=" in url:
+                        url = re.sub(r'tipoVenda=[^&]*', f'tipoVenda={current_tipo_api_str}', url)
+                    else:
+                        url += f"&tipoVenda={current_tipo_api_str}"
+                        
+                    if "INTERESSE" in current_tipo_api_str or "PRE" in current_tipo_api_str:
+                        # Remove todos os blocos `status=valor` (mesmo repetidos)
+                        url = re.sub(r'(&|\?)status=[^&]*', '', url)
+                        # Remove ampersands soltos caso sobrem
+                        url = url.replace("?&", "?").rstrip("&")
+                        # Injeta o status correto
+                        url += ("&" if "?" in url else "?") + f"status={current_tipo_api_str}"
+                        
+                route.continue_(url=url)
+            except Exception:
+                route.continue_()
 
-    for tipo in tipos:
-        if _job_cancelado(busca_id):
-            break
-        stats = _buscar_tipo(
-            page,
-            busca_id=busca_id,
-            tipo=tipo,
-            data_ini=data_ini,
-            data_fim=data_fim,
-            pdv=pdv,
-            token=token,
-        )
-        if stats.get("erro_fatal"):
-            msg_erro = str(stats.get("erro") or "Falha na API do PAP")
-            _run_django_sync(
-                lambda m=msg_erro: _atualizar(
-                    busca_id,
-                    status=HistoricoPapBusca.STATUS_ERRO,
-                    mensagem=m[:500],
-                    finalizado_em=timezone.now(),
-                    por_tipo=por_tipo,
-                )
-            )
-            return False, msg_erro
+        try:
+            page.route("**/api/portal/vendas*", modify_request)
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] Falha ao injetar page.route para %s: %s", tipo_alvo, exc)
+            
+        # Garantir que o botão Filtrar esteja visível (abrir drawer se necessário)
+        btn = None
+        sel_botoes_filtro = [
+            'button:has-text("Filtrar")', 'button:has-text("Buscar")',
+            'button:has-text("FILTRAR")', 'button:has-text("BUSCAR")',
+            'button.btn-filters-new', 'button[class*="filtrar"]',
+            'button:has-text("Pesquisar")', 'button:has-text("Aplicar")'
+        ]
+        
+        for sel_f in sel_botoes_filtro:
+            b = page.query_selector(sel_f)
+            if b and b.is_visible():
+                btn = b
+                break
+                
+        if not btn:
+            try:
+                b_abrir = page.query_selector('button#drawer-filter') or page.query_selector('button[id*="filter"]')
+                if b_abrir and b_abrir.is_visible():
+                    logger.info("[HISTORICO PAP] Abrindo drawer para buscar %s...", tipo_alvo)
+                    _force_click(b_abrir)
+                    page.wait_for_timeout(1500)
+            except Exception:
+                pass
+                
+        # 2. Injetar datas usando o Bypass
+        try:
+            page.evaluate('''([dataIni, dataFim]) => {
+                const inputs = document.querySelectorAll('input');
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                
+                const iniDate = dataIni.split('T')[0];
+                const [yyyyI, mmI, ddI] = iniDate.split('-');
+                
+                const fimDate = dataFim.split('T')[0];
+                const [yyyyF, mmF, ddF] = fimDate.split('-');
+                
+                let foundCount = 0;
+                inputs.forEach(i => {
+                    if (!i.disabled) {
+                        if (i.type === 'checkbox') {
+                            if (!i.checked) i.click();
+                        } else if (i.type === 'date') {
+                            nativeInputValueSetter.call(i, foundCount === 0 ? iniDate : fimDate);
+                            foundCount++;
+                            i.dispatchEvent(new Event('input', { bubbles: true }));
+                            i.dispatchEvent(new Event('change', { bubbles: true }));
+                        } else if (i.type === 'text') {
+                            let labelText = '';
+                            if (i.id) {
+                                let label = document.querySelector(`label[for="${i.id}"]`);
+                                if (label) labelText = label.innerText.toLowerCase();
+                            }
+                            if (!labelText) {
+                                let parent = i.closest('.MuiFormControl-root, .form-group, label');
+                                if (parent) labelText = parent.innerText.toLowerCase();
+                            }
+                            
+                            let txt = (i.className + ' ' + (i.placeholder||'') + ' ' + labelText).toLowerCase();
+                            let isDate = txt.includes('data') || txt.includes('início') || txt.includes('inicio') || txt.includes('fim') || txt.includes('período') || txt.includes('periodo') || (i.value||'').includes('/') || (i.placeholder||'').includes('/');
+                            let isSearch = txt.includes('busca') || txt.includes('search') || txt.includes('pesquis');
+                            
+                            if (isDate && !isSearch) {
+                                nativeInputValueSetter.call(i, foundCount === 0 ? `${ddI}/${mmI}/${yyyyI}` : `${ddF}/${mmF}/${yyyyF}`);
+                                foundCount++;
+                                i.dispatchEvent(new Event('input', { bubbles: true }));
+                                i.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
+                    }
+                });
+            }''', [data_ini, data_fim])
+            page.wait_for_timeout(500)
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] Falha no Bypass de datas: %s", exc)
+                
+        if not btn:
+            for sel_f in sel_botoes_filtro:
+                b = page.query_selector(sel_f)
+                if b and b.is_visible():
+                    btn = b
+                    break
+                    
+        if not btn:
+            try: page.unroute("**/api/portal/vendas*", modify_request)
+            except Exception: pass
+            return False, f"Botão Filtrar não encontrado na interface para buscar {tipo_alvo}."
+            
+        logger.info("[HISTORICO PAP] Clicando em Filtrar para buscar %s...", tipo_alvo)
+        
+        json_body = None
+        captured_responses = []
+        
+        def on_response_diag(r):
+            url = r.url.lower()
+            if "api" in url or "graphql" in url or "vendas" in url:
+                captured_responses.append(f"{r.request.method} {r.url[:100]} -> {r.status}")
+                
+        page.on("response", on_response_diag)
+        
+        try:
+            with page.expect_response(lambda r: "vendas" in r.url.lower() and r.request.method != "OPTIONS", timeout=15000) as resp_info:
+                _force_click(btn)
+            resp = resp_info.value
+            json_body = resp.json()
+            if not (200 <= resp.status < 300):
+                try: page.unroute("**/api/portal/vendas*", modify_request)
+                except Exception: pass
+                page.remove_listener("response", on_response_diag)
+                return False, f"A API retornou erro {resp.status} para {tipo_alvo}: {resp.text()[:200]}"
+        except Exception as exc:
+            page.remove_listener("response", on_response_diag)
+            try: page.unroute("**/api/portal/vendas*", modify_request)
+            except Exception: pass
+            msg_diag = " | ".join(captured_responses)
+            return False, f"Falha ao aguardar {tipo_alvo}: {exc}. Requests: {msg_diag}"
+            
+        page.remove_listener("response", on_response_diag)
+        try: page.unroute("**/api/portal/vendas*", modify_request)
+        except Exception: pass
+        
+        if not json_body:
+            continue
+            
+        vendas = []
+        if isinstance(json_body, list):
+            vendas = json_body
+        elif isinstance(json_body, dict):
+            for k in ["content", "data", "items", "vendas"]:
+                val = json_body.get(k)
+                if isinstance(val, list):
+                    vendas = val
+                    break
+                elif isinstance(val, dict):
+                    for subk in ["content", "data", "items", "vendas"]:
+                        subval = val.get(subk)
+                        if isinstance(subval, list):
+                            vendas = subval
+                            break
+                    if vendas: break
+            if not isinstance(vendas, list) or not vendas:
+                for v in json_body.values():
+                    if isinstance(v, list):
+                        vendas = v
+                        break
+                if not isinstance(vendas, list):
+                    vendas = []
+                    
+        vendas_obj = [v for v in vendas if isinstance(v, dict)]
+        logger.info("[HISTORICO PAP] Obtidos %d itens para %s", len(vendas_obj), tipo_alvo)
+        
+        for v in vendas_obj:
+            t_api = getattr(HistoricoPapPedido, f"TIPO_{tipo_alvo.replace('-', '_')}", tipo_alvo)
+            ped = normalizar_pedido(v.get("numeroPedido"))
+            pdv_venda = str(v.get("identificadorPdv") or "").strip()
+            if pdv and pdv_venda != pdv:
+                continue
+            vendas_para_processar.append((ped, t_api, pdv_venda, v))
+            
+        page.wait_for_timeout(500)
 
-        por_tipo[tipo] = {
-            "encontrados": stats["encontrados"],
-            "novos": stats["novos"],
-            "ignorados": stats["ignorados"],
-            "tipo_api": stats.get("tipo_api") or tipo,
-        }
-        encontrados += stats["encontrados"]
-        novos += stats["novos"]
-        ignorados += stats["ignorados"]
-        novos_numeros.extend(stats["novos_numeros"])
-        _run_django_sync(
-            lambda e=encontrados, n=novos, i=ignorados, pt=dict(por_tipo), nn=list(novos_numeros): _atualizar(
-                busca_id,
-                encontrados=e,
-                novos=n,
-                ignorados=i,
-                por_tipo=pt,
-                novos_numeros=nn,
-                relatorio_json={"fase": f"tipo {tipo} ok"},
-            )
-        )
 
-    status_final = (
-        HistoricoPapBusca.STATUS_CANCELADO
-        if _job_cancelado(busca_id)
-        else HistoricoPapBusca.STATUS_CONCLUIDO
-    )
-    aviso = (
-        "Nenhuma venda foi gravada. Pedidos já existentes na base (coluna Pedido) foram ignorados."
-    )
+    def _processar_banco():
+        nonlocal encontrados, ignorados, novos, por_tipo, novos_numeros
+        for ped, t_api, pdv_venda, v in vendas_para_processar:
+            encontrados += 1
+            
+            if t_api not in por_tipo:
+                por_tipo[t_api] = {"encontrados": 0, "novos": 0, "ignorados": 0}
+            por_tipo[t_api]["encontrados"] += 1
+            
+            if _pedido_conhecido(ped):
+                ignorados += 1
+                por_tipo[t_api]["ignorados"] += 1
+            else:
+                if _salvar_novo(ped, t_api, pdv_venda, v):
+                    novos += 1
+                    por_tipo[t_api]["novos"] += 1
+                    novos_numeros.append(ped)
+                else:
+                    ignorados += 1
+                    por_tipo[t_api]["ignorados"] += 1
+                    
+    _run_django_sync(_processar_banco)
+
+    status_final = HistoricoPapBusca.STATUS_CANCELADO if _job_cancelado(busca_id) else HistoricoPapBusca.STATUS_CONCLUIDO
+    
     _run_django_sync(
         lambda: _atualizar(
             busca_id,
@@ -945,7 +1194,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca, token: str) -> tuple[boo
             ignorados=ignorados,
             por_tipo=por_tipo,
             novos_numeros=novos_numeros,
-            mensagem=aviso,
+            mensagem="Busca efetuada via UI Scraping.",
             finalizado_em=timezone.now(),
             relatorio_json={"fase": "concluido", "por_tipo": por_tipo},
         )
@@ -953,91 +1202,28 @@ def _executar_loop_busca(page, *, busca_id: int, busca, token: str) -> tuple[boo
     return True, ""
 
 
+
+
 def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
     from django.contrib.auth import get_user_model
-
     from crm_app.models import HistoricoPapBusca
     from crm_app.services_pap_nio import PAPNioAutomation
+    import os
+    from django.conf import settings
+    from django.utils import timezone
 
     User = get_user_model()
     login_pap = _run_django_sync(lambda: User.objects.get(pk=login_pap_id))
     busca = _run_django_sync(lambda: HistoricoPapBusca.objects.get(pk=busca_id))
 
     matricula = (getattr(login_pap, "matricula_pap", None) or "").strip()
-    token = ""
-    origem_token = ""
 
-    # 1) Caso o usuário tenha informado Token Manual
-    if token_manual:
-        ok_jwt, pay_jwt, clean_jwt = validar_e_decodificar_jwt(token_manual)
-        if not ok_jwt:
-            if matricula:
-                logger.warning(
-                    "[HISTORICO PAP] Token manual informado não é um JWT válido (%s). "
-                    "Desconsiderando e utilizando login do pool Diretoria (%s).",
-                    clean_jwt,
-                    getattr(login_pap, "username", matricula),
-                )
-                token = ""
-            else:
-                msg_jwt = f"Token manual rejeitado: {clean_jwt}"
-                _run_django_sync(
-                    lambda: _atualizar(
-                        busca_id,
-                        status=HistoricoPapBusca.STATUS_ERRO,
-                        mensagem=msg_jwt,
-                        finalizado_em=timezone.now(),
-                    )
-                )
-                return
-        else:
-            token = clean_jwt
-            origem_token = "manual"
-            salvar_token_cache(matricula, token, pay_jwt.get("exp") if pay_jwt else None)
-            limpar_cooldown_login(matricula)
-            logger.info("[HISTORICO PAP] Usando Token Manual fornecido pelo usuário.")
-
-    # 2) Caso não tenha manual, verificar cache de token válido
-    if not token:
-        cached_tok, cached_pay = obter_token_cache(matricula)
-        if cached_tok:
-            token = cached_tok
-            origem_token = "cache"
-            logger.info("[HISTORICO PAP] Reutilizando Token PAP válido do cache.")
-
-    # 3) Se já temos token válido (manual ou cache), rodar busca direta HTTP (sem Playwright)
-    if token:
-        logger.info("[HISTORICO PAP] Iniciando busca direta HTTP (sem Playwright, 0 risco de login)")
-        sucesso, err_msg = _executar_loop_busca(
-            page=None,
-            busca_id=busca_id,
-            busca=busca,
-            token=token,
-        )
-        if sucesso:
-            return
-        # Se deu 401 com token em cache/manual, remove do cache
-        remover_token_cache(matricula)
-        if origem_token == "manual":
-            _run_django_sync(
-                lambda: _atualizar(
-                    busca_id,
-                    status=HistoricoPapBusca.STATUS_ERRO,
-                    mensagem=f"{err_msg}. Verifique se o token manual copiado do PAP ainda é válido.",
-                    finalizado_em=timezone.now(),
-                )
-            )
-            return
-        logger.warning("[HISTORICO PAP] Token em cache falhou (%s). Avaliando sessão no browser...", err_msg)
-
-    # 4) Caso precise de sessão no browser: checar Circuit Breaker primeiro
     em_cooldown, seg_cooldown = verificar_cooldown_login(matricula)
     if em_cooldown:
         min_restantes = max(1, seg_cooldown // 60)
         msg_cd = (
             f"Cooldown de segurança ativo ({min_restantes} min restantes) para proteger "
             f"o usuário {login_pap.username} contra bloqueios de login na Nio. "
-            f"Aguarde ou utilize a opção 'Usar token manual' no Funil para testar direto."
         )
         _run_django_sync(
             lambda: _atualizar(
@@ -1049,7 +1235,6 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         )
         return
 
-    # 5) Browser Playwright: login limpo no PAP
     senha = (getattr(login_pap, "senha_pap", None) or "").strip()
     automacao = PAPNioAutomation(
         matricula_pap=matricula,
@@ -1060,17 +1245,15 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         optimize_for_credit=False,
         url_pos_login=PAP_HISTORICO_URL,
     )
-    # Remove storage_state antigo para que o Chromium inicie sem tokens stale/expirados em disco
     if hasattr(automacao, "storage_state_path") and os.path.exists(automacao.storage_state_path):
         try:
             os.remove(automacao.storage_state_path)
-            logger.info("[HISTORICO PAP] Storage state antigo removido para login limpo de %s", matricula)
         except Exception:
             pass
+            
     try:
         ok, msg = automacao.iniciar_sessao()
         if not ok:
-            # Login falhou ou travou: registrar cooldown para não insistir
             registrar_cooldown_login(matricula, 900)
             _run_django_sync(
                 lambda: _atualizar(
@@ -1084,37 +1267,22 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
 
         limpar_cooldown_login(matricula)
         page = automacao.page
-        token = _aguardar_token_spa(page)
-        if not token:
-            registrar_cooldown_login(matricula, 600)
-            _run_django_sync(
-                lambda: _atualizar(
-                    busca_id,
-                    status=HistoricoPapBusca.STATUS_ERRO,
-                    mensagem=(
-                        "Login PAP ok, mas o token de API não foi localizado no navegador. "
-                        "Para testar sem risco, copie o Bearer Token no PAP e cole no Funil."
-                    ),
-                    finalizado_em=timezone.now(),
-                )
-            )
-            return
-
-        # Salvar token no cache para próximas buscas
-        ok_t, pay_t, limpo_t = validar_e_decodificar_jwt(token)
-        salvar_token_cache(matricula, limpo_t if ok_t else token, pay_t.get("exp") if pay_t else None)
-
-        # Executar busca com a página Playwright
+        
         sucesso, err_msg = _executar_loop_busca(
             page=page,
             busca_id=busca_id,
             busca=busca,
-            token=token,
         )
-        if not sucesso and "401" in err_msg:
-            # Token falhou na API: remove do cache mas NÃO ativa cooldown de login de 15 min,
-            # pois o login no SSO foi um sucesso (não houve erro de senha/credencial).
-            remover_token_cache(matricula)
+        
+        if not sucesso:
+            _run_django_sync(
+                lambda: _atualizar(
+                    busca_id,
+                    status=HistoricoPapBusca.STATUS_ERRO,
+                    mensagem=err_msg,
+                    finalizado_em=timezone.now(),
+                )
+            )
     finally:
         try:
             automacao._fechar_sessao()
@@ -1193,7 +1361,7 @@ def _buscar_tipo(
                     status=status,
                     primeira=lista or [],
                     total=total or 0,
-                    token=token,
+                    
                 )
         time.sleep(_intervalo())
     logger.warning("[HISTORICO PAP] Tipo %s não retornou dados (%s)", tipo, last_err)
