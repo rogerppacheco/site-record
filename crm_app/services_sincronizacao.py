@@ -60,8 +60,9 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
                 "email": dados_mapeados.get("email") or "",
             }
         )
-        if not created and cliente.nome_razao_social == "CLIENTE NÃO INFORMADO" and dados_mapeados.get("cliente"):
-            cliente.nome_razao_social = dados_mapeados.get("cliente")
+        nome_pap = dados_mapeados.get("cliente")
+        if not created and nome_pap and cliente.nome_razao_social != nome_pap:
+            cliente.nome_razao_social = nome_pap
             cliente.save(update_fields=['nome_razao_social'])
 
         # Vendedor (Regra 4)
@@ -82,7 +83,7 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
         plano_obj = None
         nome_plano_pap = dados_mapeados.get("plano")
         if nome_plano_pap:
-            plano_obj = Plano.objects.filter(nome__icontains=nome_plano_pap.strip()[:10]).first()
+            plano_obj = Plano.objects.filter(nome__icontains=nome_plano_pap.strip()).first()
 
         forma_pgto_obj = None
         forma_pap = dados_mapeados.get("forma_pagamento")
@@ -101,6 +102,17 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
                 else:
                     data_pedido = datetime.strptime(data_pedido_str, "%d/%m/%Y")
                 data_pedido = timezone.make_aware(data_pedido)
+            except Exception:
+                pass
+
+        data_nascimento_str = dados_mapeados.get("data_nascimento")
+        data_nascimento = None
+        if data_nascimento_str:
+            try:
+                if "/" in data_nascimento_str:
+                    data_nascimento = datetime.strptime(data_nascimento_str[:10], "%d/%m/%Y").date()
+                else:
+                    data_nascimento = datetime.strptime(data_nascimento_str[:10], "%Y-%m-%d").date()
             except Exception:
                 pass
 
@@ -123,6 +135,7 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
             telefone1=dados_mapeados.get("celular_principal"),
             telefone2=dados_mapeados.get("celular_2"),
             nome_mae=dados_mapeados.get("nome_mae"),
+            data_nascimento=data_nascimento,
             ordem_servico=dados_mapeados.get("os_instalacao"),
             data_pedido=data_pedido,
             # Se for DACC, poderíamos extrair banco, etc, mas map_pedido_api não exporta os dados bancários atualmente
