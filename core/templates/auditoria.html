@@ -1353,9 +1353,13 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                                             <div class="p-3 bg-light rounded border oferta-dados-sistema">
                                                 <div class="text-muted fw-bold text-uppercase mb-3">Confirme os dados do sistema:</div>
                                                 <div class="row g-3">
-                                                    <div class="col-md-5">
+                                                    <div class="col-md-3">
                                                         <label class="form-label fw-bold"><i class="bi bi-wifi"></i> Plano Contratado</label>
                                                         <select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()"></select>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label fw-bold"><i class="bi bi-currency-dollar"></i> Valor (PAP)</label>
+                                                        <input type="text" class="form-control form-control-script bg-light" id="audit-valor-pap" readonly>
                                                     </div>
                                                     <div class="col-md-4">
                                                         <label class="form-label fw-bold"><i class="bi bi-credit-card"></i> Forma de Pagamento</label>
@@ -2682,8 +2686,7 @@ async function iniciarBuscaPapOnline() {
                     let nomeCliente = 'N/A'; let cpfCliente = '-';
                     if (v.cliente && typeof v.cliente === 'object') { nomeCliente = v.cliente.nome_razao_social || 'N/A'; cpfCliente = v.cliente.cpf_cnpj || '-'; } 
                     else { nomeCliente = v.cliente_nome_razao_social || 'N/A'; cpfCliente = v.cliente_cpf_cnpj || '-'; }
-                    
-                    let nomeVendedor = v.vendedor_nome || (v.vendedor ? (v.vendedor.username || v.vendedor) : 'N/A');
+                    let nomeVendedor = v.vendedor_nome || (v.vendedor ? (v.vendedor.username || v.vendedor) : null) || v.vendedor_matricula_pap || 'N/A';
                     
                     // LOOKUP PRODUTO
                     let produto = '-';
@@ -2736,7 +2739,7 @@ async function iniciarBuscaPapOnline() {
                     btnHtml += ` <button type="button" class="btn btn-icon btn-icon-sm btn-icon-danger ms-1" onclick="abrirPedidoAjudaGc(${v.id}, 'auditoria')" title="Pedido de ajuda ao GC (TI)" aria-label="Pedido de ajuda ao GC"><i class="bi bi-life-preserver" aria-hidden="true"></i></button>`;
 
                     const bioHtml = renderBotaoBiometriaLista(v.id, v.biometria_aprovada, v.biometria_data_apta);
-                    const pedidoPapHtml = v.pedido_pap ? `<br><small class="text-muted" style="font-size:0.75rem;">[${v.pedido_pap}]</small>` : '';
+                    const pedidoPapHtml = v.pedido_pap ? `<br><small class="text-muted" style="font-size:0.75rem;">${v.pedido_pap}</small>` : '';
                     
                     tbody.append(`<tr class="${classeLinha}" data-venda-id="${v.id}"><td class="fw-bold text-primary">#${v.id}${pedidoPapHtml}</td><td>${dataFormatada}</td><td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div></td><td>${nomeVendedor}</td><td>${produto}</td><td><span class="badge bg-warning text-dark">${statusNome}</span></td><td>${infoEdicao}</td><td>${auditorInfo}</td><td class="text-center" id="bio-cell-${v.id}">${bioHtml}</td><td class="text-end">${btnHtml}</td></tr>`);
                 });
@@ -2852,7 +2855,9 @@ async function iniciarBuscaPapOnline() {
                 $('#audit-cep').val(v.cep || ''); $('#audit-logradouro').val(v.logradouro || ''); $('#audit-numero').val(v.numero_residencia || '');
                 $('#audit-complemento').val(v.complemento || ''); $('#audit-bairro').val(v.bairro || ''); $('#audit-cidade').val(v.cidade || '');
                 $('#audit-uf').val(v.estado || ''); $('#audit-ref').val(v.ponto_referencia || '');
-                if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
+                if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); 
+                if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
+                $('#audit-valor-pap').val(v.valor_plano_pap ? `R$ ${v.valor_plano_pap}` : '');
                 $('#audit-data-agendamento').val(v.data_agendamento || ''); $('#audit-turno-agendamento').val(v.periodo_agendamento || ''); $('#script-obs-venda').val(v.observacoes || '');
                 
                 const temFixo = v.tem_fixo === true || v.tem_fixo === 'true' || v.tem_fixo === 1;

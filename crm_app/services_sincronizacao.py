@@ -120,7 +120,9 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
             pedido_pap=pedido_pap,
             cliente=cliente,
             vendedor=vendedor_obj,
+            vendedor_matricula_pap=vendedor_matricula,
             plano=plano_obj,
+            valor_plano_pap=dados_mapeados.get("valor_mensal"),
             forma_pagamento=forma_pgto_obj,
             status_tratamento=status_tratamento,
             observacoes=obs,
@@ -138,7 +140,12 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
             data_nascimento=data_nascimento,
             ordem_servico=dados_mapeados.get("os_instalacao"),
             data_pedido=data_pedido,
+            data_agendamento=dados_mapeados.get("preferencia_data"),
+            periodo_agendamento=dados_mapeados.get("preferencia_periodo"),
             # Se for DACC, poderíamos extrair banco, etc, mas map_pedido_api não exporta os dados bancários atualmente
         )
+
+        if data_pedido:
+            Venda.objects.filter(id=venda.id).update(data_criacao=data_pedido)
 
         return {"sucesso": True, "venda_id": venda.id, "mensagem": f"Venda {venda.id} criada com sucesso"}
