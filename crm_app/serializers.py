@@ -485,7 +485,7 @@ class VendaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = [
-            'id', 'vendedor', 'vendedor_nome', 'vendedor_recebe_adiantamento_sabado', 'cliente_id',
+            'id', 'pedido_pap', 'vendedor', 'vendedor_nome', 'vendedor_recebe_adiantamento_sabado', 'cliente_id',
             'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
             'classificacao_mei', 'classificacao_mei_descricao',
             'plano_nome', 'forma_pagamento_nome',
