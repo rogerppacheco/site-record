@@ -346,6 +346,51 @@ def _extrair_token(page) -> str:
     return ""
 
 
+def _gerar_anti_replay_hash() -> str:
+    import base64
+    from datetime import datetime, timezone
+    
+    key = '-5Hsrpt5gb93N5L9ePT2bBC9MI9ThLctvltkuoOqh2Q'
+    dt_str = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    plaintext = f'"{dt_str}"'
+    
+    encoded = []
+    for i, char in enumerate(plaintext):
+        a = ord(char)
+        b = a ^ ord(key[i % len(key)])
+        encoded.append(b)
+    return base64.b64encode(bytes(encoded)).decode('utf-8')
+
+
+def _headers_auth(token: str) -> dict[str, str]:
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://pap.niointernet.com.br",
+        "Referer": "https://pap.niointernet.com.br/administrativo/historico",
+    }
+    if not token:
+        return headers
+        
+    t = token.strip()
+    
+    # MAGIC BYPASS: A API de vendas exige que um hash XOR do timestamp atual (36 chars)
+    # seja concatenado no final do JWT. Sem isso (ou se for velho), ela retorna 401 jwt malformed.
+    parts = t.split(".")
+    if len(parts) == 3:
+        sig = parts[2]
+        if len(sig) > 43:
+            # Token já tem um hash acoplado (veio do XHR), vamos arrancar o hash velho (últimos 36 chars)
+            base_jwt = t[:-36]
+        else:
+            # Token puro JWT (veio do cookie manualmente)
+            base_jwt = t
+            
+        t = base_jwt + _gerar_anti_replay_hash()
+
+    headers["Authorization"] = t if t.startswith("Bearer") else f"Bearer {t}"
+    return headers
+
+
 def _fetch_json_http(url: str, headers: dict[str, str]) -> dict:
     try:
         resp = requests.get(url, headers=headers, timeout=60)
