@@ -967,10 +967,46 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                 
     vendas_para_processar = []
     
+    # Mapa de labels das abas da SPA do PAP para cada tipo interno
+    ABA_LABELS = {
+        "VENDA":     ["Venda", "Vendas", "VENDA", "VENDAS"],
+        "INTERESSE": ["Interesse", "Interesses", "INTERESSE", "INTERESSES", "Interesse Salvo"],
+        "PRE_VENDA": ["Pré-venda", "Pre-venda", "Pré Venda", "Pre Venda", "PRE_VENDA", "PRÉ-VENDA"],
+    }
+    
+    def _trocar_aba_spa(tipo: str) -> bool:
+        """Tenta clicar na aba da SPA correspondente ao tipo. Retorna True se conseguiu."""
+        labels = ABA_LABELS.get(tipo, [])
+        for label in labels:
+            try:
+                # Tenta via seletor de texto
+                sels = [
+                    f'button:has-text("{label}")',
+                    f'a:has-text("{label}")',
+                    f'li:has-text("{label}")',
+                    f'div[role="tab"]:has-text("{label}")',
+                    f'span:has-text("{label}")',
+                ]
+                for sel in sels:
+                    el = page.query_selector(sel)
+                    if el and el.is_visible():
+                        logger.info("[HISTORICO PAP] Clicando na aba SPA '%s' para tipo %s", label, tipo)
+                        _force_click(el)
+                        page.wait_for_timeout(1500)
+                        return True
+            except Exception:
+                pass
+        logger.warning("[HISTORICO PAP] Aba SPA não encontrada para tipo %s (tentados: %s)", tipo, labels)
+        return False
+    
     for tipo_alvo in (tipos or ["VENDA", "INTERESSE", "PRE_VENDA"]):
         import urllib.parse
         from crm_app.historico_pap import TIPO_API_ALIASES
         from crm_app.models import HistoricoPapPedido
+        
+        # PASSO CRÍTICO: Trocar para a aba correta da SPA antes de filtrar
+        # Sem isso, ao buscar INTERESSE o botão Filtrar ainda pertence ao contexto VENDA
+        _trocar_aba_spa(tipo_alvo)
         
         tipos_list = TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,))
         current_tipo_api_str = urllib.parse.quote(",".join(tipos_list))
@@ -1008,6 +1044,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
         btn = None
         sel_botoes_filtro = [
             'button:has-text("Filtrar")', 'button:has-text("Buscar")',
+
             'button:has-text("FILTRAR")', 'button:has-text("BUSCAR")',
             'button.btn-filters-new', 'button[class*="filtrar"]',
             'button:has-text("Pesquisar")', 'button:has-text("Aplicar")'
@@ -1172,6 +1209,22 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
             len(vendas_obj_filtrados), tipo_alvo, len(vendas_obj), tipos_aceitos
         )
         
+        # Diagnóstico extra: se retornou 0, logar amostra dos tipoVenda da resposta
+        if len(vendas_obj_filtrados) == 0 and vendas_obj:
+            amostra_tipos = list({str(v.get("tipoVenda") or v.get("tipo_venda") or "NULL") for v in vendas_obj[:10]})
+            logger.warning(
+                "[HISTORICO PAP] ZERO itens para %s mas resposta tinha %d items. "
+                "Amostra de tipoVenda na resposta: %s. Tipos aceitos: %s",
+                tipo_alvo, len(vendas_obj), amostra_tipos, tipos_aceitos
+            )
+        elif len(vendas_obj_filtrados) == 0 and not vendas_obj:
+            logger.warning(
+                "[HISTORICO PAP] ZERO itens para %s — resposta JSON estava vazia. "
+                "Estrutura da resposta: %s",
+                tipo_alvo,
+                list(json_body.keys()) if isinstance(json_body, dict) else type(json_body).__name__
+            )
+        
         for v in vendas_obj_filtrados:
             t_api = getattr(HistoricoPapPedido, f"TIPO_{tipo_alvo.replace('-', '_')}", tipo_alvo)
             ped = normalizar_pedido(v.get("numeroPedido"))
@@ -1181,6 +1234,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
             vendas_para_processar.append((ped, t_api, pdv_venda, v))
             
         page.wait_for_timeout(500)
+
 
 
 
