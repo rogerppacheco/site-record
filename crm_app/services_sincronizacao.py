@@ -127,6 +127,15 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
             except Exception:
                 pass
 
+        pref_periodo = dados_mapeados.get("preferencia_periodo")
+        periodo_agendamento = None
+        if pref_periodo:
+            pref_periodo_upper = pref_periodo.upper()
+            if 'MANH' in pref_periodo_upper:
+                periodo_agendamento = 'MANHA'
+            elif 'TARD' in pref_periodo_upper:
+                periodo_agendamento = 'TARDE'
+        
         venda = Venda.objects.create(
             pedido_pap=pedido_pap,
             cliente=cliente,
@@ -152,7 +161,7 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
             ordem_servico=dados_mapeados.get("os_instalacao"),
             data_pedido=data_pedido,
             data_agendamento=data_agendamento,
-            periodo_agendamento=dados_mapeados.get("preferencia_periodo") or None,
+            periodo_agendamento=periodo_agendamento,
             # Se for DACC, poderíamos extrair banco, etc, mas map_pedido_api não exporta os dados bancários atualmente
         )
 
