@@ -1006,11 +1006,28 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
         
         # PASSO CRÍTICO: Trocar para a aba correta da SPA antes de filtrar
         # Sem isso, ao buscar INTERESSE o botão Filtrar ainda pertence ao contexto VENDA
-        _trocar_aba_spa(tipo_alvo)
+        aba_encontrada = _trocar_aba_spa(tipo_alvo)
+        
+        if not aba_encontrada:
+            # Fallback: se não achou a aba da SPA, fazer goto direto na URL do histórico
+            # com tipoVenda na query para forçar o estado correto
+            tipos_list_goto = TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,))
+            tipo_goto_str = urllib.parse.quote(",".join(tipos_list_goto))
+            historico_url_tipo = f"{PAP_HISTORICO_URL}?tipoVenda={tipo_goto_str}"
+            logger.info(
+                "[HISTORICO PAP] Aba SPA não encontrada, fazendo goto com tipoVenda: %s",
+                historico_url_tipo
+            )
+            try:
+                page.goto(historico_url_tipo, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(2000)
+            except Exception as exc:
+                logger.warning("[HISTORICO PAP] goto com tipoVenda falhou: %s", exc)
         
         tipos_list = TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,))
         current_tipo_api_str = urllib.parse.quote(",".join(tipos_list))
         
+
         def modify_request(route):
             try:
                 if route.request.method == "OPTIONS":
@@ -1191,43 +1208,54 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                     
         vendas_obj = [v for v in vendas if isinstance(v, dict)]
         
-        # Filtrar localmente pelo tipoVenda retornado pela API.
-        # A Vtal pode retornar tipos misturados dependendo da URL — filtramos aqui.
-        tipos_aceitos = set(TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,)))
-        # Também aceitar o próprio nome interno (ex: INTERESSE)
-        tipos_aceitos.add(tipo_alvo)
+        # DIAGNÓSTICO: logar a URL real que foi interceptada/capturada
+        url_capturada = resp.url if resp else ""
+        logger.info(
+            "[HISTORICO PAP] URL capturada para %s: %s",
+            tipo_alvo, url_capturada[:200]
+        )
         
+        # Verificar se a URL capturada realmente contém o tipoVenda correto
+        # Se não contiver, significa que o interceptor não funcionou e vieram dados errados
+        tipos_list_esperados = [t.lower() for t in TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,))]
+        tipos_list_esperados.append(tipo_alvo.lower())
+        
+        url_capturada_lower = url_capturada.lower()
+        url_tem_tipo_correto = any(t in url_capturada_lower for t in tipos_list_esperados)
+        
+        if not url_tem_tipo_correto and url_capturada:
+            logger.warning(
+                "[HISTORICO PAP] URL interceptada NÃO contém tipoVenda=%s esperado! "
+                "URL: %s — Os %d itens retornados provavelmente são do tipo errado. "
+                "IGNORANDO esta resposta para %s.",
+                tipo_alvo, url_capturada[:150], len(vendas_obj), tipo_alvo
+            )
+            # A resposta é de outro tipo (provavelmente VENDA ainda estava ativa)
+            # Não processar — continuar para o próximo tipo
+            page.wait_for_timeout(500)
+            continue
+        
+        # A URL está correta: aceitar todos os itens desta resposta como sendo do tipo_alvo
+        # (a API do PAP geralmente não inclui o campo tipoVenda nos itens da resposta)
         vendas_obj_filtrados = []
         for v in vendas_obj:
             tv_item = str(v.get("tipoVenda") or v.get("tipo_venda") or "").strip().upper()
-            # Se não vier tipoVenda no item, inclui de qualquer jeito (a Vtal já filtrou pela URL)
-            if not tv_item or any(t.upper() in tv_item or tv_item in t.upper() for t in tipos_aceitos):
+            tipos_aceitos_local = set(TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,)))
+            tipos_aceitos_local.add(tipo_alvo)
+            # Se o item tem tipoVenda e não bate → descartar
+            # Se o item NÃO tem tipoVenda → aceitar (a URL já filtrou pelo tipo correto)
+            if not tv_item or any(t.upper() in tv_item or tv_item in t.upper() for t in tipos_aceitos_local):
                 vendas_obj_filtrados.append(v)
         
         logger.info(
-            "[HISTORICO PAP] Obtidos %d itens para %s (total na resposta: %d, tipos aceitos: %s)",
-            len(vendas_obj_filtrados), tipo_alvo, len(vendas_obj), tipos_aceitos
+            "[HISTORICO PAP] Aceitos %d/%d itens para %s (URL ok=%s)",
+            len(vendas_obj_filtrados), len(vendas_obj), tipo_alvo, url_tem_tipo_correto
         )
-        
-        # Diagnóstico extra: se retornou 0, logar amostra dos tipoVenda da resposta
-        if len(vendas_obj_filtrados) == 0 and vendas_obj:
-            amostra_tipos = list({str(v.get("tipoVenda") or v.get("tipo_venda") or "NULL") for v in vendas_obj[:10]})
-            logger.warning(
-                "[HISTORICO PAP] ZERO itens para %s mas resposta tinha %d items. "
-                "Amostra de tipoVenda na resposta: %s. Tipos aceitos: %s",
-                tipo_alvo, len(vendas_obj), amostra_tipos, tipos_aceitos
-            )
-        elif len(vendas_obj_filtrados) == 0 and not vendas_obj:
-            logger.warning(
-                "[HISTORICO PAP] ZERO itens para %s — resposta JSON estava vazia. "
-                "Estrutura da resposta: %s",
-                tipo_alvo,
-                list(json_body.keys()) if isinstance(json_body, dict) else type(json_body).__name__
-            )
         
         for v in vendas_obj_filtrados:
             t_api = getattr(HistoricoPapPedido, f"TIPO_{tipo_alvo.replace('-', '_')}", tipo_alvo)
             ped = normalizar_pedido(v.get("numeroPedido"))
+
             pdv_venda = str(v.get("identificadorPdv") or "").strip()
             if pdv and pdv_venda != pdv:
                 continue
