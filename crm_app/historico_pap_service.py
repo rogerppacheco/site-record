@@ -986,20 +986,14 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                         url = re.sub(r'limit=\d+', 'limit=2000', url)
                     else:
                         url += "&limit=2000" if "?" in url else "?limit=2000"
-                        
+                    # Injetar tipoVenda para todos os tipos (a Vtal aceita este parâmetro)
                     if "tipoVenda=" in url:
                         url = re.sub(r'tipoVenda=[^&]*', f'tipoVenda={current_tipo_api_str}', url)
                     else:
                         url += f"&tipoVenda={current_tipo_api_str}"
-                        
-                    if "INTERESSE" in current_tipo_api_str or "PRE" in current_tipo_api_str:
-                        # Remove todos os blocos `status=valor` (mesmo repetidos)
-                        url = re.sub(r'(&|\?)status=[^&]*', '', url)
-                        # Remove ampersands soltos caso sobrem
-                        url = url.replace("?&", "?").rstrip("&")
-                        # Injeta o status correto
-                        url += ("&" if "?" in url else "?") + f"status={current_tipo_api_str}"
-                        
+                    # IMPORTANTE: NÃO injetar status= para INTERESSE/PRE_VENDA
+                    # A Vtal só aceita status= para VENDA (ex: CONCLUIDO).
+                    # Para INTERESSE e PRE_VENDA, filtramos localmente pelo campo tipoVenda da resposta.
                 route.continue_(url=url)
             except Exception:
                 route.continue_()
@@ -1008,6 +1002,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
             page.route("**/api/portal/vendas*", modify_request)
         except Exception as exc:
             logger.warning("[HISTORICO PAP] Falha ao injetar page.route para %s: %s", tipo_alvo, exc)
+
             
         # Garantir que o botão Filtrar esteja visível (abrir drawer se necessário)
         btn = None
@@ -1158,9 +1153,26 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                     vendas = []
                     
         vendas_obj = [v for v in vendas if isinstance(v, dict)]
-        logger.info("[HISTORICO PAP] Obtidos %d itens para %s", len(vendas_obj), tipo_alvo)
         
+        # Filtrar localmente pelo tipoVenda retornado pela API.
+        # A Vtal pode retornar tipos misturados dependendo da URL — filtramos aqui.
+        tipos_aceitos = set(TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,)))
+        # Também aceitar o próprio nome interno (ex: INTERESSE)
+        tipos_aceitos.add(tipo_alvo)
+        
+        vendas_obj_filtrados = []
         for v in vendas_obj:
+            tv_item = str(v.get("tipoVenda") or v.get("tipo_venda") or "").strip().upper()
+            # Se não vier tipoVenda no item, inclui de qualquer jeito (a Vtal já filtrou pela URL)
+            if not tv_item or any(t.upper() in tv_item or tv_item in t.upper() for t in tipos_aceitos):
+                vendas_obj_filtrados.append(v)
+        
+        logger.info(
+            "[HISTORICO PAP] Obtidos %d itens para %s (total na resposta: %d, tipos aceitos: %s)",
+            len(vendas_obj_filtrados), tipo_alvo, len(vendas_obj), tipos_aceitos
+        )
+        
+        for v in vendas_obj_filtrados:
             t_api = getattr(HistoricoPapPedido, f"TIPO_{tipo_alvo.replace('-', '_')}", tipo_alvo)
             ped = normalizar_pedido(v.get("numeroPedido"))
             pdv_venda = str(v.get("identificadorPdv") or "").strip()
@@ -1169,6 +1181,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
             vendas_para_processar.append((ped, t_api, pdv_venda, v))
             
         page.wait_for_timeout(500)
+
 
 
     def _processar_banco():
