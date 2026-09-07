@@ -284,6 +284,8 @@ class Venda(models.Model):
     )
     data_ultima_alteracao = models.DateTimeField(auto_now=True, verbose_name="Data da Última Alteração")
     # --------------------------------------------
+    
+    pedido_pap = models.CharField(max_length=50, null=True, blank=True, unique=True, db_index=True, verbose_name="Pedido PAP")
 
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
     tem_fixo = models.BooleanField(default=False, verbose_name="Tem Fixo")

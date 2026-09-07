@@ -259,3 +259,65 @@ class FunilHistoricoPapPedidosView(APIView):
         return Response(res)
 
 
+
+class FunilHistoricoPapImportarView(APIView):
+    """
+    Endpoint que dispara a busca no PAP (opcionalmente) e em seguida
+    percorre os pedidos salvos (tipo VENDA) para criar registros no CRM.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ["Diretoria", "Admin"]):
+            return Response({"error": "Sem permissão."}, status=403)
+        
+        from crm_app.historico_pap_service import criar_e_iniciar_busca, busca_em_andamento
+        from crm_app.services_sincronizacao import sincronizar_pedido_pap_para_venda
+        from crm_app.models import HistoricoPapPedido
+        from datetime import date
+
+        # 1. Verifica se já tem busca rolando
+        if busca_em_andamento():
+            return Response({"error": "Já existe uma busca no PAP em andamento. Aguarde terminar para importar."}, status=400)
+
+        # 2. Inicia uma busca APENAS para VENDA para garantir dados frescos
+        try:
+            hoje = date.today()
+            criar_e_iniciar_busca(
+                request.user,
+                data_inicio=hoje,
+                data_fim=hoje,
+                pdv="",
+                tipos=["VENDA"],
+                token_manual=""
+            )
+        except Exception as e:
+            logger.error(f"Erro ao iniciar busca online do PAP: {e}", exc_info=True)
+            # Continua mesmo se der erro, importando o que já tem na base
+
+        # 3. Pegar todas as VENDAS não importadas (a importação vai pular as duplicadas pela lógica do service)
+        pedidos = HistoricoPapPedido.objects.filter(tipo_venda="VENDA").order_by("-capturado_em")[:100]
+        
+        sucessos = 0
+        falhas = 0
+        erros_msgs = []
+
+        for p in pedidos:
+            try:
+                res = sincronizar_pedido_pap_para_venda(p.id)
+                if res.get("sucesso"):
+                    sucessos += 1
+                else:
+                    msg = res.get("mensagem")
+                    if "já existe" not in msg:  # Ignora contagem de erro para duplicados, pois é esperado
+                        falhas += 1
+                        erros_msgs.append(f"Pedido {p.numero_pedido}: {msg}")
+            except Exception as e:
+                logger.error(f"Erro ao importar pedido {p.id}: {e}", exc_info=True)
+                falhas += 1
+
+        msg_final = f"Busca online iniciada (pode levar 1 minuto). Do banco local, {sucessos} novas vendas criadas."
+        if falhas > 0:
+            msg_final += f" ({falhas} com erro)."
+
+        return Response({"sucesso": True, "mensagem": msg_final, "erros": erros_msgs})

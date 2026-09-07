@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Auditoria de Vendas - Record PAP{% endblock %}
+{% block title %}Auditoria de Vendas - {{ SITE_BRAND }}{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
@@ -11,7 +11,7 @@
 {% block extra_css %}
 <style>
 /* ==========================================================================
-   Auditoria — estilos theme-aware (Record PAP Design System v17)
+   Auditoria — estilos theme-aware ({{ SITE_BRAND }} Design System v17)
    ========================================================================== */
 .auditoria-shell { max-width: 1600px; width: 100%; }
 .auditoria-page-title { font-size: 1.05rem; margin: 0; color: var(--text-primary); line-height: 1.2; font-weight: 700; }
@@ -809,7 +809,12 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
                         </ul>
                     </div>
 
-                    <div class="dropdown ms-auto">
+
+                    <button type="button" class="btn btn-sm btn-outline-success ms-auto me-2" id="btn-sync-pap" onclick="iniciarBuscaPapOnline()">
+                        <i class="bi bi-cloud-download"></i><span class="d-none d-md-inline ms-1">Buscar do PAP</span>
+                    </button>
+
+                    <div class="dropdown">
                         <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Opções">
                             <i class="bi bi-three-dots-vertical"></i><span class="d-none d-md-inline ms-1">Opções</span>
                         </button>
@@ -1673,6 +1678,50 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
 <script src="{% static 'js/menu.js' %}?v=8.0"></script>
 <script src="{% static 'js/painel_tempo_tratamento.js' %}?v=1.0"></script>
 <script>
+async function iniciarBuscaPapOnline() {
+    const btn = document.getElementById('btn-sync-pap');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Buscando...';
+    
+    try {
+        const token = localStorage.getItem('accessToken');
+        const resp = await fetch('/api/crm/historico/importar-vendas/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            }
+        });
+        
+        const data = await resp.json();
+        
+        if (resp.ok) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Importação concluída',
+                text: data.mensagem || 'Vendas importadas com sucesso!',
+            });
+            carregarVendasPendentes();
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Erro na importação',
+                text: data.error || 'Ocorreu um erro ao importar vendas.',
+            });
+        }
+    } catch (err) {
+        console.error(err);
+        Swal.fire({
+            icon: 'error',
+            title: 'Erro de conexão',
+            text: 'Não foi possível conectar ao servidor.',
+        });
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-download"></i><span class="d-none d-md-inline ms-1">Buscar do PAP</span>';
+    }
+}
         const API_BASE = '/api/crm/vendas';
         const API_AUX = '/api/crm';
         
