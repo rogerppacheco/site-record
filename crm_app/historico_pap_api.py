@@ -214,16 +214,24 @@ class FunilHistoricoPapPedidosView(APIView):
             return Response({"detail": "Sem permissão."}, status=403)
         
         from crm_app.models import HistoricoPapPedido, HistoricoPapBusca
+        from crm_app.historico_pap_service import map_pedido_api, normalizar_pedido
         
         busca_id = request.query_params.get("busca_id")
         tipo = request.query_params.get("tipo")
+        
         if not busca_id:
             busca = HistoricoPapBusca.objects.order_by("-iniciado_em").first()
-            if not busca:
-                return Response([])
-            busca_id = busca.id
+        else:
+            busca = HistoricoPapBusca.objects.filter(pk=busca_id).first()
+            
+        if not busca:
+            return Response([])
 
-        qs = HistoricoPapPedido.objects.filter(busca_id=busca_id)
+        numeros = [normalizar_pedido(n) for n in (busca.novos_numeros or []) if n]
+        if not numeros:
+            return Response([])
+
+        qs = HistoricoPapPedido.objects.filter(numero_pedido__in=numeros)
         if tipo:
             qs = qs.filter(tipo_venda=tipo)
             
@@ -231,15 +239,17 @@ class FunilHistoricoPapPedidosView(APIView):
         
         res = []
         for p in qs:
+            payload = p.payload or {}
+            mapped = map_pedido_api(payload, p.tipo_venda)
             res.append({
                 "id": p.id,
-                "protocolo": p.protocolo_pedido,
-                "cliente": p.cliente_nome,
-                "documento": p.cliente_documento,
+                "protocolo": mapped.get("Protocolo", p.numero_pedido),
+                "cliente": mapped.get("Cliente", "Desconhecido"),
+                "documento": mapped.get("Documento", ""),
                 "tipo_venda": p.tipo_venda,
-                "status_primario": p.status_primario,
-                "novo_nesta_busca": p.novo_nesta_busca,
-                "data_status": p.data_status.isoformat() if p.data_status else None,
+                "status_primario": mapped.get("Status", p.status),
+                "novo_nesta_busca": True,
+                "data_status": mapped.get("Data", ""),
             })
             
         return Response(res)
