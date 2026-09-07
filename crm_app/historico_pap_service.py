@@ -540,6 +540,11 @@ def _navegar_ao_historico_spa(page) -> None:
         return
     url_atual = (page.url or "").lower()
     if "administrativo/historico" in url_atual:
+        # Aguarda a página terminar de renderizar o React antes de continuar
+        try:
+            page.wait_for_selector('button#drawer-filter, button:has-text("Filtrar"), button:has-text("Buscar")', timeout=10000)
+        except Exception:
+            page.wait_for_timeout(3000)
         return
     # Tentar navegação suave pelo menu da SPA (como a Ana faz)
     try:
