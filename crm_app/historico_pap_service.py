@@ -902,8 +902,14 @@ def _salvar_novo(numero: str, tipo: str, pdv: str, payload: dict) -> bool:
 
     if not numero:
         return False
-    if HistoricoPapPedido.objects.filter(numero_pedido=numero).exists():
+        
+    existente = HistoricoPapPedido.objects.filter(numero_pedido=numero).first()
+    if existente:
+        if existente.tipo_venda != tipo:
+            existente.tipo_venda = tipo
+            existente.save(update_fields=['tipo_venda'])
         return False
+        
     data_criacao = None
     raw = payload.get("dataCriacao")
     if raw:
