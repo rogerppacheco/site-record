@@ -8,12 +8,6 @@ Lógica:
 - O payload contém tipoVenda ou chaveStatusPrimario da API da Vtal
 - Usa isso para corrigir o campo tipo_venda
 """
-import os
-import django
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "gestao_equipes.settings")
-django.setup()
-
 from crm_app.models import HistoricoPapPedido
 
 # Mapeamento dos valores da API da Vtal para os nossos internos
