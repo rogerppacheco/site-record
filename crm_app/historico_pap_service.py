@@ -1042,13 +1042,19 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
         # INTERESSE usa alias "INTERESSE_SALVO" na API do PAP
         aliases = TIPO_API_ALIASES.get(tipo_alvo, (tipo_alvo,))
         
-        # Definir status conforme tipo:
-        # - VENDA: usar lista de status de vendas (ANALISE_BO, PEDIDO_GERADO, etc.)
-        # - INTERESSE/PRE_VENDA: sem filtro de status (a API retorna tudo)
+        # Definir status conforme tipo (alinhado à SPA do Histórico PAP):
+        # - VENDA: lista de status de vendas
+        # - INTERESSE: MINHAS_PENDENCIAS + statusSecundario de interesse
+        # - PRE_VENDA: sem filtro primário especial além do tipo
+        status_sec = None
         if tipo_alvo == "VENDA":
             status_busca = STATUS_LISTA_PADRAO
+        elif tipo_alvo in ("INTERESSE", "INTERESSE_SALVO"):
+            status_busca = "MINHAS_PENDENCIAS"
+            from crm_app.historico_pap import STATUS_SECUNDARIO_INTERESSE
+            status_sec = STATUS_SECUNDARIO_INTERESSE
         else:
-            status_busca = None  # Sem filtro de status para INTERESSE e PRE_VENDA
+            status_busca = None
         
         itens_tipo = []
         encontrou_dados = False
@@ -1068,6 +1074,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                 page=1,
                 limit=200,  # Limite alto para reduzir número de páginas
                 status=status_busca,
+                status_secundario=status_sec,
             )
             
             resp_p1 = _fetch_json(page, url_p1, token=token_limpo)
@@ -1114,6 +1121,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                     page=pg,
                     limit=200,
                     status=status_busca,
+                    status_secundario=status_sec,
                 )
                 resp_pg = _fetch_json(page, url_pg, token=token_limpo)
                 if resp_pg.get("ok"):
