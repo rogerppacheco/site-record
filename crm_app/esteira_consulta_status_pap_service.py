@@ -24,22 +24,63 @@ TELEFONE_JOB_PREFIX = 'CONSULTA-ESTEIRA-PAP'
 ABAS_CONSULTA_PERMITIDAS = frozenset({'TODOS', 'AGENDADO', 'PENDEN'})
 
 
+def mensagem_erro_consulta_pap_para_usuario(msg: str) -> str:
+    """Traduz erro técnico do job para texto exibível na Esteira."""
+    raw = (msg or '').strip()
+    if not raw:
+        return ''
+    low = raw.lower()
+    if 'too many clients' in low:
+        return (
+            'O banco está sem conexões livres no momento. '
+            'A consulta não chegou a começar. Tente novamente em alguns minutos.'
+        )
+    if 'django_sync_timeout' in low:
+        return 'A consulta travou ao gravar o progresso no banco. Tente novamente.'
+    return raw
+
+
 def _run_django_sync(func, timeout_seconds: int = 120):
-    """Executa ORM Django em thread dedicada (evita SynchronousOnlyOperation após Playwright)."""
+    """
+    Executa ORM Django com retry e fechamento explícito da conexão.
+
+    Tenta na thread atual (antes do Playwright). Depois do Playwright o loop
+    asyncio dispara SynchronousOnlyOperation — aí usa thread limpa.
+
+    Com DB_CONN_MAX_AGE>0, close_old_connections() NÃO libera a conexão nova;
+    cada thread extra do job vazava slot no Postgres até estourar max_connections.
+    """
     import queue
 
-    import django.db
+    from django.core.exceptions import SynchronousOnlyOperation
 
-    q = queue.Queue()
+    from crm_app.db_resilience import force_close_db_connections, retry_on_db_connection_error
+
+    def invoke():
+        try:
+            return retry_on_db_connection_error(
+                func,
+                retries=6,
+                delay=1.0,
+                label='consulta-esteira-orm',
+            )
+        finally:
+            force_close_db_connections()
+
+    try:
+        return invoke()
+    except SynchronousOnlyOperation:
+        force_close_db_connections()
+
+    q: queue.Queue = queue.Queue()
 
     def worker():
         try:
-            django.db.close_old_connections()
-            q.put(('ok', func()))
+            q.put(('ok', invoke()))
         except Exception as e:
             q.put(('err', e))
         finally:
-            django.db.close_old_connections()
+            force_close_db_connections()
 
     t = threading.Thread(target=worker, daemon=True, name='consulta-esteira-orm')
     t.start()
@@ -762,8 +803,11 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
     from crm_app.models import SyncStatusEsteiraExecucao
 
     try:
-        execucao = SyncStatusEsteiraExecucao.objects.select_related('iniciado_por').get(
-            pk=execucao_id
+        execucao = _run_django_sync(
+            lambda: SyncStatusEsteiraExecucao.objects.select_related('iniciado_por').get(
+                pk=execucao_id
+            ),
+            timeout_seconds=60,
         )
     except SyncStatusEsteiraExecucao.DoesNotExist:
         logger.error('[CONSULTA ESTEIRA] Execução #%s não encontrada.', execucao_id)
@@ -798,7 +842,10 @@ def executar_job_consulta_aba(execucao_id: int) -> None:
         return
 
     filtros = dict((execucao.relatorio_json or {}).get('filtros') or {})
-    vendas = list(queryset_vendas_consulta_aba(filtros))
+    vendas = _run_django_sync(
+        lambda: list(queryset_vendas_consulta_aba(filtros)),
+        timeout_seconds=60,
+    )
     fila: List = list(vendas)
     detalhes: List[dict] = []
     sessao = _SessaoPapUsuarioHolder(usuario)
@@ -1031,21 +1078,27 @@ def criar_e_iniciar_consulta_aba(*, usuario, filtros: Dict[str, Any]) -> Tuple[O
     )
 
     def _runner():
-        import django.db
+        from crm_app.db_resilience import force_close_db_connections
 
-        django.db.close_old_connections()
+        force_close_db_connections()
         try:
             executar_job_consulta_aba(execucao.id)
         except Exception as e:
             logger.exception('[CONSULTA ESTEIRA] Erro fatal execução #%s: %s', execucao.id, e)
             try:
-                SyncStatusEsteiraExecucao.objects.filter(pk=execucao.id).update(
-                    status=SyncStatusEsteiraExecucao.STATUS_ERRO,
-                    mensagem_erro=str(e)[:2000],
-                    finalizado_em=timezone.now(),
-                )
+                def _marcar_erro():
+                    SyncStatusEsteiraExecucao.objects.filter(pk=execucao.id).update(
+                        status=SyncStatusEsteiraExecucao.STATUS_ERRO,
+                        mensagem_erro=str(e)[:2000],
+                        finalizado_em=timezone.now(),
+                    )
+
+                _run_django_sync(_marcar_erro, timeout_seconds=60)
             except Exception:
-                pass
+                logger.exception(
+                    '[CONSULTA ESTEIRA] Falha ao gravar erro da execução #%s.',
+                    execucao.id,
+                )
             with _sessoes_lock:
                 sessao = _sessoes_ativas.pop(execucao.id, None)
             if sessao is not None:
@@ -1054,7 +1107,7 @@ def criar_e_iniciar_consulta_aba(*, usuario, filtros: Dict[str, Any]) -> Tuple[O
                 except Exception:
                     pass
         finally:
-            django.db.close_old_connections()
+            force_close_db_connections()
 
     t = threading.Thread(target=_runner, name=f'consulta-esteira-{execucao.id}', daemon=True)
     t.start()

@@ -116,21 +116,28 @@ def _dentro_janela_horario(agora=None) -> bool:
 
 
 def job_em_andamento() -> bool:
-    encerrar_execucoes_orfas()
-    from crm_app.models import SyncStatusEsteiraExecucao
-
-    return SyncStatusEsteiraExecucao.objects.filter(
-        status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO
-    ).exists()
+    return execucao_em_andamento() is not None
 
 
 def execucao_em_andamento() -> Optional['SyncStatusEsteiraExecucao']:
     encerrar_execucoes_orfas()
     from crm_app.models import SyncStatusEsteiraExecucao
 
-    return (
+    running = (
         SyncStatusEsteiraExecucao.objects.filter(
             status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO
+        )
+        .order_by('-iniciado_em')
+        .first()
+    )
+    if running:
+        return running
+    # Job recém-criado ainda está pendente até a thread abrir a sessão PAP.
+    recente = timezone.now() - timedelta(minutes=2)
+    return (
+        SyncStatusEsteiraExecucao.objects.filter(
+            status=SyncStatusEsteiraExecucao.STATUS_PENDENTE,
+            iniciado_em__gte=recente,
         )
         .order_by('-iniciado_em')
         .first()
@@ -645,6 +652,26 @@ def encerrar_execucoes_orfas(*, motivo: str = '') -> int:
             execucao.id,
             minutos,
         )
+
+    # PENDENTE que nunca virou em_andamento (thread morreu ao abrir conexão).
+    limite_pendente = timezone.now() - timedelta(minutes=5)
+    n_pend = SyncStatusEsteiraExecucao.objects.filter(
+        status=SyncStatusEsteiraExecucao.STATUS_PENDENTE,
+        iniciado_em__lte=limite_pendente,
+    ).update(
+        status=SyncStatusEsteiraExecucao.STATUS_ERRO,
+        finalizado_em=timezone.now(),
+        mensagem_erro=(
+            'Encerrado automaticamente — ficou pendente sem iniciar '
+            '(possível falta de conexão com o banco).'
+        )[:2000],
+    )
+    if n_pend:
+        encerradas += n_pend
+        logger.warning(
+            '[SYNC ESTEIRA] %s execução(ões) pendente(s) órfã(s) encerrada(s).',
+            n_pend,
+        )
     return encerradas
 
 
@@ -657,7 +684,10 @@ def cancelar_execucao(execucao_id: int, *, usuario=None) -> Tuple[bool, str]:
     # Update direto: não usa a thread ORM do job (evita timeout se Playwright estiver ocupado).
     updated = SyncStatusEsteiraExecucao.objects.filter(
         pk=execucao_id,
-        status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO,
+        status__in=[
+            SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO,
+            SyncStatusEsteiraExecucao.STATUS_PENDENTE,
+        ],
     ).update(
         status=SyncStatusEsteiraExecucao.STATUS_INTERROMPIDO,
         finalizado_em=timezone.now(),

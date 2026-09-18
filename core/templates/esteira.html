@@ -2682,8 +2682,8 @@ min-width: 100%;
                 atualizarBadgeSyncStatusPap(null);
                 if (acabouDeTerminar) {
                     const u = data.ultima || {};
+                    const badge = document.getElementById('sync-status-pap-badge');
                     if (u.status === 'concluido') {
-                        const badge = document.getElementById('sync-status-pap-badge');
                         if (badge) {
                             badge.style.display = 'inline-block';
                             badge.className = 'badge bg-success ms-1';
@@ -2692,6 +2692,15 @@ min-width: 100%;
                                 + (u.erros ? ` ⚠${u.erros}` : '');
                             setTimeout(() => { badge.style.display = 'none'; }, 20000);
                         }
+                    } else if (u.status === 'erro' || u.status === 'interrompido') {
+                        if (badge) {
+                            badge.style.display = 'inline-block';
+                            badge.className = 'badge bg-danger ms-1';
+                            badge.textContent = u.status === 'erro' ? 'Erro consulta PAP' : 'Consulta cancelada';
+                            setTimeout(() => { badge.style.display = 'none'; }, 20000);
+                        }
+                        const detalhe = (u.mensagem_erro || '').trim();
+                        alert(detalhe || 'Consulta PAP não concluiu.');
                     }
                     if (typeof carregarVendas === 'function') carregarVendas(true);
                     if (typeof carregarContadoresEsteira === 'function') carregarContadoresEsteira();
