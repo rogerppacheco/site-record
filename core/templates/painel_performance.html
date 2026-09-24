@@ -2353,9 +2353,11 @@
                 dados.forEach((d, index) => {
                     let path = [];
                     path.push(d.estado || 'NI');
+                    if (agruparVendedor) {
+                        path.push(d.vendedor__username || 'NI');
+                    }
                     path.push(d.cidade || 'NI');
                     path.push(d.bairro || 'NI');
-                    if (agruparVendedor) path.push(d.vendedor__username || 'NI');
                     
                     let current = root;
                     current.total_6m += d.total_6m;
