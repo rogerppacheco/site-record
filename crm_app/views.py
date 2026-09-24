@@ -18321,6 +18321,7 @@ class AtuacaoCampoView(APIView):
         uf = request.query_params.get('uf')
         cidade = request.query_params.get('cidade')
         bairro = request.query_params.get('bairro')
+        agrupar_vendedor = request.query_params.get('agrupar_vendedor') == 'true'
         
         from dateutil.relativedelta import relativedelta
         from django.db.models import Count, Q
@@ -18352,7 +18353,11 @@ class AtuacaoCampoView(APIView):
             end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
             annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
         
-        dados = qs.values('estado', 'cidade').annotate(
+        group_fields = ['estado', 'cidade']
+        if agrupar_vendedor:
+            group_fields.append('vendedor__username')
+            
+        dados = qs.values(*group_fields).annotate(
             total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
             **annotations
         ).filter(total_6m__gt=0).order_by('-total_6m', 'estado', 'cidade')

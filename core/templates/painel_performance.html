@@ -838,6 +838,14 @@
                                 <button class="btn btn-sm btn-primary w-100" onclick="carregarAtuacaoCampo()"><i class="bi bi-search"></i></button>
                             </div>
                         </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-12">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="atuacao-agrupar-vendedor" onchange="carregarAtuacaoCampo()">
+                                    <label class="form-check-label small fw-bold" for="atuacao-agrupar-vendedor">Detalhar por Vendedor</label>
+                                </div>
+                            </div>
+                        </div>
                         <div class="table-responsive perf-table-scroll mb-3">
                             <table class="table-excel" id="table-atuacao">
                                 <thead id="thead-atuacao"></thead>
@@ -2297,6 +2305,7 @@
             const uf = document.getElementById('atuacao-uf').value;
             const cidade = document.getElementById('atuacao-cidade').value;
             const bairro = document.getElementById('atuacao-bairro').value;
+            const agruparVendedor = document.getElementById('atuacao-agrupar-vendedor').checked;
             
             const tbody = document.getElementById('tbody-atuacao');
             const thead = document.getElementById('thead-atuacao');
@@ -2321,12 +2330,14 @@
                 if (uf) params.set('uf', uf);
                 if (cidade) params.set('cidade', cidade);
                 if (bairro) params.set('bairro', bairro);
+                if (agruparVendedor) params.set('agrupar_vendedor', 'true');
                 
                 const res = await axios.get(`/api/crm/atuacao-campo/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const meses = res.data.meses; // array of "MM/YYYY"
                 const dados = res.data.dados; // array of {estado, cidade, total_6m, mes_0, mes_1...}
                 
                 let theadHtml = '<tr><th class="text-start">Estado</th><th class="text-start">Cidade</th>';
+                if (agruparVendedor) theadHtml += '<th class="text-start">Vendedor</th>';
                 meses.forEach(m => {
                     theadHtml += `<th>${m}</th>`;
                 });
@@ -2343,6 +2354,7 @@
                     tbodyHtml += `<tr>
                         <td class="text-start">${d.estado || '-'}</td>
                         <td class="text-start">${d.cidade || '-'}</td>`;
+                    if (agruparVendedor) tbodyHtml += `<td class="text-start">${d.vendedor__username || '-'}</td>`;
                     meses.forEach((m, idx) => {
                         const val = d[`mes_${idx}`] || 0;
                         tbodyHtml += `<td class="${val > 0 ? 'fw-bold' : 'text-muted'}">${val}</td>`;
