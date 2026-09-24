@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Usuario, Perfil, PermissaoPerfil
+from .models import Usuario, Perfil, PermissaoPerfil, CredencialRoboPAP
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Permission, Group
@@ -522,3 +522,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             }
         
         return data
+
+class CredencialRoboPAPSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CredencialRoboPAP
+        fields = '__all__'

@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
+    CredencialRoboPAPViewSet,
     UsuarioViewSet,
     GrupoViewSet,
     PermissaoViewSet,
@@ -14,6 +15,7 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.register(r'contas-servico-pap', CredencialRoboPAPViewSet, basename='contas-servico-pap')
 # Rotas principais (CRUDs)
 router.register(r'usuarios', UsuarioViewSet, basename='usuario')
 router.register(r'gestao-acessos/usuarios', GestaoAcessosUsuarioViewSet, basename='gestao-acessos-usuario')

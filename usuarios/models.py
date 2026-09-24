@@ -285,3 +285,25 @@ class PermissaoPerfil(models.Model):
 
     def __str__(self):
         return f"Permissões do {self.perfil.nome} para {self.recurso}"
+
+class CredencialRoboPAP(models.Model):
+    FUNCOES_CHOICES = [
+        ('CONSULTA_ESTEIRA', 'Consulta PAP (Esteira)'),
+        ('WHATSAPP_BOT', 'Bot do WhatsApp (Crédito, OS, etc)'),
+        ('HISTORICO_VENDAS', 'Auditoria/Histórico (Excel PAP)'),
+        ('OUTROS', 'Outros'),
+    ]
+
+    funcao = models.CharField('Função', max_length=50, choices=FUNCOES_CHOICES)
+    matricula = models.CharField('Matrícula PAP', max_length=50)
+    senha = models.CharField('Senha PAP', max_length=128)
+    ativo = models.BooleanField('Ativo', default=True)
+    em_uso = models.BooleanField('Em Uso (Trancado)', default=False)
+    ultimo_uso = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Conta de Serviço PAP'
+        verbose_name_plural = 'Contas de Serviço PAP'
+
+    def __str__(self):
+        return f"{self.get_funcao_display()} - {self.matricula}"

@@ -17,8 +17,9 @@ import logging
 import re
 import openpyxl
 
-from .models import Usuario, Perfil, PermissaoPerfil
+from .models import Usuario, Perfil, PermissaoPerfil, CredencialRoboPAP
 from .serializers import (
+    CredencialRoboPAPSerializer,
     UsuarioSerializer,
     PerfilSerializer,
     UserProfileSerializer,
@@ -944,3 +945,8 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 "valido": True,
                 "aviso": "Não foi possível validar. Pode salvar."
             }, status=200)
+
+class CredencialRoboPAPViewSet(viewsets.ModelViewSet):
+    queryset = CredencialRoboPAP.objects.all()
+    serializer_class = CredencialRoboPAPSerializer
+    permission_classes = [IsAuthenticated]

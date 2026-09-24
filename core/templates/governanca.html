@@ -280,6 +280,7 @@
 
             <div class="nav-section-title">Automação</div>
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'automacao', this)"><i class="bi bi-whatsapp"></i> Automação WhatsApp</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'robos-pap', this)"><i class="bi bi-robot"></i> Contas de Serviço (Robôs)</a>
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'pap-logins', this)"><i class="bi bi-box-arrow-right"></i> Logins PAP</a>
 
             <div class="nav-section-title">Financeiro</div>
@@ -821,6 +822,35 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ABA LOGINS PAP -->
+    <div id="robos-pap-section" class="content-section">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3>Contas de Serviço PAP (Robôs)</h3>
+            <button class="btn btn-primary" onclick="abrirModalPapLogin()">
+                <i class="bi bi-plus"></i> Novo Robô
+            </button>
+        </div>
+        
+        <div class="table-responsive bg-white rounded shadow-sm p-3">
+            <table class="table table-hover align-middle" id="tabela-pap-logins">
+                <thead class="table-light">
+                    <tr>
+                        <th>Função</th>
+                        <th>Matrícula PAP</th>
+                        <th>Ativo</th>
+                        <th>Em Uso</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-pap-logins">
+                    <!-- Preenchido via JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+
 
         </main>
     </div>
@@ -4433,5 +4463,91 @@
             carregarDadosParaFormulario().catch(() => {});
         }, 1000);
     });
-    </script>
+        // === PAP LOGINS ===
+    async function carregarPapLogins() {
+        try {
+            const res = await apiFetch('/api/contas-servico-pap/');
+            const tbody = document.getElementById('tbody-pap-logins');
+            tbody.innerHTML = '';
+            const data = Array.isArray(res) ? res : (res?.results || []);
+            data.forEach(item => {
+                const ativoBadge = item.ativo ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-danger">Não</span>';
+                const emUsoBadge = item.em_uso ? '<span class="badge bg-warning">Sim</span>' : '<span class="badge bg-secondary">Não</span>';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${item.funcao}</td>
+                        <td>${item.matricula}</td>
+                        <td>${ativoBadge}</td>
+                        <td>${emUsoBadge}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick='editarPapLogin(${JSON.stringify(item)})'>Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirPapLogin(${item.id})">Excluir</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        } catch (err) {
+            alert('Erro ao carregar logins PAP: ' + err.message);
+        }
+    }
+
+    function abrirModalPapLogin() {
+        document.getElementById('formPapLogin').reset();
+        document.getElementById('pap_login_id').value = '';
+        new bootstrap.Modal(document.getElementById('modalPapLogin')).show();
+    }
+
+    function editarPapLogin(item) {
+        document.getElementById('pap_login_id').value = item.id;
+        document.getElementById('pap_login_funcao').value = item.funcao;
+        document.getElementById('pap_login_matricula').value = item.matricula;
+        document.getElementById('pap_login_senha').value = item.senha;
+        document.getElementById('pap_login_ativo').checked = item.ativo;
+        new bootstrap.Modal(document.getElementById('modalPapLogin')).show();
+    }
+
+    async function salvarPapLogin() {
+        const id = document.getElementById('pap_login_id').value;
+        const data = {
+            funcao: document.getElementById('pap_login_funcao').value,
+            matricula: document.getElementById('pap_login_matricula').value,
+            senha: document.getElementById('pap_login_senha').value,
+            ativo: document.getElementById('pap_login_ativo').checked
+        };
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `/api/contas-servico-pap/${id}/` : '/api/contas-servico-pap/';
+        
+        try {
+            await apiFetch(url, { method, body: JSON.stringify(data) });
+            bootstrap.Modal.getInstance(document.getElementById('modalPapLogin')).hide();
+            carregarPapLogins();
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message);
+        }
+    }
+
+    async function excluirPapLogin(id) {
+        if(confirm('Tem certeza que deseja excluir esta conta de serviço?')) {
+            try {
+                await apiFetch(`/api/contas-servico-pap/${id}/`, { method: 'DELETE' });
+                carregarPapLogins();
+            } catch (err) {
+                alert('Erro ao excluir: ' + err.message);
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const links = document.querySelectorAll('.admin-nav-link');
+        links.forEach(link => {
+            link.addEventListener('click', (e) => {
+                if (link.getAttribute('onclick')?.includes("'robos-pap'")) {
+                    carregarPapLogins();
+                }
+            });
+        });
+    });
+
+
+</script>
 {% endblock %}
