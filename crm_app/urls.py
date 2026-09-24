@@ -120,6 +120,7 @@ from .views import (
     
     # Performance (API e Exportação)
     PainelPerformanceView,
+    AtuacaoCampoView,
     ExportarPerformanceExcelView,
     EnviarImagemPerformanceView, 
     ConfigurarAutomacaoView,
@@ -418,6 +419,7 @@ urlpatterns = [
     # --- Performance ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
     path('performance-painel/', PainelPerformanceView.as_view(), name='api-performance-painel'),
+    path('atuacao-campo/', AtuacaoCampoView.as_view(), name='api-atuacao-campo'),
     
     # --- Estatísticas Bot WhatsApp ---
     path('estatisticas-bot/', EstatisticasBotWhatsAppView.as_view(), name='estatisticas-bot'),

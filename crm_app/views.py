@@ -18311,3 +18311,54 @@ def baixar_screenshot_debug(request, nome_arquivo):
         return JsonResponse({
             'erro': str(e)
         }, status=500)
+
+
+class AtuacaoCampoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        vendedor = request.query_params.get('vendedor')
+        uf = request.query_params.get('uf')
+        cidade = request.query_params.get('cidade')
+        bairro = request.query_params.get('bairro')
+        
+        from dateutil.relativedelta import relativedelta
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        import calendar
+        from datetime import date
+        from .models import Venda
+        
+        hoje = timezone.localtime(timezone.now()).date()
+        meses = []
+        for i in range(6):
+            m = hoje - relativedelta(months=i)
+            meses.append(m)
+        
+        qs = Venda.objects.filter(
+            ativo=True,
+            status_tratamento__nome__iexact='CADASTRADA'
+        )
+        if vendedor:
+            qs = qs.filter(vendedor__username__iexact=vendedor)
+            
+        if uf: qs = qs.filter(estado__iexact=uf)
+        if cidade: qs = qs.filter(cidade__iexact=cidade)
+        if bairro: qs = qs.filter(bairro__iexact=bairro)
+            
+        annotations = {}
+        for idx, m in enumerate(meses):
+            start = date(m.year, m.month, 1)
+            end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
+            annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
+        
+        dados = qs.values('estado', 'cidade', 'bairro').annotate(
+            total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
+            **annotations
+        ).filter(total_6m__gt=0).order_by('-total_6m', 'estado', 'cidade')
+        
+        return Response({
+            'meses': [m.strftime('%m/%Y') for m in meses],
+            'dados': list(dados)
+        })
+

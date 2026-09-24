@@ -689,6 +689,7 @@
             <li class="nav-item"><button class="nav-link" id="tab-semana" data-bs-toggle="pill" data-bs-target="#content-semana">Semanal</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-mes" data-bs-toggle="pill" data-bs-target="#content-mes">Mensal</button></li>
             <li class="nav-item"><button class="nav-link" id="tab-gestao" data-bs-toggle="pill" data-bs-target="#content-gestao">Gestão</button></li>
+            <li class="nav-item"><button class="nav-link" id="tab-atuacao" data-bs-toggle="pill" data-bs-target="#content-atuacao" onclick="carregarAtuacaoCampo()">Atuação em Campo</button></li>
         </ul>
         </div>
 
@@ -805,6 +806,42 @@
                                     <tr><th>Semana</th><th>Total Ref</th><th>Total Comp</th><th>Var. Abs</th><th>Var. %</th></tr>
                                 </thead>
                                 <tbody id="tbody-gestao-semana"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="content-atuacao">
+                <div class="card border-0 shadow">
+                    <div class="card-body">
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Vendedor</label>
+                                <select id="atuacao-vendedor" class="form-select form-select-sm" onchange="carregarAtuacaoCampo()">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small fw-bold">UF</label>
+                                <input type="text" id="atuacao-uf" class="form-control form-control-sm" placeholder="Ex: SP" onchange="carregarAtuacaoCampo()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Cidade</label>
+                                <input type="text" id="atuacao-cidade" class="form-control form-control-sm" placeholder="Ex: São Paulo" onchange="carregarAtuacaoCampo()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold">Bairro</label>
+                                <input type="text" id="atuacao-bairro" class="form-control form-control-sm" placeholder="Ex: Centro" onchange="carregarAtuacaoCampo()">
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                <button class="btn btn-sm btn-primary w-100" onclick="carregarAtuacaoCampo()"><i class="bi bi-search"></i></button>
+                            </div>
+                        </div>
+                        <div class="table-responsive perf-table-scroll mb-3">
+                            <table class="table-excel" id="table-atuacao">
+                                <thead id="thead-atuacao"></thead>
+                                <tbody id="tbody-atuacao"></tbody>
                             </table>
                         </div>
                     </div>
@@ -2251,6 +2288,74 @@
                     btnEnviar.style.backgroundColor = '';
                     btnEnviar.style.borderColor = '';
                 }, 3000);
+            }
+        }
+        
+        // --- ATUAÇÃO EM CAMPO ---
+        async function carregarAtuacaoCampo() {
+            const vendedor = document.getElementById('atuacao-vendedor').value;
+            const uf = document.getElementById('atuacao-uf').value;
+            const cidade = document.getElementById('atuacao-cidade').value;
+            const bairro = document.getElementById('atuacao-bairro').value;
+            
+            const tbody = document.getElementById('tbody-atuacao');
+            const thead = document.getElementById('thead-atuacao');
+            
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center">Carregando...</td></tr>';
+            
+            // Popula os vendedores se estiver vazio
+            const selectVendedor = document.getElementById('atuacao-vendedor');
+            if (selectVendedor.options.length <= 1 && window.__painelPayload && window.__painelPayload.hoje) {
+                const vendedores = [...new Set(window.__painelPayload.hoje.map(x => x.vendedor).filter(v => v))].sort();
+                vendedores.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = v;
+                    selectVendedor.appendChild(opt);
+                });
+            }
+
+            try {
+                const params = new URLSearchParams();
+                if (vendedor) params.set('vendedor', vendedor);
+                if (uf) params.set('uf', uf);
+                if (cidade) params.set('cidade', cidade);
+                if (bairro) params.set('bairro', bairro);
+                
+                const res = await axios.get(`/api/crm/atuacao-campo/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const meses = res.data.meses; // array of "MM/YYYY"
+                const dados = res.data.dados; // array of {estado, cidade, bairro, total_6m, mes_0, mes_1...}
+                
+                let theadHtml = '<tr><th class="text-start">Estado</th><th class="text-start">Cidade</th><th class="text-start">Bairro</th>';
+                meses.forEach(m => {
+                    theadHtml += `<th>${m}</th>`;
+                });
+                theadHtml += '<th>Total 6m</th></tr>';
+                thead.innerHTML = theadHtml;
+                
+                if (!dados || dados.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="${4 + meses.length}" class="text-center text-muted py-3">Nenhum dado encontrado</td></tr>`;
+                    return;
+                }
+                
+                let tbodyHtml = '';
+                dados.forEach(d => {
+                    tbodyHtml += `<tr>
+                        <td class="text-start">${d.estado || '-'}</td>
+                        <td class="text-start">${d.cidade || '-'}</td>
+                        <td class="text-start cell-ellipsis" style="max-width:200px" title="${d.bairro || '-'}">${d.bairro || '-'}</td>`;
+                    meses.forEach((m, idx) => {
+                        const val = d[`mes_${idx}`] || 0;
+                        tbodyHtml += `<td class="${val > 0 ? 'fw-bold' : 'text-muted'}">${val}</td>`;
+                    });
+                    tbodyHtml += `<td class="fw-bold bg-total-column">${d.total_6m || 0}</td></tr>`;
+                });
+                
+                tbody.innerHTML = tbodyHtml;
+                
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Erro ao carregar dados</td></tr>';
             }
         }
     </script>
