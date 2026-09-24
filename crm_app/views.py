@@ -18352,7 +18352,7 @@ class AtuacaoCampoView(APIView):
             end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
             annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
         
-        dados = qs.values('estado', 'cidade', 'bairro').annotate(
+        dados = qs.values('estado', 'cidade').annotate(
             total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
             **annotations
         ).filter(total_6m__gt=0).order_by('-total_6m', 'estado', 'cidade')

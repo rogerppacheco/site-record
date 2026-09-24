@@ -2324,9 +2324,9 @@
                 
                 const res = await axios.get(`/api/crm/atuacao-campo/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const meses = res.data.meses; // array of "MM/YYYY"
-                const dados = res.data.dados; // array of {estado, cidade, bairro, total_6m, mes_0, mes_1...}
+                const dados = res.data.dados; // array of {estado, cidade, total_6m, mes_0, mes_1...}
                 
-                let theadHtml = '<tr><th class="text-start">Estado</th><th class="text-start">Cidade</th><th class="text-start">Bairro</th>';
+                let theadHtml = '<tr><th class="text-start">Estado</th><th class="text-start">Cidade</th>';
                 meses.forEach(m => {
                     theadHtml += `<th>${m}</th>`;
                 });
@@ -2334,7 +2334,7 @@
                 thead.innerHTML = theadHtml;
                 
                 if (!dados || dados.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="${4 + meses.length}" class="text-center text-muted py-3">Nenhum dado encontrado</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="${3 + meses.length}" class="text-center text-muted py-3">Nenhum dado encontrado</td></tr>`;
                     return;
                 }
                 
@@ -2342,8 +2342,7 @@
                 dados.forEach(d => {
                     tbodyHtml += `<tr>
                         <td class="text-start">${d.estado || '-'}</td>
-                        <td class="text-start">${d.cidade || '-'}</td>
-                        <td class="text-start cell-ellipsis" style="max-width:200px" title="${d.bairro || '-'}">${d.bairro || '-'}</td>`;
+                        <td class="text-start">${d.cidade || '-'}</td>`;
                     meses.forEach((m, idx) => {
                         const val = d[`mes_${idx}`] || 0;
                         tbodyHtml += `<td class="${val > 0 ? 'fw-bold' : 'text-muted'}">${val}</td>`;
