@@ -2336,8 +2336,7 @@
                 const meses = res.data.meses; // array of "MM/YYYY"
                 const dados = res.data.dados; // array of {estado, cidade, total_6m, mes_0, mes_1...}
                 
-                let theadHtml = '<tr><th class="text-start">Estado</th><th class="text-start">Cidade</th>';
-                if (agruparVendedor) theadHtml += '<th class="text-start">Vendedor</th>';
+                let theadHtml = '<tr><th class="text-start">Local</th>';
                 meses.forEach(m => {
                     theadHtml += `<th>${m}</th>`;
                 });
@@ -2345,22 +2344,63 @@
                 thead.innerHTML = theadHtml;
                 
                 if (!dados || dados.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="${3 + meses.length}" class="text-center text-muted py-3">Nenhum dado encontrado</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="${2 + meses.length}" class="text-center text-muted py-3">Nenhum dado encontrado</td></tr>`;
                     return;
                 }
                 
+                const root = { id: 'root', nome: 'TOTAL', totais: Array(meses.length).fill(0), total_6m: 0, children: {} };
+
+                dados.forEach((d, index) => {
+                    let path = [];
+                    path.push(d.estado || 'NI');
+                    path.push(d.cidade || 'NI');
+                    path.push(d.bairro || 'NI');
+                    if (agruparVendedor) path.push(d.vendedor__username || 'NI');
+                    
+                    let current = root;
+                    current.total_6m += d.total_6m;
+                    meses.forEach((m, idx) => { current.totais[idx] += (d[`mes_${idx}`] || 0); });
+                    
+                    let currentId = 'root';
+                    path.forEach((p, level) => {
+                        let cleanP = String(p).replace(/[^a-zA-Z0-9]/g, '');
+                        currentId += '_' + cleanP;
+                        if (!current.children[p]) {
+                            current.children[p] = { id: currentId, nome: p, totais: Array(meses.length).fill(0), total_6m: 0, children: {} };
+                        }
+                        current = current.children[p];
+                        current.total_6m += d.total_6m;
+                        meses.forEach((m, idx) => { current.totais[idx] += (d[`mes_${idx}`] || 0); });
+                    });
+                });
+
                 let tbodyHtml = '';
-                dados.forEach(d => {
-                    tbodyHtml += `<tr>
-                        <td class="text-start">${d.estado || '-'}</td>
-                        <td class="text-start">${d.cidade || '-'}</td>`;
-                    if (agruparVendedor) tbodyHtml += `<td class="text-start">${d.vendedor__username || '-'}</td>`;
+                function renderNode(node, level, parentId) {
+                    const hasChildren = Object.keys(node.children).length > 0;
+                    const padding = level * 20 + 10;
+                    const isRoot = level === 0;
+                    const display = isRoot ? '' : 'none'; 
+                    const rowClass = isRoot ? '' : `child-of-${parentId}`;
+                    
+                    let icon = hasChildren ? `<i class="bi bi-plus-square text-primary me-2" id="icon-${node.id}" style="cursor:pointer;" onclick="toggleAtuacaoRow('${node.id}')"></i>` : '<span class="me-3 ms-2"></span>';
+                    
+                    tbodyHtml += `<tr id="row-${node.id}" class="${rowClass}" style="display: ${display};">
+                        <td class="text-start" style="padding-left: ${padding}px;">
+                            ${icon} ${node.nome}
+                        </td>`;
+                        
                     meses.forEach((m, idx) => {
-                        const val = d[`mes_${idx}`] || 0;
+                        const val = node.totais[idx];
                         tbodyHtml += `<td class="${val > 0 ? 'fw-bold' : 'text-muted'}">${val}</td>`;
                     });
-                    tbodyHtml += `<td class="fw-bold bg-total-column">${d.total_6m || 0}</td></tr>`;
-                });
+                    tbodyHtml += `<td class="fw-bold bg-total-column">${node.total_6m}</td></tr>`;
+                    
+                    if (hasChildren) {
+                        const sortedChildren = Object.values(node.children).sort((a,b) => b.total_6m - a.total_6m);
+                        sortedChildren.forEach(child => renderNode(child, level + 1, node.id));
+                    }
+                }
+                renderNode(root, 0, '');
                 
                 tbody.innerHTML = tbodyHtml;
                 
@@ -2369,5 +2409,35 @@
                 tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Erro ao carregar dados</td></tr>';
             }
         }
+        
+        window.toggleAtuacaoRow = function(id) {
+            const icon = document.getElementById('icon-' + id);
+            if (!icon) return;
+            const isExpanded = icon.classList.contains('bi-dash-square');
+            
+            if (isExpanded) {
+                icon.classList.remove('bi-dash-square');
+                icon.classList.add('bi-plus-square');
+                const hideDescendants = (parentId) => {
+                    document.querySelectorAll(`.child-of-${parentId}`).forEach(c => {
+                        c.style.display = 'none';
+                        const childId = c.id.replace('row-', '');
+                        const childIcon = document.getElementById('icon-' + childId);
+                        if (childIcon && childIcon.classList.contains('bi-dash-square')) {
+                            childIcon.classList.remove('bi-dash-square');
+                            childIcon.classList.add('bi-plus-square');
+                        }
+                        hideDescendants(childId);
+                    });
+                };
+                hideDescendants(id);
+            } else {
+                icon.classList.remove('bi-plus-square');
+                icon.classList.add('bi-dash-square');
+                document.querySelectorAll(`.child-of-${id}`).forEach(c => {
+                    c.style.display = '';
+                });
+            }
+        };
     </script>
 {% endblock %}

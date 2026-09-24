@@ -18353,7 +18353,7 @@ class AtuacaoCampoView(APIView):
             end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
             annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
         
-        group_fields = ['estado', 'cidade']
+        group_fields = ['estado', 'cidade', 'bairro']
         if agrupar_vendedor:
             group_fields.append('vendedor__username')
             
