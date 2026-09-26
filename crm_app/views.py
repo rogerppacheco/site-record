@@ -18381,3 +18381,196 @@ class AtuacaoCampoView(APIView):
             'dados': list(dados)
         })
 
+class ExportarAtuacaoCampoExcelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        vendedor = request.query_params.get('vendedor')
+        uf = request.query_params.get('uf')
+        cidade = request.query_params.get('cidade')
+        bairro = request.query_params.get('bairro')
+        agrupamento_str = request.query_params.get('agrupamento')
+        
+        from dateutil.relativedelta import relativedelta
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        import calendar
+        from datetime import date
+        from .models import Venda
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill
+        from io import BytesIO
+        from django.http import HttpResponse
+        
+        hoje = timezone.localtime(timezone.now()).date()
+        meses = []
+        for i in range(6):
+            m = hoje - relativedelta(months=i)
+            meses.append(m)
+        
+        qs = Venda.objects.filter(
+            ativo=True,
+            status_tratamento__nome__iexact='CADASTRADA'
+        )
+        if vendedor: qs = qs.filter(vendedor__username__iexact=vendedor)
+        if uf: qs = qs.filter(estado__iexact=uf)
+        if cidade: qs = qs.filter(cidade__iexact=cidade)
+        if bairro: qs = qs.filter(bairro__iexact=bairro)
+            
+        annotations = {}
+        for idx, m in enumerate(meses):
+            start = date(m.year, m.month, 1)
+            end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
+            annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
+        
+        valid_fields = {
+            'estado': 'estado',
+            'cidade': 'cidade',
+            'bairro': 'bairro',
+            'vendedor': 'vendedor__username',
+            'canal': 'canal',
+            'cluster': 'cluster'
+        }
+        
+        group_fields = []
+        if agrupamento_str:
+            for f in agrupamento_str.split(','):
+                if f in valid_fields:
+                    group_fields.append(valid_fields[f])
+                    
+        if not group_fields:
+            group_fields = ['estado', 'cidade', 'bairro']
+            
+        dados = qs.values(*group_fields).annotate(
+            total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
+            **annotations
+        ).filter(total_6m__gt=0).order_by('-total_6m')
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Atuação em Campo"
+        
+        headers = ["Local", "Evolução"] + [m.strftime('%m/%Y') for m in meses] + ["Total 6m"]
+        ws.append(headers)
+        
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 15
+        ws.column_dimensions['A'].width = 40
+        
+        root = {'nome': 'TOTAL', 'totais': [0]*len(meses), 'total_6m': 0, 'children': {}}
+        for d in dados:
+            current = root
+            current['total_6m'] += d['total_6m']
+            for i in range(len(meses)):
+                current['totais'][i] += d.get(f'mes_{i}', 0)
+                
+            path = [d.get(f) or 'NI' for f in group_fields]
+            for p in path:
+                if p not in current['children']:
+                    current['children'][p] = {'nome': p, 'totais': [0]*len(meses), 'total_6m': 0, 'children': {}}
+                current = current['children'][p]
+                current['total_6m'] += d['total_6m']
+                for i in range(len(meses)):
+                    current['totais'][i] += d.get(f'mes_{i}', 0)
+                    
+        current_row = 2
+        def write_node(node, level):
+            nonlocal current_row
+            
+            diff = node['totais'][0] - node['totais'][1] if len(meses) > 1 else 0
+            trend = f"+{diff}" if diff > 0 else str(diff) if diff < 0 else "-"
+            
+            indent = "    " * level
+            row_data = [f"{indent}{node['nome']}", trend] + node['totais'] + [node['total_6m']]
+            ws.append(row_data)
+            
+            row_idx = current_row
+            if level > 0:
+                ws.row_dimensions[row_idx].outline_level = level
+                ws.row_dimensions[row_idx].hidden = True
+                
+            current_row += 1
+            
+            if node['children']:
+                sorted_children = sorted(node['children'].values(), key=lambda x: x['total_6m'], reverse=True)
+                for child in sorted_children:
+                    write_node(child, level + 1)
+                    
+        write_node(root, 0)
+        
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        response = HttpResponse(output.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response['Content-Disposition'] = 'attachment; filename="Atuacao_em_Campo.xlsx"'
+        return response
+
+
+class AtuacaoCampoDiarioView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        vendedor = request.query_params.get('vendedor')
+        uf = request.query_params.get('uf')
+        cidade = request.query_params.get('cidade')
+        bairro = request.query_params.get('bairro')
+        
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        import calendar
+        from datetime import date
+        from .models import Venda
+        
+        hoje = timezone.localtime(timezone.now()).date()
+        
+        qs = Venda.objects.filter(
+            ativo=True,
+            status_tratamento__nome__iexact='CADASTRADA'
+        )
+        if vendedor: qs = qs.filter(vendedor__username__iexact=vendedor)
+        if uf: qs = qs.filter(estado__iexact=uf)
+        if cidade: qs = qs.filter(cidade__iexact=cidade)
+        if bairro: qs = qs.filter(bairro__iexact=bairro)
+            
+        start_m0 = date(hoje.year, hoje.month, 1)
+        end_m0 = hoje
+        
+        if hoje.month == 1:
+            start_m1 = date(hoje.year - 1, 12, 1)
+            end_m1 = date(hoje.year - 1, 12, calendar.monthrange(hoje.year - 1, 12)[1])
+        else:
+            start_m1 = date(hoje.year, hoje.month - 1, 1)
+            end_m1 = date(hoje.year, hoje.month - 1, calendar.monthrange(hoje.year, hoje.month - 1)[1])
+            
+        qs_m0 = qs.filter(data_abertura__date__gte=start_m0, data_abertura__date__lte=end_m0)
+        daily_m0 = qs_m0.values('data_abertura__date').annotate(count=Count('id')).order_by('data_abertura__date')
+        
+        qs_m1 = qs.filter(data_abertura__date__gte=start_m1, data_abertura__date__lte=end_m1)
+        daily_m1 = qs_m1.values('data_abertura__date').annotate(count=Count('id')).order_by('data_abertura__date')
+        
+        dict_m0 = {d['data_abertura__date'].day: d['count'] for d in daily_m0 if d['data_abertura__date']}
+        dict_m1 = {d['data_abertura__date'].day: d['count'] for d in daily_m1 if d['data_abertura__date']}
+        
+        data = []
+        for i in range(1, 32):
+            val_m0 = dict_m0.get(i, 0)
+            val_m1 = dict_m1.get(i, 0)
+            data.append({
+                'dia': i,
+                'atual': val_m0,
+                'anterior': val_m1,
+                'evolucao': val_m0 - val_m1
+            })
+            
+        return Response({
+            'mes_atual': start_m0.strftime('%m/%Y'),
+            'mes_anterior': start_m1.strftime('%m/%Y'),
+            'dias': data
+        })

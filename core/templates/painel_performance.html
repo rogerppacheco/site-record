@@ -892,6 +892,14 @@
                                 <tbody id="tbody-atuacao"></tbody>
                             </table>
                         </div>
+                        
+                        <h6 class="text-primary mt-4 fw-bold mb-2"><i class="bi bi-calendar3"></i> Visão Diária (Resumo do Filtro Atual)</h6>
+                        <div class="table-responsive perf-table-scroll" style="max-height: 200px;">
+                            <table class="table-excel" id="table-atuacao-diario">
+                                <thead id="thead-atuacao-diario"></thead>
+                                <tbody id="tbody-atuacao-diario"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2470,33 +2478,91 @@
                 
                 tbody.innerHTML = tbodyHtml;
                 
+                // --- DAILY VIEW ---
+                try {
+                    const tbodyD = document.getElementById('tbody-atuacao-diario');
+                    const theadD = document.getElementById('thead-atuacao-diario');
+                    tbodyD.innerHTML = '<tr><td colspan="32" class="text-center">Carregando Visão Diária...</td></tr>';
+                    
+                    const resD = await axios.get(`/api/crm/atuacao-campo/diario/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const daily = resD.data;
+                    
+                    let th = '<tr><th class="text-start">Período</th>';
+                    for (let i = 1; i <= 31; i++) {
+                        th += `<th style="min-width: 45px; text-align: center;">${i}</th>`;
+                    }
+                    th += '</tr>';
+                    theadD.innerHTML = th;
+                    
+                    let tb = '';
+                    tb += `<tr><td class="text-start fw-bold">${daily.mes_atual}</td>`;
+                    daily.dias.forEach(d => { tb += `<td class="text-center ${d.atual > 0 ? 'fw-bold': 'text-muted'}">${d.atual}</td>`; });
+                    tb += '</tr>';
+                    
+                    tb += `<tr><td class="text-start text-muted">${daily.mes_anterior}</td>`;
+                    daily.dias.forEach(d => { tb += `<td class="text-center text-muted">${d.anterior}</td>`; });
+                    tb += '</tr>';
+                    
+                    tb += `<tr><td class="text-start fw-bold text-primary">Evolução</td>`;
+                    daily.dias.forEach(d => {
+                        let ev = d.evolucao;
+                        let icon = '<span class="text-muted">-</span>';
+                        if (ev > 0) icon = `<span class="text-success fw-bold d-inline-flex align-items-center"><i class="bi bi-arrow-up-short"></i>${ev}</span>`;
+                        else if (ev < 0) icon = `<span class="text-danger fw-bold d-inline-flex align-items-center"><i class="bi bi-arrow-down-short"></i>${Math.abs(ev)}</span>`;
+                        tb += `<td class="text-center">${icon}</td>`;
+                    });
+                    tb += '</tr>';
+                    tbodyD.innerHTML = tb;
+                } catch(e) { console.error("Erro daily view", e); }
+                
             } catch (err) {
                 console.error(err);
                 tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Erro ao carregar dados</td></tr>';
             }
         }
         
-        window.exportarAtuacaoCampoExcel = function() {
-            const table = document.getElementById('table-atuacao');
-            if (!table) return;
+        window.exportarAtuacaoCampoExcel = async function() {
+            const vendedor = document.getElementById('atuacao-vendedor').value;
+            const uf = document.getElementById('atuacao-uf').value;
+            const cidade = document.getElementById('atuacao-cidade').value;
+            const bairro = document.getElementById('atuacao-bairro').value;
+            const agrupamentos = Array.from(document.querySelectorAll('.atuacao-grupo'))
+                .map(s => s.value).filter(v => v);
+            const agrupamentosUnicos = [...new Set(agrupamentos)];
             
-            const clone = table.cloneNode(true);
-            clone.querySelectorAll('tr').forEach(tr => tr.style.display = '');
-            clone.querySelectorAll('.bi-arrow-up-short').forEach(i => i.outerHTML = '<span style="color: green; font-weight: bold;">+</span>');
-            clone.querySelectorAll('.bi-arrow-down-short').forEach(i => i.outerHTML = '<span style="color: red; font-weight: bold;">-</span>');
-            clone.querySelectorAll('.bi-plus-square, .bi-dash-square').forEach(i => i.remove());
+            const params = new URLSearchParams();
+            if (vendedor) params.set('vendedor', vendedor);
+            if (uf) params.set('uf', uf);
+            if (cidade) params.set('cidade', cidade);
+            if (bairro) params.set('bairro', bairro);
+            if (agrupamentosUnicos.length > 0) params.set('agrupamento', agrupamentosUnicos.join(','));
             
-            const html = clone.outerHTML;
-            const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(
-                '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>' + html + '</body></html>'
-            )));
-            
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = "Atuacao_em_Campo.xls";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const url = `/api/crm/atuacao-campo/exportar/?${params.toString()}`;
+            try {
+                const btn = document.querySelector('button[onclick="exportarAtuacaoCampoExcel()"]');
+                const btnOriginalHTML = btn.innerHTML;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
+                btn.disabled = true;
+                
+                const response = await axios.get(url, {
+                    responseType: 'blob',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.setAttribute('download', 'Atuacao_em_Campo.xlsx');
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(blobUrl);
+                
+                btn.innerHTML = btnOriginalHTML;
+                btn.disabled = false;
+            } catch (err) {
+                console.error("Erro exportando excel", err);
+                alert("Erro ao exportar Excel");
+            }
         };
         
         window.toggleAtuacaoRow = function(id) {

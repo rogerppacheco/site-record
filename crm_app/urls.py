@@ -122,6 +122,8 @@ from .views import (
     PainelPerformanceView,
     AtuacaoCampoView,
     ExportarPerformanceExcelView,
+    ExportarAtuacaoCampoExcelView,
+    AtuacaoCampoDiarioView,
     EnviarImagemPerformanceView, 
     ConfigurarAutomacaoView,
     
@@ -420,6 +422,8 @@ urlpatterns = [
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
     path('performance-painel/', PainelPerformanceView.as_view(), name='api-performance-painel'),
     path('atuacao-campo/', AtuacaoCampoView.as_view(), name='api-atuacao-campo'),
+    path('atuacao-campo/exportar/', ExportarAtuacaoCampoExcelView.as_view(), name='api-atuacao-campo-exportar'),
+    path('atuacao-campo/diario/', AtuacaoCampoDiarioView.as_view(), name='api-atuacao-campo-diario'),
     
     # --- Estatísticas Bot WhatsApp ---
     path('estatisticas-bot/', EstatisticasBotWhatsAppView.as_view(), name='estatisticas-bot'),
