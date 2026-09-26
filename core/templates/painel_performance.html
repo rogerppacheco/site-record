@@ -2452,9 +2452,10 @@
                         tbodyHtml += `<td class="${val > 0 ? 'fw-bold' : 'text-muted'}">${val}</td>`;
                         if (idx === 0) {
                             const valPrev = node.totais[1] || 0;
+                            const diff = val - valPrev;
                             let trendIcon = '<span class="text-muted">-</span>';
-                            if (val > valPrev) trendIcon = '<i class="bi bi-arrow-up-short text-success fw-bold" style="font-size: 1.2rem;" title="Subiu"></i>';
-                            else if (val < valPrev) trendIcon = '<i class="bi bi-arrow-down-short text-danger fw-bold" style="font-size: 1.2rem;" title="Caiu"></i>';
+                            if (diff > 0) trendIcon = `<span class="text-success fw-bold d-inline-flex align-items-center"><i class="bi bi-arrow-up-short" style="font-size: 1.2rem;" title="Subiu"></i> ${diff}</span>`;
+                            else if (diff < 0) trendIcon = `<span class="text-danger fw-bold d-inline-flex align-items-center"><i class="bi bi-arrow-down-short" style="font-size: 1.2rem;" title="Caiu"></i> ${Math.abs(diff)}</span>`;
                             tbodyHtml += `<td>${trendIcon}</td>`;
                         }
                     });
@@ -2481,8 +2482,8 @@
             
             const clone = table.cloneNode(true);
             clone.querySelectorAll('tr').forEach(tr => tr.style.display = '');
-            clone.querySelectorAll('.bi-arrow-up-short').forEach(i => i.outerHTML = '<span style="color: green; font-weight: bold;">Subiu</span>');
-            clone.querySelectorAll('.bi-arrow-down-short').forEach(i => i.outerHTML = '<span style="color: red; font-weight: bold;">Caiu</span>');
+            clone.querySelectorAll('.bi-arrow-up-short').forEach(i => i.outerHTML = '<span style="color: green; font-weight: bold;">+</span>');
+            clone.querySelectorAll('.bi-arrow-down-short').forEach(i => i.outerHTML = '<span style="color: red; font-weight: bold;">-</span>');
             clone.querySelectorAll('.bi-plus-square, .bi-dash-square').forEach(i => i.remove());
             
             const html = clone.outerHTML;
