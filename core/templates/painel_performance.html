@@ -824,79 +824,67 @@
             <div class="tab-pane fade" id="content-atuacao">
                 <div class="card border-0 shadow">
                     <div class="card-body">
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-3">
-                                <label class="small fw-bold">Vendedor</label>
-                                <select id="atuacao-vendedor" class="form-select form-select-sm" onchange="carregarAtuacaoCampo()">
-                                    <option value="">Todos</option>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 rounded" style="background-color: var(--bg-primary, #f8f9fa); border: 1px solid var(--border-color, #dee2e6);">
+                            <!-- Filtros -->
+                            <div class="d-flex align-items-center gap-1 border-end pe-2 border-secondary">
+                                <i class="bi bi-funnel text-muted ms-1" title="Filtros"></i>
+                                <select id="atuacao-vendedor" class="form-select form-select-sm shadow-none" style="width: 130px;" onchange="carregarAtuacaoCampo()" title="Filtrar por Vendedor">
+                                    <option value="">Todos Vendedores</option>
+                                </select>
+                                <input type="text" id="atuacao-uf" class="form-control form-control-sm shadow-none" style="width: 60px;" placeholder="UF" onchange="carregarAtuacaoCampo()" title="Filtrar por UF">
+                                <input type="text" id="atuacao-cidade" class="form-control form-control-sm shadow-none" style="width: 120px;" placeholder="Cidade" onchange="carregarAtuacaoCampo()" title="Filtrar por Cidade">
+                                <input type="text" id="atuacao-bairro" class="form-control form-control-sm shadow-none" style="width: 120px;" placeholder="Bairro" onchange="carregarAtuacaoCampo()" title="Filtrar por Bairro">
+                                <button class="btn btn-sm btn-primary" onclick="carregarAtuacaoCampo()" title="Buscar"><i class="bi bi-search"></i></button>
+                            </div>
+                            
+                            <!-- Agrupamento -->
+                            <div class="d-flex align-items-center gap-1 flex-grow-1">
+                                <i class="bi bi-diagram-3-fill text-primary ms-1" title="Estrutura de Agrupamento"></i>
+                                <select class="form-select form-select-sm atuacao-grupo shadow-sm border-primary" style="width: 120px;" onchange="carregarAtuacaoCampo()">
+                                    <option value="estado" selected>UF (Estado)</option>
+                                    <option value="vendedor">Vendedor</option>
+                                    <option value="cidade">Cidade</option>
+                                    <option value="bairro">Bairro</option>
+                                    <option value="canal">Canal</option>
+                                    <option value="cluster">Cluster</option>
+                                    <option value="">(Vazio)</option>
+                                </select>
+                                <i class="bi bi-chevron-right text-muted" style="font-size: 0.7rem;"></i>
+                                <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 120px;" onchange="carregarAtuacaoCampo()">
+                                    <option value="estado">UF (Estado)</option>
+                                    <option value="vendedor" selected>Vendedor</option>
+                                    <option value="cidade">Cidade</option>
+                                    <option value="bairro">Bairro</option>
+                                    <option value="canal">Canal</option>
+                                    <option value="cluster">Cluster</option>
+                                    <option value="">(Vazio)</option>
+                                </select>
+                                <i class="bi bi-chevron-right text-muted" style="font-size: 0.7rem;"></i>
+                                <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 120px;" onchange="carregarAtuacaoCampo()">
+                                    <option value="estado">UF (Estado)</option>
+                                    <option value="vendedor">Vendedor</option>
+                                    <option value="cidade" selected>Cidade</option>
+                                    <option value="bairro">Bairro</option>
+                                    <option value="canal">Canal</option>
+                                    <option value="cluster">Cluster</option>
+                                    <option value="">(Vazio)</option>
+                                </select>
+                                <i class="bi bi-chevron-right text-muted" style="font-size: 0.7rem;"></i>
+                                <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 120px;" onchange="carregarAtuacaoCampo()">
+                                    <option value="estado">UF (Estado)</option>
+                                    <option value="vendedor">Vendedor</option>
+                                    <option value="cidade">Cidade</option>
+                                    <option value="bairro" selected>Bairro</option>
+                                    <option value="canal">Canal</option>
+                                    <option value="cluster">Cluster</option>
+                                    <option value="">(Vazio)</option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
-                                <label class="small fw-bold">UF</label>
-                                <input type="text" id="atuacao-uf" class="form-control form-control-sm" placeholder="Ex: SP" onchange="carregarAtuacaoCampo()">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="small fw-bold">Cidade</label>
-                                <input type="text" id="atuacao-cidade" class="form-control form-control-sm" placeholder="Ex: São Paulo" onchange="carregarAtuacaoCampo()">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="small fw-bold">Bairro</label>
-                                <input type="text" id="atuacao-bairro" class="form-control form-control-sm" placeholder="Ex: Centro" onchange="carregarAtuacaoCampo()">
-                            </div>
-                            <div class="col-md-1 d-flex align-items-end">
-                                <button class="btn btn-sm btn-primary w-100" onclick="carregarAtuacaoCampo()"><i class="bi bi-search"></i></button>
-                            </div>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap">
-                                <div>
-                                    <label class="small fw-bold mb-1 text-primary"><i class="bi bi-diagram-3-fill"></i> Estrutura de Agrupamento</label>
-                                    <div class="d-flex align-items-center flex-wrap gap-2">
-                                        <select class="form-select form-select-sm atuacao-grupo shadow-sm border-primary" style="width: 140px; border-width: 2px;" onchange="carregarAtuacaoCampo()">
-                                        <option value="estado" selected>UF (Estado)</option>
-                                        <option value="vendedor">Vendedor</option>
-                                        <option value="cidade">Cidade</option>
-                                        <option value="bairro">Bairro</option>
-                                        <option value="canal">Canal</option>
-                                        <option value="cluster">Cluster</option>
-                                        <option value="">(Vazio)</option>
-                                    </select>
-                                    <i class="bi bi-chevron-right text-muted fw-bold" style="font-size: 0.9rem;"></i>
-                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 140px;" onchange="carregarAtuacaoCampo()">
-                                        <option value="estado">UF (Estado)</option>
-                                        <option value="vendedor" selected>Vendedor</option>
-                                        <option value="cidade">Cidade</option>
-                                        <option value="bairro">Bairro</option>
-                                        <option value="canal">Canal</option>
-                                        <option value="cluster">Cluster</option>
-                                        <option value="">(Vazio)</option>
-                                    </select>
-                                    <i class="bi bi-chevron-right text-muted fw-bold" style="font-size: 0.9rem;"></i>
-                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 140px;" onchange="carregarAtuacaoCampo()">
-                                        <option value="estado">UF (Estado)</option>
-                                        <option value="vendedor">Vendedor</option>
-                                        <option value="cidade" selected>Cidade</option>
-                                        <option value="bairro">Bairro</option>
-                                        <option value="canal">Canal</option>
-                                        <option value="cluster">Cluster</option>
-                                        <option value="">(Vazio)</option>
-                                    </select>
-                                    <i class="bi bi-chevron-right text-muted fw-bold" style="font-size: 0.9rem;"></i>
-                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 140px;" onchange="carregarAtuacaoCampo()">
-                                        <option value="estado">UF (Estado)</option>
-                                        <option value="vendedor">Vendedor</option>
-                                        <option value="cidade">Cidade</option>
-                                        <option value="bairro" selected>Bairro</option>
-                                        <option value="canal">Canal</option>
-                                        <option value="cluster">Cluster</option>
-                                        <option value="">(Vazio)</option>
-                                    </select>
-                                    </div>
-                                </div>
-                                <div class="mt-2 mt-md-0">
-                                    <button class="btn btn-sm btn-outline-success fw-bold" onclick="exportarAtuacaoCampoExcel()"><i class="bi bi-file-earmark-excel"></i> Exportar Excel</button>
-                                </div>
-                            </div>
+
+                            <!-- Exportar -->
+                            <button class="btn btn-sm btn-outline-success fw-bold mt-1 mt-md-0 ms-auto" onclick="exportarAtuacaoCampoExcel()" title="Exportar Excel">
+                                <i class="bi bi-file-earmark-excel"></i> Excel
+                            </button>
                         </div>
                         <div class="table-responsive perf-table-scroll mb-3">
                             <table class="table-excel" id="table-atuacao">
