@@ -108,12 +108,6 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
             status_esteira__isnull=False,
             status_esteira__estado__iexact='ABERTO',
         )
-        .filter(
-            Q(status_esteira__nome__iexact='AGENDADO')
-            | Q(status_esteira__nome__icontains='PENDEN')
-        )
-        .exclude(ordem_servico__isnull=True)
-        .exclude(ordem_servico='')
         .select_related(
             'cliente',
             'vendedor',
@@ -466,8 +460,9 @@ def _enviar_relatorio_operador(execucao, detalhes: List[dict]) -> None:
         linhas.append('')
         linhas.append('*Erros:*')
         for item in errs[:8]:
+            os_display = item.get('os') or f"Venda #{item.get('venda_id', '?')}"
             linhas.append(
-                f"• OS {item.get('os', '?')}: {str(item.get('erro') or '')[:80]}"
+                f"• {os_display}: {str(item.get('erro') or '')[:80]}"
             )
     texto = '\n'.join(linhas)
     svc = WhatsAppService()
@@ -659,6 +654,8 @@ def _processar_um_pedido(venda, *, sessao: _SessaoPapUsuarioHolder) -> dict:
         'os': os_num,
         'alterou': False,
     }
+    if not os_num:
+        return {**base, 'erro': 'Sem O.S.', 'ignorado_sem_os': True}
     if len(cpf) not in (11, 14):
         return {**base, 'ignorado_sem_cpf': True}
 
