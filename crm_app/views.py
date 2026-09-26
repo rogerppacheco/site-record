@@ -18521,6 +18521,7 @@ class AtuacaoCampoDiarioView(APIView):
         uf = request.query_params.get('uf')
         cidade = request.query_params.get('cidade')
         bairro = request.query_params.get('bairro')
+        agrupamento_str = request.query_params.get('agrupamento')
         
         from django.db.models import Count, Q
         from django.utils import timezone
@@ -18540,37 +18541,43 @@ class AtuacaoCampoDiarioView(APIView):
         if bairro: qs = qs.filter(bairro__iexact=bairro)
             
         start_m0 = date(hoje.year, hoje.month, 1)
-        end_m0 = hoje
+        end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
         
-        if hoje.month == 1:
-            start_m1 = date(hoje.year - 1, 12, 1)
-            end_m1 = date(hoje.year - 1, 12, calendar.monthrange(hoje.year - 1, 12)[1])
-        else:
-            start_m1 = date(hoje.year, hoje.month - 1, 1)
-            end_m1 = date(hoje.year, hoje.month - 1, calendar.monthrange(hoje.year, hoje.month - 1)[1])
-            
         qs_m0 = qs.filter(data_abertura__date__gte=start_m0, data_abertura__date__lte=end_m0)
-        daily_m0 = qs_m0.values('data_abertura__date').annotate(count=Count('id')).order_by('data_abertura__date')
         
-        qs_m1 = qs.filter(data_abertura__date__gte=start_m1, data_abertura__date__lte=end_m1)
-        daily_m1 = qs_m1.values('data_abertura__date').annotate(count=Count('id')).order_by('data_abertura__date')
+        valid_fields = {
+            'estado': 'estado',
+            'cidade': 'cidade',
+            'bairro': 'bairro',
+            'vendedor': 'vendedor__username',
+            'canal': 'canal',
+            'cluster': 'cluster'
+        }
         
-        dict_m0 = {d['data_abertura__date'].day: d['count'] for d in daily_m0 if d['data_abertura__date']}
-        dict_m1 = {d['data_abertura__date'].day: d['count'] for d in daily_m1 if d['data_abertura__date']}
-        
-        data = []
-        for i in range(1, 32):
-            val_m0 = dict_m0.get(i, 0)
-            val_m1 = dict_m1.get(i, 0)
-            data.append({
-                'dia': i,
-                'atual': val_m0,
-                'anterior': val_m1,
-                'evolucao': val_m0 - val_m1
-            })
+        group_fields = []
+        if agrupamento_str:
+            for f in agrupamento_str.split(','):
+                if f in valid_fields:
+                    group_fields.append(valid_fields[f])
+                    
+        if not group_fields:
+            group_fields = ['estado', 'cidade', 'bairro']
             
+        annotations = {}
+        for d in range(1, 32):
+            try:
+                dia_date = date(hoje.year, hoje.month, d)
+                annotations[f'dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date))
+            except ValueError:
+                annotations[f'dia_{d}'] = Count('id', filter=Q(id__isnull=True))
+                
+        dados = qs_m0.values(*group_fields).annotate(
+            total_mes=Count('id'),
+            **annotations
+        ).filter(total_mes__gt=0).order_by('-total_mes')
+        
         return Response({
             'mes_atual': start_m0.strftime('%m/%Y'),
-            'mes_anterior': start_m1.strftime('%m/%Y'),
-            'dias': data
+            'dias': list(range(1, 32)),
+            'dados': list(dados)
         })

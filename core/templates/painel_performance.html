@@ -2489,33 +2489,79 @@
                     
                     const resD = await axios.get(`/api/crm/atuacao-campo/diario/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const daily = resD.data;
+                    const dadosD = daily.dados;
                     
-                    let th = '<tr><th class="text-start">Período</th>';
+                    let th = '<tr><th class="text-start" style="min-width: 200px;">Local</th>';
                     for (let i = 1; i <= 31; i++) {
-                        th += `<th style="min-width: 45px; text-align: center;">${i}</th>`;
+                        th += `<th style="min-width: 40px; text-align: center;">${i}</th>`;
                     }
-                    th += '</tr>';
+                    th += '<th class="text-center">Total</th></tr>';
                     theadD.innerHTML = th;
                     
-                    let tb = '';
-                    tb += `<tr><td class="text-start fw-bold">${daily.mes_atual}</td>`;
-                    daily.dias.forEach(d => { tb += `<td class="text-center ${d.atual > 0 ? 'fw-bold': 'text-muted'}">${d.atual}</td>`; });
-                    tb += '</tr>';
+                    const groupFields = agrupamentosUnicos.length > 0 ? agrupamentosUnicos : ['estado', 'cidade', 'bairro'];
                     
-                    tb += `<tr><td class="text-start text-muted">${daily.mes_anterior}</td>`;
-                    daily.dias.forEach(d => { tb += `<td class="text-center text-muted">${d.anterior}</td>`; });
-                    tb += '</tr>';
+                    const rootD = { id: 'rootD', nome: 'TOTAL ' + daily.mes_atual, totais: new Array(31).fill(0), total_mes: 0, children: {} };
+                    let idCounterD = 0;
                     
-                    tb += `<tr><td class="text-start fw-bold text-primary">Evolução</td>`;
-                    daily.dias.forEach(d => {
-                        let ev = d.evolucao;
-                        let icon = '<span class="text-muted">-</span>';
-                        if (ev > 0) icon = `<span class="text-success fw-bold d-inline-flex align-items-center"><i class="bi bi-arrow-up-short"></i>${ev}</span>`;
-                        else if (ev < 0) icon = `<span class="text-danger fw-bold d-inline-flex align-items-center"><i class="bi bi-arrow-down-short"></i>${Math.abs(ev)}</span>`;
-                        tb += `<td class="text-center">${icon}</td>`;
+                    dadosD.forEach(d => {
+                        let current = rootD;
+                        current.total_mes += d.total_mes;
+                        for (let i = 1; i <= 31; i++) {
+                            current.totais[i-1] += d[`dia_${i}`] || 0;
+                        }
+                        
+                        const path = groupFields.map(f => {
+                            if (f === 'vendedor') return d['vendedor__username'] || 'NI';
+                            return d[f] || 'NI';
+                        });
+                        
+                        path.forEach(p => {
+                            if (!current.children[p]) {
+                                idCounterD++;
+                                current.children[p] = {
+                                    id: `D${idCounterD}`,
+                                    nome: p,
+                                    totais: new Array(31).fill(0),
+                                    total_mes: 0,
+                                    children: {}
+                                };
+                            }
+                            current = current.children[p];
+                            current.total_mes += d.total_mes;
+                            for (let i = 1; i <= 31; i++) {
+                                current.totais[i-1] += d[`dia_${i}`] || 0;
+                            }
+                        });
                     });
-                    tb += '</tr>';
-                    tbodyD.innerHTML = tb;
+                    
+                    let tbodyHtmlD = '';
+                    function renderNodeD(node, level, parentId) {
+                        const isRoot = level === 0;
+                        const hasChildren = Object.keys(node.children).length > 0;
+                        const padding = isRoot ? 10 : 10 + (level * 20);
+                        const display = isRoot ? '' : 'none'; 
+                        const rowClass = isRoot ? '' : `child-of-${parentId}`;
+                        
+                        let icon = hasChildren ? `<i class="bi bi-plus-square text-primary me-2" id="icon-${node.id}" style="cursor:pointer;" onclick="toggleAtuacaoRow('${node.id}')"></i>` : '<span class="me-3 ms-2"></span>';
+                        
+                        tbodyHtmlD += `<tr id="row-${node.id}" class="${rowClass}" style="display: ${display};">
+                            <td class="text-start fw-bold" style="padding-left: ${padding}px;">
+                                ${icon} ${node.nome}
+                            </td>`;
+                            
+                        node.totais.forEach(val => {
+                            tbodyHtmlD += `<td class="text-center ${val > 0 ? 'fw-bold text-primary' : 'text-muted'}" style="font-size: 0.85rem;">${val > 0 ? val : '-'}</td>`;
+                        });
+                        tbodyHtmlD += `<td class="text-center fw-bold bg-total-column">${node.total_mes}</td></tr>`;
+                        
+                        if (hasChildren) {
+                            const sortedChildren = Object.values(node.children).sort((a,b) => b.total_mes - a.total_mes);
+                            sortedChildren.forEach(child => renderNodeD(child, level + 1, node.id));
+                        }
+                    }
+                    renderNodeD(rootD, 0, '');
+                    tbodyD.innerHTML = tbodyHtmlD;
+                    
                 } catch(e) { console.error("Erro daily view", e); }
                 
             } catch (err) {
