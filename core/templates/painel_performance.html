@@ -848,10 +848,11 @@
                             </div>
                         </div>
                         <div class="row g-2 mb-3">
-                            <div class="col-12">
-                                <label class="small fw-bold mb-1 text-primary"><i class="bi bi-diagram-3-fill"></i> Estrutura de Agrupamento</label>
-                                <div class="d-flex align-items-center flex-wrap gap-2">
-                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm border-primary" style="width: 140px; border-width: 2px;" onchange="carregarAtuacaoCampo()">
+                            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap">
+                                <div>
+                                    <label class="small fw-bold mb-1 text-primary"><i class="bi bi-diagram-3-fill"></i> Estrutura de Agrupamento</label>
+                                    <div class="d-flex align-items-center flex-wrap gap-2">
+                                        <select class="form-select form-select-sm atuacao-grupo shadow-sm border-primary" style="width: 140px; border-width: 2px;" onchange="carregarAtuacaoCampo()">
                                         <option value="estado" selected>UF (Estado)</option>
                                         <option value="vendedor">Vendedor</option>
                                         <option value="cidade">Cidade</option>
@@ -890,6 +891,10 @@
                                         <option value="cluster">Cluster</option>
                                         <option value="">(Vazio)</option>
                                     </select>
+                                    </div>
+                                </div>
+                                <div class="mt-2 mt-md-0">
+                                    <button class="btn btn-sm btn-outline-success fw-bold" onclick="exportarAtuacaoCampoExcel()"><i class="bi bi-file-earmark-excel"></i> Exportar Excel</button>
                                 </div>
                             </div>
                         </div>
@@ -2388,8 +2393,11 @@
                 const dados = res.data.dados; // array of {estado, cidade, total_6m, mes_0, mes_1...}
                 
                 let theadHtml = '<tr><th class="text-start">Local</th>';
-                meses.forEach(m => {
+                meses.forEach((m, idx) => {
                     theadHtml += `<th>${m}</th>`;
+                    if (idx === 0) {
+                        theadHtml += `<th title="Tendência em relação ao mês anterior">Evolução</th>`;
+                    }
                 });
                 theadHtml += '<th>Total 6m</th></tr>';
                 thead.innerHTML = theadHtml;
@@ -2454,6 +2462,13 @@
                     meses.forEach((m, idx) => {
                         const val = node.totais[idx];
                         tbodyHtml += `<td class="${val > 0 ? 'fw-bold' : 'text-muted'}">${val}</td>`;
+                        if (idx === 0) {
+                            const valPrev = node.totais[1] || 0;
+                            let trendIcon = '<span class="text-muted">-</span>';
+                            if (val > valPrev) trendIcon = '<i class="bi bi-arrow-up-short text-success fw-bold" style="font-size: 1.2rem;" title="Subiu"></i>';
+                            else if (val < valPrev) trendIcon = '<i class="bi bi-arrow-down-short text-danger fw-bold" style="font-size: 1.2rem;" title="Caiu"></i>';
+                            tbodyHtml += `<td>${trendIcon}</td>`;
+                        }
                     });
                     tbodyHtml += `<td class="fw-bold bg-total-column">${node.total_6m}</td></tr>`;
                     
@@ -2471,6 +2486,29 @@
                 tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Erro ao carregar dados</td></tr>';
             }
         }
+        
+        window.exportarAtuacaoCampoExcel = function() {
+            const table = document.getElementById('table-atuacao');
+            if (!table) return;
+            
+            const clone = table.cloneNode(true);
+            clone.querySelectorAll('tr').forEach(tr => tr.style.display = '');
+            clone.querySelectorAll('.bi-arrow-up-short').forEach(i => i.outerHTML = '<span style="color: green; font-weight: bold;">Subiu</span>');
+            clone.querySelectorAll('.bi-arrow-down-short').forEach(i => i.outerHTML = '<span style="color: red; font-weight: bold;">Caiu</span>');
+            clone.querySelectorAll('.bi-plus-square, .bi-dash-square').forEach(i => i.remove());
+            
+            const html = clone.outerHTML;
+            const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(
+                '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>' + html + '</body></html>'
+            )));
+            
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "Atuacao_em_Campo.xls";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
         
         window.toggleAtuacaoRow = function(id) {
             const icon = document.getElementById('icon-' + id);
