@@ -893,8 +893,11 @@
                             </table>
                         </div>
                         
-                        <h6 class="text-primary mt-4 fw-bold mb-2"><i class="bi bi-calendar3"></i> Visão Diária (Resumo do Filtro Atual)</h6>
-                        <div class="table-responsive perf-table-scroll" style="max-height: 200px;">
+                        <h6 class="text-primary mt-4 fw-bold mb-2" style="cursor: pointer;" onclick="toggleVisaoDiaria()">
+                            <i class="bi bi-plus-square me-1" id="icon-toggle-diaria"></i> 
+                            <i class="bi bi-calendar3"></i> Visão Diária (Resumo do Filtro Atual)
+                        </h6>
+                        <div class="table-responsive perf-table-scroll" style="max-height: 200px; display: none;" id="container-visao-diaria">
                             <table class="table-excel" id="table-atuacao-diario">
                                 <thead id="thead-atuacao-diario"></thead>
                                 <tbody id="tbody-atuacao-diario"></tbody>
@@ -2520,6 +2523,20 @@
                 tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Erro ao carregar dados</td></tr>';
             }
         }
+        
+        window.toggleVisaoDiaria = function() {
+            const container = document.getElementById('container-visao-diaria');
+            const icon = document.getElementById('icon-toggle-diaria');
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                icon.classList.remove('bi-plus-square');
+                icon.classList.add('bi-dash-square');
+            } else {
+                container.style.display = 'none';
+                icon.classList.remove('bi-dash-square');
+                icon.classList.add('bi-plus-square');
+            }
+        };
         
         window.exportarAtuacaoCampoExcel = async function() {
             const vendedor = document.getElementById('atuacao-vendedor').value;
