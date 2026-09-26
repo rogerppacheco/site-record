@@ -18504,6 +18504,75 @@ class ExportarAtuacaoCampoExcelView(APIView):
                     
         write_node(root, 0)
         
+        # --- PLANILHA 2: VISÃO DIÁRIA ---
+        ws2 = wb.create_sheet(title="Visão Diária")
+        
+        start_m0 = date(hoje.year, hoje.month, 1)
+        end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
+        qs_m0 = qs.filter(data_abertura__date__gte=start_m0, data_abertura__date__lte=end_m0)
+        
+        annotations_d = {}
+        for d in range(1, 32):
+            try:
+                dia_date = date(hoje.year, hoje.month, d)
+                annotations_d[f'dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date))
+            except ValueError:
+                annotations_d[f'dia_{d}'] = Count('id', filter=Q(id__isnull=True))
+                
+        dados_d = qs_m0.values(*group_fields).annotate(
+            total_mes=Count('id'),
+            **annotations_d
+        ).filter(total_mes__gt=0).order_by('-total_mes')
+        
+        headers_d = ["Local"] + [str(i) for i in range(1, 32)] + ["Total Mês"]
+        ws2.append(headers_d)
+        
+        for col, h in enumerate(headers_d, 1):
+            cell = ws2.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            ws2.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 6
+        ws2.column_dimensions['A'].width = 40
+        
+        root_d = {'nome': 'TOTAL ' + start_m0.strftime('%m/%Y'), 'totais': [0]*31, 'total_mes': 0, 'children': {}}
+        for d in dados_d:
+            current = root_d
+            current['total_mes'] += d['total_mes']
+            for i in range(1, 32):
+                current['totais'][i-1] += d.get(f'dia_{i}', 0)
+                
+            path = [d.get(f) or 'NI' for f in group_fields]
+            for p in path:
+                if p not in current['children']:
+                    current['children'][p] = {'nome': p, 'totais': [0]*31, 'total_mes': 0, 'children': {}}
+                current = current['children'][p]
+                current['total_mes'] += d['total_mes']
+                for i in range(1, 32):
+                    current['totais'][i-1] += d.get(f'dia_{i}', 0)
+                    
+        current_row_d = 2
+        def write_node_d(node, level):
+            nonlocal current_row_d
+            
+            indent = "    " * level
+            row_data = [f"{indent}{node['nome']}"] + node['totais'] + [node['total_mes']]
+            ws2.append(row_data)
+            
+            row_idx = current_row_d
+            if level > 0:
+                ws2.row_dimensions[row_idx].outline_level = level
+                ws2.row_dimensions[row_idx].hidden = True
+                
+            current_row_d += 1
+            
+            if node['children']:
+                sorted_children = sorted(node['children'].values(), key=lambda x: x['total_mes'], reverse=True)
+                for child in sorted_children:
+                    write_node_d(child, level + 1)
+                    
+        write_node_d(root_d, 0)
+        
         output = BytesIO()
         wb.save(output)
         output.seek(0)

@@ -893,11 +893,16 @@
                             </table>
                         </div>
                         
-                        <h6 class="text-primary mt-4 fw-bold mb-2" style="cursor: pointer;" onclick="toggleVisaoDiaria()">
-                            <i class="bi bi-plus-square me-1" id="icon-toggle-diaria"></i> 
-                            <i class="bi bi-calendar3"></i> Visão Diária (Resumo do Filtro Atual)
-                        </h6>
-                        <div class="table-responsive perf-table-scroll" style="max-height: 200px; display: none;" id="container-visao-diaria">
+                        <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+                            <h6 class="text-primary fw-bold mb-0" style="cursor: pointer;" onclick="toggleVisaoDiaria()">
+                                <i class="bi bi-plus-square me-1" id="icon-toggle-diaria"></i> 
+                                <i class="bi bi-calendar3"></i> Visão Diária (Resumo do Filtro Atual)
+                            </h6>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleFullScreenDiaria()" title="Tela Cheia (Visão Diária)">
+                                <i class="bi bi-arrows-fullscreen"></i>
+                            </button>
+                        </div>
+                        <div class="table-responsive perf-table-scroll bg-white" style="max-height: 200px; display: none;" id="container-visao-diaria">
                             <table class="table-excel" id="table-atuacao-diario">
                                 <thead id="thead-atuacao-diario"></thead>
                                 <tbody id="tbody-atuacao-diario"></tbody>
@@ -2657,6 +2662,38 @@
                 });
             }
         };
+        
+        window.toggleFullScreenDiaria = function() {
+            const elem = document.getElementById('container-visao-diaria');
+            if (!document.fullscreenElement) {
+                elem.style.maxHeight = '100vh';
+                elem.style.display = 'block'; // Ensure it's visible when fullscreening
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { /* Safari */
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { /* IE11 */
+                    elem.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) { /* Safari */
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) { /* IE11 */
+                    document.msExitFullscreen();
+                }
+            }
+        };
+
+        document.addEventListener('fullscreenchange', () => {
+            const elem = document.getElementById('container-visao-diaria');
+            if (elem) {
+                if (!document.fullscreenElement) {
+                    elem.style.maxHeight = '200px';
+                }
+            }
+        });
 
         window.toggleFullScreenPainel = function() {
             const elem = document.querySelector('.painel-performance-page');
