@@ -24,6 +24,22 @@ TELEFONE_JOB_PREFIX = 'CONSULTA-ESTEIRA-PAP'
 ABAS_CONSULTA_PERMITIDAS = frozenset({'TODOS', 'AGENDADO', 'PENDEN'})
 
 
+def mensagem_erro_consulta_pap_para_usuario(msg: str) -> str:
+    """Traduz erro técnico do job para texto exibível na Esteira."""
+    raw = (msg or '').strip()
+    if not raw:
+        return ''
+    low = raw.lower()
+    if 'too many clients' in low:
+        return (
+            'O banco está sem conexões livres no momento. '
+            'A consulta não chegou a começar. Tente novamente em alguns minutos.'
+        )
+    if 'django_sync_timeout' in low:
+        return 'A consulta travou ao gravar o progresso no banco. Tente novamente.'
+    return raw
+
+
 def _run_django_sync(func, timeout_seconds: int = 120):
     """Executa ORM Django no mesmo thread, usando DJANGO_ALLOW_ASYNC_UNSAFE para evitar erro com Playwright."""
     import os
