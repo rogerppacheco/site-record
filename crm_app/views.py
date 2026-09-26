@@ -18711,8 +18711,9 @@ class AtuacaoCampoDiarioView(APIView):
                 
         dados = qs_combined.values(*group_fields).annotate(
             total_mes_m0=Count('id', filter=Q(data_abertura__date__gte=start_m0)),
+            total_mes_m1=Count('id', filter=Q(data_abertura__date__lt=start_m0)),
             **annotations
-        ).filter(total_mes_m0__gt=0).order_by('-total_mes_m0')
+        ).filter(Q(total_mes_m0__gt=0) | Q(total_mes_m1__gt=0)).order_by('-total_mes_m0')
         
         return Response({
             'mes_atual': start_m0.strftime('%m/%Y'),
