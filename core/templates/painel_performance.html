@@ -30,6 +30,11 @@
             overflow: hidden;
             box-sizing: border-box;
         }
+        .painel-performance-page:fullscreen,
+        .painel-performance-page:-webkit-full-screen {
+            height: 100vh !important;
+            background-color: var(--bg-primary, #fff);
+        }
         .painel-performance-page .perf-sticky-chrome {
             position: sticky;
             top: 0;
@@ -681,6 +686,10 @@
 
                 <button class="btn btn-icon btn-icon-primary" onclick="carregarDados()" title="Atualizar" aria-label="Atualizar dados">
                     <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                </button>
+
+                <button class="btn btn-icon btn-outline-secondary ms-auto" onclick="toggleFullScreenPainel()" title="Tela Cheia" aria-label="Tela Cheia">
+                    <i class="bi bi-arrows-fullscreen" id="icon-fullscreen"></i>
                 </button>
         </div>
 
@@ -2491,6 +2500,51 @@
                     c.style.display = '';
                 });
             }
+            }
         };
+
+        window.toggleFullScreenPainel = function() {
+            const elem = document.querySelector('.painel-performance-page');
+            const icon = document.getElementById('icon-fullscreen');
+            
+            if (!document.fullscreenElement) {
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { /* Safari */
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { /* IE11 */
+                    elem.msRequestFullscreen();
+                }
+                if (icon) {
+                    icon.classList.remove('bi-arrows-fullscreen');
+                    icon.classList.add('bi-fullscreen-exit');
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) { /* Safari */
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) { /* IE11 */
+                    document.msExitFullscreen();
+                }
+                if (icon) {
+                    icon.classList.remove('bi-fullscreen-exit');
+                    icon.classList.add('bi-arrows-fullscreen');
+                }
+            }
+        };
+
+        document.addEventListener('fullscreenchange', () => {
+            const icon = document.getElementById('icon-fullscreen');
+            if (icon) {
+                if (document.fullscreenElement) {
+                    icon.classList.remove('bi-arrows-fullscreen');
+                    icon.classList.add('bi-fullscreen-exit');
+                } else {
+                    icon.classList.remove('bi-fullscreen-exit');
+                    icon.classList.add('bi-arrows-fullscreen');
+                }
+            }
+        });
     </script>
 {% endblock %}
