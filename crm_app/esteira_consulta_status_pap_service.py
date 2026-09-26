@@ -25,34 +25,17 @@ ABAS_CONSULTA_PERMITIDAS = frozenset({'TODOS', 'AGENDADO', 'PENDEN'})
 
 
 def _run_django_sync(func, timeout_seconds: int = 120):
-    """Executa ORM Django em thread dedicada (evita SynchronousOnlyOperation após Playwright)."""
-    import queue
-
-    import django.db
-
-    q = queue.Queue()
-
-    def worker():
-        try:
-            django.db.close_old_connections()
-            q.put(('ok', func()))
-        except Exception as e:
-            q.put(('err', e))
-        finally:
-            django.db.close_old_connections()
-
-    t = threading.Thread(target=worker, daemon=True, name='consulta-esteira-orm')
-    t.start()
-    t.join(timeout=timeout_seconds)
-    if not q.empty():
-        kind, payload = q.get()
-        if kind == 'err':
-            raise payload
-        return payload
-    if t.is_alive():
-        logger.error('[CONSULTA ESTEIRA] _run_django_sync expirou após %ss.', timeout_seconds)
-        raise TimeoutError('django_sync_timeout')
-    raise TimeoutError('django_sync_timeout')
+    """Executa ORM Django no mesmo thread, usando DJANGO_ALLOW_ASYNC_UNSAFE para evitar erro com Playwright."""
+    import os
+    old_val = os.environ.get('DJANGO_ALLOW_ASYNC_UNSAFE')
+    os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
+    try:
+        return func()
+    finally:
+        if old_val is None:
+            del os.environ['DJANGO_ALLOW_ASYNC_UNSAFE']
+        else:
+            os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = old_val
 
 
 def _cfg(nome: str, default):

@@ -711,52 +711,31 @@ def _iniciar_fluxo_credito(telefone: str, sessao) -> str:
 
 
 def _run_django_sync(func, timeout_seconds: int = 120):
-    """Executa operações Django/ORM/WhatsApp em thread sem event loop (evita SynchronousOnlyOperation após Playwright)."""
-    import queue
-    q = queue.Queue()
-    def worker():
-        try:
-            import django.db
-            django.db.close_old_connections()
-            func()
-            q.put(None)
-        except Exception as e:
-            q.put(e)
-    t = threading.Thread(target=worker)
-    t.start()
-    t.join(timeout=timeout_seconds)
-    if not q.empty():
-        exc = q.get()
-        if exc is not None:
-            raise exc
-    elif t.is_alive():
-        logger.error(
-            "[Webhook] _run_django_sync expirou após %ss — resposta WhatsApp pode não ter sido enviada.",
-            timeout_seconds,
-        )
+    """Executa operações Django/ORM/WhatsApp sem thread adicional usando DJANGO_ALLOW_ASYNC_UNSAFE."""
+    import os
+    old_val = os.environ.get('DJANGO_ALLOW_ASYNC_UNSAFE')
+    os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
+    try:
+        return func()
+    finally:
+        if old_val is None:
+            del os.environ['DJANGO_ALLOW_ASYNC_UNSAFE']
+        else:
+            os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = old_val
 
 
 def _run_orm_returning(callable, timeout_seconds: int = 60):
-    """Executa callable ORM em thread dedicada e retorna o valor (após Playwright async context)."""
-    result: list = [None]
-    exc_holder: list = [None]
-
-    def worker() -> None:
-        try:
-            import django.db
-            django.db.close_old_connections()
-            result[0] = callable()
-        except Exception as e:
-            exc_holder[0] = e
-
-    t = threading.Thread(target=worker, name="orm-sync-returning")
-    t.start()
-    t.join(timeout=timeout_seconds)
-    if exc_holder[0]:
-        raise exc_holder[0]
-    if t.is_alive():
-        raise TimeoutError(f"_run_orm_returning expirou após {timeout_seconds}s")
-    return result[0]
+    """Executa callable ORM sem thread dedicada e retorna o valor."""
+    import os
+    old_val = os.environ.get('DJANGO_ALLOW_ASYNC_UNSAFE')
+    os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
+    try:
+        return callable()
+    finally:
+        if old_val is None:
+            del os.environ['DJANGO_ALLOW_ASYNC_UNSAFE']
+        else:
+            os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = old_val
 
 
 def _executar_analise_credito_background(telefone: str, usuario_id: int, documento: str, cpf_representante: str = None):
