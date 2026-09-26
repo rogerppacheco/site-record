@@ -18612,7 +18612,14 @@ class AtuacaoCampoDiarioView(APIView):
         start_m0 = date(hoje.year, hoje.month, 1)
         end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
         
-        qs_m0 = qs.filter(data_abertura__date__gte=start_m0, data_abertura__date__lte=end_m0)
+        if hoje.month == 1:
+            start_m1 = date(hoje.year - 1, 12, 1)
+            end_m1 = date(hoje.year - 1, 12, calendar.monthrange(hoje.year - 1, 12)[1])
+        else:
+            start_m1 = date(hoje.year, hoje.month - 1, 1)
+            end_m1 = date(hoje.year, hoje.month - 1, calendar.monthrange(hoje.year, hoje.month - 1)[1])
+            
+        qs_combined = qs.filter(data_abertura__date__gte=start_m1, data_abertura__date__lte=end_m0)
         
         valid_fields = {
             'estado': 'estado',
@@ -18635,15 +18642,21 @@ class AtuacaoCampoDiarioView(APIView):
         annotations = {}
         for d in range(1, 32):
             try:
-                dia_date = date(hoje.year, hoje.month, d)
-                annotations[f'dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date))
+                dia_date_m0 = date(hoje.year, hoje.month, d)
+                annotations[f'm0_dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date_m0))
             except ValueError:
-                annotations[f'dia_{d}'] = Count('id', filter=Q(id__isnull=True))
+                annotations[f'm0_dia_{d}'] = Count('id', filter=Q(id__isnull=True))
                 
-        dados = qs_m0.values(*group_fields).annotate(
-            total_mes=Count('id'),
+            try:
+                dia_date_m1 = date(start_m1.year, start_m1.month, d)
+                annotations[f'm1_dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date_m1))
+            except ValueError:
+                annotations[f'm1_dia_{d}'] = Count('id', filter=Q(id__isnull=True))
+                
+        dados = qs_combined.values(*group_fields).annotate(
+            total_mes_m0=Count('id', filter=Q(data_abertura__date__gte=start_m0)),
             **annotations
-        ).filter(total_mes__gt=0).order_by('-total_mes')
+        ).filter(total_mes_m0__gt=0).order_by('-total_mes_m0')
         
         return Response({
             'mes_atual': start_m0.strftime('%m/%Y'),

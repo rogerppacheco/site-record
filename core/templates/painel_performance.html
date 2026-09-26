@@ -886,7 +886,15 @@
                                 <i class="bi bi-file-earmark-excel"></i> Excel
                             </button>
                         </div>
-                        <div class="table-responsive perf-table-scroll mb-3">
+                        <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
+                            <h6 class="text-primary fw-bold mb-0">
+                                <i class="bi bi-table"></i> Visão Mensal
+                            </h6>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleFullScreenMensal()" title="Tela Cheia (Visão Mensal)">
+                                <i class="bi bi-arrows-fullscreen"></i>
+                            </button>
+                        </div>
+                        <div class="table-responsive perf-table-scroll mb-3 bg-white" id="container-visao-mensal">
                             <table class="table-excel" id="table-atuacao">
                                 <thead id="thead-atuacao"></thead>
                                 <tbody id="tbody-atuacao"></tbody>
@@ -2505,14 +2513,15 @@
                     
                     const groupFields = agrupamentosUnicos.length > 0 ? agrupamentosUnicos : ['estado', 'cidade', 'bairro'];
                     
-                    const rootD = { id: 'rootD', nome: 'TOTAL ' + daily.mes_atual, totais: new Array(31).fill(0), total_mes: 0, children: {} };
+                    const rootD = { id: 'rootD', nome: 'TOTAL ' + daily.mes_atual, totais: new Array(31).fill(0), totais_m1: new Array(31).fill(0), total_mes: 0, children: {} };
                     let idCounterD = 0;
                     
                     dadosD.forEach(d => {
                         let current = rootD;
-                        current.total_mes += d.total_mes;
+                        current.total_mes += d.total_mes_m0;
                         for (let i = 1; i <= 31; i++) {
-                            current.totais[i-1] += d[`dia_${i}`] || 0;
+                            current.totais[i-1] += d[`m0_dia_${i}`] || 0;
+                            current.totais_m1[i-1] += d[`m1_dia_${i}`] || 0;
                         }
                         
                         const path = groupFields.map(f => {
@@ -2527,14 +2536,16 @@
                                     id: `D${idCounterD}`,
                                     nome: p,
                                     totais: new Array(31).fill(0),
+                                    totais_m1: new Array(31).fill(0),
                                     total_mes: 0,
                                     children: {}
                                 };
                             }
                             current = current.children[p];
-                            current.total_mes += d.total_mes;
+                            current.total_mes += d.total_mes_m0;
                             for (let i = 1; i <= 31; i++) {
-                                current.totais[i-1] += d[`dia_${i}`] || 0;
+                                current.totais[i-1] += d[`m0_dia_${i}`] || 0;
+                                current.totais_m1[i-1] += d[`m1_dia_${i}`] || 0;
                             }
                         });
                     });
@@ -2554,9 +2565,22 @@
                                 ${icon} ${node.nome}
                             </td>`;
                             
-                        node.totais.forEach(val => {
-                            tbodyHtmlD += `<td class="text-center ${val > 0 ? 'fw-bold text-primary' : 'text-muted'}" style="font-size: 0.85rem;">${val > 0 ? val : '-'}</td>`;
-                        });
+                        for (let i = 0; i < 31; i++) {
+                            let m0 = node.totais[i];
+                            let m1 = node.totais_m1[i];
+                            let diff = m0 - m1;
+                            
+                            if (m0 > 0 || m1 > 0) {
+                                let trendStr = '';
+                                if (diff > 0) trendStr = `<span class="text-success ms-1" style="font-size:0.75rem;">(+${diff}<i class="bi bi-arrow-up-short"></i>)</span>`;
+                                else if (diff < 0) trendStr = `<span class="text-danger ms-1" style="font-size:0.75rem;">(${diff}<i class="bi bi-arrow-down-short"></i>)</span>`;
+                                else trendStr = `<span class="text-muted ms-1" style="font-size:0.75rem;">(=)</span>`;
+                                
+                                tbodyHtmlD += `<td class="text-center ${m0 > 0 ? 'fw-bold text-primary' : 'text-muted'}" style="font-size: 0.85rem; white-space: nowrap;">${m0 > 0 ? m0 : '-'}${trendStr}</td>`;
+                            } else {
+                                tbodyHtmlD += `<td class="text-center text-muted" style="font-size: 0.85rem;">-</td>`;
+                            }
+                        }
                         tbodyHtmlD += `<td class="text-center fw-bold bg-total-column">${node.total_mes}</td></tr>`;
                         
                         if (hasChildren) {
@@ -2663,6 +2687,25 @@
             }
         };
         
+        window.toggleFullScreenMensal = function() {
+            const elem = document.getElementById('container-visao-mensal');
+            if (!document.fullscreenElement) {
+                elem.style.maxHeight = '100vh';
+                elem.style.display = 'block';
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) {
+                    elem.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        };
+
         window.toggleFullScreenDiaria = function() {
             const elem = document.getElementById('container-visao-diaria');
             if (!document.fullscreenElement) {
