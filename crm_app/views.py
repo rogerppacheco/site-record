@@ -18398,7 +18398,7 @@ class ExportarAtuacaoCampoExcelView(APIView):
         from datetime import date
         from .models import Venda
         import openpyxl
-        from openpyxl.styles import Font, Alignment, PatternFill
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         from io import BytesIO
         from django.http import HttpResponse
         
@@ -18454,7 +18454,29 @@ class ExportarAtuacaoCampoExcelView(APIView):
         ws.append(headers)
         
         header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+        header_fill = PatternFill(start_color="111827", end_color="111827", fill_type="solid")
+        
+        border_thin = Border(left=Side(style='thin', color='E5E7EB'),
+                             right=Side(style='thin', color='E5E7EB'),
+                             top=Side(style='thin', color='E5E7EB'),
+                             bottom=Side(style='thin', color='E5E7EB'))
+                             
+        fill_level_0 = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+        font_level_0 = Font(bold=True, color="FFFFFF")
+        
+        fill_level_1 = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
+        font_level_1 = Font(bold=True, color="111827")
+        
+        fill_level_2 = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
+        font_level_2 = Font(bold=True, color="374151")
+        
+        fill_level_3 = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+        font_level_3 = Font(color="4B5563")
+        
+        font_success = Font(bold=True, color="16A34A")
+        font_danger = Font(bold=True, color="DC2626")
+        font_muted = Font(color="9CA3AF")
+        
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col)
             cell.font = header_font
@@ -18491,6 +18513,27 @@ class ExportarAtuacaoCampoExcelView(APIView):
             ws.append(row_data)
             
             row_idx = current_row
+            fill = fill_level_0 if level == 0 else fill_level_1 if level == 1 else fill_level_2 if level == 2 else fill_level_3
+            font = font_level_0 if level == 0 else font_level_1 if level == 1 else font_level_2 if level == 2 else font_level_3
+            
+            for col in range(1, len(row_data) + 1):
+                cell = ws.cell(row=row_idx, column=col)
+                cell.fill = fill
+                cell.font = font
+                cell.border = border_thin
+                if col > 1:
+                    cell.alignment = Alignment(horizontal="center")
+                    if col == 2: # Trend
+                        if diff > 0:
+                            cell.font = font_success if level > 0 else font_level_0
+                        elif diff < 0:
+                            cell.font = font_danger if level > 0 else font_level_0
+                        else:
+                            cell.font = font_muted if level > 0 else font_level_0
+                    elif col > 2 and col < len(row_data) + 1:
+                        if row_data[col-1] == 0:
+                            cell.font = font_muted if level > 0 else font_level_0
+            
             if level > 0:
                 ws.row_dimensions[row_idx].outline_level = level
                 ws.row_dimensions[row_idx].hidden = True
@@ -18556,10 +18599,23 @@ class ExportarAtuacaoCampoExcelView(APIView):
             nonlocal current_row_d
             
             indent = "    " * level
-            row_data = [f"{indent}{node['nome']}"] + node['totais'] + [node['total_mes']]
+            row_data = [f"{indent}{node['nome']}"] + [v if v > 0 else '-' for v in node['totais']] + [node['total_mes']]
             ws2.append(row_data)
             
             row_idx = current_row_d
+            fill = fill_level_0 if level == 0 else fill_level_1 if level == 1 else fill_level_2 if level == 2 else fill_level_3
+            font = font_level_0 if level == 0 else font_level_1 if level == 1 else font_level_2 if level == 2 else font_level_3
+            
+            for col in range(1, len(row_data) + 1):
+                cell = ws2.cell(row=row_idx, column=col)
+                cell.fill = fill
+                cell.font = font
+                cell.border = border_thin
+                if col > 1:
+                    cell.alignment = Alignment(horizontal="center")
+                    if col < len(row_data) and row_data[col-1] == '-':
+                        cell.font = font_muted if level > 0 else font_level_0
+            
             if level > 0:
                 ws2.row_dimensions[row_idx].outline_level = level
                 ws2.row_dimensions[row_idx].hidden = True
