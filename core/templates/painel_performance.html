@@ -840,9 +840,47 @@
                         </div>
                         <div class="row g-2 mb-3">
                             <div class="col-12">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="atuacao-agrupar-vendedor" onchange="carregarAtuacaoCampo()">
-                                    <label class="form-check-label small fw-bold" for="atuacao-agrupar-vendedor">Detalhar por Vendedor</label>
+                                <label class="small fw-bold mb-1 text-primary"><i class="bi bi-diagram-3-fill"></i> Estrutura de Agrupamento</label>
+                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm border-primary" style="width: 140px; border-width: 2px;" onchange="carregarAtuacaoCampo()">
+                                        <option value="estado" selected>UF (Estado)</option>
+                                        <option value="vendedor">Vendedor</option>
+                                        <option value="cidade">Cidade</option>
+                                        <option value="bairro">Bairro</option>
+                                        <option value="canal">Canal</option>
+                                        <option value="cluster">Cluster</option>
+                                        <option value="">(Vazio)</option>
+                                    </select>
+                                    <i class="bi bi-chevron-right text-muted fw-bold" style="font-size: 0.9rem;"></i>
+                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 140px;" onchange="carregarAtuacaoCampo()">
+                                        <option value="estado">UF (Estado)</option>
+                                        <option value="vendedor" selected>Vendedor</option>
+                                        <option value="cidade">Cidade</option>
+                                        <option value="bairro">Bairro</option>
+                                        <option value="canal">Canal</option>
+                                        <option value="cluster">Cluster</option>
+                                        <option value="">(Vazio)</option>
+                                    </select>
+                                    <i class="bi bi-chevron-right text-muted fw-bold" style="font-size: 0.9rem;"></i>
+                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 140px;" onchange="carregarAtuacaoCampo()">
+                                        <option value="estado">UF (Estado)</option>
+                                        <option value="vendedor">Vendedor</option>
+                                        <option value="cidade" selected>Cidade</option>
+                                        <option value="bairro">Bairro</option>
+                                        <option value="canal">Canal</option>
+                                        <option value="cluster">Cluster</option>
+                                        <option value="">(Vazio)</option>
+                                    </select>
+                                    <i class="bi bi-chevron-right text-muted fw-bold" style="font-size: 0.9rem;"></i>
+                                    <select class="form-select form-select-sm atuacao-grupo shadow-sm" style="width: 140px;" onchange="carregarAtuacaoCampo()">
+                                        <option value="estado">UF (Estado)</option>
+                                        <option value="vendedor">Vendedor</option>
+                                        <option value="cidade">Cidade</option>
+                                        <option value="bairro" selected>Bairro</option>
+                                        <option value="canal">Canal</option>
+                                        <option value="cluster">Cluster</option>
+                                        <option value="">(Vazio)</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -2305,7 +2343,11 @@
             const uf = document.getElementById('atuacao-uf').value;
             const cidade = document.getElementById('atuacao-cidade').value;
             const bairro = document.getElementById('atuacao-bairro').value;
-            const agruparVendedor = document.getElementById('atuacao-agrupar-vendedor').checked;
+            
+            const agrupamentos = Array.from(document.querySelectorAll('.atuacao-grupo'))
+                .map(s => s.value)
+                .filter(v => v);
+            const agrupamentosUnicos = [...new Set(agrupamentos)];
             
             const tbody = document.getElementById('tbody-atuacao');
             const thead = document.getElementById('thead-atuacao');
@@ -2330,7 +2372,7 @@
                 if (uf) params.set('uf', uf);
                 if (cidade) params.set('cidade', cidade);
                 if (bairro) params.set('bairro', bairro);
-                if (agruparVendedor) params.set('agrupar_vendedor', 'true');
+                if (agrupamentosUnicos.length > 0) params.set('agrupamento', agrupamentosUnicos.join(','));
                 
                 const res = await axios.get(`/api/crm/atuacao-campo/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const meses = res.data.meses; // array of "MM/YYYY"
@@ -2350,14 +2392,23 @@
                 
                 const root = { id: 'root', nome: 'TOTAL', totais: Array(meses.length).fill(0), total_6m: 0, children: {} };
 
+                const agrupamentoKeys = {
+                    'estado': 'estado',
+                    'vendedor': 'vendedor__username',
+                    'cidade': 'cidade',
+                    'bairro': 'bairro',
+                    'canal': 'canal',
+                    'cluster': 'cluster'
+                };
+                
+                const fieldsToGroup = agrupamentosUnicos.length > 0 ? agrupamentosUnicos : ['estado', 'cidade', 'bairro'];
+
                 dados.forEach((d, index) => {
                     let path = [];
-                    path.push(d.estado || 'NI');
-                    if (agruparVendedor) {
-                        path.push(d.vendedor__username || 'NI');
-                    }
-                    path.push(d.cidade || 'NI');
-                    path.push(d.bairro || 'NI');
+                    fieldsToGroup.forEach(f => {
+                        let backendKey = agrupamentoKeys[f];
+                        path.push(d[backendKey] || 'NI');
+                    });
                     
                     let current = root;
                     current.total_6m += d.total_6m;

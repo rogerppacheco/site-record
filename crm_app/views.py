@@ -18321,7 +18321,7 @@ class AtuacaoCampoView(APIView):
         uf = request.query_params.get('uf')
         cidade = request.query_params.get('cidade')
         bairro = request.query_params.get('bairro')
-        agrupar_vendedor = request.query_params.get('agrupar_vendedor') == 'true'
+        agrupamento_str = request.query_params.get('agrupamento')
         
         from dateutil.relativedelta import relativedelta
         from django.db.models import Count, Q
@@ -18353,14 +18353,28 @@ class AtuacaoCampoView(APIView):
             end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
             annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
         
-        group_fields = ['estado', 'cidade', 'bairro']
-        if agrupar_vendedor:
-            group_fields.append('vendedor__username')
+        valid_fields = {
+            'estado': 'estado',
+            'cidade': 'cidade',
+            'bairro': 'bairro',
+            'vendedor': 'vendedor__username',
+            'canal': 'canal',
+            'cluster': 'cluster'
+        }
+        
+        group_fields = []
+        if agrupamento_str:
+            for f in agrupamento_str.split(','):
+                if f in valid_fields:
+                    group_fields.append(valid_fields[f])
+                    
+        if not group_fields:
+            group_fields = ['estado', 'cidade', 'bairro']
             
         dados = qs.values(*group_fields).annotate(
             total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
             **annotations
-        ).filter(total_6m__gt=0).order_by('-total_6m', 'estado', 'cidade')
+        ).filter(total_6m__gt=0).order_by('-total_6m')
         
         return Response({
             'meses': [m.strftime('%m/%Y') for m in meses],
