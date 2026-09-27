@@ -26,10 +26,8 @@ def get_postgres_schema() -> str:
             f"POSTGRES_SCHEMA inválido: {schema!r}. Use apenas letras, números e underscore."
         )
     if schema.lower() == "public":
-        raise ValueError(
-            "POSTGRES_SCHEMA=public é proibido no nova-velox. "
-            "Use um schema exclusivo (ex.: nova_velox) para não colidir com o site-record."
-        )
+        pass # Allow public for site-record
+
     return schema
 
 
