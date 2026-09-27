@@ -22,17 +22,34 @@ TELEFONE_JOB = 'SYNC-ESTEIRA-PAP'
 
 
 def _run_django_sync(func, timeout_seconds: int = 120):
-    """Executa ORM Django no mesmo thread, usando DJANGO_ALLOW_ASYNC_UNSAFE para evitar erro com Playwright."""
-    import os
-    old_val = os.environ.get('DJANGO_ALLOW_ASYNC_UNSAFE')
-    os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
-    try:
-        return func()
-    finally:
-        if old_val is None:
-            del os.environ['DJANGO_ALLOW_ASYNC_UNSAFE']
-        else:
-            os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = old_val
+    """Executa ORM Django em thread dedicada (evita SynchronousOnlyOperation após Playwright)."""
+    import queue
+
+    import django.db
+
+    q = queue.Queue()
+
+    def worker():
+        try:
+            django.db.close_old_connections()
+            q.put(('ok', func()))
+        except Exception as e:
+            q.put(('err', e))
+        finally:
+            django.db.close_old_connections()
+
+    t = threading.Thread(target=worker, daemon=True, name='sync-esteira-orm')
+    t.start()
+    t.join(timeout=timeout_seconds)
+    if not q.empty():
+        kind, payload = q.get()
+        if kind == 'err':
+            raise payload
+        return payload
+    if t.is_alive():
+        logger.error('[SYNC ESTEIRA] _run_django_sync expirou após %ss.', timeout_seconds)
+        raise TimeoutError('django_sync_timeout')
+    raise TimeoutError('django_sync_timeout')
 
 
 def _aguardar_login_bo_safe(
@@ -99,7 +116,12 @@ def _dentro_janela_horario(agora=None) -> bool:
 
 
 def job_em_andamento() -> bool:
-    return execucao_em_andamento() is not None
+    encerrar_execucoes_orfas()
+    from crm_app.models import SyncStatusEsteiraExecucao
+
+    return SyncStatusEsteiraExecucao.objects.filter(
+        status=SyncStatusEsteiraExecucao.STATUS_EM_ANDAMENTO
+    ).exists()
 
 
 def execucao_em_andamento() -> Optional['SyncStatusEsteiraExecucao']:
@@ -129,6 +151,7 @@ def execucao_em_andamento() -> Optional['SyncStatusEsteiraExecucao']:
 
 def queryset_vendas_elegiveis():
     from crm_app.models import Venda
+    from crm_app.services.pap_operadora_guard import filtro_vendas_com_pap
 
     hoje = timezone.localdate()
     amanha = hoje + timedelta(days=1)
@@ -143,6 +166,9 @@ def queryset_vendas_elegiveis():
             Q(status_esteira__nome__iexact='AGENDADO')
             | Q(status_esteira__nome__iexact='PENDENCIADA')
         )
+        # Só o PAP Nio é consultado aqui: vendas de outras operadoras nunca seriam
+        # encontradas no portal e só consumiriam BO do pool.
+        .filter(filtro_vendas_com_pap())
         .exclude(ordem_servico__isnull=True)
         .exclude(ordem_servico='')
         .select_related('cliente', 'vendedor', 'status_esteira', 'motivo_pendencia')

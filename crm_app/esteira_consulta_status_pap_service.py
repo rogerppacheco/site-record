@@ -24,34 +24,35 @@ TELEFONE_JOB_PREFIX = 'CONSULTA-ESTEIRA-PAP'
 ABAS_CONSULTA_PERMITIDAS = frozenset({'TODOS', 'AGENDADO', 'PENDEN'})
 
 
-def mensagem_erro_consulta_pap_para_usuario(msg: str) -> str:
-    """Traduz erro técnico do job para texto exibível na Esteira."""
-    raw = (msg or '').strip()
-    if not raw:
-        return ''
-    low = raw.lower()
-    if 'too many clients' in low:
-        return (
-            'O banco está sem conexões livres no momento. '
-            'A consulta não chegou a começar. Tente novamente em alguns minutos.'
-        )
-    if 'django_sync_timeout' in low:
-        return 'A consulta travou ao gravar o progresso no banco. Tente novamente.'
-    return raw
-
-
 def _run_django_sync(func, timeout_seconds: int = 120):
-    """Executa ORM Django no mesmo thread, usando DJANGO_ALLOW_ASYNC_UNSAFE para evitar erro com Playwright."""
-    import os
-    old_val = os.environ.get('DJANGO_ALLOW_ASYNC_UNSAFE')
-    os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
-    try:
-        return func()
-    finally:
-        if old_val is None:
-            del os.environ['DJANGO_ALLOW_ASYNC_UNSAFE']
-        else:
-            os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = old_val
+    """Executa ORM Django em thread dedicada (evita SynchronousOnlyOperation após Playwright)."""
+    import queue
+
+    import django.db
+
+    q = queue.Queue()
+
+    def worker():
+        try:
+            django.db.close_old_connections()
+            q.put(('ok', func()))
+        except Exception as e:
+            q.put(('err', e))
+        finally:
+            django.db.close_old_connections()
+
+    t = threading.Thread(target=worker, daemon=True, name='consulta-esteira-orm')
+    t.start()
+    t.join(timeout=timeout_seconds)
+    if not q.empty():
+        kind, payload = q.get()
+        if kind == 'err':
+            raise payload
+        return payload
+    if t.is_alive():
+        logger.error('[CONSULTA ESTEIRA] _run_django_sync expirou após %ss.', timeout_seconds)
+        raise TimeoutError('django_sync_timeout')
+    raise TimeoutError('django_sync_timeout')
 
 
 def _cfg(nome: str, default):
@@ -108,6 +109,12 @@ def queryset_vendas_consulta_aba(filtros: Dict[str, Any]):
             status_esteira__isnull=False,
             status_esteira__estado__iexact='ABERTO',
         )
+        .filter(
+            Q(status_esteira__nome__iexact='AGENDADO')
+            | Q(status_esteira__nome__icontains='PENDEN')
+        )
+        .exclude(ordem_servico__isnull=True)
+        .exclude(ordem_servico='')
         .select_related(
             'cliente',
             'vendedor',
@@ -1057,3 +1064,19 @@ def criar_e_iniciar_consulta_aba(*, usuario, filtros: Dict[str, Any]) -> Tuple[O
     t = threading.Thread(target=_runner, name=f'consulta-esteira-{execucao.id}', daemon=True)
     t.start()
     return execucao.id, None, total
+
+# Injetado de site-record
+def mensagem_erro_consulta_pap_para_usuario(msg: str) -> str:
+    """Traduz erro técnico do job para texto exibível na Esteira."""
+    raw = (msg or '').strip()
+    if not raw:
+        return ''
+    low = raw.lower()
+    if 'too many clients' in low:
+        return (
+            'O banco está sem conexões livres no momento. '
+            'A consulta não chegou a começar. Tente novamente em alguns minutos.'
+        )
+    if 'django_sync_timeout' in low:
+        return 'A consulta travou ao gravar o progresso no banco. Tente novamente.'
+    return raw

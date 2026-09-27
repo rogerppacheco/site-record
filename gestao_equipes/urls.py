@@ -1,12 +1,13 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
+from django.views.generic.base import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from gestao_equipes.views_health import HealthView, MetricsView, ReadyView, ManutencaoView
+from gestao_equipes.views_health import HealthView, MetricsView, ReadyView
 
 # --- IMPORTS DAS VIEWS NECESSÁRIAS ---
 from usuarios.views import LoginView
@@ -88,11 +89,23 @@ from crm_app.qualidade_api import (
 router = DefaultRouter()
 router.register(r'regras-automacao', RegraAutomacaoViewSet, basename='regras-automacao')
 
+_brand = getattr(settings, "SITE_BRAND", "BN")
+admin.site.site_header = _brand
+admin.site.site_title = _brand
+admin.site.index_title = "Administração"
+
 urlpatterns = [
+    path(
+        'favicon.ico',
+        RedirectView.as_view(
+            url=f"{settings.STATIC_URL}favicon.svg?v=bn-1",
+            permanent=False,
+        ),
+        name='favicon',
+    ),
     path('health/', HealthView.as_view(), name='health'),
     path('ready/', ReadyView.as_view(), name='ready'),
     path('metrics/', MetricsView.as_view(), name='metrics'),
-    path('_manutencao/', ManutencaoView.as_view(), name='manutencao'),
     path('admin/', admin.site.urls),
 
     # API AUTH
@@ -157,7 +170,7 @@ urlpatterns = [
     path('painel-performance/', page_painel_performance, name='painel_performance'),
     path('painel-segunda/', PainelSegundaView.as_view(), name='painel_segunda'),
 
-    # --- NOVO: RECORD VERTICAL (CDOI) ---
+    # --- NOVO: CLICKUP VERTICAL (CDOI) ---
     path('cdoi-novo/', page_cdoi_novo, name='page_cdoi_novo'),
     path('prevenda-publica/<str:codigo>/', prevenda_publica_landing, name='prevenda-publica'),
 

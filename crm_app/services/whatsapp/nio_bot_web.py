@@ -1180,19 +1180,102 @@ def executar_reagendamento_pedido(
     cpf: str,
     cpf_mask_hint: str,
     nome_esperado: str,
-    cep_sufixo_esperado: str = "",
 ) -> ResultadoReagendamentoNio:
-    """Fluxo completo de reagendamento — controlador heurístico + IA."""
-    from crm_app.services.whatsapp.nio_bot_executor import executar_reagendamento_com_ia
+    """Fluxo completo de reagendamento para um CPF no chat Nio já aberto."""
+    _dismiss_overlays(page)
+    if not _ensure_nio_conversation_open(page):
+        return ResultadoReagendamentoNio(False, "erro", "Não foi possível abrir o chat Nio.")
 
-    return executar_reagendamento_com_ia(
-        page,
-        cpf=cpf,
-        cpf_mask_hint=cpf_mask_hint,
-        nome_esperado=nome_esperado,
-        cep_sufixo_esperado=cep_sufixo_esperado,
-        max_passos=35,
-    )
+    texto = _panel_text(page)
+    delta = _bloco_recente(texto)
+
+    for etapa in range(8):
+        texto = _panel_text(page)
+        recente = _bloco_recente(texto)
+        delta = recente
+
+        sucesso_id = _parse_sucesso_agendado(recente)
+        if sucesso_id:
+            _encerrar_com_sair(page)
+            return ResultadoReagendamentoNio(True, "sucesso", "Agendado com sucesso.", sucesso_id)
+
+        dlow = recente.lower()
+        pede_cpf = (
+            "digite seu cpf" in dlow
+            or "cpf ou cnpj" in dlow
+            or "digite o cpf" in dlow
+            or "apenas o cpf" in dlow
+        )
+        if pede_cpf:
+            before = texto
+            _send_text(page, cpf)
+            texto = _wait_new(page, before, 32)
+            continue
+
+        if _sessao_cpf_encerrada(recente) and not pede_cpf:
+            before = texto
+            _send_text(page, "oi")
+            texto = _wait_new(page, before, 28)
+            continue
+
+        if _tem_prompt_cpf(recente):
+            before = texto
+            if cpf_mask_hint in recente:
+                _click_botao_mais_novo(page, ("Sim",))
+            else:
+                _click_botao_mais_novo(page, ("Não", "Nao"))
+            texto = _wait_new(page, before, 28)
+            continue
+
+        if "até mais" in dlow or "ate mais" in dlow:
+            before = texto
+            _send_text(page, "oi")
+            texto = _wait_new(page, before, 28)
+            continue
+        break
+
+    delta = _bloco_recente(_panel_text(page), 20)
+
+    for _i in range(4):
+        cls = _classificar(delta)
+        sucesso = _parse_sucesso_agendado(delta)
+        if sucesso:
+            _encerrar_com_sair(page)
+            return ResultadoReagendamentoNio(True, "sucesso", "Agendado com sucesso.", sucesso)
+
+        if cls.get("falha_sem_slot"):
+            _encerrar_com_sair(page)
+            return ResultadoReagendamentoNio(False, "sem_slot", "Nio: sem datas disponíveis.")
+        if cls.get("bug_invalid_date"):
+            _encerrar_com_sair(page)
+            return ResultadoReagendamentoNio(False, "erro", "Nio: Invalid Date.")
+        if cls.get("falha_consulta") or cls.get("sessao_cpf_encerrada"):
+            _encerrar_com_sair(page)
+            status = "erro_cpf" if cls.get("sessao_cpf_encerrada") else "erro_consulta"
+            return ResultadoReagendamentoNio(False, status, "Nio: consulta indisponível ou CPF não confirmado.")
+
+        dlow = delta.lower()
+        if "confirmar data" in dlow or "boa notícia" in dlow or "boa noticia" in dlow or "primeira data disponível" in dlow:
+            before = texto
+            _click_botao_mais_novo(page, ("Confirmar data",))
+            texto = _wait_new(page, before, 35)
+            delta = _delta_texto(before, texto)
+            continue
+
+        if "o que você gostaria de fazer" in dlow or "o que voce gostaria de fazer" in dlow:
+            if _parse_sucesso_agendado(delta):
+                continue
+            before = texto
+            _click_botao_mais_novo(page, ("Reagendar", "Agendar"))
+            texto = _wait_new(page, before, 35)
+            delta = _delta_texto(before, texto)
+            continue
+        break
+
+    tail = delta[-400:] if delta else ""
+    _encerrar_com_sair(page)
+    logger.warning("[NIO REAGENDAMENTO] Fluxo inconcluso para %s: %s", nome_esperado, tail)
+    return ResultadoReagendamentoNio(False, "erro", f"Fluxo inconcluso. {tail[:200]}")
 
 
 class NioWhatsAppSession:
