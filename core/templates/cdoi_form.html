@@ -973,11 +973,11 @@
                     <div class="small text-muted mb-2">Usados só nesta execução (não são gravados).</div>
                     <div class="mb-2">
                         <label class="form-label" for="vtop_usuario">Usuário V.tal</label>
-                        <input type="text" class="form-control" id="vtop_usuario" autocomplete="username">
+                        <input type="text" class="form-control" id="vtop_usuario" autocomplete="off">
                     </div>
                     <div class="mb-0">
                         <label class="form-label" for="vtop_senha">Senha + OTP</label>
-                        <input type="password" class="form-control" id="vtop_senha" autocomplete="current-password">
+                        <input type="password" class="form-control" id="vtop_senha" autocomplete="new-password">
                     </div>
                 </div>
             </div>
@@ -2620,23 +2620,32 @@
             if (u && s) {
                 document.getElementById('vtop_usuario').value = u;
                 document.getElementById('vtop_senha').value = s;
-                vtopIniciarSmartRiser();
+                vtopIniciarSmartRiser(true);
             }
             return;
         }
+        const usuarioEl = document.getElementById('vtop_usuario');
+        const senhaEl = document.getElementById('vtop_senha');
+        if (usuarioEl) usuarioEl.value = '';
+        if (senhaEl) senhaEl.value = '';
         bootstrap.Modal.getOrCreateInstance(el).show();
-        setTimeout(() => document.getElementById('vtop_usuario')?.focus(), 300);
+        if (document.getElementById('vtop-login-senha')?.classList.contains('show')) {
+            setTimeout(() => usuarioEl?.focus(), 300);
+        }
     }
 
-    async function vtopIniciarSmartRiser() {
+    async function vtopIniciarSmartRiser(usarCredenciais = false) {
         const id = document.getElementById('edit_mode_id')?.value;
         if (!id) {
             alert('Abra um CDOI em modo edição antes de preencher o SmartRiser.');
             return;
         }
 
-        const usuario = (document.getElementById('vtop_usuario')?.value || '').trim();
-        const senha = document.getElementById('vtop_senha')?.value || '';
+        // Navegador pode autopreencher os campos mesmo com a seção fechada: só envia se aberta
+        const loginSenhaAberto = usarCredenciais
+            || !!document.getElementById('vtop-login-senha')?.classList.contains('show');
+        const usuario = loginSenhaAberto ? (document.getElementById('vtop_usuario')?.value || '').trim() : '';
+        const senha = loginSenhaAberto ? (document.getElementById('vtop_senha')?.value || '') : '';
         const bloco = (document.getElementById('vtop_bloco')?.value || '').trim();
 
         const body = {};
