@@ -2520,9 +2520,49 @@
             btnModal.disabled = !!(btnStart && btnStart.disabled && st !== 'error' && st !== 'idle' && st !== 'done');
         }
 
-        if (['done', 'error', 'idle'].includes(st) && window._vtopPollTimer) {
-            clearInterval(window._vtopPollTimer);
-            window._vtopPollTimer = null;
+        if (['done', 'error', 'idle'].includes(st)) {
+            if (window._vtopPollTimer) {
+                clearInterval(window._vtopPollTimer);
+                window._vtopPollTimer = null;
+            }
+
+            if (st === 'done' && window._vtopBlocosQueue && window._vtopBlocosQueue.length > 0) {
+                const blocoConcluido = window._vtopBlocosQueue.shift();
+                
+                if (window._vtopBlocosQueue.length > 0) {
+                    const pxBloco = window._vtopBlocosQueue[0];
+                    badge.textContent = `Concluído ${blocoConcluido}. Iniciando ${pxBloco} em 3s...`;
+                    badge.className = 'badge bg-success';
+                    
+                    setTimeout(() => {
+                        if (window._vtopBlocosQueue && window._vtopBlocosQueue.length > 0) {
+                            const vtopUsuario = document.getElementById('vtop_usuario')?.value;
+                            const vtopSenha = document.getElementById('vtop_senha')?.value;
+                            const vtopBlocoSelect = document.getElementById('vtop_bloco');
+                            if (vtopBlocoSelect) vtopBlocoSelect.value = 'TODOS';
+                            vtopIniciarSmartRiser(!!(vtopUsuario || vtopSenha));
+                        }
+                    }, 3000);
+                } else {
+                    window._vtopBlocosQueue = null;
+                    badge.textContent = 'TODOS OS BLOCOS CONCLUÍDOS!';
+                    badge.className = 'badge bg-success';
+                    const alerta = document.getElementById('vtop-modal-alerta');
+                    if (alerta) {
+                        alerta.className = 'alert alert-success py-2 small';
+                        alerta.textContent = 'Todos os blocos foram processados com sucesso.';
+                        alerta.classList.remove('d-none');
+                    }
+                }
+            } else if (st === 'error' && window._vtopBlocosQueue && !state.needs_vtop_login) {
+                window._vtopBlocosQueue = null;
+                const alerta = document.getElementById('vtop-modal-alerta');
+                if (alerta) {
+                    alerta.className = 'alert alert-danger py-2 small';
+                    alerta.textContent = `Erro na execução sequencial. Parado. Mensagem: ${msg}`;
+                    alerta.classList.remove('d-none');
+                }
+            }
         }
     }
 
@@ -2582,6 +2622,7 @@
         if (!sel) return;
         const prev = sel.value;
         sel.innerHTML = '<option value="">— só testar login (sessão) —</option>';
+        sel.innerHTML += '<option value="TODOS">— TODOS OS BLOCOS (em sequência) —</option>';
         const lista = (typeof blocos !== 'undefined' && Array.isArray(blocos)) ? blocos : [];
         lista.forEach((b) => {
             const nome = (b.nome || '').trim();
@@ -2604,6 +2645,7 @@
         vtopPopularSelectBlocos();
         const alerta = document.getElementById('vtop-modal-alerta');
         if (alerta) {
+            alerta.className = 'alert alert-warning d-none py-2 small';
             if (alertaMsg) {
                 alerta.textContent = alertaMsg;
                 alerta.classList.remove('d-none');
@@ -2646,7 +2688,29 @@
             || !!document.getElementById('vtop-login-senha')?.classList.contains('show');
         const usuario = loginSenhaAberto ? (document.getElementById('vtop_usuario')?.value || '').trim() : '';
         const senha = loginSenhaAberto ? (document.getElementById('vtop_senha')?.value || '') : '';
-        const bloco = (document.getElementById('vtop_bloco')?.value || '').trim();
+        const blocoOriginal = (document.getElementById('vtop_bloco')?.value || '').trim();
+
+        let bloco = blocoOriginal;
+        if (blocoOriginal === 'TODOS') {
+            if (!window._vtopBlocosQueue || window._vtopBlocosQueue.length === 0) {
+                window._vtopBlocosQueue = (typeof blocos !== 'undefined' && Array.isArray(blocos))
+                    ? blocos.map(b => (b.nome || '').trim()).filter(Boolean)
+                    : [];
+            }
+            if (window._vtopBlocosQueue.length === 0) {
+                alert('Nenhum bloco cadastrado para executar.');
+                return;
+            }
+            bloco = window._vtopBlocosQueue[0];
+            const alerta = document.getElementById('vtop-modal-alerta');
+            if (alerta) {
+                alerta.className = 'alert alert-info py-2 small';
+                alerta.textContent = `Em sequência (${window._vtopBlocosQueue.length} restante(s)). Bloco atual: ${bloco}`;
+                alerta.classList.remove('d-none');
+            }
+        } else {
+            window._vtopBlocosQueue = null;
+        }
 
         const body = {};
         if (usuario) body.vtop_usuario = usuario;
