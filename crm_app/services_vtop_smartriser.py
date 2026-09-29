@@ -21,6 +21,7 @@ Fluxo (passos):
 from __future__ import annotations
 
 import logging
+import difflib
 import json
 import math
 import os
@@ -86,6 +87,14 @@ LOGIN_WAIT_SECONDS = 15 * 60  # tempo máximo aguardando o usuário digitar a se
 QR_POLL_MS = 1500
 # Sem QR visível (WebSocket V.tal caiu / QR expirou) por este tempo → recarrega a tela de login
 QR_RECARREGAR_APOS_S = 45
+# Após sair da tela de login, espera o portal V.top renderizar antes de dar login como falho
+LOGIN_CONFIRMAR_S = 30
+# Tela Brownfield: espera ficar pronta / tabela surgir, e quantas vezes relança a pesquisa
+BROWNFIELD_PRONTA_S = 30
+BROWNFIELD_TABELA_S = 30
+BROWNFIELD_TENTATIVAS = 3
+# Nome de logradouro parecido (grafia diferente) na grade → trava a criação
+LOGRADOURO_SIMILARIDADE_MIN = 0.85
 # Teto de páginas no inventário Brownfield (grade da V.tal lista 15 obras por página)
 INVENTARIO_MAX_PAGINAS = 30
 
@@ -421,6 +430,24 @@ def logradouro_equivalente(logradouro_cdoi: str, logradouro_grade: str) -> bool:
     return len(curto) >= 8 and longo.startswith(curto)
 
 
+def similaridade_logradouro(logradouro_cdoi: str, logradouro_grade: str) -> float:
+    """0–1; compara também o prefixo quando a grade traz o nome truncado."""
+    a, b = _chave_logradouro(logradouro_cdoi), _chave_logradouro(logradouro_grade)
+    if not a or not b:
+        return 0.0
+    ratio = difflib.SequenceMatcher(None, a, b).ratio()
+    if 8 <= len(b) < len(a):
+        ratio = max(ratio, difflib.SequenceMatcher(None, a[: len(b)], b).ratio())
+    return ratio
+
+
+def logradouro_parecido(logradouro_cdoi: str, logradouro_grade: str) -> bool:
+    """Grafia diferente do mesmo nome (ex.: Schwaitzer × Schweitzer) — não é equivalente."""
+    if logradouro_equivalente(logradouro_cdoi, logradouro_grade):
+        return False
+    return similaridade_logradouro(logradouro_cdoi, logradouro_grade) >= LOGRADOURO_SIMILARIDADE_MIN
+
+
 def numero_equivalente(numero_cdoi: str, numero_grade: str) -> bool:
     """'389' bate com '389/405'; sem número no CDOI não restringe."""
     alvo = {str(int(x)) for x in re.findall(r"\d+", numero_cdoi or "")}
@@ -455,6 +482,49 @@ def complemento_da_linha(row: Dict[str, Any]) -> str:
     return ""
 
 
+BROWNFIELD_DIAG_JS = """() => ({
+  url: location.href,
+  pesquisaObras: typeof pesquisaObras === 'function',
+  sel_datas: !!document.getElementById('sel_datas'),
+  mg: !!document.querySelector("input[value='MG']"),
+  jquery: !!window.jQuery,
+  datatables: !!(window.jQuery && jQuery.fn.dataTable),
+  dados: !!document.getElementById('dados'),
+  readyState: document.readyState,
+})"""
+
+BROWNFIELD_PESQUISAR_JS = """() => {
+  const mg = document.querySelector("input[value='MG']");
+  if (mg) { mg.disabled = false; if (!mg.checked) mg.click(); }
+  const sel = document.getElementById('sel_datas');
+  if (sel && window.jQuery) window.jQuery(sel).val('T').trigger('change');
+  const dados = document.getElementById('dados');
+  if (dados) dados.innerHTML = '';
+  const b = document.getElementById('b_pesquisa');
+  if (b) b.disabled = false;
+  pesquisaObras();
+}"""
+
+BROWNFIELD_EXIBIR_TUDO_JS = """() => {
+  const nome = (typeof nome_tabela !== 'undefined' && nome_tabela) ? nome_tabela : 'dados_obras';
+  if (!window.jQuery || !jQuery.fn.dataTable || !jQuery.fn.dataTable.isDataTable('#' + nome)) return -1;
+  const t = jQuery('#' + nome).DataTable();
+  t.search('').columns().search('').page.len(-1).draw();
+  return t.rows().count();
+}"""
+
+
+def brownfield_pronta(diag: Dict[str, Any]) -> bool:
+    """Tela Brownfield (fi=2) carregada o suficiente para pesquisar."""
+    diag = diag or {}
+    return (
+        "fi=2" in str(diag.get("url") or "")
+        and bool(diag.get("pesquisaObras"))
+        and bool(diag.get("sel_datas"))
+        and bool(diag.get("mg"))
+    )
+
+
 def motivo_bloqueio_inventario(meta: Dict[str, Any], total_com_complemento: int) -> str:
     """
     Complemento não achado na grade: decide se é seguro criar obra nova.
@@ -465,6 +535,12 @@ def motivo_bloqueio_inventario(meta: Dict[str, Any], total_com_complemento: int)
     linhas_endereco = int(meta.get("linhas_endereco") or 0)
     paginas = int(meta.get("paginas") or 0)
     sem_complemento = linhas_endereco - total_com_complemento
+    parecidos = [str(p) for p in (meta.get("logradouros_parecidos") or []) if p]
+    if parecidos:
+        return (
+            f"A grade tem obra(s) no mesmo número em logradouro com grafia parecida: "
+            f"{', '.join(parecidos[:3])} — confira o endereço do CDOI; não é seguro criar (poderia duplicar)."
+        )
     if total_com_complemento > 0 and sem_complemento > 0:
         # Ex.: TORRE 1 no mesmo endereço pode ser o mesmo prédio do BLOCO 1 → duplicaria
         return (
@@ -764,6 +840,8 @@ class VtopSmartRiserService:
         self.state = VtopJobState()
 
         self.playwright = None
+        # Playwright sync só pode ser usado/fechado pela thread que o abriu
+        self._browser_thread_id: Optional[int] = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -966,6 +1044,7 @@ class VtopSmartRiserService:
         self._enviar_comando("stop")
         self._stop_event.set()
         with self._lock:
+            # Job ativo: só sinaliza; a própria thread do job fecha o navegador
             if not self._job_local_ativo():
                 self._cleanup_browser(salvar_sessao=manter_sessao)
             self._set(VtopStatus.IDLE, "Navegador fechado (sessão preservada)." if manter_sessao else "Navegador fechado.")
@@ -989,6 +1068,7 @@ class VtopSmartRiserService:
         pausar_apos: Optional[str],
         somente_ate: Optional[str],
     ) -> None:
+        logado = False
         try:
             # Senha só na memória desta execução — nunca vai para extras/logs
             payload = dict(payload or {})
@@ -999,6 +1079,7 @@ class VtopSmartRiserService:
             self._abrir_browser(forcar_login=forcar_login)
             if not self._garantir_logado(forcar_login=forcar_login):
                 return
+            logado = True
             self._payload_atual.pop("_vtop_senha_runtime", None)
 
             # Teste seguro: valida login e persiste storage_state sem navegar no SmartRiser
@@ -1078,8 +1159,10 @@ class VtopSmartRiserService:
             self._set(VtopStatus.ERROR, "Falha na automação.", error=str(exc))
         finally:
             self._limpar_temp_files()
-            # Mantém o browser aberto em PAUSED/DONE para inspeção local;
-            # em ERROR também mantém para debug (fechar pelo botão da UI).
+            # Local (visível) mantém o browser aberto para inspeção. Em headless ninguém
+            # inspeciona e, após esta thread sair, o Playwright não pode mais ser fechado.
+            if _headless() and self.state.status != VtopStatus.PAUSED:
+                self._cleanup_browser(salvar_sessao=logado)
 
     # ----------------------------------------------------------- browser/sessão
     def _abrir_browser(self, *, forcar_login: bool) -> None:
@@ -1089,6 +1172,7 @@ class VtopSmartRiserService:
         if not forcar_login:
             _garantir_storage_state_arquivo()
         self.playwright = sync_playwright().start()
+        self._browser_thread_id = threading.get_ident()
         launch_opts: Dict[str, Any] = {
             "headless": _headless(),
             "slow_mo": 0 if _headless() else 80,
@@ -1118,6 +1202,15 @@ class VtopSmartRiserService:
             self.state.session_valid = True
 
     def _cleanup_browser(self, *, salvar_sessao: bool) -> None:
+        dono = self._browser_thread_id
+        if dono is not None and dono != threading.get_ident():
+            # Outra thread: chamar o Playwright gera greenlet.error e não fecha nada
+            logger.warning("[VTOP] Cleanup ignorado fora da thread do navegador (thread encerrada)")
+            self.page = self.context = self.browser = None
+            self.playwright = None
+            self._browser_thread_id = None
+            self._limpar_temp_files()
+            return
         try:
             if salvar_sessao and self.context:
                 self._salvar_storage()
@@ -1138,6 +1231,7 @@ class VtopSmartRiserService:
             except Exception:
                 pass
             self.playwright = None
+        self._browser_thread_id = None
         self._limpar_temp_files()
 
     def _limpar_temp_files(self) -> None:
@@ -1258,7 +1352,7 @@ class VtopSmartRiserService:
             if "login.vtal.com" not in url and "nidp" not in url:
                 self.state.qr_image = ""
                 self._set(VtopStatus.CLICKING_LOGIN, "QR Code lido — confirmando login…", step="login")
-                return self._confirmar_login_pos_clique()
+                return self._confirmar_login_pos_clique(via_qr=True)
 
             qr, aviso = self._ler_qr_code()
             agora = time.time()
@@ -1332,24 +1426,49 @@ class VtopSmartRiserService:
             )
             return False
 
-    def _confirmar_login_pos_clique(self) -> bool:
+    def _aguardar_esta_logado(self, timeout_s: float = LOGIN_CONFIRMAR_S) -> bool:
+        """O portal renderiza o 'Olá …' alguns segundos depois do redirect."""
+        assert self.page is not None
+        fim = time.time() + timeout_s
+        while True:
+            try:
+                if self._esta_logado():
+                    return True
+            except Exception:
+                pass
+            if time.time() >= fim:
+                return False
+            try:
+                self.page.wait_for_timeout(1000)
+            except Exception:
+                time.sleep(1)
+
+    def _confirmar_login_pos_clique(self, *, via_qr: bool = False) -> bool:
         assert self.page is not None
         try:
             self.page.wait_for_url("**/appvtop/**", timeout=90_000)
         except Exception:
             self.page.wait_for_timeout(5000)
 
-        if not self._esta_logado():
+        if not self._aguardar_esta_logado():
             self.page.goto(VTOP_HOME_URL, wait_until="domcontentloaded")
-            time.sleep(2)
+            self._aguardar_esta_logado(timeout_s=10)
 
         if not self._esta_logado():
-            self._set(
-                VtopStatus.ERROR,
-                "Login não confirmado após EFETUAR LOGIN. Verifique usuário/senha/MFA.",
-                step="login",
-                error="login_failed",
-            )
+            if via_qr:
+                self._set(
+                    VtopStatus.ERROR,
+                    "Login não confirmado após leitura do QR — gere um novo QR.",
+                    step="login",
+                    error="login_qr_failed",
+                )
+            else:
+                self._set(
+                    VtopStatus.ERROR,
+                    "Login não confirmado após EFETUAR LOGIN. Verifique usuário/senha/MFA.",
+                    step="login",
+                    error="login_failed",
+                )
             return False
 
         self._salvar_storage()
@@ -1474,6 +1593,7 @@ class VtopSmartRiserService:
 
         colecionados: Dict[str, Dict[str, Any]] = {}
         linhas_endereco = 0
+        parecidos: List[str] = []
         linhas_vistas = 0
         tamanho_pagina = 0
         ids_anterior: List[str] = []
@@ -1522,6 +1642,14 @@ class VtopSmartRiserService:
                 if not oid or oid in colecionados:
                     continue
                 if not linha_bate_endereco(row, logradouro, numero):
+                    grade_log = str(row.get("logradouro") or "")
+                    if (
+                        grade_log
+                        and numero_equivalente(numero, str(row.get("numero") or ""))
+                        and logradouro_parecido(logradouro, grade_log)
+                        and grade_log not in parecidos
+                    ):
+                        parecidos.append(grade_log)
                     continue
                 row["complemento"] = complemento_da_linha(row)
                 colecionados[oid] = row
@@ -1589,6 +1717,7 @@ class VtopSmartRiserService:
             "linhas_endereco": linhas_endereco,
             "tamanho_pagina": tamanho_pagina,
             "total_grade": total_grade,
+            "logradouros_parecidos": parecidos,
         }
         self.state.extras["inventario_meta"] = dict(self._inventario_meta)
         logger.info("[VTOP] Inventário Brownfield: %s", self._inventario_meta)
@@ -1634,44 +1763,80 @@ class VtopSmartRiserService:
         """
         assert self.page is not None
         page = self.page
-        page.evaluate(
-            """() => {
-              const mg = document.querySelector("input[value='MG']");
-              if (mg) { mg.disabled = false; if (!mg.checked) mg.click(); }
-              const sel = document.getElementById('sel_datas');
-              if (sel && window.jQuery) window.jQuery(sel).val('T').trigger('change');
-              const dados = document.getElementById('dados');
-              if (dados) dados.innerHTML = '';
-              const b = document.getElementById('b_pesquisa');
-              if (b) b.disabled = false;
-              if (typeof pesquisaObras === 'function') pesquisaObras();
-            }"""
-        )
-        exibir_tudo_js = """() => {
-          const nome = (typeof nome_tabela !== 'undefined' && nome_tabela) ? nome_tabela : 'dados_obras';
-          if (!window.jQuery || !jQuery.fn.dataTable || !jQuery.fn.dataTable.isDataTable('#' + nome)) return -1;
-          const t = jQuery('#' + nome).DataTable();
-          t.search('').columns().search('').page.len(-1).draw();
-          return t.rows().count();
-        }"""
-        total = -1
-        for _ in range(90):
-            page.wait_for_timeout(1000)
+        diag: Dict[str, Any] = {}
+        pronta = False
+        fim_espera = time.time() + BROWNFIELD_PRONTA_S
+        while time.time() < fim_espera:
             try:
-                total = int(page.evaluate(exibir_tudo_js))
+                diag = page.evaluate(BROWNFIELD_DIAG_JS) or {}
+            except Exception as exc:
+                # Contexto destruído durante a navegação para fi=2
+                diag = {"erro": str(exc)[:120]}
+            if brownfield_pronta(diag):
+                pronta = True
+                break
+            page.wait_for_timeout(1000)
+        if not pronta:
+            self._diagnosticar_brownfield("tela_nao_pronta", diag)
+            return -1
+
+        total = -1
+        for tentativa in range(1, BROWNFIELD_TENTATIVAS + 1):
+            try:
+                page.evaluate(BROWNFIELD_PESQUISAR_JS)
             except Exception:
-                total = -1
+                logger.exception("[VTOP] Falha ao disparar pesquisaObras (tentativa %s)", tentativa)
+            for _ in range(BROWNFIELD_TABELA_S):
+                page.wait_for_timeout(1000)
+                try:
+                    total = int(page.evaluate(BROWNFIELD_EXIBIR_TUDO_JS))
+                except Exception:
+                    total = -1
+                if total >= 0:
+                    break
             if total >= 0:
                 break
+            logger.warning(
+                "[VTOP] Tabela Brownfield não surgiu em %ss (tentativa %s/%s) — relançando pesquisa",
+                BROWNFIELD_TABELA_S, tentativa, BROWNFIELD_TENTATIVAS,
+            )
+        if total < 0:
+            try:
+                diag = page.evaluate(BROWNFIELD_DIAG_JS) or {}
+            except Exception as exc:
+                diag = {"erro": str(exc)[:120]}
+            self._diagnosticar_brownfield("tabela_nao_surgiu", diag)
         if total >= 0:
             # DataTable termina a inicialização (idioma) de forma assíncrona: reaplica
             page.wait_for_timeout(1500)
             try:
-                total = int(page.evaluate(exibir_tudo_js))
+                total = int(page.evaluate(BROWNFIELD_EXIBIR_TUDO_JS))
             except Exception:
                 pass
         logger.info("[VTOP] Pesquisa Brownfield (MG, período TUDO): %s obras na grade", total)
         return total
+
+    def _diagnosticar_brownfield(self, motivo: str, diag: Dict[str, Any]) -> None:
+        """Registra URL/elementos e salva screenshot+HTML fora do repositório."""
+        assert self.page is not None
+        base = os.path.join(
+            tempfile.gettempdir(),
+            f"vtop_brownfield_{motivo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        )
+        arquivos: List[str] = []
+        try:
+            self.page.screenshot(path=base + ".png", full_page=True)
+            arquivos.append(base + ".png")
+        except Exception:
+            logger.exception("[VTOP] Falha no screenshot de diagnóstico Brownfield")
+        try:
+            with open(base + ".html", "w", encoding="utf-8") as fh:
+                fh.write(self.page.content())
+            arquivos.append(base + ".html")
+        except Exception:
+            logger.exception("[VTOP] Falha ao salvar HTML de diagnóstico Brownfield")
+        logger.warning("[VTOP] Brownfield %s: diag=%s arquivos=%s", motivo, diag, arquivos)
+        self.state.extras["diagnostico_brownfield"] = {"motivo": motivo, "diag": diag, "arquivos": arquivos}
 
     def _aguardar_troca_pagina(self, ids_anterior: List[str], timeout_ms: int = 10_000) -> None:
         """Espera a grade trocar de página (ids diferentes) em vez de um sleep fixo."""
