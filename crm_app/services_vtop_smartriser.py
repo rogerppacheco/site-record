@@ -628,10 +628,8 @@ def motivo_bloqueio_inventario(meta: Dict[str, Any], total_com_complemento: int)
             "não é seguro criar (o endereço pode estar nas páginas seguintes)."
         )
     if fim == "sem_resultados":
-        return (
-            "A busca Brownfield não retornou nenhuma obra (filtro/UF/sessão?) — "
-            "não é seguro criar. Tente de novo."
-        )
+        # Se a busca retornou vazio, provavelmente é um endereço totalmente novo, permitimos criar.
+        return ""
     return (
         "A paginação do inventário Brownfield não avançou e não foi possível confirmar o fim da lista — "
         "não é seguro criar. Tente de novo."
