@@ -65,7 +65,7 @@ def main() -> int:
         status = st.get("status")
         print(f"[{status}] {st.get('message')}", flush=True)
 
-        if status == VtopStatus.AWAITING_CREDENTIALS.value and not sinalizou:
+        if status in (VtopStatus.AWAITING_CREDENTIALS.value, VtopStatus.AWAITING_QR.value) and not sinalizou:
             print(
                 "\n>>> Digite login/senha no Chromium.\n"
                 f">>> Depois crie o flag: {FLAG_SENHA}\n"

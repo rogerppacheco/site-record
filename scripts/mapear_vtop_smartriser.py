@@ -148,7 +148,7 @@ def main() -> int:
             f"[{st.get('status')}] {st.get('step')} | {st.get('message')} | extras={st.get('extras')}",
             flush=True,
         )
-        if st.get("status") == VtopStatus.AWAITING_CREDENTIALS.value:
+        if st.get("status") in (VtopStatus.AWAITING_CREDENTIALS.value, VtopStatus.AWAITING_QR.value):
             print(
                 "\n>>> Sessão pediu login. Digite a senha no Chromium e avise no chat,\n"
                 f">>> ou crie o flag: {FLAG_SENHA}\n",
