@@ -93,6 +93,9 @@ LOGIN_CONFIRMAR_S = 30
 BROWNFIELD_PRONTA_S = 30
 BROWNFIELD_TABELA_S = 30
 BROWNFIELD_TENTATIVAS = 3
+# Após clicar Salvar na obra: espera obra.jsp / modal fechar / mensagem (e um respiro após o sinal)
+SALVAR_OBRA_TIMEOUT_S = 45
+SALVAR_OBRA_APOS_SINAL_S = 5
 # Nome de logradouro parecido (grafia diferente) na grade → trava a criação
 LOGRADOURO_SIMILARIDADE_MIN = 0.85
 # Teto de páginas no inventário Brownfield (grade da V.tal lista 15 obras por página)
@@ -512,6 +515,61 @@ BROWNFIELD_EXIBIR_TUDO_JS = """() => {
   t.search('').columns().search('').page.len(-1).draw();
   return t.rows().count();
 }"""
+
+
+SALVAR_OBRA_MODAL_ABERTO_JS = """() => {
+  const b = document.getElementById('b_criar_obra');
+  return !!(b && b.offsetParent !== null);
+}"""
+
+SALVAR_OBRA_MENSAGENS_JS = """() => {
+  const sels = ['#messages', '.alert', '.swal2-html-container', '.swal2-title', '.toast-message',
+                '.modal .text-danger', '.invalid-feedback', 'label.error', '.bootbox-body', '.msg_erro'];
+  const out = [];
+  for (const s of sels) {
+    document.querySelectorAll(s).forEach(el => {
+      const t = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+      if (t && el.offsetParent !== null && !out.includes(t)) out.push(t);
+    });
+  }
+  return out.join(' | ').slice(0, 300);
+}"""
+
+OBRA_CAMPOS_VAZIOS_JS = """() => {
+  const b = document.getElementById('b_criar_obra');
+  const root = (b && (b.closest('.modal') || b.closest('form'))) || document;
+  const vazios = [], obrigatorios = [];
+  root.querySelectorAll('input, select, textarea').forEach(el => {
+    const tipo = (el.type || '').toLowerCase();
+    if (['hidden', 'button', 'submit', 'checkbox', 'radio', 'file'].includes(tipo)) return;
+    if (el.offsetParent === null || el.disabled) return;
+    if ((el.value || '').trim() !== '') return;
+    const nome = el.id || el.name || '?';
+    vazios.push(nome);
+    const lbl = el.id ? document.querySelector('label[for="' + el.id + '"]') : null;
+    const pai = el.parentElement;
+    // Texto do pai só vale se ele envolver apenas este campo (senão herda o '*' de outros)
+    const paiSo = pai && pai.querySelectorAll('input, select, textarea').length === 1;
+    const txtLbl = (lbl && lbl.innerText) || (paiSo ? pai.innerText : '') || '';
+    if (el.required || el.getAttribute('aria-required') === 'true' ||
+        /obrig|required/i.test(el.className || '') || txtLbl.includes('*')) {
+      obrigatorios.push(nome);
+    }
+  });
+  return {vazios, obrigatorios};
+}"""
+
+
+def obras_do_complemento(mapa: Dict[str, List[Dict[str, Any]]], complemento: str) -> List[str]:
+    """Ids (sem repetição) das obras do inventário com o mesmo complemento."""
+    ids: List[str] = []
+    for chave, itens in (mapa or {}).items():
+        for item in itens:
+            if _bloco_equiv(chave, complemento) or _bloco_equiv(str(item.get("complemento") or ""), complemento):
+                oid = str(item.get("id") or "").strip()
+                if oid and oid not in ids:
+                    ids.append(oid)
+    return ids
 
 
 def brownfield_pronta(diag: Dict[str, Any]) -> bool:
@@ -1153,6 +1211,14 @@ class VtopSmartRiserService:
                     return
 
             self._salvar_storage()
+            if not str(self.state.extras.get("obra_id") or "").strip():
+                self._set(
+                    VtopStatus.ERROR,
+                    "Fluxo terminou sem obra_id confirmado — confira na V.tal antes de tentar de novo.",
+                    step="fim",
+                    error="sem_obra_id",
+                )
+                return
             self._set(VtopStatus.DONE, "Fluxo SmartRiser concluído.", step="fim")
         except Exception as exc:
             logger.exception("[VTOP] Erro na automação: %s", exc)
@@ -1817,26 +1883,7 @@ class VtopSmartRiserService:
         return total
 
     def _diagnosticar_brownfield(self, motivo: str, diag: Dict[str, Any]) -> None:
-        """Registra URL/elementos e salva screenshot+HTML fora do repositório."""
-        assert self.page is not None
-        base = os.path.join(
-            tempfile.gettempdir(),
-            f"vtop_brownfield_{motivo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        )
-        arquivos: List[str] = []
-        try:
-            self.page.screenshot(path=base + ".png", full_page=True)
-            arquivos.append(base + ".png")
-        except Exception:
-            logger.exception("[VTOP] Falha no screenshot de diagnóstico Brownfield")
-        try:
-            with open(base + ".html", "w", encoding="utf-8") as fh:
-                fh.write(self.page.content())
-            arquivos.append(base + ".html")
-        except Exception:
-            logger.exception("[VTOP] Falha ao salvar HTML de diagnóstico Brownfield")
-        logger.warning("[VTOP] Brownfield %s: diag=%s arquivos=%s", motivo, diag, arquivos)
-        self.state.extras["diagnostico_brownfield"] = {"motivo": motivo, "diag": diag, "arquivos": arquivos}
+        self._salvar_diagnostico("brownfield", motivo, diag, chave="diagnostico_brownfield")
 
     def _aguardar_troca_pagina(self, ids_anterior: List[str], timeout_ms: int = 10_000) -> None:
         """Espera a grade trocar de página (ids diferentes) em vez de um sleep fixo."""
@@ -1971,6 +2018,11 @@ class VtopSmartRiserService:
             or self._detectar_obra_id()
             or ""
         )
+        if not obra_id:
+            raise RuntimeError(
+                "Cadastro sem obra_id — obra não confirmada na V.tal; nada foi preenchido/validado."
+            )
+        self.state.extras["obra_id"] = obra_id
         self.state.extras["obra_etapa_antes"] = etapa
         if etapa is not None and etapa >= 2:
             if obra_id:
@@ -2043,7 +2095,19 @@ class VtopSmartRiserService:
     def _passo_coords_pos_salvar_se_preciso(self, payload: Dict[str, Any]) -> None:
         if self.state.extras.get("reusada_da_lista"):
             return
+        self._exigir_obra_aberta("coordenadas pós-salvar")
         self._passo_coords_pos_salvar(payload)
+
+    def _exigir_obra_aberta(self, etapa: str) -> str:
+        """Sem obra_id + obra.jsp aberta, mapa/cadastro atuariam na grade ou em outra obra."""
+        assert self.page is not None
+        obra_id = str(self.state.extras.get("obra_id") or "").strip()
+        if not obra_id or "obra.jsp" not in (self.page.url or ""):
+            raise RuntimeError(
+                f"{etapa.capitalize()} sem obra aberta (obra_id={obra_id or '?'}, URL={self.page.url}) — "
+                "confira na V.tal antes de tentar de novo."
+            )
+        return obra_id
 
     def _passo_abrir_modal_obra(self) -> None:
         assert self.page is not None
@@ -2201,37 +2265,64 @@ class VtopSmartRiserService:
         assert self.context is not None
         self._set(VtopStatus.SAVING, "Clicando Salvar no modal da obra (#b_criar_obra)…", step="salvar_obra")
         page = self.page
+        pagina_grade = page
+
+        campos = self._campos_vazios_obra()
+        self.state.extras["obra_campos_vazios"] = campos
+        if campos.get("obrigatorios"):
+            logger.warning("[VTOP] Campos obrigatórios vazios no modal da obra: %s", campos["obrigatorios"])
+
+        mensagens: List[str] = []
+        novas_abas: List[Any] = []
 
         def _aceitar(dialog) -> None:
+            mensagens.append(dialog.message)
             logger.info("[VTOP] Dialog ao salvar obra: %s", dialog.message)
-            dialog.accept()
+            try:
+                dialog.accept()
+            except Exception:
+                pass
 
-        page.once("dialog", _aceitar)
-        btn = page.locator("#b_criar_obra")
-        popup = None
+        def _nova_aba(aba) -> None:
+            novas_abas.append(aba)
+
+        page.on("dialog", _aceitar)
+        self.context.on("page", _nova_aba)
         try:
-            with page.expect_popup(timeout=45_000) as popup_info:
-                if btn.count() == 0:
-                    page.get_by_role("button", name=re.compile(r"Salvar", re.I)).click()
-                else:
-                    btn.first.click()
-            popup = popup_info.value
-        except Exception:
-            logger.warning("[VTOP] Popup obra.jsp não surgiu — tentando fallbacks.")
-            if btn.count():
-                try:
-                    btn.first.click(timeout=2000)
-                except Exception:
-                    pass
+            btn = page.locator("#b_criar_obra")
+            # Clique ÚNICO: um segundo clique pode criar obra duplicada na V.tal
+            if btn.count() == 0:
+                page.get_by_role("button", name=re.compile(r"Salvar", re.I)).first.click()
+            else:
+                btn.first.click()
+            resultado, destino = self._aguardar_resultado_salvar_obra(page, novas_abas, mensagens)
+        finally:
+            page.remove_listener("dialog", _aceitar)
+            self.context.remove_listener("page", _nova_aba)
 
-        if popup is not None:
-            popup.wait_for_load_state("domcontentloaded")
-            self.page = popup
+        self.state.extras["salvar_obra_resultado"] = resultado
+        self.state.extras["salvar_obra_mensagens"] = mensagens[:10]
+        logger.info("[VTOP] Resultado do Salvar obra: %s mensagens=%s", resultado, mensagens[:5])
+
+        obra_id = ""
+        if destino is not None:
+            self.page = destino
+            page = destino
+            logger.info("[VTOP] Obra aberta (%s): %s", resultado, page.url)
+            obra_id = self._detectar_obra_id()
+
+        if not obra_id:
+            self._salvar_diagnostico(
+                "salvar_obra",
+                resultado,
+                {"url": page.url, "mensagens": mensagens[:10], "campos": campos},
+                chave="diagnostico_salvar_obra",
+            )
+            if destino is not None and destino is not pagina_grade:
+                self.page = pagina_grade
+            obra_id = self._confirmar_obra_pelo_inventario()
             page = self.page
-            logger.info("[VTOP] Trocou para aba da obra: %s", page.url)
-
-        obra_id = self._detectar_obra_id()
-        if obra_id:
+        else:
             self.state.extras["obra_id"] = obra_id
             self._gravar_vinculo_obra(obra_id)
 
@@ -2252,6 +2343,113 @@ class VtopSmartRiserService:
             f"Obra salva (id={obra_id or '?'}). URL={page.url}",
             step="salvar_obra",
         )
+
+    def _aguardar_resultado_salvar_obra(
+        self, page, novas_abas: List[Any], mensagens: List[str]
+    ) -> Tuple[str, Any]:
+        """
+        Após o clique em Salvar: ('nova_aba'|'mesma_aba', página da obra) ou
+        ('modal_fechado'|'mensagem'|'timeout', None). Não clica em nada.
+        """
+        fim = time.time() + SALVAR_OBRA_TIMEOUT_S
+        sinal_em: Optional[float] = None
+        sinal = ""
+        while time.time() < fim:
+            if novas_abas:
+                aba = novas_abas[0]
+                try:
+                    aba.wait_for_load_state("domcontentloaded", timeout=30_000)
+                except Exception:
+                    pass
+                return "nova_aba", aba
+            try:
+                if "obra.jsp" in (page.url or ""):
+                    page.wait_for_load_state("domcontentloaded", timeout=30_000)
+                    return "mesma_aba", page
+            except Exception:
+                pass
+            if not sinal:
+                try:
+                    txt = page.evaluate(SALVAR_OBRA_MENSAGENS_JS) or ""
+                except Exception:
+                    txt = ""
+                if txt and txt not in mensagens:
+                    mensagens.append(txt)
+                try:
+                    modal_aberto = bool(page.evaluate(SALVAR_OBRA_MODAL_ABERTO_JS))
+                except Exception:
+                    modal_aberto = True
+                if not modal_aberto:
+                    sinal = "modal_fechado"
+                elif mensagens:
+                    sinal = "mensagem"
+                if sinal:
+                    sinal_em = time.time()
+            # Sucesso costuma abrir obra.jsp logo depois de fechar o modal / avisar
+            if sinal and sinal_em and time.time() - sinal_em > SALVAR_OBRA_APOS_SINAL_S:
+                return sinal, None
+            try:
+                page.wait_for_timeout(500)
+            except Exception:
+                time.sleep(0.5)
+        return sinal or "timeout", None
+
+    def _campos_vazios_obra(self) -> Dict[str, List[str]]:
+        """Campos visíveis vazios do modal 'Cadastro de nova obra' (obrigatórios à parte)."""
+        assert self.page is not None
+        try:
+            return self.page.evaluate(OBRA_CAMPOS_VAZIOS_JS) or {}
+        except Exception:
+            return {}
+
+    def _salvar_diagnostico(self, prefixo: str, motivo: str, diag: Dict[str, Any], *, chave: str) -> None:
+        """Registra o contexto e salva screenshot+HTML fora do repositório."""
+        assert self.page is not None
+        base = os.path.join(
+            tempfile.gettempdir(),
+            f"vtop_{prefixo}_{motivo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        )
+        arquivos: List[str] = []
+        try:
+            self.page.screenshot(path=base + ".png", full_page=True)
+            arquivos.append(base + ".png")
+        except Exception:
+            logger.exception("[VTOP] Falha no screenshot de diagnóstico (%s)", prefixo)
+        try:
+            with open(base + ".html", "w", encoding="utf-8") as fh:
+                fh.write(self.page.content())
+            arquivos.append(base + ".html")
+        except Exception:
+            logger.exception("[VTOP] Falha ao salvar HTML de diagnóstico (%s)", prefixo)
+        logger.warning("[VTOP] Diagnóstico %s/%s: diag=%s arquivos=%s", prefixo, motivo, diag, arquivos)
+        self.state.extras[chave] = {"motivo": motivo, "diag": diag, "arquivos": arquivos}
+
+    def _confirmar_obra_pelo_inventario(self) -> str:
+        """
+        Obra não abriu após Salvar: procura o complemento recém-criado na grade.
+        Exatamente 1 → abre e vincula; 2+ → possível duplicata; 0 → não confirmada.
+        """
+        payload = self._payload_atual or {}
+        complemento = str(payload.get("complemento") or payload.get("bloco_nome") or "").strip()
+        self._set(
+            VtopStatus.SAVING,
+            f"Obra não abriu após salvar — conferindo '{complemento}' no inventário…",
+            step="salvar_obra",
+        )
+        mapa = self._listar_obras_endereco(
+            str(payload.get("logradouro") or ""), str(payload.get("numero") or "")
+        )
+        ids = obras_do_complemento(mapa, complemento)
+        self.state.extras["obras_pos_salvar"] = ids
+        if len(ids) > 1:
+            raise RuntimeError(
+                f"Possível duplicata: {len(ids)} obras '{complemento}' no endereço após salvar "
+                f"(ids {', '.join(ids)}) — confira na V.tal antes de tentar de novo."
+            )
+        if not ids:
+            raise RuntimeError("Obra não confirmada após salvar — confira na V.tal antes de tentar de novo.")
+        self._passo_abrir_obra_existente(ids[0])
+        return ids[0]
 
     def _gravar_vinculo_obra(self, obra_id: str, etapa: Optional[int] = None) -> None:
         """Persiste obra_id/etapa no CdoiBloco do payload atual."""
