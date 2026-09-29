@@ -2079,7 +2079,10 @@ class VtopSmartRiserService:
     def _passo_coords_se_preciso(self, payload: Dict[str, Any]) -> None:
         if self.state.extras.get("reusada_da_lista"):
             return
-        self._passo_coordenadas(payload, salvar=bool(payload.get("salvar_coords")))
+        # Obra nova: o "Salvar" do mapa só preenche #input_lat/#input_lon do modal e fecha
+        # #popup_map (nada vai ao servidor). Sem ele, criarObra() envia 0,0 e o popup
+        # aberto intercepta o clique em #b_criar_obra.
+        self._passo_coordenadas(payload, salvar=True)
 
     def _passo_salvar_obra_modal_se_preciso(self, payload: Dict[str, Any]) -> None:
         if self.state.extras.get("reusada_da_lista"):
@@ -2271,9 +2274,15 @@ class VtopSmartRiserService:
         self.state.extras["obra_campos_vazios"] = campos
         if campos.get("obrigatorios"):
             logger.warning("[VTOP] Campos obrigatórios vazios no modal da obra: %s", campos["obrigatorios"])
+        self._preparar_modal_para_criar_obra()
 
         mensagens: List[str] = []
         novas_abas: List[Any] = []
+        respostas_criar: List[Any] = []
+
+        def _resposta(resp) -> None:
+            if "CriarObra" in (resp.url or ""):
+                respostas_criar.append(resp)
 
         def _aceitar(dialog) -> None:
             mensagens.append(dialog.message)
@@ -2287,6 +2296,7 @@ class VtopSmartRiserService:
             novas_abas.append(aba)
 
         page.on("dialog", _aceitar)
+        page.on("response", _resposta)
         self.context.on("page", _nova_aba)
         try:
             btn = page.locator("#b_criar_obra")
@@ -2298,18 +2308,33 @@ class VtopSmartRiserService:
             resultado, destino = self._aguardar_resultado_salvar_obra(page, novas_abas, mensagens)
         finally:
             page.remove_listener("dialog", _aceitar)
+            page.remove_listener("response", _resposta)
             self.context.remove_listener("page", _nova_aba)
+
+        # criarObra(): success(id_obra) → mostrarObra(id) faz POST em obra.jsp (URL sem ?id=)
+        id_resposta = ""
+        for resp in respostas_criar:
+            try:
+                corpo = (resp.text() or "").strip()
+            except Exception:
+                corpo = ""
+            self.state.extras["criar_obra_resposta"] = {"status": resp.status, "corpo": corpo[:200]}
+            if resp.ok and corpo.isdigit():
+                id_resposta = corpo
 
         self.state.extras["salvar_obra_resultado"] = resultado
         self.state.extras["salvar_obra_mensagens"] = mensagens[:10]
-        logger.info("[VTOP] Resultado do Salvar obra: %s mensagens=%s", resultado, mensagens[:5])
+        logger.info(
+            "[VTOP] Resultado do Salvar obra: %s id_resposta=%s mensagens=%s",
+            resultado, id_resposta or "-", mensagens[:5],
+        )
 
-        obra_id = ""
+        obra_id = id_resposta
         if destino is not None:
             self.page = destino
             page = destino
             logger.info("[VTOP] Obra aberta (%s): %s", resultado, page.url)
-            obra_id = self._detectar_obra_id()
+            obra_id = obra_id or self._detectar_obra_id()
 
         if not obra_id:
             self._salvar_diagnostico(
@@ -2343,6 +2368,29 @@ class VtopSmartRiserService:
             f"Obra salva (id={obra_id or '?'}). URL={page.url}",
             step="salvar_obra",
         )
+
+    def _preparar_modal_para_criar_obra(self) -> None:
+        """Fecha #popup_map (intercepta o clique em Salvar) e exige coords no modal."""
+        assert self.page is not None
+        page = self.page
+        try:
+            if page.evaluate("() => { const p = document.getElementById('popup_map'); return !!(p && p.offsetParent !== null); }"):
+                logger.warning("[VTOP] #popup_map ainda aberto antes de salvar a obra — fechando")
+                page.evaluate("() => { if (typeof fechaPopupMap === 'function') fechaPopupMap(); }")
+                page.locator("#popup_map").wait_for(state="hidden", timeout=5_000)
+        except Exception:
+            logger.exception("[VTOP] Falha ao fechar #popup_map")
+        payload = self._payload_atual or {}
+        if (payload.get("latitude") or "").strip() and (payload.get("longitude") or "").strip():
+            try:
+                lat = float(page.locator("#input_lat").input_value() or 0)
+                lon = float(page.locator("#input_lon").input_value() or 0)
+            except Exception:
+                lat = lon = 0.0
+            if not lat or not lon:
+                raise RuntimeError(
+                    "Coordenadas não aplicadas no formulário da obra (lat/lon = 0) — obra NÃO foi salva."
+                )
 
     def _aguardar_resultado_salvar_obra(
         self, page, novas_abas: List[Any], mensagens: List[str]
@@ -2502,7 +2550,7 @@ class VtopSmartRiserService:
 
     def _passo_coords_pos_salvar(self, payload: Dict[str, Any]) -> None:
         """Só reabre mapa após salvar obra se as coords não foram gravadas no modal."""
-        if payload.get("salvar_coords"):
+        if payload.get("salvar_coords") or self.state.extras.get("coords_preenchidas"):
             self._set(
                 VtopStatus.FILLING_COORDS,
                 "Coords já gravadas no modal — pulando coords pós-salvar.",
@@ -2892,7 +2940,12 @@ class VtopSmartRiserService:
         self.state.extras["cadastro_campos_ok"] = preenchidos
         self.state.extras["cadastro_mapa"] = str(mapa_path)
 
-        if payload.get("anexar_arquivos") or payload.get("com_anexos"):
+        # Carta/fachada são itens do checklist: sem eles a V.tal recusa a validação.
+        # Anexa por padrão; só pula se o payload desligar explicitamente.
+        anexar = payload.get("anexar_arquivos", payload.get("com_anexos", True))
+        if not anexar:
+            logger.info("[VTOP] Anexos desligados no payload — carta/fachada não enviadas.")
+        if anexar:
             self._set(VtopStatus.UPLOADING, "Tentando anexar carta/fachada…", step="upload")
             try:
                 self._anexar_se_possivel(
@@ -3122,13 +3175,30 @@ class VtopSmartRiserService:
         btn = page.locator("#btn_validarEtapa")
         if btn.count() == 0:
             raise RuntimeError("#btn_validarEtapa não encontrado.")
-        btn.first.click(force=True)
-        page.wait_for_timeout(4000)
+        etapa_antes = ler_etapa_obra_page(page)
+        mensagens: List[str] = []
+
+        def _registrar(dialog) -> None:
+            mensagens.append(dialog.message)
+
+        page.on("dialog", _registrar)
+        try:
+            btn.first.click(force=True)
+            page.wait_for_timeout(4000)
+        finally:
+            page.remove_listener("dialog", _registrar)
         etapa = ler_etapa_obra_page(page)
         self.state.extras["obra_etapa_apos_validar"] = etapa
+        self.state.extras["validar_mensagens"] = mensagens[:5]
         obra_id = str(self.state.extras.get("obra_id") or self._detectar_obra_id() or "")
         if obra_id and etapa is not None:
             self._gravar_vinculo_obra(obra_id, etapa=etapa)
+        if etapa_antes is not None and etapa is not None and etapa <= etapa_antes:
+            # Ex.: "Todos os itens desse checklist devem ser preenchidos!" (faltou anexo)
+            recusa = next((msg for msg in mensagens if "?" not in msg), "") or "etapa não avançou"
+            raise RuntimeError(
+                f"Cadastro salvo na obra {obra_id}, mas a V.tal recusou a validação: {recusa}"
+            )
         self._set(VtopStatus.VALIDATING, f"Etapa validada (obra.etapa={etapa}).", step="validar")
 
 
