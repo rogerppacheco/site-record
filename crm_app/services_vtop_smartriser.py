@@ -28,6 +28,7 @@ import re
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -38,6 +39,7 @@ from urllib.parse import urlparse
 import requests
 from django.conf import settings
 from django.core.cache import cache
+from django.db import close_old_connections
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,21 @@ CACHE_KEY_COMANDO = "vtop:comando"
 CACHE_TTL_S = 6 * 60 * 60
 # Estado ativo sem atualização há mais que isso é considerado órfão (worker reiniciado)
 ESTADO_ORFAO_APOS_S = 5 * 60
+_db_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vtop-db")
+
+
+def _db_op(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """
+    Executa acesso ao banco (ORM/cache) numa thread própria: a thread da automação roda o
+    event loop do Playwright sync e o Django bloqueia ORM ali (SynchronousOnlyOperation).
+    """
+    def _executar() -> Any:
+        close_old_connections()
+        return fn(*args, **kwargs)
+
+    return _db_executor.submit(_executar).result(timeout=30)
+
+
 STATUS_ATIVOS = {
     "starting", "awaiting_credentials", "awaiting_qr", "clicking_login", "logged_in",
     "navigating", "filling_obra", "filling_coords", "filling_cadastro", "uploading",
@@ -662,14 +679,14 @@ class VtopSmartRiserService:
     def _publicar_estado(self) -> None:
         self.state.updated_at = datetime.now().isoformat(timespec="seconds")
         try:
-            cache.set(CACHE_KEY_ESTADO, self.state.to_dict(), CACHE_TTL_S)
+            _db_op(cache.set, CACHE_KEY_ESTADO, self.state.to_dict(), CACHE_TTL_S)
         except Exception:
             logger.exception("[VTOP] Falha ao publicar estado no cache")
 
     @staticmethod
     def _estado_cache() -> Optional[Dict[str, Any]]:
         try:
-            return cache.get(CACHE_KEY_ESTADO)
+            return _db_op(cache.get, CACHE_KEY_ESTADO)
         except Exception:
             logger.exception("[VTOP] Falha ao ler estado do cache")
             return None
@@ -687,17 +704,17 @@ class VtopSmartRiserService:
     @staticmethod
     def _enviar_comando(comando: str) -> None:
         try:
-            cache.set(CACHE_KEY_COMANDO, comando, CACHE_TTL_S)
+            _db_op(cache.set, CACHE_KEY_COMANDO, comando, CACHE_TTL_S)
         except Exception:
             logger.exception("[VTOP] Falha ao enviar comando %s", comando)
 
     def _processar_comandos(self) -> None:
         """Aplica comandos vindos de outro worker (fechar / senha pronta)."""
         try:
-            comando = cache.get(CACHE_KEY_COMANDO)
+            comando = _db_op(cache.get, CACHE_KEY_COMANDO)
             if not comando:
                 return
-            cache.delete(CACHE_KEY_COMANDO)
+            _db_op(cache.delete, CACHE_KEY_COMANDO)
         except Exception:
             return
         if comando == "stop":
@@ -767,7 +784,7 @@ class VtopSmartRiserService:
                 return {"ok": False, "error": "Playwright não instalado neste ambiente."}
 
             try:
-                cache.delete(CACHE_KEY_COMANDO)
+                _db_op(cache.delete, CACHE_KEY_COMANDO)
             except Exception:
                 pass
             self._credentials_event.clear()
@@ -1313,7 +1330,8 @@ class VtopSmartRiserService:
         try:
             from crm_app.models import CdoiBloco
 
-            for b in CdoiBloco.objects.filter(solicitacao_id=int(cdoi_id)):
+            blocos = _db_op(lambda: list(CdoiBloco.objects.filter(solicitacao_id=int(cdoi_id))))
+            for b in blocos:
                 if _bloco_equiv(b.nome_bloco, nome) and (b.vtop_obra_id or "").strip():
                     return str(b.vtop_obra_id).strip()
         except Exception:
@@ -1526,9 +1544,7 @@ class VtopSmartRiserService:
             self._payload_atual = dict(payload)
             self.state.extras["obra_id"] = encontrado
             self.state.extras["reusada_da_lista"] = True
-            persistir_vtop_obra_bloco(
-                payload.get("cdoi_id"), complemento, encontrado
-            )
+            _db_op(persistir_vtop_obra_bloco, payload.get("cdoi_id"), complemento, encontrado)
             self._set(
                 VtopStatus.NAVIGATING,
                 f"Complemento '{complemento}' já existe (id={encontrado}) — reutilizando, não cria duplicata.",
@@ -1866,7 +1882,8 @@ class VtopSmartRiserService:
             or self.state.extras.get("obra_bloco")
             or ""
         )
-        persistir_vtop_obra_bloco(
+        _db_op(
+            persistir_vtop_obra_bloco,
             payload.get("cdoi_id"),
             str(nome),
             str(obra_id),
