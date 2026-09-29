@@ -28,6 +28,7 @@ import re
 import tempfile
 import threading
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -385,17 +386,101 @@ def vtop_criar_permitido(payload: Optional[Dict[str, Any]] = None) -> bool:
     return True
 
 
+_TIPOS_LOGRADOURO = {
+    "RUA", "R", "AVENIDA", "AV", "ALAMEDA", "AL", "TRAVESSA", "TV", "PRACA", "PCA",
+    "ESTRADA", "EST", "RODOVIA", "ROD", "BECO", "VIA", "LARGO",
+}
+_PALAVRAS_VAZIAS = {"DE", "DA", "DO", "DAS", "DOS", "E"}
+
+
+def _norm_texto(s: str) -> str:
+    s = (s or "").replace("…", " ").replace("...", " ")
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().upper()
+    s = re.sub(r"[^A-Z0-9 ]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _chave_logradouro(s: str) -> str:
+    palavras = _norm_texto(s).split()
+    while palavras and palavras[0] in _TIPOS_LOGRADOURO:
+        palavras.pop(0)
+    return " ".join(p for p in palavras if p not in _PALAVRAS_VAZIAS)
+
+
+def logradouro_equivalente(logradouro_cdoi: str, logradouro_grade: str) -> bool:
+    """Compara ignorando tipo (Rua/Av), acentos e preposições; tolera nome truncado na grade."""
+    a, b = _chave_logradouro(logradouro_cdoi), _chave_logradouro(logradouro_grade)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    curto, longo = (a, b) if len(a) <= len(b) else (b, a)
+    if len(curto) >= 5 and f" {curto} " in f" {longo} ":
+        return True
+    # Truncado no meio da palavra ("ALBERT SCHWAI...")
+    return len(curto) >= 8 and longo.startswith(curto)
+
+
+def numero_equivalente(numero_cdoi: str, numero_grade: str) -> bool:
+    """'389' bate com '389/405'; sem número no CDOI não restringe."""
+    alvo = {str(int(x)) for x in re.findall(r"\d+", numero_cdoi or "")}
+    if not alvo:
+        return True
+    partes = {str(int(x)) for x in re.findall(r"\d+", numero_grade or "")}
+    return bool(alvo & partes)
+
+
+def linha_bate_endereco(row: Dict[str, Any], logradouro: str, numero: str) -> bool:
+    """Linha da grade Brownfield pertence ao endereço do CDOI?"""
+    grade_log = str(row.get("logradouro") or "")
+    if grade_log:
+        return logradouro_equivalente(logradouro, grade_log) and numero_equivalente(
+            numero, str(row.get("numero") or "")
+        )
+    # Sem colunas identificadas: procura no texto da linha inteira
+    joined = str(row.get("joined") or "")
+    palavras = _chave_logradouro(logradouro).split()
+    if palavras and palavras[-1] not in _norm_texto(joined):
+        return False
+    return not numero or str(numero).strip() in joined
+
+
+def complemento_da_linha(row: Dict[str, Any]) -> str:
+    """Complemento reconhecido (BLOCO/PORTARIA/ADMINISTRAÇÃO/GARAGEM) ou ''."""
+    candidatos = [str(row.get("comp") or "")] + [str(t) for t in (row.get("tds") or [])]
+    for txt in candidatos:
+        u = txt.upper().strip()
+        if u.startswith("BLOCO") or "PORTARIA" in u or "ADMINISTRA" in u or "GARAGEM" in u:
+            return txt.strip()
+    return ""
+
+
 def motivo_bloqueio_inventario(meta: Dict[str, Any], total_com_complemento: int) -> str:
     """
     Complemento não achado na grade: decide se é seguro criar obra nova.
     Retorna a mensagem de bloqueio, ou "" quando pode criar.
     """
-    if total_com_complemento > 0:
-        return ""
     meta = meta or {}
     fim = meta.get("fim") or ""
     linhas_endereco = int(meta.get("linhas_endereco") or 0)
     paginas = int(meta.get("paginas") or 0)
+    sem_complemento = linhas_endereco - total_com_complemento
+    if total_com_complemento > 0 and sem_complemento > 0:
+        # Ex.: TORRE 1 no mesmo endereço pode ser o mesmo prédio do BLOCO 1 → duplicaria
+        return (
+            f"Há {sem_complemento} obra(s) neste endereço com complemento não reconhecido "
+            "(fora de BLOCO/PORTARIA/ADMINISTRAÇÃO/GARAGEM) — não é seguro criar."
+        )
+    if total_com_complemento > 0:
+        if fim == "fim_lista":
+            return ""
+        # Lista não chegou ao fim: o bloco pode estar numa página não lida → duplicaria a obra
+        return (
+            f"Busca parou em {paginas} página(s) sem chegar ao fim da lista "
+            f"({'limite de páginas' if fim == 'limite' else 'paginação não confirmada'}); "
+            f"o endereço tem {total_com_complemento} obra(s), mas o bloco não foi encontrado — "
+            "não é seguro criar (poderia duplicar)."
+        )
     if linhas_endereco > 0:
         return (
             f"Há {linhas_endereco} obra(s) neste endereço sem complemento reconhecível "
@@ -1379,33 +1464,13 @@ class VtopSmartRiserService:
         """
         Inventário Brownfield do endereço: complemento → [{id, etapa_txt, joined}, …].
 
-        Percorre paginação (15/página) e amplia "Exibir" quando possível.
+        A tela não tem filtro por endereço: pesquisa MG com período TUDO, exibe todas as
+        linhas da DataTable de uma vez e filtra o endereço aqui. Paginação fica de fallback.
         Retorna lista por complemento para detectar duplicatas.
         """
         assert self.page is not None
         page = self.page
-        trecho = (logradouro or "").split()[-1] if logradouro else ""
-
-        page.evaluate(
-            """() => {
-              const mg = document.querySelector("input[value='MG']");
-              if (mg) { mg.disabled = false; if (!mg.checked) mg.click(); }
-              // Amplia página se houver select de length (DataTables / similar)
-              const sels = document.querySelectorAll('select');
-              for (const s of sels) {
-                const opts = [...s.options].map(o => o.value);
-                if (opts.includes('100') || opts.includes('50') || opts.includes('-1')) {
-                  s.value = opts.includes('-1') ? '-1' : (opts.includes('100') ? '100' : '50');
-                  s.dispatchEvent(new Event('change', { bubbles: true }));
-                  break;
-                }
-              }
-              const b = document.getElementById('b_pesquisa');
-              if (b) b.disabled = false;
-              if (typeof pesquisaObras === 'function') pesquisaObras();
-            }"""
-        )
-        page.wait_for_timeout(4500)
+        total_grade = self._pesquisar_brownfield_tudo()
 
         colecionados: Dict[str, Dict[str, Any]] = {}
         linhas_endereco = 0
@@ -1416,51 +1481,49 @@ class VtopSmartRiserService:
         paginas = 0
         for _pagina in range(INVENTARIO_MAX_PAGINAS):
             paginas += 1
-            leitura = page.evaluate(
-                """(args) => {
-                  const { trecho, numero } = args;
+            rows = page.evaluate(
+                """() => {
+                  const nome = (typeof nome_tabela !== 'undefined' && nome_tabela) ? nome_tabela : 'dados_obras';
+                  const ths = [...document.querySelectorAll('#' + nome + ' thead th')]
+                    .map(th => (th.innerText || '').trim().toUpperCase());
+                  const iLog = ths.indexOf('LOGRADOURO'), iNum = ths.indexOf('NUM'), iComp = ths.indexOf('COMP');
+                  // Grade trunca textos longos com "..."; o valor completo fica no title
+                  const txt = td => td
+                    ? (td.getAttribute('title') || td.innerText || '').replace(/\\s+/g, ' ').trim()
+                    : '';
                   const out = [];
-                  const idsPagina = [];
+                  const vistos = new Set();
                   document.querySelectorAll('[onclick*=\"mostrarObra\"]').forEach(el => {
                     const oc = el.getAttribute('onclick') || '';
                     const m = oc.match(/mostrarObra\\(\\s*[\"']?(\\d+)/);
-                    if (!m) return;
+                    if (!m || vistos.has(m[1])) return;
                     const id = m[1];
-                    if (!idsPagina.includes(id)) idsPagina.push(id);
+                    vistos.add(id);
                     const tr = el.closest('tr');
-                    const tds = tr
-                      ? [...tr.querySelectorAll('td')].map(td =>
-                          (td.innerText || '').replace(/\\s+/g, ' ').trim())
-                      : [];
-                    const joined = tds.join(' | ');
-                    const ju = joined.toUpperCase();
-                    if (trecho && !ju.includes(String(trecho).toUpperCase())) return;
-                    if (numero && !ju.includes(String(numero))) return;
+                    const tdsEl = tr ? [...tr.querySelectorAll('td')] : [];
+                    const tds = tdsEl.map(td => (td.innerText || '').replace(/\\s+/g, ' ').trim());
                     let etapaTxt = '';
                     for (const td of tds) {
                       if (/^\\d+\\s*-\\s*/.test(td)) { etapaTxt = td; break; }
                     }
-                    let comp = '';
-                    for (const td of tds) {
-                      const u = td.toUpperCase().trim();
-                      if (u.startsWith('BLOCO') || u.includes('PORTARIA') ||
-                          u.includes('ADMINISTRA') || u.includes('GARAGEM')) {
-                        comp = td.trim();
-                        break;
-                      }
-                    }
-                    out.push({ id, tds, joined, etapaTxt, complemento: comp });
+                    out.push({
+                      id, tds, joined: tds.join(' | '), etapaTxt,
+                      logradouro: iLog >= 0 ? txt(tdsEl[iLog]) : '',
+                      numero: iNum >= 0 ? txt(tdsEl[iNum]) : '',
+                      comp: iComp >= 0 ? txt(tdsEl[iComp]) : '',
+                    });
                   });
-                  return { rows: out, idsPagina };
-                }""",
-                {"trecho": trecho, "numero": str(numero or "")},
-            ) or {}
-            rows = leitura.get("rows") or []
-            ids_pagina = [str(x) for x in (leitura.get("idsPagina") or [])]
+                  return out;
+                }"""
+            ) or []
+            ids_pagina = [str(r.get("id")) for r in rows]
             for row in rows:
                 oid = str(row.get("id") or "").strip()
                 if not oid or oid in colecionados:
                     continue
+                if not linha_bate_endereco(row, logradouro, numero):
+                    continue
+                row["complemento"] = complemento_da_linha(row)
                 colecionados[oid] = row
                 linhas_endereco += 1
 
@@ -1478,6 +1541,9 @@ class VtopSmartRiserService:
                 fim_motivo = "fim_lista"
                 break
             ids_anterior = ids_pagina
+            if total_grade > 0 and linhas_vistas >= total_grade:
+                fim_motivo = "fim_lista"
+                break
 
             # Próxima página
             avancou = page.evaluate(
@@ -1490,7 +1556,7 @@ class VtopSmartRiserService:
                     const title = (el.getAttribute('title') || '').toLowerCase();
                     if (t === '›' || t === '>' || t === '»' || t.toLowerCase() === 'próximo' ||
                         t.toLowerCase() === 'proximo' || title.includes('next')) {
-                      const dis = el.classList.contains('disabled') ||
+                      const dis = !!el.closest('.disabled') ||
                         el.getAttribute('aria-disabled') === 'true' ||
                         el.hasAttribute('disabled');
                       if (!dis && el.offsetParent !== null) {
@@ -1512,12 +1578,17 @@ class VtopSmartRiserService:
         else:
             fim_motivo = "limite"
 
+        if fim_motivo == "fim_lista" and total_grade > 0 and linhas_vistas < total_grade:
+            # DataTable diz ter mais linhas do que as lidas no DOM
+            fim_motivo = "indeterminado"
+
         self._inventario_meta = {
             "fim": fim_motivo,
             "paginas": paginas,
             "linhas_vistas": linhas_vistas,
             "linhas_endereco": linhas_endereco,
             "tamanho_pagina": tamanho_pagina,
+            "total_grade": total_grade,
         }
         self.state.extras["inventario_meta"] = dict(self._inventario_meta)
         logger.info("[VTOP] Inventário Brownfield: %s", self._inventario_meta)
@@ -1555,6 +1626,52 @@ class VtopSmartRiserService:
         except Exception:
             pass
         return mapa
+
+    def _pesquisar_brownfield_tudo(self) -> int:
+        """
+        Pesquisa MG com período TUDO (padrão da tela é MÊS ATUAL, que esconde obras de meses
+        anteriores) e exibe todas as linhas. Retorna o total da grade, ou -1 se não carregou.
+        """
+        assert self.page is not None
+        page = self.page
+        page.evaluate(
+            """() => {
+              const mg = document.querySelector("input[value='MG']");
+              if (mg) { mg.disabled = false; if (!mg.checked) mg.click(); }
+              const sel = document.getElementById('sel_datas');
+              if (sel && window.jQuery) window.jQuery(sel).val('T').trigger('change');
+              const dados = document.getElementById('dados');
+              if (dados) dados.innerHTML = '';
+              const b = document.getElementById('b_pesquisa');
+              if (b) b.disabled = false;
+              if (typeof pesquisaObras === 'function') pesquisaObras();
+            }"""
+        )
+        exibir_tudo_js = """() => {
+          const nome = (typeof nome_tabela !== 'undefined' && nome_tabela) ? nome_tabela : 'dados_obras';
+          if (!window.jQuery || !jQuery.fn.dataTable || !jQuery.fn.dataTable.isDataTable('#' + nome)) return -1;
+          const t = jQuery('#' + nome).DataTable();
+          t.search('').columns().search('').page.len(-1).draw();
+          return t.rows().count();
+        }"""
+        total = -1
+        for _ in range(90):
+            page.wait_for_timeout(1000)
+            try:
+                total = int(page.evaluate(exibir_tudo_js))
+            except Exception:
+                total = -1
+            if total >= 0:
+                break
+        if total >= 0:
+            # DataTable termina a inicialização (idioma) de forma assíncrona: reaplica
+            page.wait_for_timeout(1500)
+            try:
+                total = int(page.evaluate(exibir_tudo_js))
+            except Exception:
+                pass
+        logger.info("[VTOP] Pesquisa Brownfield (MG, período TUDO): %s obras na grade", total)
+        return total
 
     def _aguardar_troca_pagina(self, ids_anterior: List[str], timeout_ms: int = 10_000) -> None:
         """Espera a grade trocar de página (ids diferentes) em vez de um sleep fixo."""
