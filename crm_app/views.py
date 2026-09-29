@@ -11269,8 +11269,9 @@ class CdoiListView(APIView):
         # Perfis que veem tudo
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice']
         eh_gestao = is_member(user, grupos_gestao)
+        ve_todos = eh_gestao or is_member(user, [PERFIL_GERENTE_CONTAS])
 
-        if eh_gestao:
+        if ve_todos:
             queryset = CdoiSolicitacao.objects.all().order_by('-data_criacao')
         else:
             # Usuário comum vê apenas os seus
