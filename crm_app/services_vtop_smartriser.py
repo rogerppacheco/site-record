@@ -85,6 +85,8 @@ LOGIN_WAIT_SECONDS = 15 * 60  # tempo máximo aguardando o usuário digitar a se
 QR_POLL_MS = 1500
 # Sem QR visível (WebSocket V.tal caiu / QR expirou) por este tempo → recarrega a tela de login
 QR_RECARREGAR_APOS_S = 45
+# Teto de páginas no inventário Brownfield (grade da V.tal lista 15 obras por página)
+INVENTARIO_MAX_PAGINAS = 30
 
 # Gunicorn roda N workers: estado e comandos passam pelo cache (DB) para qualquer worker responder
 CACHE_KEY_ESTADO = "vtop:estado"
@@ -383,6 +385,40 @@ def vtop_criar_permitido(payload: Optional[Dict[str, Any]] = None) -> bool:
     return True
 
 
+def motivo_bloqueio_inventario(meta: Dict[str, Any], total_com_complemento: int) -> str:
+    """
+    Complemento não achado na grade: decide se é seguro criar obra nova.
+    Retorna a mensagem de bloqueio, ou "" quando pode criar.
+    """
+    if total_com_complemento > 0:
+        return ""
+    meta = meta or {}
+    fim = meta.get("fim") or ""
+    linhas_endereco = int(meta.get("linhas_endereco") or 0)
+    paginas = int(meta.get("paginas") or 0)
+    if linhas_endereco > 0:
+        return (
+            f"Há {linhas_endereco} obra(s) neste endereço sem complemento reconhecível "
+            "(BLOCO/PORTARIA/ADMINISTRAÇÃO/GARAGEM) — não é seguro criar."
+        )
+    if fim == "fim_lista":
+        return ""
+    if fim == "limite":
+        return (
+            f"Busca atingiu o limite de {paginas} páginas sem encontrar o endereço — "
+            "não é seguro criar (o endereço pode estar nas páginas seguintes)."
+        )
+    if fim == "sem_resultados":
+        return (
+            "A busca Brownfield não retornou nenhuma obra (filtro/UF/sessão?) — "
+            "não é seguro criar. Tente de novo."
+        )
+    return (
+        "A paginação do inventário Brownfield não avançou e não foi possível confirmar o fim da lista — "
+        "não é seguro criar. Tente de novo."
+    )
+
+
 def ler_etapa_obra_page(page) -> Optional[int]:
     """Lê obra.etapa no JS da página; None se indisponível."""
     try:
@@ -648,6 +684,7 @@ class VtopSmartRiserService:
         self.page: Optional[Page] = None
         self._temp_files: List[str] = []
         self._payload_atual: Dict[str, Any] = {}
+        self._inventario_meta: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------ status
     def _set(
@@ -1371,16 +1408,25 @@ class VtopSmartRiserService:
         page.wait_for_timeout(4500)
 
         colecionados: Dict[str, Dict[str, Any]] = {}
-        for _pagina in range(30):  # hard cap
-            rows = page.evaluate(
+        linhas_endereco = 0
+        linhas_vistas = 0
+        tamanho_pagina = 0
+        ids_anterior: List[str] = []
+        fim_motivo = ""
+        paginas = 0
+        for _pagina in range(INVENTARIO_MAX_PAGINAS):
+            paginas += 1
+            leitura = page.evaluate(
                 """(args) => {
                   const { trecho, numero } = args;
                   const out = [];
+                  const idsPagina = [];
                   document.querySelectorAll('[onclick*=\"mostrarObra\"]').forEach(el => {
                     const oc = el.getAttribute('onclick') || '';
                     const m = oc.match(/mostrarObra\\(\\s*[\"']?(\\d+)/);
                     if (!m) return;
                     const id = m[1];
+                    if (!idsPagina.includes(id)) idsPagina.push(id);
                     const tr = el.closest('tr');
                     const tds = tr
                       ? [...tr.querySelectorAll('td')].map(td =>
@@ -1405,15 +1451,33 @@ class VtopSmartRiserService:
                     }
                     out.push({ id, tds, joined, etapaTxt, complemento: comp });
                   });
-                  return out;
+                  return { rows: out, idsPagina };
                 }""",
                 {"trecho": trecho, "numero": str(numero or "")},
-            )
-            for row in rows or []:
+            ) or {}
+            rows = leitura.get("rows") or []
+            ids_pagina = [str(x) for x in (leitura.get("idsPagina") or [])]
+            for row in rows:
                 oid = str(row.get("id") or "").strip()
                 if not oid or oid in colecionados:
                     continue
                 colecionados[oid] = row
+                linhas_endereco += 1
+
+            if paginas == 1:
+                tamanho_pagina = len(ids_pagina)
+                if not ids_pagina:
+                    fim_motivo = "sem_resultados"
+                    break
+            elif ids_pagina == ids_anterior:
+                # Clicou em "próxima" e a grade não mudou: só é fim se a página for parcial
+                fim_motivo = "fim_lista" if len(ids_pagina) < tamanho_pagina else "indeterminado"
+                break
+            linhas_vistas += len(ids_pagina)
+            if paginas > 1 and len(ids_pagina) < tamanho_pagina:
+                fim_motivo = "fim_lista"
+                break
+            ids_anterior = ids_pagina
 
             # Próxima página
             avancou = page.evaluate(
@@ -1442,8 +1506,21 @@ class VtopSmartRiserService:
                 }"""
             )
             if not avancou:
+                fim_motivo = "fim_lista"
                 break
-            page.wait_for_timeout(2500)
+            self._aguardar_troca_pagina(ids_anterior)
+        else:
+            fim_motivo = "limite"
+
+        self._inventario_meta = {
+            "fim": fim_motivo,
+            "paginas": paginas,
+            "linhas_vistas": linhas_vistas,
+            "linhas_endereco": linhas_endereco,
+            "tamanho_pagina": tamanho_pagina,
+        }
+        self.state.extras["inventario_meta"] = dict(self._inventario_meta)
+        logger.info("[VTOP] Inventário Brownfield: %s", self._inventario_meta)
 
         # Agrupa por complemento normalizado
         mapa: Dict[str, List[Dict[str, Any]]] = {}
@@ -1471,12 +1548,36 @@ class VtopSmartRiserService:
         try:
             path = Path(settings.BASE_DIR) / "tmp_vtop_inventario_endereco.json"
             path.write_text(
-                json.dumps(mapa, ensure_ascii=False, indent=2), encoding="utf-8"
+                json.dumps({"meta": self._inventario_meta, "mapa": mapa}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
             self.state.extras["inventario_path"] = str(path)
         except Exception:
             pass
         return mapa
+
+    def _aguardar_troca_pagina(self, ids_anterior: List[str], timeout_ms: int = 10_000) -> None:
+        """Espera a grade trocar de página (ids diferentes) em vez de um sleep fixo."""
+        assert self.page is not None
+        fim = time.time() + timeout_ms / 1000
+        while time.time() < fim:
+            self.page.wait_for_timeout(500)
+            try:
+                ids = self.page.evaluate(
+                    """() => {
+                      const ids = [];
+                      document.querySelectorAll('[onclick*="mostrarObra"]').forEach(el => {
+                        const m = (el.getAttribute('onclick') || '').match(/mostrarObra\\(\\s*["']?(\\d+)/);
+                        if (m && !ids.includes(m[1])) ids.push(m[1]);
+                      });
+                      return ids;
+                    }"""
+                )
+            except Exception:
+                continue
+            if ids and [str(x) for x in ids] != ids_anterior:
+                self.page.wait_for_timeout(500)
+                return
 
     def _escolher_obra_da_lista(
         self,
@@ -1554,12 +1655,9 @@ class VtopSmartRiserService:
         else:
             # Não achou o mesmo complemento → caminho criar obra nova
             total = sum(len(v) for v in mapa.values())
-            if total == 0:
-                raise RuntimeError(
-                    "Inventário Brownfield vazio neste endereço — não é seguro criar "
-                    "(não deu para validar se o complemento já existe). "
-                    "Confira filtros/UF/sessão e tente de novo."
-                )
+            bloqueio = motivo_bloqueio_inventario(self._inventario_meta, total)
+            if bloqueio:
+                raise RuntimeError(bloqueio)
             # Descarta obra_id preferido do banco: lista é a fonte da verdade
             payload.pop("obra_id", None)
             self._payload_atual = dict(payload)
