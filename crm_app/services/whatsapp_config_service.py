@@ -30,10 +30,7 @@ def get_active_whatsapp_provider_name() -> str:
     try:
         cfg = WhatsAppIntegracaoConfig.load()
         provider = (cfg.provider or "").strip().lower()
-        if provider in (
-            WhatsAppIntegracaoConfig.PROVIDER_ZAPI,
-            WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION,
-        ):
+        if provider in _PROVIDERS_VALIDOS or provider == 'meta':
             return provider
     except Exception:
         pass
@@ -57,7 +54,7 @@ def canal_cliente_pronto() -> bool:
     Sem TOKEN_B: sempre False (não cai no número comercial).
     Sem banco (testes): credenciais B bastam.
     """
-    if not _credenciais_whatsatende_cliente_ok():
+    if not (_credenciais_whatsatende_cliente_ok() or credenciais_meta_cloud_ok()):
         return False
     try:
         cfg = WhatsAppIntegracaoConfig.load()
@@ -72,7 +69,7 @@ def motivo_canal_cliente_bloqueado() -> str:
 
     if canal_cliente_pronto():
         return ""
-    if not _credenciais_whatsatende_cliente_ok():
+    if not (_credenciais_whatsatende_cliente_ok() or credenciais_meta_cloud_ok()):
         return (
             "Número oficial Meta ainda não configurado no servidor "
             "(WHATSATENDE_TOKEN_B / WHATSATENDE_WHATSAPP_ID_B). "
@@ -327,8 +324,8 @@ def update_whatsapp_config(
 # Injetado de site-bn
 def _credenciais_meta_ok() -> bool:
     return bool(
-        (getattr(settings, "META_CLOUD_ACCESS_TOKEN", "") or "").strip()
-        and (getattr(settings, "META_CLOUD_PHONE_NUMBER_ID", "") or "").strip()
+        (getattr(settings, "META_CLOUD_ACCESS_TOKEN", os.environ.get("META_CLOUD_ACCESS_TOKEN", "")) or "").strip()
+        and (getattr(settings, "META_CLOUD_PHONE_NUMBER_ID", os.environ.get("META_CLOUD_PHONE_NUMBER_ID", "")) or "").strip()
     )
 
 # Injetado de site-bn
