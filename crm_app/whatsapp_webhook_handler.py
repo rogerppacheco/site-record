@@ -8798,6 +8798,15 @@ def processar_webhook_whatsapp(data, request=None):
             resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
+        # Comando LINK DFV (Acesso ao painel completo no Power BI)
+        if mensagem_limpa in ['LINK DFV', 'DFV LINK', 'LINKDFV', 'PAINEL DFV']:
+            logger.info(f"[Webhook] Comando LINK DFV reconhecido!")
+            resposta = (
+                "📊 *Acesse o painel completo do DFV no Power BI aqui:*\n\n"
+                "https://app.powerbi.com/view?r=eyJrIjoiZmEwOTQxZDUtMWNhMC00ZDJkLWFlMGQtNmNjYzNjYzA4YzQxIiwidCI6Ijg1YjI4NDIxLWQ0NWEtNGIwNy04ODlkLTI0YjUyOGM3ZjI1MCJ9&disablecdnExpiration=1786650726"
+            )
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         # Comando NOVA VENDA (cadastrar venda no CRM via WhatsApp)
         if mensagem_limpa in ['NOVA VENDA', 'CADASTRAR VENDA', 'CADASTRO VENDA']:
             logger.info(f"[Webhook] Comando NOVA VENDA reconhecido!")
@@ -9065,6 +9074,7 @@ def processar_webhook_whatsapp(data, request=None):
                 "📋 *MENU*\n\n",
                 "Escolha uma opção:\n",
                 "• *DFV* - Consultar fachadas por CEP (Power BI ao vivo)\n",
+                "• *Link DFV* - Acessar o painel completo do DFV (Power BI)\n",
                 "• *CDOE* - Consultar endereços por código do CDO (Power BI)\n",
                 "• *Viabilidade* - Consultar viabilidade por CEP e número\n",
                 "• *Inclusão* - Solicitar viabilidade (formulário)\n",
