@@ -17,13 +17,14 @@ from crm_app.services_vtop_smartriser import (
     montar_payload_cdoi,
     payload_para_bloco,
 )
+from crm_app.perfis_acesso import GRUPOS_CDOI_EDICAO
 from crm_app.utils import is_member
 
 logger = logging.getLogger(__name__)
 
 
 def _pode_usar_vtop(user) -> bool:
-    return is_member(user, ["Diretoria", "Admin", "BackOffice"])
+    return is_member(user, GRUPOS_CDOI_EDICAO)
 
 
 def _carregar_cdoi(pk: int) -> Optional[CdoiSolicitacao]:
