@@ -748,6 +748,7 @@ from crm_app.utils import (
     q_venda_acesso_retrieve_vendedor_supervisor,
 )
 from crm_app.perfis_acesso import (
+    GRUPOS_CDOI_EDICAO,
     GRUPOS_EXPORT_AGENDADOS_PENDENTES,
     GRUPOS_VISUALIZACAO_GESTAO,
     PERFIL_GERENTE_CONTAS,
@@ -11279,6 +11280,7 @@ class CdoiListView(APIView):
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice']
         eh_gestao = is_member(user, grupos_gestao)
         ve_todos = eh_gestao or is_member(user, [PERFIL_GERENTE_CONTAS])
+        pode_editar = is_member(user, GRUPOS_CDOI_EDICAO)
 
         if ve_todos:
             queryset = CdoiSolicitacao.objects.all().order_by('-data_criacao')
@@ -11308,7 +11310,7 @@ class CdoiListView(APIView):
                 'data': item.data_criacao.strftime('%d/%m/%Y'),
                 'link_fotos_fachada': item.link_fotos_fachada or "",
                 'link_carta_sindico': item.link_carta_sindico or "",
-                'can_edit': eh_gestao, # Flag para o frontend saber se libera edição
+                'can_edit': pode_editar, # Flag para o frontend saber se libera edição
                 'criado_por_id': item.criado_por.id if item.criado_por else None,
                 'criado_por_nome': criado_por_nome
             })
@@ -11671,7 +11673,7 @@ class CdoiUpdateView(APIView):
 
     def get(self, request, pk):
         user = request.user
-        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+        if not is_member(user, GRUPOS_CDOI_EDICAO):
             return Response({"error": "Acesso negado."}, status=403)
 
         try:
@@ -11738,7 +11740,7 @@ class CdoiUpdateView(APIView):
 
     def patch(self, request, pk):
         user = request.user
-        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+        if not is_member(user, GRUPOS_CDOI_EDICAO):
             return Response({"error": "Acesso negado."}, status=403)
 
         try:
@@ -11867,7 +11869,7 @@ class CdoiUpdateView(APIView):
 
     def put(self, request, pk):
         user = request.user
-        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+        if not is_member(user, GRUPOS_CDOI_EDICAO):
             return Response({"error": "Acesso negado."}, status=403)
 
         try:

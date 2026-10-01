@@ -34,6 +34,13 @@ GRUPOS_ESTEIRA_GESTAO_APROVEITAMENTO: list[str] = [
     PERFIL_GERENTE_CONTAS,
 ]
 
+GRUPOS_CDOI_EDICAO: list[str] = [
+    'Diretoria',
+    'Admin',
+    'BackOffice',
+    PERFIL_GERENTE_CONTAS,
+]
+
 GRUPOS_EXPORT_AGENDADOS_PENDENTES: list[str] = [
     'Diretoria',
     'Admin',
