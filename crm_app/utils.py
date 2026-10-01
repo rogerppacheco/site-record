@@ -599,14 +599,20 @@ def _normalizar_texto_status_pap(status_tabela):
 
 
 def pap_status_indica_concluido(status_tabela, status_agendamento=None):
-    """Indica instalação concluída no PAP (coluna Status ou detalhe Status agendamento)."""
+    """Indica instalação concluída no PAP.
+
+    A coluna Status do pedido prevalece: Em Aprovisionamento, Pendência ou Cancelado
+    significam pedido não instalado, mesmo que o detalhe mostre uma visita
+    "Concluído com sucesso". O status do agendamento só decide quando a coluna
+    Status não foi lida ou tem um texto não reconhecido.
+    """
     st = _normalizar_texto_status_pap(status_tabela)
-    if "concluí" in st or "concluido" in st:
+    if "concluido" in st or "instalad" in st:
         return True
-    sa = (status_agendamento or "").strip().lower()
-    if sa and ("concluí" in sa or "concluido" in sa or "sucesso" in sa):
-        return True
-    return False
+    if "aprovisionamento" in st or "penden" in st or "cancel" in st:
+        return False
+    sa = _normalizar_texto_status_pap(status_agendamento)
+    return bool(sa) and ("concluido" in sa or "sucesso" in sa)
 
 
 def pap_status_indica_pendencia_lista(status_tabela):
@@ -829,6 +835,64 @@ def _snapshot_venda_sync_pap(venda):
         "periodo_agendamento": venda.periodo_agendamento or "",
         "data_instalacao": venda.data_instalacao,
     }
+
+
+def get_pap_sync_bot_user():
+    from django.contrib.auth import get_user_model
+
+    bot, _ = get_user_model().objects.get_or_create(
+        username='PAP_SYNC',
+        defaults={
+            'first_name': 'PAP',
+            'last_name': 'Sincronização',
+            'email': 'pap_sync@sistema.local',
+            'is_active': False,
+        },
+    )
+    return bot
+
+
+def _registrar_historico_sync_pap(
+    venda, antes, depois, snap_esteira_antes, status_pap=None, status_agendamento_pap=None
+):
+    """Grava HistoricoAlteracaoVenda e eventos da esteira das mudanças feitas pela sincronização PAP."""
+    import logging
+
+    from crm_app.esteira_eventos_utils import ORIGEM_SISTEMA, registrar_eventos_venda_esteira
+    from crm_app.models import HistoricoAlteracaoVenda, VendaEsteiraEvento
+
+    try:
+        bot = get_pap_sync_bot_user()
+        alteracoes = {}
+        if antes["status_esteira_nome"] != depois["status_esteira_nome"]:
+            alteracoes['status_esteira'] = (
+                f"De '{antes['status_esteira_nome']}' para '{depois['status_esteira_nome']}'"
+            )
+        if antes["data_instalacao"] != depois["data_instalacao"]:
+            alteracoes['data_instalacao'] = (
+                f"De '{antes['data_instalacao'] or ''}' para '{depois['data_instalacao'] or ''}'"
+            )
+        if antes["data_agendamento"] != depois["data_agendamento"]:
+            alteracoes['data_agendamento'] = (
+                f"De '{antes['data_agendamento'] or ''}' para '{depois['data_agendamento'] or ''}'"
+            )
+        if antes["motivo_pendencia_id"] != depois["motivo_pendencia_id"]:
+            alteracoes['motivo_pendencia'] = (
+                f"Novo: {venda.motivo_pendencia.nome}" if venda.motivo_pendencia else "Removido"
+            )
+        if not alteracoes:
+            return
+        alteracoes['origem'] = 'Sincronização PAP'
+        alteracoes['status_pap'] = (status_pap or '')[:120]
+        alteracoes['status_agendamento_pap'] = (status_agendamento_pap or '')[:120]
+        HistoricoAlteracaoVenda.objects.create(venda=venda, usuario=bot, alteracoes=alteracoes)
+        eventos = registrar_eventos_venda_esteira(snap_esteira_antes, venda, ORIGEM_SISTEMA, bot)
+        if eventos:
+            VendaEsteiraEvento.objects.bulk_create(eventos)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "[STATUS SYNC] Falha ao gravar histórico da venda %s", getattr(venda, 'id', None)
+        )
 
 
 def _venda_sync_pap_alterou(antes, depois):
@@ -1060,6 +1124,7 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
     import logging
     import re
 
+    from crm_app.esteira_eventos_utils import VendaEsteiraSnap
     from crm_app.models import StatusCRM
 
     logger = logging.getLogger(__name__)
@@ -1102,6 +1167,7 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
             continue
 
         antes = _snapshot_venda_sync_pap(venda)
+        snap_esteira_antes = VendaEsteiraSnap.from_venda(venda)
         status_anterior = antes["status_esteira_nome"]
         sa_info = aplicar_status_agendamento_pap_na_venda(venda, d.get("status_agendamento"))
         sa_nao_mapeado = sa_info.get("nao_mapeado")
@@ -1119,6 +1185,11 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
             depois = _snapshot_venda_sync_pap(venda)
             if not _venda_sync_pap_alterou(antes, depois):
                 return
+            _registrar_historico_sync_pap(
+                venda, antes, depois, snap_esteira_antes,
+                status_pap=d.get("status"),
+                status_agendamento_pap=d.get("status_agendamento"),
+            )
             item = {
                 "venda_id": venda.id,
                 "alterou": True,
@@ -1146,9 +1217,12 @@ def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap, os_filtro=Non
                     venda.data_instalacao = dt
                 venda.save()
                 logger.info(
-                    "[STATUS SYNC] OS %s: marcada INSTALADA (PAP concluído, era %s).",
+                    "[STATUS SYNC] OS %s: marcada INSTALADA (PAP concluído, era %s; "
+                    "Status PAP=%r; Status agendamento=%r).",
                     os_raw,
                     esteira_nome,
+                    d.get("status"),
+                    d.get("status_agendamento"),
                 )
                 _registrar_alteracao_se_houve()
             else:
