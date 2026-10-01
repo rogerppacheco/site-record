@@ -6473,7 +6473,8 @@ class ImportacaoOsabView(APIView):
                     with transaction.atomic():
                         with connection.cursor() as cursor:
                             cursor.execute("SET LOCAL statement_timeout = '120000ms'")
-                        ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
+                        # Cada lote vira um UPDATE com CASE por campo (~63 campos); lotes grandes estouram a memória do Postgres.
+                        ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=100)
 
                 if vendas_atualizar:
                     LogImportacaoOSAB.objects.filter(id=log_id).update(
@@ -6483,7 +6484,7 @@ class ImportacaoOsabView(APIView):
                     with transaction.atomic():
                         with connection.cursor() as cursor:
                             cursor.execute("SET LOCAL statement_timeout = '120000ms'")
-                        Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
+                        Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=500)
                         from crm_app.services.adiantamento_sabado_service import (
                             quitar_adiantamento_sabado_pos_bulk,
                         )
@@ -6598,14 +6599,21 @@ class ImportacaoOsabView(APIView):
             import traceback
             traceback.print_exc()
             
-            try:
-                log.status = 'ERRO'
-                log.mensagem_erro = str(e)
-                log.finalizado_em = timezone.now()
-                log.calcular_duracao()
-                log.save()
-            except:
-                print("Erro ao salvar log de erro")
+            import time
+            from django.db import connection as db_connection
+            for tentativa in range(6):
+                try:
+                    db_connection.close()
+                    log = LogImportacaoOSAB.objects.get(id=log_id)
+                    log.status = 'ERRO'
+                    log.mensagem_erro = str(e)
+                    log.finalizado_em = timezone.now()
+                    log.calcular_duracao()
+                    log.save()
+                    break
+                except Exception:
+                    print(f"Erro ao salvar log de erro (tentativa {tentativa + 1}/6)")
+                    time.sleep(10)
 
 
 class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
@@ -14033,7 +14041,18 @@ class LogsImportacaoOSABView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
+        from datetime import timedelta
         from .models import LogImportacaoOSAB
+
+        # Thread de importação morre junto com o processo (deploy/restart/queda do banco) sem gravar o fim.
+        LogImportacaoOSAB.objects.filter(
+            status='PROCESSANDO',
+            iniciado_em__lt=timezone.now() - timedelta(hours=2),
+        ).update(
+            status='ERRO',
+            mensagem_erro='Importação interrompida (processo encerrado antes de concluir). Reimporte o arquivo.',
+            finalizado_em=timezone.now(),
+        )
         
         # Buscar últimos 20 logs (todos os usuários podem ver todos os logs OSAB)
         if is_member(request.user, ['Admin', 'Diretoria', 'BackOffice']):
