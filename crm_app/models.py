@@ -5080,6 +5080,8 @@ class WhatsAppIntegracaoConfig(models.Model):
     PROVIDER_EVOLUTION = "evolution"
     PROVIDER_WHATSATENDE = "whatsatende"
     PROVIDER_HYBRID = "hybrid"
+    # Aceito por get_active_whatsapp_provider_name, mas não selecionável no campo.
+    PROVIDER_META = "meta"
     PROVIDER_CHOICES = (
         (PROVIDER_ZAPI, "Z-API (legado / plano B)"),
         (PROVIDER_EVOLUTION, "Evolution + n8n (Opção B)"),
