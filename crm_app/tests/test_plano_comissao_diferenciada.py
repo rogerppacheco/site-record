@@ -96,7 +96,7 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
             estado='SP',
         )
 
-    def test_600_setembro_agrega_na_coluna_500(self) -> None:
+    def test_600_setembro_continua_na_linha_600(self) -> None:
         venda = self._venda_em(date(2026, 9, 20))
         with patch(
             'crm_app.services.comissao_cidade_especial_service.venda_em_cidade_oferta_especial',
@@ -104,7 +104,7 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
         ):
             self.assertEqual(
                 plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF', venda=venda),
-                '500MB_PAP',
+                '600MB_PAP',
             )
 
     def test_600_outubro_mantem_linha_propria(self) -> None:
@@ -132,7 +132,7 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
                 faixa_regra=None,
                 config=config,
                 usar_manual=True,
-                chave='500MB_PAP',
+                chave='600MB_PAP',
                 venda=venda,
             )
         self.assertEqual(valor, 180.0)

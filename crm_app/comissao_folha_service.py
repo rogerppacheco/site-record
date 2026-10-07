@@ -173,8 +173,8 @@ def plano_tipo_to_chave(
     Retorna a chave de exibição na folha (ex.: 600MB_ESP_PAP, 500MB_PAP).
 
     - 600MB em cidade de oferta especial → 600MB_ESP_*
-    - 600MB a partir de 01/10/2026 → 600MB_*
-    - 600MB até 30/09/2026 → coluna 500MB (regra antiga)
+    - 600MB demais cidades → linha própria 600MB_*
+    - Até 30/09/2026 o valor dessa linha vem da coluna 500MB
     - 400MB agrega em 500MB_*; 800MB e 900MB agregam em 700MB_* (legado)
     - Demais bandas → chave própria
     """
@@ -191,10 +191,9 @@ def plano_tipo_to_chave(
             venda, cache=cidades_especiais_cache,
         ):
             chave = f'600MB_ESP_{sufixo}'
-            return chave if chave in CHAVES_PLANO else None
-        if comissao_aplica_planos_novos(venda):
+        else:
             chave = f'600MB_{sufixo}'
-            return chave if chave in CHAVES_PLANO else None
+        return chave if chave in CHAVES_PLANO else None
 
     banda = _banda_legado_comissao(banda_real)
     if not banda:
@@ -581,7 +580,8 @@ def resolver_valor_comissao_venda(
 ) -> float | None:
     """Valor de comissão: cidade especial → manual por plano → matriz faixa×plano → legado.
 
-    Até 30/09/2026 ignora a célula do plano novo e usa só as colunas 500/700/1GB.
+    Até 30/09/2026 a linha 600MB continua visível, mas o valor unitário
+    é o da coluna 500MB. A célula zerada do plano novo é ignorada.
     """
     from crm_app.services.comissao_cidade_especial_service import resolver_valor_cidade_especial
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
