@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm_app', '0211_venda_codigo_sa_ba'),
+        ('crm_app', '0213_qualidade_foco_tratamento'),
     ]
 
     operations = [
