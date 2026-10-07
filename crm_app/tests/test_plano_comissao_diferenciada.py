@@ -122,9 +122,15 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
         plano = MagicMock(id=6, nome='NIO FIBRA ESSENCIAL 600MB')
         venda = self._venda_em(date(2026, 9, 18))
         config = MagicMock(valor_500mb_pap_manual=Decimal('180.00'))
-        with patch(
-            'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
-            return_value=None,
+        with (
+            patch(
+                'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+                return_value=None,
+            ),
+            patch(
+                'crm_app.services.comissao_matriz_service.get_valor_manual_vendedor_plano',
+                return_value=None,
+            ),
         ):
             valor = resolver_valor_comissao_venda(
                 plano,
@@ -132,6 +138,56 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
                 faixa_regra=None,
                 config=config,
                 usar_manual=True,
+                chave='600MB_PAP',
+                venda=venda,
+            )
+        self.assertEqual(valor, 180.0)
+
+    def test_setembro_1gb_usa_celula_do_plano_e_nao_a_coluna_antiga(self) -> None:
+        plano = MagicMock(id=5, nome='NIO FIBRA ULTRA 1GB (SEM MESH)')
+        venda = self._venda_em(date(2026, 9, 18))
+        faixa = MagicMock(valor_1gb_pap=Decimal('150'))
+        with (
+            patch(
+                'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+                return_value=None,
+            ),
+            patch(
+                'crm_app.services.comissao_matriz_service.get_valor_faixa_plano',
+                return_value=260.0,
+            ),
+        ):
+            valor = resolver_valor_comissao_venda(
+                plano,
+                'CPF',
+                faixa_regra=faixa,
+                config=None,
+                usar_manual=False,
+                chave='1GB_PAP',
+                venda=venda,
+            )
+        self.assertEqual(valor, 260.0)
+
+    def test_setembro_celula_zerada_cai_na_coluna_500(self) -> None:
+        plano = MagicMock(id=6, nome='NIO FIBRA ESSENCIAL 600MB')
+        venda = self._venda_em(date(2026, 9, 18))
+        faixa = MagicMock(valor_500mb_pap=Decimal('180'))
+        with (
+            patch(
+                'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+                return_value=None,
+            ),
+            patch(
+                'crm_app.services.comissao_matriz_service.get_valor_faixa_plano',
+                return_value=0.0,
+            ),
+        ):
+            valor = resolver_valor_comissao_venda(
+                plano,
+                'CPF',
+                faixa_regra=faixa,
+                config=None,
+                usar_manual=False,
                 chave='600MB_PAP',
                 venda=venda,
             )

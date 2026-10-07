@@ -578,10 +578,10 @@ def resolver_valor_comissao_venda(
     venda=None,
     cidades_especiais_cache=None,
 ) -> float | None:
-    """Valor de comissão: cidade especial → manual por plano → matriz faixa×plano → legado.
+    """Valor de comissão: cidade especial → célula do plano → coluna legada.
 
-    Até 30/09/2026 a linha 600MB continua visível, mas o valor unitário
-    é o da coluna 500MB. A célula zerada do plano novo é ignorada.
+    Até 30/09/2026 a célula do plano vale quando está preenchida (1GB SEM MESH,
+    por exemplo). Célula zerada ou vazia cai na coluna antiga: 600MB usa 500MB.
     """
     from crm_app.services.comissao_cidade_especial_service import resolver_valor_cidade_especial
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
@@ -596,9 +596,21 @@ def resolver_valor_comissao_venda(
         return valor_especial
 
     if venda is not None and not comissao_aplica_planos_novos(venda):
-        chave_leg = chave_legado_lookup(chave) or chave
         if usar_manual:
+            valor_plano = get_valor_manual(
+                config, chave, plano, matriz_cache=matriz_cache, tipo_cliente=tipo_cliente,
+            )
+            if valor_plano:
+                return valor_plano
+            chave_leg = chave_legado_lookup(chave) or chave
             return get_valor_manual(config, chave_leg, plano=None, matriz_cache=matriz_cache)
+        if faixa_regra and plano:
+            valor_plano = get_valor_faixa_plano(
+                faixa_regra, plano, tipo_cliente, matriz_cache=matriz_cache,
+            )
+            if valor_plano:
+                return valor_plano
+        chave_leg = chave_legado_lookup(chave) or chave
         if faixa_regra and chave_leg:
             return get_valor_from_faixa(faixa_regra, chave_leg)
         return None
@@ -1181,7 +1193,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 )
             valor_unit = valor_unit if valor_unit is not None else 0
             por_plano[chave]['qtd'] += 1
-            por_plano[chave]['valor_unit'] = valor_unit
+            if por_plano[chave]['qtd'] == 1:
+                por_plano[chave]['valor_unit'] = valor_unit
+            elif por_plano[chave]['valor_unit'] != valor_unit:
+                por_plano[chave]['valor_unit'] = None
             por_plano[chave]['total'] += valor_unit
             comissao_total_geral += Decimal(str(valor_unit))
 
