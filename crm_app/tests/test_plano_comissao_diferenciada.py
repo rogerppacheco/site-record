@@ -7,7 +7,9 @@ from django.test import SimpleTestCase
 
 from crm_app.comissao_folha_service import (
     _banda_legado_comissao,
+    chave_linha_folha,
     estimar_comissao_instaladas_vendedor,
+    label_linha_folha,
     plano_tipo_to_chave,
     resolver_valor_comissao_venda,
 )
@@ -192,6 +194,49 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
                 venda=venda,
             )
         self.assertEqual(valor, 180.0)
+
+    def test_setembro_separa_os_dois_planos_de_1gb(self) -> None:
+        sem_mesh = SimpleNamespace(id=5, nome='NIO FIBRA ULTRA 1GB (SEM MESH)')
+        ultra = SimpleNamespace(id=3, nome='NIO FIBRA ULTRA 1GB')
+        venda_sem = self._venda_em(date(2026, 9, 10))
+        venda_sem.plano = sem_mesh
+        venda_sem.plano_id = 5
+        venda_ultra = self._venda_em(date(2026, 9, 10))
+        venda_ultra.plano = ultra
+        venda_ultra.plano_id = 3
+
+        chave_sem = chave_linha_folha(venda_sem, 'CPF')
+        chave_ultra = chave_linha_folha(venda_ultra, 'CPF')
+        self.assertEqual(chave_sem, 'plano_5_PAP')
+        self.assertEqual(chave_ultra, 'plano_3_PAP')
+        self.assertEqual(
+            label_linha_folha(chave_sem, venda_sem, 'CPF'),
+            'NIO FIBRA ULTRA 1GB (SEM MESH) PAP',
+        )
+        self.assertEqual(label_linha_folha(chave_ultra, venda_ultra, 'CPF'), 'NIO FIBRA ULTRA 1GB PAP')
+
+    def test_outubro_mantem_a_grade_1gb(self) -> None:
+        plano = SimpleNamespace(id=5, nome='NIO FIBRA ULTRA 1GB (SEM MESH)')
+        venda = self._venda_em(date(2026, 10, 2))
+        venda.plano = plano
+        venda.plano_id = 5
+        self.assertEqual(chave_linha_folha(venda, 'CPF'), '1GB_PAP')
+
+    def test_setembro_cidade_especial_fica_em_linha_propria(self) -> None:
+        plano = SimpleNamespace(id=6, nome='NIO FIBRA ESSENCIAL 600MB')
+        venda = self._venda_em(date(2026, 9, 10))
+        venda.plano = plano
+        venda.plano_id = 6
+        with patch(
+            'crm_app.services.comissao_cidade_especial_service.venda_em_cidade_oferta_especial',
+            return_value=True,
+        ):
+            chave = chave_linha_folha(venda, 'CPF')
+        self.assertEqual(chave, 'plano_6_ESP_PAP')
+        self.assertEqual(
+            label_linha_folha(chave, venda, 'CPF'),
+            'NIO FIBRA ESSENCIAL 600MB Cidade Especial PAP',
+        )
 
     def test_chave_legado_lookup_600(self) -> None:
         from crm_app.comissao_folha_service import chave_legado_lookup

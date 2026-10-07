@@ -202,6 +202,53 @@ def plano_tipo_to_chave(
     return chave if chave in CHAVES_PLANO else None
 
 
+def chave_linha_folha(
+    venda,
+    tipo_cliente,
+    *,
+    cidades_especiais_cache=None,
+    chave_banda: str | None = None,
+) -> str | None:
+    """
+    Linha da tabela da folha.
+
+    A partir de 01/10/2026 segue a grade 500/600/700/1GB.
+    Antes disso, cada plano cadastrado fica na própria linha, para o valor
+    unitário não misturar produtos da mesma velocidade (ex.: 1GB e 1GB SEM MESH).
+    """
+    if chave_banda is None:
+        chave_banda = plano_tipo_to_chave(
+            getattr(venda, 'plano', None),
+            tipo_cliente,
+            venda=venda,
+            cidades_especiais_cache=cidades_especiais_cache,
+        )
+    if venda is None or comissao_aplica_planos_novos(venda):
+        return chave_banda
+    plano = getattr(venda, 'plano', None)
+    plano_id = getattr(plano, 'id', None) or getattr(venda, 'plano_id', None)
+    if not isinstance(plano_id, int):
+        return chave_banda
+    sufixo = 'PAP' if tipo_cliente == 'CPF' else 'CNPJ'
+    especial = 'ESP_' if chave_banda and '_ESP_' in chave_banda else ''
+    return f'plano_{plano_id}_{especial}{sufixo}'
+
+
+def label_linha_folha(chave, venda=None, tipo_cliente: str | None = None) -> str:
+    """Rótulo da linha. Nos meses antigos usa o nome do plano cadastrado."""
+    if chave in LABELS_CHAVE_PLANO:
+        return LABELS_CHAVE_PLANO[chave]
+    if venda is not None and isinstance(chave, str) and chave.startswith('plano_'):
+        nome = label_plano_folha(venda, tipo_cliente)
+        if '_ESP_' in chave:
+            if nome.endswith(' PAP'):
+                return nome[:-4] + ' Cidade Especial PAP'
+            if nome.endswith(' CNPJ'):
+                return nome[:-5] + ' Cidade Especial CNPJ'
+        return nome
+    return LABELS_CHAVE_PLANO.get(chave, str(chave or ''))
+
+
 def estimar_comissao_instaladas_vendedor(
     vendedor,
     vendas_instaladas,
@@ -1095,6 +1142,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'qtd': 0,
                 'qtd_antecipada': 0,
                 'valor_unit': None,
+                'label': None,
+                'chave_banda': None,
                 'total': 0.0,
                 'total_antecipado': 0.0,
                 'total_complemento_sabado': 0.0,
@@ -1122,12 +1171,21 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         for v in vendas:
             tipo_cliente = tipo_cliente_comissao(v)
-            chave = plano_tipo_to_chave(
+            chave_banda = plano_tipo_to_chave(
                 v.plano,
                 tipo_cliente,
                 venda=v,
                 cidades_especiais_cache=cidades_especiais_cache,
             )
+            chave = chave_linha_folha(
+                v,
+                tipo_cliente,
+                cidades_especiais_cache=cidades_especiais_cache,
+                chave_banda=chave_banda,
+            )
+            if chave and not por_plano[chave].get('label'):
+                por_plano[chave]['label'] = label_linha_folha(chave, v, tipo_cliente)
+                por_plano[chave]['chave_banda'] = chave_banda or chave
             doc_limpo_v = ''.join(filter(str.isdigit, (v.cliente.cpf_cnpj or '') if v.cliente else ''))
             if len(doc_limpo_v) == 14:
                 if classificacao_mei_venda(v) == CLASSIFICACAO_MEI:
@@ -1144,7 +1202,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 va = valor_adiantamento_exibicao_folha(
                     v,
                     faixa_adiantamento,
-                    chave,
+                    chave_banda,
                     o_ant,
                     complemento_sabado=comp_v,
                     valores_esteira_lancamento=valores_esteira_lanc,
@@ -1186,7 +1244,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 faixa_regra=faixa_regra,
                 config=config,
                 usar_manual=usar_manual,
-                chave=chave,
+                chave=chave_banda,
                 matriz_cache=matriz_cache,
                 venda=v,
                 cidades_especiais_cache=cidades_especiais_cache,
@@ -1200,16 +1258,27 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             por_plano[chave]['total'] += valor_unit
             comissao_total_geral += Decimal(str(valor_unit))
 
-        # Montar lista por_plano (500 / 600 / 600 ESP / 700 / 1GB) + qtd_antecipada
+        # Grade fixa a partir de outubro. Antes disso, uma linha por plano cadastrado.
         labels = LABELS_CHAVE_PLANO
         por_plano_lista = []
-        for chave in CHAVES_PLANO:
+        if any(str(chave).startswith('plano_') for chave in por_plano):
+            def _ordem_linha(chave):
+                banda = por_plano[chave].get('chave_banda') or ''
+                pos = CHAVES_PLANO.index(banda) if banda in CHAVES_PLANO else len(CHAVES_PLANO)
+                return (pos, por_plano[chave].get('label') or chave)
+
+            chaves_tabela = sorted(por_plano.keys(), key=_ordem_linha)
+        else:
+            chaves_tabela = CHAVES_PLANO
+        for chave in chaves_tabela:
             d = por_plano.get(
                 chave,
                 {
                     'qtd': 0,
                     'qtd_antecipada': 0,
                     'valor_unit': None,
+                    'label': None,
+                    'chave_banda': None,
                     'total': 0,
                     'total_antecipado': 0.0,
                     'total_complemento_sabado': 0.0,
@@ -1218,7 +1287,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             comp_plano = round(float(d.get('total_complemento_sabado', 0) or 0), 2)
             pago_plano = round(float(d.get('total_antecipado', 0) or 0), 2)
             por_plano_lista.append({
-                'plano': labels.get(chave, chave),
+                'plano': d.get('label') or labels.get(chave, chave),
                 'qtd_instalada_a_pagar': d['qtd'],
                 'qtd_cnpj_mei': por_plano_cnpj_mei.get(chave, 0),
                 'qtd_antecipada': d.get('qtd_antecipada', 0),
@@ -1515,15 +1584,22 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             doc_limpo = ''.join(filter(str.isdigit, doc))
             eh_cnpj = len(doc_limpo) == 14
             plano_nome = venda.plano.nome if venda.plano else ''
-            chave = plano_tipo_to_chave(
+            tipo_extrato = tipo_cliente_comissao(venda)
+            chave_banda = plano_tipo_to_chave(
                 venda.plano,
-                tipo_cliente_comissao(venda),
+                tipo_extrato,
                 venda=venda,
                 cidades_especiais_cache=cidades_especiais_cache,
             )
+            chave = chave_linha_folha(
+                venda,
+                tipo_extrato,
+                cidades_especiais_cache=cidades_especiais_cache,
+                chave_banda=chave_banda,
+            )
             mei = classificacao_mei_venda(venda) if eh_cnpj else None
             return {
-                'plano_label': labels.get(chave, plano_nome or '-'),
+                'plano_label': label_linha_folha(chave or chave_banda, venda, tipo_extrato) or plano_nome or '-',
                 'cnpj': 'SIM' if eh_cnpj else 'NÃO',
                 'classificacao_mei': mei if mei else '-',
             }
