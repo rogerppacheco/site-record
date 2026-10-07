@@ -123,6 +123,7 @@ class Command(BaseCommand):
                 mapped.get("plano") or "",
                 mapped.get("velocidade") or "",
                 mapped.get("valor_mensal"),
+                data_referencia=venda.data_pedido or venda.data_criacao,
             )
             if not plano_novo:
                 sem_match += 1

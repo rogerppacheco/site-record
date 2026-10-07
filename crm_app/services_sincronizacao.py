@@ -3,7 +3,7 @@ from typing import Dict, Any
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from datetime import datetime
+from datetime import date, datetime
 import re
 
 from crm_app.models import (
@@ -96,6 +96,42 @@ def _parse_valor_mensal_pap(valor) -> float | None:
         return None
 
 
+# Até 30/09/2026 a velocidade nova casa no plano antigo (600→500, 800→700).
+_VELOCIDADE_PLANO_ANTIGO = {400: 500, 600: 500, 800: 700, 900: 700}
+
+
+def _coerce_data_plano(valor) -> date | None:
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    return None
+
+
+def _aplica_planos_novos(data_referencia) -> bool:
+    from crm_app.comissao_folha_service import INICIO_PLANOS_NOVOS_COMISSAO
+
+    ref = _coerce_data_plano(data_referencia)
+    if ref is None:
+        return True
+    return ref >= INICIO_PLANOS_NOVOS_COMISSAO
+
+
+def _plano_bate_velocidade(plano: Plano, vel_mb: int) -> bool:
+    n = _normalizar_texto_plano(plano.nome)
+    return bool(
+        re.search(rf"\b{vel_mb}\s*(MB|MEGA)?\b", n)
+        or f"{vel_mb}MB" in n.replace(" ", "")
+    )
+
+
+def _primeiro_por_velocidade(qs, vel_mb: int) -> Plano | None:
+    for plano in qs.order_by("id"):
+        if _plano_bate_velocidade(plano, vel_mb):
+            return plano
+    return None
+
+
 def _escolher_plano_1gb(candidatos: list[Plano], nome_plano: str, valor_mensal=None) -> Plano | None:
     """
     Distingue ULTRA 1GB (mesh ~R$160) de ULTRA 1GB (SEM MESH ~R$150).
@@ -125,18 +161,28 @@ def _escolher_plano_1gb(candidatos: list[Plano], nome_plano: str, valor_mensal=N
     return (sem_mesh or com_mesh or candidatos)[0]
 
 
-def resolver_plano_pap(nome_plano: str, velocidade: str = "", valor_mensal=None) -> Plano | None:
+def resolver_plano_pap(
+    nome_plano: str,
+    velocidade: str = "",
+    valor_mensal=None,
+    data_referencia=None,
+) -> Plano | None:
     """
     Casa plano CRM com nome + velocidade (+ valor mensal) do PAP.
 
-    Bug antigo: filtrava só por nome ('Nio Fibra Essencial') e pegava o primeiro
-    do catálogo (500MB) em vez do 600MB indicado em Velocidade.
+    A partir de 01/10/2026 usa o catálogo novo (600MB, 800MB).
+    Antes disso, 600MB casa no 500MB e 800MB no 700MB — inclusive inativos.
     1GB: não preferir sempre o mesh — SEM MESH (150) é oferta distinta.
+    Sem data, mantém o catálogo novo.
     """
     familia = _familia_plano_pap(nome_plano)
     vel_mb = _velocidade_mb_pap(velocidade, nome_plano)
     if not familia and not vel_mb:
         return None
+
+    legado = not _aplica_planos_novos(data_referencia)
+    if legado and vel_mb in _VELOCIDADE_PLANO_ANTIGO:
+        vel_mb = _VELOCIDADE_PLANO_ANTIGO[vel_mb]
 
     qs = Plano.objects.filter(ativo=True)
     if familia:
@@ -148,12 +194,22 @@ def resolver_plano_pap(nome_plano: str, velocidade: str = "", valor_mensal=None)
                 qs.filter(Q(nome__icontains="1GB") | Q(nome__icontains="1 GB") | Q(nome__icontains="1000"))
             )
             return _escolher_plano_1gb(candidatos, nome_plano, valor_mensal)
-        for base in (qs, Plano.objects.filter(ativo=True)) if familia else (qs,):
-            for p in base.order_by("id"):
-                n = _normalizar_texto_plano(p.nome)
-                if re.search(rf"\b{vel_mb}\s*(MB|MEGA)?\b", n) or f"{vel_mb}MB" in n.replace(" ", ""):
-                    return p
+        bases = (qs, Plano.objects.filter(ativo=True)) if familia else (qs,)
+        for base in bases:
+            encontrado = _primeiro_por_velocidade(base, vel_mb)
+            if encontrado:
+                return encontrado
+        if legado:
+            qs_inativo = Plano.objects.filter(ativo=False)
+            if familia:
+                qs_inativo = qs_inativo.filter(nome__icontains=familia)
+            encontrado = _primeiro_por_velocidade(qs_inativo, vel_mb)
+            if encontrado:
+                return encontrado
+            return None
 
+    if legado:
+        return None
     # Fallback: familia ativa; evita planos legados inativos (500/700)
     return qs.order_by("id").first() if familia else None
 
@@ -238,20 +294,7 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
                 if st_esteira:
                     status_esteira = st_esteira
 
-        # Match de Plano (nome + velocidade + valor mensal) e Forma de Pagamento
-        plano_obj = resolver_plano_pap(
-            dados_mapeados.get("plano") or "",
-            dados_mapeados.get("velocidade") or "",
-            dados_mapeados.get("valor_mensal"),
-        )
-
-        forma_pgto_obj = None
-        forma_pap = dados_mapeados.get("forma_pagamento")
-        if forma_pap:
-            # Ex: "BOLETO", "CREDITO", "DACC"
-            forma_pgto_obj = FormaPagamento.objects.filter(nome__icontains=forma_pap.strip()[:4]).first()
-
-        # Data do pedido
+        # Data do pedido (define se o casamento usa plano antigo ou catálogo de outubro)
         data_pedido_str = dados_mapeados.get("data_pedido")
         data_pedido = None
         if data_pedido_str:
@@ -264,6 +307,20 @@ def sincronizar_pedido_pap_para_venda(pedido_id: int) -> dict:
                 data_pedido = timezone.make_aware(data_pedido)
             except Exception:
                 pass
+
+        # Match de Plano (nome + velocidade + valor mensal) e Forma de Pagamento
+        plano_obj = resolver_plano_pap(
+            dados_mapeados.get("plano") or "",
+            dados_mapeados.get("velocidade") or "",
+            dados_mapeados.get("valor_mensal"),
+            data_referencia=data_pedido,
+        )
+
+        forma_pgto_obj = None
+        forma_pap = dados_mapeados.get("forma_pagamento")
+        if forma_pap:
+            # Ex: "BOLETO", "CREDITO", "DACC"
+            forma_pgto_obj = FormaPagamento.objects.filter(nome__icontains=forma_pap.strip()[:4]).first()
 
         data_nascimento_str = dados_mapeados.get("data_nascimento")
         data_nascimento = None

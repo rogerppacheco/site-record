@@ -5,7 +5,7 @@ Mapeamento: plano.nome + tipo_cliente (+ cidade especial) -> chave de exibição
 """
 from decimal import Decimal
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 
 # Chaves de exibição/agregação na Gestão de Comissionamento (ordem da tabela).
 CHAVES_PLANO = [
@@ -116,6 +116,52 @@ def chave_legado_lookup(chave: str | None) -> str | None:
     return _CHAVE_PARA_LEGADO.get(chave, chave)
 
 
+# Catálogo novo (600MB na própria linha, célula por plano) vale a partir desta data.
+# Setembro/2026 e meses anteriores usam só as colunas 500/700/1GB.
+INICIO_PLANOS_NOVOS_COMISSAO = date(2026, 10, 1)
+
+
+def _coerce_data_comissao(valor):
+    """Aceita date/datetime. Ignora MagicMock e outros objetos sem data real."""
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    return None
+
+
+def data_referencia_regra_plano(venda):
+    """
+    Data que decide se a venda usa o catálogo novo ou as colunas antigas.
+    Prioridade igual à folha: instalação efetiva, depois pedido.
+    """
+    if venda is None:
+        return None
+    anotada = _coerce_data_comissao(getattr(venda, 'data_folha_comissao', None))
+    if anotada:
+        return anotada
+    osab = _coerce_data_comissao(getattr(venda, 'data_instalacao', None))
+    fisica = _coerce_data_comissao(getattr(venda, 'data_instalacao_fisica', None))
+    if osab and fisica:
+        return fisica
+    if osab or fisica:
+        return osab or fisica
+    return (
+        _coerce_data_comissao(getattr(venda, 'data_pedido', None))
+        or _coerce_data_comissao(getattr(venda, 'data_criacao', None))
+    )
+
+
+def comissao_aplica_planos_novos(venda) -> bool:
+    """True a partir de 01/10/2026. Sem data, mantém o catálogo novo (operação atual)."""
+    if venda is None:
+        return True
+    ref = data_referencia_regra_plano(venda)
+    if ref is None:
+        return True
+    return ref >= INICIO_PLANOS_NOVOS_COMISSAO
+
+
 def plano_tipo_to_chave(
     plano_ou_nome,
     tipo_cliente,
@@ -127,7 +173,8 @@ def plano_tipo_to_chave(
     Retorna a chave de exibição na folha (ex.: 600MB_ESP_PAP, 500MB_PAP).
 
     - 600MB em cidade de oferta especial → 600MB_ESP_*
-    - 600MB demais cidades → 600MB_*
+    - 600MB a partir de 01/10/2026 → 600MB_*
+    - 600MB até 30/09/2026 → coluna 500MB (regra antiga)
     - 400MB agrega em 500MB_*; 800MB e 900MB agregam em 700MB_* (legado)
     - Demais bandas → chave própria
     """
@@ -144,9 +191,10 @@ def plano_tipo_to_chave(
             venda, cache=cidades_especiais_cache,
         ):
             chave = f'600MB_ESP_{sufixo}'
-        else:
+            return chave if chave in CHAVES_PLANO else None
+        if comissao_aplica_planos_novos(venda):
             chave = f'600MB_{sufixo}'
-        return chave if chave in CHAVES_PLANO else None
+            return chave if chave in CHAVES_PLANO else None
 
     banda = _banda_legado_comissao(banda_real)
     if not banda:
@@ -531,7 +579,10 @@ def resolver_valor_comissao_venda(
     venda=None,
     cidades_especiais_cache=None,
 ) -> float | None:
-    """Valor de comissão: cidade especial → manual por plano → matriz faixa×plano → legado."""
+    """Valor de comissão: cidade especial → manual por plano → matriz faixa×plano → legado.
+
+    Até 30/09/2026 ignora a célula do plano novo e usa só as colunas 500/700/1GB.
+    """
     from crm_app.services.comissao_cidade_especial_service import resolver_valor_cidade_especial
     from crm_app.services.comissao_matriz_service import get_valor_faixa_plano
 
@@ -543,6 +594,14 @@ def resolver_valor_comissao_venda(
     )
     if valor_especial is not None:
         return valor_especial
+
+    if venda is not None and not comissao_aplica_planos_novos(venda):
+        chave_leg = chave_legado_lookup(chave) or chave
+        if usar_manual:
+            return get_valor_manual(config, chave_leg, plano=None, matriz_cache=matriz_cache)
+        if faixa_regra and chave_leg:
+            return get_valor_from_faixa(faixa_regra, chave_leg)
+        return None
 
     if usar_manual:
         return get_valor_manual(config, chave, plano, matriz_cache=matriz_cache)
@@ -1884,7 +1943,7 @@ def estimar_comissao_instaladas(consultor, vendas, contexto: dict | None = None)
     for venda in vendas_list:
         tipo_cliente = tipo_cliente_comissao(venda)
         plano = getattr(venda, 'plano', None)
-        chave = plano_tipo_to_chave(plano, tipo_cliente)
+        chave = plano_tipo_to_chave(plano, tipo_cliente, venda=venda)
         valor = resolver_valor_comissao_venda(
             plano,
             tipo_cliente,
@@ -1893,6 +1952,7 @@ def estimar_comissao_instaladas(consultor, vendas, contexto: dict | None = None)
             usar_manual=usar_manual,
             chave=chave,
             matriz_cache=matriz_cache,
+            venda=venda,
         )
         total += float(valor or 0)
     return round(total, 2)

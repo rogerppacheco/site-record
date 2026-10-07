@@ -1,4 +1,6 @@
+from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -82,6 +84,58 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
                 ),
                 '600MB_PAP',
             )
+
+    def _venda_em(self, dia: date):
+        return SimpleNamespace(
+            data_instalacao=dia,
+            data_instalacao_fisica=None,
+            data_folha_comissao=None,
+            data_pedido=None,
+            data_criacao=None,
+            cidade='SAO PAULO',
+            estado='SP',
+        )
+
+    def test_600_setembro_agrega_na_coluna_500(self) -> None:
+        venda = self._venda_em(date(2026, 9, 20))
+        with patch(
+            'crm_app.services.comissao_cidade_especial_service.venda_em_cidade_oferta_especial',
+            return_value=False,
+        ):
+            self.assertEqual(
+                plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF', venda=venda),
+                '500MB_PAP',
+            )
+
+    def test_600_outubro_mantem_linha_propria(self) -> None:
+        venda = self._venda_em(date(2026, 10, 1))
+        with patch(
+            'crm_app.services.comissao_cidade_especial_service.venda_em_cidade_oferta_especial',
+            return_value=False,
+        ):
+            self.assertEqual(
+                plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF', venda=venda),
+                '600MB_PAP',
+            )
+
+    def test_setembro_ignora_celula_zerada_do_plano_600(self) -> None:
+        plano = MagicMock(id=6, nome='NIO FIBRA ESSENCIAL 600MB')
+        venda = self._venda_em(date(2026, 9, 18))
+        config = MagicMock(valor_500mb_pap_manual=Decimal('180.00'))
+        with patch(
+            'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+            return_value=None,
+        ):
+            valor = resolver_valor_comissao_venda(
+                plano,
+                'CPF',
+                faixa_regra=None,
+                config=config,
+                usar_manual=True,
+                chave='500MB_PAP',
+                venda=venda,
+            )
+        self.assertEqual(valor, 180.0)
 
     def test_chave_legado_lookup_600(self) -> None:
         from crm_app.comissao_folha_service import chave_legado_lookup

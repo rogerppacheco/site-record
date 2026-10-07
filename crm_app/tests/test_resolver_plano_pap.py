@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from django.test import SimpleTestCase, TestCase
@@ -44,6 +45,27 @@ class ResolverPlanoPapTest(TestCase):
         Plano.objects.create(
             nome="NIO FIBRA ULTRA 1GB (SEM MESH)", ativo=True, valor=Decimal("150"), operadora=op
         )
+
+    def test_setembro_600_casa_no_500(self):
+        p = resolver_plano_pap(
+            "Nio Fibra Essencial", "600 Mega", data_referencia=date(2026, 9, 30)
+        )
+        self.assertIsNotNone(p)
+        self.assertIn("500", p.nome)
+
+    def test_setembro_800_casa_no_700_inativo(self):
+        p = resolver_plano_pap(
+            "Nio Fibra Super", "800 Mega", data_referencia=date(2026, 9, 15)
+        )
+        self.assertIsNotNone(p)
+        self.assertIn("700", p.nome)
+
+    def test_outubro_600_casa_no_600(self):
+        p = resolver_plano_pap(
+            "Nio Fibra Essencial", "600 Mega", data_referencia=date(2026, 10, 1)
+        )
+        self.assertIsNotNone(p)
+        self.assertIn("600", p.nome)
 
     def test_essencial_600_nao_pega_500(self):
         p = resolver_plano_pap("Nio Fibra Essencial", "600 Mega")
