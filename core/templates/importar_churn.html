@@ -332,7 +332,14 @@
                 });
 
                 atualizarProgresso(70, 'Processando dados...');
-                const data = await response.json();
+                const raw = await response.text();
+                let data = {};
+                try {
+                    data = raw ? JSON.parse(raw) : {};
+                } catch (e) {
+                    const texto = (raw || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                    data = { error: texto.slice(0, 400) || 'Resposta inválida do servidor' };
+                }
                 atualizarProgresso(90, 'Finalizando...');
 
                 if (response.ok) {
@@ -350,6 +357,13 @@
                 mostrarResultado('error', { error: 'Erro ao conectar com servidor' });
             }
         });
+
+        function mensagemErroImportacao(data) {
+            const bruto = data && (data.error || data.detail || data.mensagem);
+            if (!bruto) return 'Erro desconhecido';
+            if (typeof bruto === 'string') return bruto;
+            try { return JSON.stringify(bruto); } catch (e) { return 'Erro desconhecido'; }
+        }
 
         function mostrarResultado(tipo, data) {
             const resultado = document.getElementById('resultadoImportacao');
@@ -389,7 +403,7 @@
                 resultado.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <h5 class="alert-heading"><i class="bi bi-x-circle"></i> Erro na Importação</h5>
-                        <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
+                        <p class="mb-0">${mensagemErroImportacao(data)}</p>
                         ${data.detalhes ? `<hr><small>${data.detalhes}</small>` : ''}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>

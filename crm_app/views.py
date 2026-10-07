@@ -6766,108 +6766,256 @@ def _normalizar_anomes_gross(val):
     return s[:6] if len(s) >= 6 else None
 
 
+_CHURN_COLUNAS_CHAVE = {'PEDIDO', 'NUMERO_PEDIDO', 'DT_RETIRADA', 'NR_ORDEM'}
+_CHURN_ALIASES = {
+    'PEDIDO': 'NUMERO_PEDIDO',
+    'NR_PEDIDO': 'NUMERO_PEDIDO',
+    'TP_RETIRADA': 'TIPO_RETIRADA',
+    'DS_MOTIVO_RETIRADA': 'MOTIVO_RETIRADA',
+}
+_CHURN_COLUNA_MAP = {
+    'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor',
+    'CD_TR_VDD_ORIGINAL': 'cd_tr_vdd_original', 'GV': 'gv',
+    'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional',
+    'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'NR_ORDEM': 'nr_ordem', 'DT_GROSS': 'dt_gross',
+    'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada',
+    'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio',
+    'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada',
+    'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao',
+    'DESC_APELIDO': 'desc_apelido', 'NR_VELOCIDADE': 'nr_velocidade', 'VELOCIDADE': 'nr_velocidade',
+}
+
+
+def _normalizar_nome_coluna_churn(col):
+    return str(col).strip().upper().replace(' ', '_')
+
+
+def _aba_planilha_churn(excel):
+    """Prefere a aba que tem PEDIDO / DT_RETIRADA. A primeira aba do 1068561 é BASE_CLICK."""
+    for nome in excel.sheet_names:
+        cols = pd.read_excel(excel, sheet_name=nome, nrows=0).columns
+        normalizados = {_normalizar_nome_coluna_churn(c) for c in cols}
+        if normalizados & _CHURN_COLUNAS_CHAVE:
+            return nome
+    return excel.sheet_names[0]
+
+
+def _ler_dataframe_churn(file_obj):
+    nome = (getattr(file_obj, 'name', '') or '').lower()
+    if nome.endswith('.csv'):
+        return pd.read_csv(file_obj)
+    if nome.endswith('.xlsb'):
+        excel = pd.ExcelFile(file_obj, engine='pyxlsb')
+    elif nome.endswith(('.xlsx', '.xls')):
+        excel = pd.ExcelFile(file_obj)
+    else:
+        raise ValueError('Formato inválido. Use .xlsx, .xls, .xlsb ou .csv')
+    return pd.read_excel(excel, sheet_name=_aba_planilha_churn(excel))
+
+
+def _texto_planilha_churn(val, max_len=None):
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, float) and val.is_integer():
+        texto = str(int(val))
+    elif isinstance(val, (int, np.integer)):
+        texto = str(int(val))
+    else:
+        texto = str(val).strip()
+    if texto.endswith('.0') and texto[:-2].replace('-', '').isdigit():
+        texto = texto[:-2]
+    if not texto or texto.lower() in ('nan', 'none', 'nat'):
+        return None
+    if max_len:
+        texto = texto[:max_len]
+    return texto
+
+
+def _data_planilha_churn(val):
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    convertido = pd.to_datetime(val, errors='coerce')
+    if pd.isna(convertido):
+        return None
+    return convertido.date()
+
+
+def _sanitizar_linha_churn(data):
+    concretos = {
+        f.name: f
+        for f in ImportacaoChurn._meta.concrete_fields
+        if not getattr(f, 'primary_key', False)
+    }
+    limpo = {}
+    for nome, field in concretos.items():
+        if nome not in data:
+            continue
+        valor = data.get(nome)
+        tipo = field.get_internal_type()
+        if tipo == 'DateField':
+            limpo[nome] = _data_planilha_churn(valor)
+        elif nome in ('anomes_gross', 'anomes_retirada'):
+            limpo[nome] = _normalizar_anomes_gross(valor)
+        elif tipo in ('CharField', 'TextField'):
+            limpo[nome] = _texto_planilha_churn(valor, getattr(field, 'max_length', None))
+        else:
+            try:
+                if valor is not None and pd.isna(valor):
+                    valor = None
+            except (TypeError, ValueError):
+                pass
+            limpo[nome] = valor
+    return limpo
+
+
 class ImportacaoChurnView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_churn'
     parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        # O POST da tela interna precisa devolver {"error": ...}. O CheckAPIPermission
+        # responde 403 com {"detail": ...}, e a tela mostra isso como "Erro desconhecido".
+        # Nenhum grupo tem add_importacao_churn; só superusuário passava.
+        if self.request.method == 'POST':
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+
     def get(self, request):
         queryset = ImportacaoChurn.objects.all().order_by('-id')
         serializer = ImportacaoChurnSerializer(queryset, many=True)
         return Response(serializer.data)
+
     def post(self, request, *args, **kwargs):
+        if not (
+            request.user.is_superuser
+            or request.user.has_perm('crm_app.add_importacao_churn')
+            or is_member(request.user, ['Admin', 'Administrador', 'BackOffice', 'Diretoria'])
+        ):
+            return Response({'error': 'Sem permissão para importar cancelamentos.'}, status=403)
+
         file_obj = request.FILES.get('file')
-        if not file_obj: return Response({'error': 'Nenhum arquivo.'}, status=400)
-        coluna_map = {'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor', 'GV': 'gv', 'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional', 'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'NR_ORDEM': 'nr_ordem', 'DT_GROSS': 'dt_gross', 'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada', 'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio', 'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada', 'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao', 'DESC_APELIDO': 'desc_apelido', 'NR_VELOCIDADE': 'nr_velocidade', 'VELOCIDADE': 'nr_velocidade'}
+        if not file_obj:
+            return Response({'error': 'Nenhum arquivo.'}, status=400)
+        log = logging.getLogger(__name__)
+        log.info(
+            'ImportacaoChurn inicio arquivo=%s tamanho=%s usuario=%s',
+            getattr(file_obj, 'name', ''),
+            getattr(file_obj, 'size', None),
+            getattr(request.user, 'username', ''),
+        )
         try:
-            if file_obj.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj)
-            elif file_obj.name.endswith('.xlsb'):
-                df = pd.read_excel(file_obj, engine='pyxlsb')
-            elif file_obj.name.endswith('.csv'):
-                df = pd.read_csv(file_obj)
-            else:
-                return Response({'error': 'Formato inválido. Use .xlsx, .xls, .xlsb ou .csv'}, status=400)
-        except Exception as e: return Response({'error': str(e)}, status=400)
-        df.columns = [str(col).strip().upper().replace(' ', '_') for col in df.columns]
-        for f in ['DT_GROSS', 'DT_RETIRADA']:
-            if f in df.columns: df[f] = pd.to_datetime(df[f], errors='coerce')
-        df = df.replace({np.nan: None, pd.NaT: None})
-        df.rename(columns=coluna_map, inplace=True)
-        
-        # Normalizar anomes_gross para formato AAAAMM
-        if 'anomes_gross' in df.columns:
-            df['anomes_gross'] = df['anomes_gross'].apply(_normalizar_anomes_gross)
-        
-        # Bulk operations optimization
-        criados, atualizados, erros = 0, 0, []
-        fields = {f.name for f in ImportacaoChurn._meta.get_fields() if f.name != 'id'}
-        
-        # Separar registros para criar e atualizar
-        # Buscar existentes por numero_pedido OU nr_ordem
-        pedidos_df = [row.get('numero_pedido') for _, row in df.iterrows() if row.get('numero_pedido')]
-        nr_ordens_df = [row.get('nr_ordem') for _, row in df.iterrows() if row.get('nr_ordem')]
-        
-        existentes_pedido = {obj.numero_pedido: obj for obj in ImportacaoChurn.objects.filter(numero_pedido__in=pedidos_df) if obj.numero_pedido}
-        existentes_nr_ordem = {obj.nr_ordem: obj for obj in ImportacaoChurn.objects.filter(nr_ordem__in=nr_ordens_df) if obj.nr_ordem}
-        
-        to_create = []
-        to_update = []
-        linhas_ignoradas = 0
-        motivo_ignoradas = []
-        
-        for idx, row in df.iterrows():
-            data = row.to_dict()
-            pedido = data.get('numero_pedido')
-            nr_ordem_val = data.get('nr_ordem')
-            
-            # Se não tem pedido nem nr_ordem, não tem como identificar unicamente
-            if not pedido and not nr_ordem_val:
-                linhas_ignoradas += 1
-                motivo_ignoradas.append(f"Linha {idx+2}: sem numero_pedido e sem nr_ordem")
-                continue
-            
-            filtered_data = {k: v for k, v in data.items() if k in fields}
-            
-            try:
+            df = _ler_dataframe_churn(file_obj)
+        except Exception as e:
+            log.exception('ImportacaoChurn falha ao ler arquivo')
+            return Response({'error': str(e)}, status=400)
+
+        try:
+            df.columns = [_normalizar_nome_coluna_churn(col) for col in df.columns]
+            for origem, destino in _CHURN_ALIASES.items():
+                if origem in df.columns and destino not in df.columns:
+                    df.rename(columns={origem: destino}, inplace=True)
+            df = df.replace({np.nan: None, pd.NaT: None})
+            df.rename(columns=_CHURN_COLUNA_MAP, inplace=True)
+
+            campos_concretos = [
+                f.name for f in ImportacaoChurn._meta.concrete_fields if not f.primary_key
+            ]
+            linhas = []
+            linhas_ignoradas = 0
+            motivo_ignoradas = []
+            erros = []
+            for idx, row in df.iterrows():
+                try:
+                    data = _sanitizar_linha_churn(row.to_dict())
+                    pedido = data.get('numero_pedido')
+                    nr_ordem_val = data.get('nr_ordem')
+                    if not pedido and not nr_ordem_val:
+                        linhas_ignoradas += 1
+                        if len(motivo_ignoradas) < 10:
+                            motivo_ignoradas.append(f"Linha {idx + 2}: sem PEDIDO e sem NR_ORDEM")
+                        continue
+                    linhas.append(data)
+                except Exception as e:
+                    erros.append(f"Linha {idx + 2}: {e}")
+
+            pedidos = [item['numero_pedido'] for item in linhas if item.get('numero_pedido')]
+            ordens = [item['nr_ordem'] for item in linhas if item.get('nr_ordem')]
+            existentes_pedido = {
+                obj.numero_pedido: obj
+                for obj in ImportacaoChurn.objects.filter(numero_pedido__in=pedidos)
+                if obj.numero_pedido
+            }
+            existentes_nr_ordem = {
+                obj.nr_ordem: obj
+                for obj in ImportacaoChurn.objects.filter(nr_ordem__in=ordens)
+                if obj.nr_ordem
+            }
+
+            criar_por_pedido = {}
+            criar_sem_pedido = []
+            atualizar = {}
+            for data in linhas:
+                pedido = data.get('numero_pedido')
+                nr_ordem_val = data.get('nr_ordem')
                 obj_existente = None
-                chave_usada = None
-                
-                # Prioridade: buscar por numero_pedido, depois por nr_ordem
                 if pedido and pedido in existentes_pedido:
                     obj_existente = existentes_pedido[pedido]
-                    chave_usada = 'numero_pedido'
                 elif nr_ordem_val and nr_ordem_val in existentes_nr_ordem:
                     obj_existente = existentes_nr_ordem[nr_ordem_val]
-                    chave_usada = 'nr_ordem'
-                
                 if obj_existente:
-                    # Atualizar existente
-                    for k, v in filtered_data.items():
-                        setattr(obj_existente, k, v)
-                    to_update.append(obj_existente)
+                    for chave, valor in data.items():
+                        setattr(obj_existente, chave, valor)
+                    atualizar[obj_existente.pk] = obj_existente
+                elif pedido:
+                    criar_por_pedido[pedido] = ImportacaoChurn(**data)
                 else:
-                    # Criar novo (pode ter numero_pedido=None se só tiver nr_ordem)
-                    to_create.append(ImportacaoChurn(**filtered_data))
-            except Exception as e:
-                erros.append(f"Linha {idx+2}: {e}")
-        
-        # Executar bulk operations
-        with transaction.atomic():
-            if to_create:
-                ImportacaoChurn.objects.bulk_create(to_create, batch_size=1000)
-                criados = len(to_create)
-            if to_update:
-                ImportacaoChurn.objects.bulk_update(to_update, list(fields), batch_size=1000)
-                atualizados = len(to_update)
-        
+                    criar_sem_pedido.append(ImportacaoChurn(**data))
+
+            to_create = list(criar_por_pedido.values()) + criar_sem_pedido
+            to_update = list(atualizar.values())
+            with transaction.atomic():
+                if to_create:
+                    ImportacaoChurn.objects.bulk_create(to_create, batch_size=1000)
+                if to_update:
+                    ImportacaoChurn.objects.bulk_update(to_update, campos_concretos, batch_size=1000)
+        except Exception as e:
+            log.exception('ImportacaoChurn falha ao gravar')
+            return Response({'error': f'Erro ao processar arquivo: {e}'}, status=500)
+
+        if not to_create and not to_update:
+            colunas = ', '.join(str(c) for c in list(df.columns)[:12])
+            return Response({
+                'error': (
+                    'Nenhuma linha foi importada. A planilha precisa das colunas PEDIDO ou NR_ORDEM. '
+                    f'Colunas lidas: {colunas}'
+                ),
+                'linhas_ignoradas': linhas_ignoradas,
+                'motivo_ignoradas': motivo_ignoradas,
+            }, status=400)
+
         return Response({
             'status': 'sucesso',
             'total_registros': len(df),
-            'criados': criados,
-            'atualizados': atualizados,
+            'criados': len(to_create),
+            'atualizados': len(to_update),
             'linhas_ignoradas': linhas_ignoradas,
-            'motivo_ignoradas': motivo_ignoradas[:10] if len(motivo_ignoradas) > 10 else motivo_ignoradas,  # Limitar a 10 exemplos
-            'erros': erros
+            'motivo_ignoradas': motivo_ignoradas,
+            'erros': erros,
         }, status=200)
 
 class ImportacaoChurnDetailView(generics.RetrieveUpdateAPIView):
