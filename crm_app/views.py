@@ -4911,6 +4911,7 @@ def _fechar_pagamento_mes(ano, mes, total_pago=None):
         annotate_data_folha_comissao,
         calcular_folha_mes,
         get_vendas_ids_desconto_churn_mes,
+        get_vendas_ids_desconto_recompra_mes,
     )
     from .services.adiantamento_sabado_service import get_vendas_ids_desconto_adiantamento_sabado_mes
 
@@ -4933,11 +4934,16 @@ def _fechar_pagamento_mes(ano, mes, total_pago=None):
         data_folha_comissao__lt=data_fim,
     ).exclude(status_comissionamento=status_pago)
 
+    ids_recompra = get_vendas_ids_desconto_recompra_mes(ano, mes)
+
     count = vendas_para_atualizar.count()
     vendas_para_atualizar.update(
         status_comissionamento=status_pago,
         data_pagamento_comissao=timezone.now().date()
     )
+
+    if ids_recompra:
+        Venda.objects.filter(id__in=ids_recompra).update(desconto_recompra_aplicado_em=ano * 100 + mes)
 
     ids_churn = get_vendas_ids_desconto_churn_mes(ano, mes)
     if ids_churn:

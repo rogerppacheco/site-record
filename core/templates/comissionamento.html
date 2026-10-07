@@ -617,7 +617,9 @@
                         const adiant = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_cnpj');
                         const churnM0 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m0');
                         const churnM1 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m1');
-                        const tiposAgrupados = new Set(['folha_boleto_vendas', 'folha_antecipacao_instalacao', 'adiant_cnpj', 'adiant_comissao', 'churn_m0', 'churn_m1', 'boleto', 'antecipacao_instalacao', 'processamento_auto_misto']);
+                        const recompraEstorno = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'recompra_estorno');
+                        const recompraMulta = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'recompra_multa');
+                        const tiposAgrupados = new Set(['folha_boleto_vendas', 'folha_antecipacao_instalacao', 'adiant_cnpj', 'adiant_comissao', 'churn_m0', 'churn_m1', 'recompra_estorno', 'recompra_multa', 'boleto', 'antecipacao_instalacao', 'processamento_auto_misto']);
                         const outros = list.filter(d => !tiposAgrupados.has((d.tipo_exibicao || '').toLowerCase()));
                         const linha = (d) => { const q = (d.quantidade != null && d.quantidade !== '') ? d.quantidade : 1; return `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}${q > 0 ? ' (' + q + ' un.)' : ''}</span><span>- ${fmtMoney(d.valor)}</span></div>`; };
                         let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Lançamentos descontados</strong>';
@@ -628,6 +630,8 @@
                         if (adiant.length) { bloco += '<div class="mb-1 mt-2"><span class="text-muted fw-bold small">Adiant. CNPJ</span>'; adiant.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM0.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M0</span>'; churnM0.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM1.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M-1</span>'; churnM1.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (recompraEstorno.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Estorno Recompra</span>'; recompraEstorno.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (recompraMulta.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Multa Recompra</span>'; recompraMulta.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (outros.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Outros</span>'; outros.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         bloco += '</div></div>';
                         return bloco;

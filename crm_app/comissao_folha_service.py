@@ -116,6 +116,50 @@ def chave_legado_lookup(chave: str | None) -> str | None:
     return _CHAVE_PARA_LEGADO.get(chave, chave)
 
 
+MULTA_RECOMPRA = Decimal('500')
+
+
+def venda_recompra_desconta(venda, ano_mes: int, os_recompra: set) -> bool:
+    """
+    Recompra só tira comissão e multa venda ainda em aberto.
+
+    Venda já paga (status PAGO) ou já adiantada não entra.
+    Se o mês foi fechado com o desconto, a folha desse mês continua mostrando.
+    """
+    from crm_app.services.adiantamento_sabado_service import comissao_ja_adiantada_venda
+
+    if not os_recompra or not getattr(venda, 'ordem_servico', None):
+        return False
+    variantes = _variantes_os(getattr(venda, 'ordem_servico', None))
+    if not (variantes & os_recompra):
+        return False
+    aplicado = getattr(venda, 'desconto_recompra_aplicado_em', None)
+    if aplicado:
+        return int(aplicado) == int(ano_mes)
+    status = getattr(getattr(venda, 'status_comissionamento', None), 'nome', None) or ''
+    if str(status).strip().upper() == 'PAGO':
+        return False
+    if comissao_ja_adiantada_venda(venda):
+        return False
+    return True
+
+
+def _variantes_os(val) -> set:
+    if val is None or (isinstance(val, str) and not str(val).strip()):
+        return set()
+    s = str(val).strip()
+    for prefix in ('OS-', 'OS', 'os-', 'os'):
+        if s.upper().startswith(prefix) and len(s) > len(prefix):
+            s = s[len(prefix):].strip()
+            break
+    if s.endswith('.0') and s[:-2].isdigit():
+        s = s[:-2]
+    if not s:
+        return set()
+    n = s.zfill(8) if len(s) <= 8 else s
+    return {n, n.lstrip('0') or '0'}
+
+
 # Catálogo novo (600MB na própria linha, célula por plano) vale a partir desta data.
 # Setembro/2026 e meses anteriores usam só as colunas 500/700/1GB.
 INICIO_PLANOS_NOVOS_COMISSAO = date(2026, 10, 1)
@@ -545,6 +589,7 @@ def vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim):
         .select_related(
             'plano', 'plano__valores_comissao', 'cliente',
             'forma_pagamento', 'status_tratamento', 'status_esteira',
+            'status_comissionamento',
         )
         .order_by('data_folha_comissao', 'id')
     )
@@ -577,7 +622,10 @@ def _agrupar_vendas_folha_bulk(
             data_folha_comissao__gte=di,
             data_folha_comissao__lt=df,
         )
-        .select_related('plano', 'cliente', 'forma_pagamento', 'status_tratamento', 'status_esteira')
+        .select_related(
+            'plano', 'cliente', 'forma_pagamento', 'status_tratamento',
+            'status_esteira', 'status_comissionamento',
+        )
         .order_by('vendedor_id', 'data_folha_comissao', 'id')
     )
     if usuario_escopo is not None:
@@ -872,7 +920,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
     from django.contrib.auth import get_user_model
     from .models import (
         Venda, RegraComissaoFaixa, ConfigComissaoVendedor,
-        LancamentoFinanceiro, ImportacaoChurn,
+        LancamentoFinanceiro, ImportacaoChurn, ImportacaoRecompra,
     )
 
     User = get_user_model()
@@ -915,6 +963,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         if os_val is not None:
             set_os_churn_m1.update(_norm_os_variantes(str(os_val).strip()))
     set_os_churn_mes_extrato = set_os_churn_m0
+    set_os_recompra = set()
+    for os_val in ImportacaoRecompra.objects.exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True):
+        set_os_recompra.update(_variantes_os(os_val))
     data_inicio = datetime(ano, mes, 1)
     if mes == 12:
         data_fim = datetime(ano + 1, 1, 1)
@@ -1454,12 +1505,55 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
             valor_churn_m1 += valor_unit
             qtd_churn_m1 += 1
+        valor_recompra = Decimal('0')
+        qtd_recompra = 0
+        for v in vendas:
+            if not venda_recompra_desconta(v, ano_mes, set_os_recompra):
+                continue
+            from crm_app.services.cnpj_mei_service import tipo_cliente_comissao
+
+            tipo_cliente = tipo_cliente_comissao(v)
+            chave = plano_tipo_to_chave(
+                v.plano,
+                tipo_cliente,
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+            )
+            valor_unit = resolver_valor_comissao_venda(
+                v.plano,
+                tipo_cliente,
+                faixa_regra=faixa_regra,
+                config=config,
+                usar_manual=usar_manual,
+                chave=chave,
+                matriz_cache=matriz_cache,
+                venda=v,
+                cidades_especiais_cache=cidades_especiais_cache,
+            )
+            valor_recompra += Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
+            qtd_recompra += 1
         if qtd_churn_m0 > 0 or valor_churn_m0 > 0:
             total_descontos += valor_churn_m0
             detalhes_descontos.append({'motivo': 'Desconto Churn M0', 'valor': float(valor_churn_m0), 'tipo_exibicao': 'churn_m0', 'quantidade': qtd_churn_m0})
         if qtd_churn_m1 > 0 or valor_churn_m1 > 0:
             total_descontos += valor_churn_m1
             detalhes_descontos.append({'motivo': 'Desconto Churn M-1', 'valor': float(valor_churn_m1), 'tipo_exibicao': 'churn_m1', 'quantidade': qtd_churn_m1})
+        if qtd_recompra > 0:
+            total_descontos += valor_recompra
+            detalhes_descontos.append({
+                'motivo': 'Estorno Recompra',
+                'valor': float(valor_recompra),
+                'tipo_exibicao': 'recompra_estorno',
+                'quantidade': qtd_recompra,
+            })
+            multa_recompra = (MULTA_RECOMPRA * qtd_recompra).quantize(Decimal('0.01'))
+            total_descontos += multa_recompra
+            detalhes_descontos.append({
+                'motivo': 'Multa Recompra',
+                'valor': float(multa_recompra),
+                'tipo_exibicao': 'recompra_multa',
+                'quantidade': qtd_recompra,
+            })
 
         # Boleto: CPF e CNPJ MEI instalados no mês (inclui sábado quitado; exclui comissão antecipada na esteira). NMEI isento.
         # "Desconta Boleto PAP?" vem da Config. Comissão do mês em Regras por vendedor (vale também com comissão manual).
@@ -1744,6 +1838,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             + qtd_a_descontar_cnpj
             + qtd_churn_m0
             + qtd_churn_m1
+            + qtd_recompra
         )
 
         tot_q_adiant = sum(int(x.get('qtd_antecipada', 0) or 0) for x in por_plano_lista) + qtd_adiant_sem_chave_excel
@@ -1925,6 +2020,36 @@ def get_vendas_ids_desconto_churn_mes(ano, mes):
         if _norm_os_variantes(v.ordem_servico) & set_os_m1:
             ids_marcar.append(v.id)
     return ids_marcar
+
+
+def get_vendas_ids_desconto_recompra_mes(ano, mes):
+    """Vendas do mês ainda em aberto cuja O.S. está na base de recompra."""
+    from .models import Venda, ImportacaoRecompra
+
+    ano_mes = ano * 100 + mes
+    set_os = set()
+    for os_val in ImportacaoRecompra.objects.exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True):
+        set_os.update(_variantes_os(os_val))
+    if not set_os:
+        return []
+
+    data_inicio = datetime(ano, mes, 1)
+    data_fim = datetime(ano, mes + 1, 1) if mes < 12 else datetime(ano + 1, 1, 1)
+    di = data_inicio.date()
+    df = data_fim.date()
+    base = Venda.objects.filter(
+        ativo=True,
+        status_esteira__nome__iexact='INSTALADA',
+        desconto_recompra_aplicado_em__isnull=True,
+    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='').exclude(
+        status_comissionamento__nome__iexact='PAGO',
+    ).select_related('status_comissionamento', 'status_esteira')
+    vendas = annotate_data_folha_comissao(base).filter(
+        data_folha_comissao__isnull=False,
+        data_folha_comissao__gte=di,
+        data_folha_comissao__lt=df,
+    )
+    return [v.id for v in vendas if venda_recompra_desconta(v, ano_mes, set_os)]
 
 # Injetado de nova-velox
 def _sufixo_tipo_cliente(tipo_cliente: str) -> str:

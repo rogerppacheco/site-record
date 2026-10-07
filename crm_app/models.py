@@ -755,6 +755,11 @@ class Venda(models.Model):
     )
     # Ano/mês em que o desconto por churn foi aplicado (ex: 202601 = comissão jan/26). Evita descontar duas vezes.
     desconto_churn_aplicado_em = models.PositiveIntegerField(null=True, blank=True, verbose_name="Desconto Churn aplicado em (AAAAMM)")
+    # Ano/mês em que o estorno e a multa de recompra entraram na folha. Venda já paga não recebe o desconto.
+    desconto_recompra_aplicado_em = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Desconto Recompra aplicado em (AAAAMM)",
+    )
     # ------------------------------------------
 
     def __str__(self): return f"Venda #{self.id}"
