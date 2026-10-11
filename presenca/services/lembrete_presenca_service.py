@@ -39,7 +39,7 @@ _CAPTION_11H = (
 
 
 def _url_presenca() -> str:
-    return getattr(settings, "PRESENCA_URL_SITE", "https://site-clickup-production.up.railway.app/presenca/")
+    return getattr(settings, "PRESENCA_URL_SITE", "")
 
 
 def _imagem_alerta_b64() -> str:

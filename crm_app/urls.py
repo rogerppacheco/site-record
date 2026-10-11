@@ -27,6 +27,12 @@ from .views_whatsapp_ia_governanca import (
     whatsapp_telefones_sem_ia_view,
     whatsapp_telefone_sem_ia_detail_view,
 )
+from .views_whatsapp_atendimento import (
+    AtendimentoWhatsAppAssumirView,
+    AtendimentoWhatsAppConversasView,
+    AtendimentoWhatsAppDetalheView,
+    AtendimentoWhatsAppResponderView,
+)
 from .pedido_ajuda_gc_api import (
     EtapaErroAjudaGcListCreateView,
     EtapaErroAjudaGcDetailView,
@@ -268,6 +274,10 @@ urlpatterns = [
     path('pap/mfa-pendente/', pap_mfa_pendente_view, name='pap-mfa-pendente'),
     # Rotas específicas de vendas ANTES do router (evita que "enviar-boas-vindas" seja interpretado como pk)
     path('vendas/enviar-boas-vindas/', EnviarBoasVindasView.as_view(), name='enviar-boas-vindas'),
+    path('atendimento-whatsapp/conversas/', AtendimentoWhatsAppConversasView.as_view(), name='atendimento-whatsapp-conversas'),
+    path('atendimento-whatsapp/conversas/<str:telefone>/', AtendimentoWhatsAppDetalheView.as_view(), name='atendimento-whatsapp-detalhe'),
+    path('atendimento-whatsapp/conversas/<str:telefone>/responder/', AtendimentoWhatsAppResponderView.as_view(), name='atendimento-whatsapp-responder'),
+    path('atendimento-whatsapp/conversas/<str:telefone>/assumir/', AtendimentoWhatsAppAssumirView.as_view(), name='atendimento-whatsapp-assumir'),
     # Boas-Vindas Gestão (ferramenta dedicada)
     path('boas-vindas/instalacoes/', BoasVindasInstalacoesView.as_view(), name='boas-vindas-instalacoes'),
     path('boas-vindas/retornos/', BoasVindasRetornosView.as_view(), name='boas-vindas-retornos'),

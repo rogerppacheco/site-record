@@ -62,7 +62,7 @@ class Command(BaseCommand):
 
         msg_base = (
             f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
-            f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND_NAME}, parceiro Oficial da Nio Fibra.\n\n"
+            f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND}, parceiro Oficial da Nio Fibra.\n\n"
             "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
             "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
             "Você também pode acompanhar sua conta através do app Nio.\n"

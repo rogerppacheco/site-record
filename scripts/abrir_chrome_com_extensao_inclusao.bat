@@ -1,5 +1,5 @@
 @echo off
-set EXT=C:\site-record\chrome_extension_inclusao_forms
+set EXT=C:\Projeto_Sysr\site-record\chrome_extension_inclusao_forms
 set CHROME=C:\Program Files\Google\Chrome\Application\chrome.exe
 
 echo Fechando Chrome...

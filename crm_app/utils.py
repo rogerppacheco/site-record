@@ -995,7 +995,7 @@ def alertar_status_agendamento_pap_nao_mapeado(
         return False
     os_txt = (os_num or "").strip() or "?"
     venda_txt = f"#{venda_id}" if venda_id else "?"
-    brand = getattr(settings, "SITE_BRAND", "ClickUp")
+    brand = getattr(settings, "SITE_BRAND", "Record PAP")
     msg = (
         f"⚠️ *Status de agendamento não mapeado no CRM {brand}*\n\n"
         f"*Texto no PAP:* {texto_pap}\n"

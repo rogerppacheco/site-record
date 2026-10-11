@@ -223,6 +223,17 @@ class WebhookWhatsAppView(APIView):
 
         data = normalizar_webhook(data)
 
+        try:
+            from crm_app.services.whatsapp.atendimento_service import (
+                registrar_entrada_webhook,
+            )
+
+            registrar_entrada_webhook(data)
+        except Exception:
+            logger_webhook.exception(
+                "[WebhookWhatsAppView] Falha ao gravar atendimento WhatsApp"
+            )
+
         # Fallback: normalizador converteu status que o extrator do raw não viu.
         status_resp = processar_webhook_status(data if isinstance(data, dict) else {})
         if status_resp is not None:
@@ -9863,7 +9874,7 @@ class NominatimProxyView(APIView):
             url = f"https://nominatim.openstreetmap.org/search?{urllib.parse.urlencode(params)}"
             req = urllib.request.Request(
                 url,
-                headers={'User-Agent': 'ClickUpCRM/1.0'}
+                headers={'User-Agent': 'RecordPAPCRM/1.0'}
             )
             with urllib.request.urlopen(req, timeout=8) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -12957,7 +12968,7 @@ def page_validacao_recompra(request):
 
 
 def page_record_apoia(request):
-    """View para renderizar a página HTML do Futura Telecom Apoia"""
+    """View para renderizar a página HTML do Record Apoia"""
     return render(request, 'record_apoia.html')
 
 
@@ -15675,7 +15686,7 @@ class ExportarAgendamentosDiaView(APIView):
             tel2 = re.sub(r'\D', '', v.telefone2 or '') if v.telefone2 else ''
             
             ws.append([
-                settings.SITE_BRAND_NAME,                          # Parceiro (fixo)
+                settings.SITE_BRAND,                          # Parceiro (fixo)
                 v.ordem_servico or '',             # Pedido (O.S)
                 (v.estado or '').upper()[:2],      # UF
                 (v.cidade or '').upper(),          # Cidade
@@ -15986,7 +15997,7 @@ class EnviarLembreteInstalacaoView(APIView):
             nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
             mensagem = (
                 f"Olá, {saudacao} Sr(a). {nome_cliente}\n\n"
-                f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND_NAME}, parceiro Oficial da Nio Fibra.\n\n"
+                f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND}, parceiro Oficial da Nio Fibra.\n\n"
                 f"A sua instalação da Nio Fibra está agendada para hoje ({dd_mm}), no período das {periodo_texto}.\n\n"
                 "Se você não puder estar presente, é necessário que uma pessoa maior de 18 anos esteja no local.\n\n"
                 "Informações sobre sua instalação:\n"
@@ -16137,7 +16148,7 @@ class EnviarBoasVindasView(APIView):
 
         msg_base = (
             f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
-            f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND_NAME}, parceiro Oficial da Nio Fibra.\n\n"
+            f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND}, parceiro Oficial da Nio Fibra.\n\n"
             "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
             "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
             "Você também pode acompanhar sua conta através do app Nio.\n"
@@ -16427,7 +16438,7 @@ class BoasVindasEnviarGestaoView(APIView):
 
         msg_base = (
             f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
-            f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND_NAME}, parceiro Oficial da Nio Fibra.\n\n"
+            f"Me chamo {primeiro_nome}, sou especialista de qualidade da {settings.SITE_BRAND}, parceiro Oficial da Nio Fibra.\n\n"
             "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
             "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
             "Você também pode acompanhar sua conta através do app Nio.\n"
@@ -17351,7 +17362,7 @@ def _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo):
         f"- *NOME DO CLIENTE:* {nome_cliente}\n"
         f"- *ENDEREÇO COMPLETO:* {endereco}\n"
         f"- *CONTATO DO CLIENTE:* {contato_cliente}\n"
-        "- *PDV:* 1068561 - RECORD PAP\n"
+        f"- *PDV:* {getattr(settings, 'SITE_PDV_CODIGO', '')} - {getattr(settings, 'SITE_PDV_NOME', '')}\n"
         f"- *GC:* {gc_nome}\n"
         f"- *DATA INSTALAÇÃO:* {data_inst_fmt}\n"
         "- *DATA E HORÁRIO AGENDADO COM O CLIENTE:*\n"
@@ -17368,7 +17379,7 @@ def _mensagem_padrao_instalacao_fisica(os_num, endereco, data_fisica_fmt, descri
         "*SINALIZAÇÃO - INSTALAÇÃO FÍSICA / PENDÊNCIA NO SISTEMA:*\n\n"
         f"- *OS:* {os_num}\n"
         f"- *ENDEREÇO COMPLETO:* {endereco}\n"
-        f"- *NOME DO PDV:* {getattr(settings, 'SITE_MODULE_PREFIX', 'ClickUp').upper()}\n"
+        f"- *NOME DO PDV:* {getattr(settings, 'SITE_MODULE_PREFIX', 'Record').upper()}\n"
         f"- *DATA INSTALAÇÃO FÍSICA (NO CLIENTE):* {data_fisica_fmt}\n"
         "- *CONTEXTO:* Houve instalação física; o pedido segue com pendência na esteira.\n"
         f"- *DESCRIÇÃO DETALHADA:* {descricao}"
@@ -17519,7 +17530,7 @@ class SolicitarAnteciparInstalacaoView(APIView):
                 "*MÁSCARA PADRÃO DE ACIONAMENTO - GRUPO ELITE:*\n\n"
                 f"- *OS:* {os_num}\n"
                 f"- *ENDEREÇO COMPLETO:* {endereco}\n"
-                f"- *NOME DO PDV:* {getattr(settings, 'SITE_MODULE_PREFIX', 'ClickUp').upper()}\n"
+                f"- *NOME DO PDV:* {getattr(settings, 'SITE_MODULE_PREFIX', 'Record').upper()}\n"
                 f"- *DATA AGENDADA:* {data_ag_fmt} - {turno}\n"
                 f"- *DESCRIÇÃO DETALHADA DA SOLICITAÇÃO:* {descricao}"
             )
@@ -19527,7 +19538,6 @@ class AtuacaoCampoDiarioView(APIView):
             'dados': list(dados)
         })
 
-# Injetado de site-gm
 def _resposta_canal_cliente_indisponivel():
     from crm_app.services.whatsapp_config_service import (
         canal_cliente_pronto,
@@ -19544,7 +19554,6 @@ def _resposta_canal_cliente_indisponivel():
         status=status.HTTP_409_CONFLICT,
     )
 
-# Injetado de site-gm
 def _payload_canal_cliente() -> dict:
     from crm_app.services.whatsapp_config_service import (
         canal_cliente_pronto,

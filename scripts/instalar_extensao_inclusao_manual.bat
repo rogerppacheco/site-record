@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-set EXT=C:\site-record\chrome_extension_inclusao_forms
+set EXT=C:\Projeto_Sysr\site-record\chrome_extension_inclusao_forms
 
 echo.
 echo ========================================

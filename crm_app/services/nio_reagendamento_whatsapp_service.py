@@ -83,6 +83,7 @@ def queryset_vendas_elegiveis_nio(filtros: Optional[Dict[str, Any]] = None):
 
     qs = queryset_vendas_consulta_aba(filtros or {'aba': 'PENDEN'})
     return qs.filter(
+        status_esteira__nome__icontains='PENDEN',
         motivo_pendencia__isnull=False,
         motivo_pendencia__nome__startswith=CODIGO_MOTIVO_7029,
         motivo_pendencia__tipo_pendencia__icontains='CLIENTE',

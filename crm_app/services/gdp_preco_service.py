@@ -495,7 +495,7 @@ def _meta_plano_landing(velocidade: int) -> dict[str, Any]:
         return meta
     return {
         'titulo': formatar_velocidade_label(velocidade),
-        'subtitulo': f'Fibra óptica {settings.SITE_BRAND_NAME}',
+        'subtitulo': f'Fibra óptica {settings.SITE_BRAND}',
         'beneficios': [
             {'icone': 'wifi', 'texto': 'Fibra óptica ponta a ponta'},
             {'icone': 'lightning', 'texto': 'Alta estabilidade'},
@@ -584,7 +584,7 @@ def listar_planos_landing(
                 'prefixo_preco': prefixo_preco,
                 'destaque': velocidade >= 1000,
                 'whatsapp_texto': (
-                    f'Quero o plano {settings.SITE_BRAND_NAME} de {label} '
+                    f'Quero o plano {settings.SITE_BRAND} de {label} '
                     f'({prefixo_preco}{formatar_moeda_br(valor)}/mês)'
                 ),
             }

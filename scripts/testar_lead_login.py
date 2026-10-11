@@ -31,7 +31,7 @@ Tratamento de erros:
   - Se aparecer "Encontramos um obstáculo." na página: extrair mensagem, fechar diálogo e informar que o lead não foi criado.
 
 Uso:
-    cd c:\\site-bn
+    cd c:\\site-record
     python scripts/testar_lead_login.py              # execução normal
     python scripts/testar_lead_login.py --passo-a-passo   # pausa antes de cada passo (mapear seletores)
 
@@ -986,4 +986,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

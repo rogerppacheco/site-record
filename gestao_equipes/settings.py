@@ -29,6 +29,10 @@ ALLOWED_HOSTS = [
     '.ngrok-free.app',
     '.ngrok.io',
 ]
+ALLOWED_HOSTS += [
+    h.strip() for h in config('EXTRA_ALLOWED_HOSTS', default='').split(',')
+    if h.strip() and h.strip() not in ALLOWED_HOSTS
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -325,6 +329,14 @@ if _site_origin.startswith('http://') or _site_origin.startswith('https://'):
         CSRF_TRUSTED_ORIGINS.append(_site_origin)
     if _site_origin not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS.append(_site_origin)
+    _site_host = _site_origin.split('://', 1)[1].split('/', 1)[0].split(':', 1)[0]
+    if _site_host and _site_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_site_host)
+# PDV da Record na Nio (formulário de inclusão, V.top, máscaras de reparo, pedido de ajuda ao GC).
+SITE_PDV_CODIGO = config('SITE_PDV_CODIGO', default='1068561')
+SITE_PDV_NOME = config('SITE_PDV_NOME', default='RECORD PAP')
+# Identificador curto do projeto (origem em integrações n8n/Teams, health check).
+SITE_SLUG = config('SITE_SLUG', default='site-record')
 # Descarta webhooks Z-API irrelevantes (grupo, fromMe, etc.) antes do handler pesado
 WHATSAPP_WEBHOOK_FASTPATH = config('WHATSAPP_WEBHOOK_FASTPATH', default=True, cast=bool)
 
@@ -467,7 +479,7 @@ VTOP_HEADLESS = config(
     default=False,
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
-VTOP_CODIGO_SAP = config('VTOP_CODIGO_SAP', default='1068561')
+VTOP_CODIGO_SAP = config('VTOP_CODIGO_SAP', default=SITE_PDV_CODIGO)
 # Emergência: True bloqueia QUALQUER criação de obra (só reabre se achar na lista/banco).
 # Fluxo normal: sempre tenta criar, MAS só depois do inventário confirmar que
 # o mesmo complemento ainda não existe no endereço (senão reusa a obra).
@@ -507,6 +519,7 @@ GOOGLE_FORM_STORAGE_STATE = config(
 GOOGLE_FORM_STORAGE_STATE_B64 = config('GOOGLE_FORM_STORAGE_STATE_B64', default='')
 GOOGLE_FORM_LOGIN_EMAIL = config('GOOGLE_FORM_LOGIN_EMAIL', default='roggerio@gmail.com')
 GOOGLE_FORM_EMAIL = config('GOOGLE_FORM_EMAIL', default='comunicacao@recordpap.com.br')
+INCLUSAO_EMPRESA_VENDAS = config('INCLUSAO_EMPRESA_VENDAS', default='RECORD')
 
 # --- CONFIGURAÇÕES DE ARQUIVOS ESTÁTICOS E MÍDIA ---
 # Para upload de PDFs das faturas M-10
@@ -657,7 +670,10 @@ PRESENCA_LEMBRETES_ATIVOS = config(
 PRESENCA_FALTA_AUTOMATICA_12H_ATIVA = config(
     'PRESENCA_FALTA_AUTOMATICA_12H_ATIVA', default=True, cast=lambda v: str(v).lower() in ('true', '1', 'yes')
 )
-PRESENCA_URL_SITE = config('PRESENCA_URL_SITE', default='https://www.recordpap.com.br/presenca/')
+PRESENCA_URL_SITE = config(
+    'PRESENCA_URL_SITE',
+    default=f'{str(SITE_URL).rstrip("/")}/presenca/' if SITE_URL else '',
+)
 PRESENCA_IMAGEM_ALERTA_SUPERVISOR = config(
     'PRESENCA_IMAGEM_ALERTA_SUPERVISOR', default='presenca/assets/alerta_supervisor.png'
 )

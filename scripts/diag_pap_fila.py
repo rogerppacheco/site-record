@@ -1,4 +1,4 @@
-"""Diagnóstico rápido da fila PAP (rodar com railway run -s site-bn-pap)."""
+"""Diagnóstico rápido da fila PAP (rodar com railway run -s site-record-pap)."""
 import os
 import django
 
@@ -64,4 +64,3 @@ for h in (
         f"  id={h.id} status={h.status_execucao} tel=...{tel} "
         f"criado={h.criado_em} msg={str(h.mensagem_resultado)[:60]}"
     )
-

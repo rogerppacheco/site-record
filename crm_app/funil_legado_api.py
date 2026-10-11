@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 def _marca_site() -> str:
     return (
         getattr(settings, "SITE_BRAND", "")
-        or getattr(settings, "SITE_BRAND_NAME", "")
         or ""
     )
 

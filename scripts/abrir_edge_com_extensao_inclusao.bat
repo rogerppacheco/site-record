@@ -1,5 +1,5 @@
 @echo off
-set EXT=C:\site-record\chrome_extension_inclusao_forms
+set EXT=C:\Projeto_Sysr\site-record\chrome_extension_inclusao_forms
 set EDGE=C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
 
 echo Fechando Edge...

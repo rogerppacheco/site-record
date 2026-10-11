@@ -7627,6 +7627,13 @@ def processar_webhook_whatsapp(data, request=None):
     from crm_app.whatsapp_webhook_normalizer import normalizar_webhook
     data = normalizar_webhook(data)
 
+    try:
+        from crm_app.services.whatsapp.atendimento_service import registrar_entrada_webhook
+
+        registrar_entrada_webhook(data)
+    except Exception:
+        logger.exception("[Webhook] Falha ao gravar atendimento WhatsApp")
+
     if getattr(django_settings, 'WHATSAPP_WEBHOOK_FASTPATH', True):
         from crm_app.whatsapp_webhook_fastpath import avaliar_fastpath_zapi
         rapido = avaliar_fastpath_zapi(data)
@@ -8983,12 +8990,12 @@ def processar_webhook_whatsapp(data, request=None):
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Comando RECORD APOIA / APOIA (repositório de arquivos - mesmo fluxo que Material)
-        if mensagem_limpa in ['APOIA', 'RECORD APOIA', 'RECORDAPOIA', 'ROSSO APOIA', 'ROSSOAPOIA']:
+        if mensagem_limpa in ['APOIA', 'RECORD APOIA', 'RECORDAPOIA']:
             logger.info(f"[Webhook] Comando APOIA reconhecido!")
             sessao.etapa = 'material_buscar'
             sessao.dados_temp = {}
             sessao.save()
-            marca_apoia = getattr(settings, 'SITE_MODULE_PREFIX', 'Rosso')
+            marca_apoia = getattr(settings, 'SITE_MODULE_PREFIX', 'Record')
             resposta = (
                 f"📁 *{marca_apoia} Apoia* – Buscar arquivos/materiais\n\n"
                 "Digite a *palavra-chave* para buscar (ex: Globoplay, boleto, contrato, instalacao):"
@@ -10221,7 +10228,7 @@ def processar_webhook_whatsapp(data, request=None):
                     "⚠️ *Confirmação antes de enviar*\n\n"
                     "Confirme que você *não* está tentando criar um complemento ou fachada que não existe "
                     "para recompra, ou anexar fotos/comprovante que não sejam verdadeiros, ou algo que possa "
-                    f"prejudicar a {getattr(settings, 'SITE_BRAND', 'Rosso')} como parceiro Nio.\n\n"
+                    f"prejudicar a {getattr(settings, 'SITE_BRAND', 'Record PAP')} como parceiro Nio.\n\n"
                     "Ao confirmar, a solicitação irá para a *Auditoria* (envio ao Google Forms pelo auditor).\n\n"
                     "Digite *SIM* para enviar ou *CANCELAR* para desistir."
                 )
@@ -11445,10 +11452,8 @@ def processar_webhook_whatsapp(data, request=None):
         logger.exception(f"[Webhook] Erro ao processar mensagem: {e}")
         return {'status': 'erro', 'mensagem': str(e)}
 
-# Injetado de nova-velox
 def _site_brand() -> str:
-    return getattr(settings, "SITE_BRAND_NAME", "Futura Telecom")
+    return getattr(settings, "SITE_BRAND", "Record PAP")
 
-# Injetado de nova-velox
 def _site_brand_apoia() -> str:
     return f"{_site_brand()} Apoia"

@@ -70,7 +70,7 @@ VTOP_LOGIN_URL = (
 )
 
 # Código parceiro SAP (mesmo padrão Inclusão / PDV BN)
-CODIGO_SAP_PADRAO = "1068561"
+CODIGO_SAP_PADRAO = getattr(settings, "SITE_PDV_CODIGO", "") or "1068561"
 # Pré-venda por obra = teto de 18% dos HPs do bloco (regra BN / SmartRiser)
 PRE_VENDA_PCT_BLOCO = 0.18
 

@@ -5,7 +5,7 @@ import django
 os.environ['DATABASE_UNPOOLED_URL'] = "postgresql://postgres:tpOxGAuhWgQLedMRcYARBiPCkGMyZUkz@maglev.proxy.rlwy.net:56422/railway"
 os.environ['DATABASE_URL'] = "postgresql://postgres:tpOxGAuhWgQLedMRcYARBiPCkGMyZUkz@maglev.proxy.rlwy.net:56422/railway"
 os.environ['POSTGRES_SCHEMA'] = "public"
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core_config.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gestao_equipes.settings')
 django.setup()
 
 from usuarios.models import Usuario
