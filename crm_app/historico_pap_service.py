@@ -2213,7 +2213,16 @@ def _coletar_vendas_via_rede_spa(
                 espera = min(max(espera, ESPERA_429_PADRAO_S), 300)
                 bloqueio_ate["t"] = time.time() + espera
                 _ULTIMO_429["t"] = time.time()
-                logger.warning("[HISTORICO PAP] PAP limitou as consultas (429) — pausa de %ss.", espera)
+                cabecalhos_limite = {
+                    k: v
+                    for k, v in (api_resp.headers or {}).items()
+                    if any(s in k.lower() for s in ("retry", "ratelimit", "rate-limit", "x-rate", "quota", "reset"))
+                }
+                logger.warning(
+                    "[HISTORICO PAP] PAP limitou as consultas (429) — pausa de %ss. Cabeçalhos=%s",
+                    espera,
+                    cabecalhos_limite,
+                )
             if status < 200 or status >= 300:
                 erros.append(f"HTTP {status}: {preview}")
                 logger.warning(
