@@ -2734,6 +2734,20 @@ def criar_e_iniciar_busca(
         return None, f"O intervalo máximo é {MAX_DIAS_BUSCA} dias."
 
     tipos_ok = tipos_solicitados(tipos)
+    if "INTERESSE" in tipos_ok:
+        from datetime import timedelta as _td
+
+        from django.utils import timezone as _tz
+
+        from crm_app.historico_pap import MAX_DIAS_RETROATIVOS_INTERESSE
+
+        minimo = _tz.localdate() - _td(days=MAX_DIAS_RETROATIVOS_INTERESSE)
+        if data_inicio < minimo:
+            return None, (
+                f"O PAP só permite consultar Interesse dos últimos {MAX_DIAS_RETROATIVOS_INTERESSE} dias. "
+                f"Escolha uma data inicial a partir de {minimo.strftime('%d/%m/%Y')} "
+                "ou desmarque Interesse para buscar Venda/Pré-venda em períodos antigos."
+            )
     pdv = (pdv or "").strip()
     token_manual = (token_manual or "").strip()
 
