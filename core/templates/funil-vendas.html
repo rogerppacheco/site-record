@@ -198,7 +198,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 <div class="funil-toolbar">
                     <div class="funil-search">
                         <i class="bi bi-search"></i>
-                        <input type="search" id="f-busca" class="form-control form-control-sm" placeholder="Protocolo, cliente ou CPF" aria-label="Buscar por protocolo, cliente ou CPF" autocomplete="off">
+                        <input type="search" id="f-busca" class="form-control form-control-sm" placeholder="Protocolo, O.S., cliente ou CPF" aria-label="Buscar por protocolo, O.S., cliente ou CPF" autocomplete="off">
                         <kbd class="funil-kbd" title="Atalho: / foca a busca">/</kbd>
                     </div>
                     <select id="f-status" class="form-select form-select-sm funil-select" aria-label="Filtrar por status PAP">
@@ -815,7 +815,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const [dia, hora] = String(p.data_status || '').split(' ');
         return `
             <tr class="funil-row-anim">
-                <td class="ps-4 fw-bold font-monospace text-primary">${destacar(p.protocolo || '-')}</td>
+                <td class="ps-4 fw-bold font-monospace text-primary">${destacar(p.protocolo || '-')}${p.os_instalacao ? `<div class="small fw-normal text-muted">O.S. ${destacar(p.os_instalacao)}</div>` : ''}</td>
                 <td class="fw-medium text-dark">${destacar(p.cliente || 'Desconhecido')}</td>
                 <td class="text-muted small text-nowrap">${destacar(p.documento || '-')}</td>
                 <td><span class="badge bg-secondary badge-status">${esc((p.status_primario || 'Desconhecido').replace(/_/g, ' '))}</span></td>

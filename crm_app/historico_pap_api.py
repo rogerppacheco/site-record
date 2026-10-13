@@ -267,6 +267,7 @@ def filtrar_pedidos_funil(qp) -> dict:
                 Q(numero_pedido__icontains=digitos)
                 | Q(payload__cpf__icontains=digitos)
                 | Q(payload__dadosCliente__cpf__icontains=digitos)
+                | Q(payload__produtos__bandaLarga__osInstalacao__icontains=digitos)
             )
         base = base.filter(filtro)
 
@@ -387,6 +388,7 @@ class FunilHistoricoPapPedidosView(APIView):
                 "protocolo": mapped.get("pedido") or p.numero_pedido,
                 "cliente": cliente_val,
                 "documento": doc_val,
+                "os_instalacao": mapped.get("os_instalacao") or "",
                 "tipo_venda": p.tipo_venda,
                 "status_primario": status_val,
                 "novo_nesta_busca": num_norm in novos_set,
