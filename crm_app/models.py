@@ -1413,6 +1413,7 @@ class ImportacaoOsab(models.Model):
     cd_rede = models.CharField(max_length=255, null=True, blank=True)
     gp_canal = models.CharField(max_length=255, null=True, blank=True)
     gerencia = models.CharField(max_length=255, null=True, blank=True)
+    nr_ordem_original = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 
     def __str__(self):
         return f"Importação OSAB - DOC {self.documento}"

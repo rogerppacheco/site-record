@@ -6268,7 +6268,7 @@ class ImportacaoOsabView(APIView):
                 'DESC_SUB_MOTIVO_ORDEM': 'desc_sub_motivo_ordem', 'MEIO_PAGAMENTO': 'meio_pagamento',
                 'CAMPANHA': 'campanha', 'FLG_MEI': 'flg_mei', 'NM_DIRETORIA': 'nm_diretoria',
                 'NM_REGIONAL': 'nm_regional', 'CD_REDE': 'cd_rede', 'GP_CANAL': 'gp_canal',
-                'GERENCIA': 'gerencia', 'NM_GC': 'gc',
+                'GERENCIA': 'gerencia', 'NM_GC': 'gc', 'NR_ORDEM_ORIGINAL': 'nr_ordem_original',
             }
 
             STATUS_MAP = {
@@ -6321,7 +6321,7 @@ class ImportacaoOsabView(APIView):
                     dados_model = {}
                     for col_planilha, campo_model in coluna_map.items():
                         val = row.get(col_planilha)
-                        if col_planilha == 'PEDIDO': 
+                        if col_planilha in ('PEDIDO', 'NR_ORDEM_ORIGINAL'):
                             # Manter valor exato da planilha (já está como string preservando zeros)
                             val = self._normalize_pedido(val)  # Apenas remove .0 se for float convertido
                         elif col_planilha == 'DATA_ABERTURA' and val:

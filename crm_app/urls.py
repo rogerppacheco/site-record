@@ -227,6 +227,7 @@ from .auditoria_inclusao_api import (
 from .pendencia_indevida_api import PendenciaIndevidaRegistrarView, PendenciaIndevidaRelatorioView
 from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWppTentativaListView
 from .funil_legado_api import FunilMontarLegadoConfigView, FunilMontarLegadoView
+from .osab_busca_api import BuscarPedidoOsabView
 from .historico_pap_api import (
     FunilHistoricoPapBuscarView,
     FunilHistoricoPapConfigView,
@@ -401,6 +402,7 @@ urlpatterns = [
     # --- Importações ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
+    path('import/osab/buscar/', BuscarPedidoOsabView.as_view(), name='importacao-osab-buscar'),
     path('controle-tts/', ControleTTsAPIView.as_view(), name='controle-tts-api'),
     path('controle-tts/proximo/', ControleTTsProximoAPIView.as_view(), name='controle-tts-proximo-api'),
     path('controle-tts/tratado/', ControleTTTratadoAPIView.as_view(), name='controle-tts-tratado-api'),
