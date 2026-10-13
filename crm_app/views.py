@@ -13764,39 +13764,44 @@ class ImportarFPDView(APIView):
                 'NR_ORDEM_VENDA': str,   # Portal Parceiros
             }
             
-            if arquivo_nome.endswith('.csv'):
-                df = pd.read_csv(arquivo_io, dtype=dtype_spec)
-            elif arquivo_nome.endswith('.xlsb'):
-                try:
-                    df = pd.read_excel(arquivo_io, engine='pyxlsb', dtype=dtype_spec)
-                except Exception as e:
+            from crm_app.portal_parceiros_import_utils import (
+                coluna_nr_ordem_fpd_presente,
+                extrair_indicador_fpd,
+                extrair_vl_fatura_fpd,
+                ler_excel_fpd,
+                normalizar_colunas_fpd,
+            )
+
+            try:
+                if arquivo_nome.endswith('.csv'):
+                    df = pd.read_csv(arquivo_io, dtype=dtype_spec)
+                elif arquivo_nome.endswith('.xlsb'):
+                    df = ler_excel_fpd(arquivo_io, engine='pyxlsb', dtype_base=dtype_spec)
+                else:
+                    df = ler_excel_fpd(arquivo_io, dtype_base=dtype_spec)
+            except Exception as e:
+                if arquivo_nome.endswith('.xlsb'):
                     log.status = 'ERRO'
                     log.mensagem_erro = f'Formato .xlsb não suportado: {str(e)}'
                     log.finalizado_em = timezone.now()
                     log.calcular_duracao()
                     log.save()
                     return
-            else:
-                df = pd.read_excel(arquivo_io, dtype=dtype_spec)
-
-            # Normalizar nomes de colunas (inclui layout Portal Parceiros)
-            from crm_app.portal_parceiros_import_utils import (
-                coluna_nr_ordem_fpd_presente,
-                extrair_indicador_fpd,
-                extrair_vl_fatura_fpd,
-                normalizar_colunas_fpd,
-            )
+                raise
 
             df = normalizar_colunas_fpd(df)
 
-            # Validar presença da coluna obrigatória NR_ORDEM (ou alias nr_ordem_venda)
+            # Validar presença da coluna obrigatória NR_ORDEM (ou alias nr_ordem_venda).
+            # A caixa do cabeçalho não importa: nr_ordem e NR_ORDEM são equivalentes.
             if not coluna_nr_ordem_fpd_presente(df):
-                colunas_encontradas = ', '.join(sorted(df.columns[:15]))
+                colunas_encontradas = ', '.join(sorted(str(c) for c in list(df.columns)[:15]))
+                aba = df.attrs.get('aba_fpd')
+                onde = f' na aba "{aba}"' if aba else ''
                 log.status = 'ERRO'
                 log.mensagem_erro = (
                     'Coluna NR_ORDEM não encontrada no arquivo. '
                     'A planilha FPD deve ter "NR_ORDEM" ou "NR_ORDEM_VENDA" (Portal Parceiros). '
-                    f'Colunas encontradas: {colunas_encontradas}' + ('...' if len(df.columns) > 15 else '')
+                    f'Colunas encontradas{onde}: {colunas_encontradas}' + ('...' if len(df.columns) > 15 else '')
                 )
                 log.finalizado_em = timezone.now()
                 log.calcular_duracao()

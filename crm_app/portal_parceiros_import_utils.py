@@ -146,6 +146,47 @@ def coluna_nr_ordem_fpd_presente(df: pd.DataFrame) -> bool:
     return 'nr_ordem' in df.columns
 
 
+def planilha_fpd_tem_nr_ordem(colunas) -> bool:
+    """NR_ORDEM e nr_ordem são a mesma coluna: a comparação ignora maiúsculas."""
+    nomes = {normalizar_header(c, uppercase=False) for c in colunas}
+    return 'nr_ordem' in nomes or 'nr_ordem_venda' in nomes
+
+
+def dtype_texto_fpd(colunas) -> dict:
+    """Força texto nas colunas de O.S e contrato, qualquer que seja a caixa do cabeçalho."""
+    alvos = {normalizar_header(c, uppercase=False) for c in FPD_COLUNAS_TEXTO}
+    return {
+        col: str
+        for col in colunas
+        if normalizar_header(col, uppercase=False) in alvos
+    }
+
+
+def ler_excel_fpd(arquivo, *, engine: Optional[str] = None, dtype_base: Optional[dict] = None) -> pd.DataFrame:
+    """Lê a aba que contém NR_ORDEM.
+
+    A exportação da operadora pode trazer um resumo na primeira aba
+    (meses e mês fatura) e a base, com nr_ordem, numa aba seguinte.
+    """
+    xl = pd.ExcelFile(arquivo, engine=engine) if engine else pd.ExcelFile(arquivo)
+    aba_escolhida = None
+    colunas_escolhidas = None
+    for nome in xl.sheet_names:
+        colunas = list(pd.read_excel(xl, sheet_name=nome, nrows=0).columns)
+        if planilha_fpd_tem_nr_ordem(colunas):
+            aba_escolhida = nome
+            colunas_escolhidas = colunas
+            break
+    if aba_escolhida is None:
+        aba_escolhida = xl.sheet_names[0]
+        colunas_escolhidas = list(pd.read_excel(xl, sheet_name=aba_escolhida, nrows=0).columns)
+    dtype = dict(dtype_base or {})
+    dtype.update(dtype_texto_fpd(colunas_escolhidas))
+    df = pd.read_excel(xl, sheet_name=aba_escolhida, dtype=dtype or None)
+    df.attrs['aba_fpd'] = aba_escolhida
+    return df
+
+
 def extrair_vl_fatura_fpd(row) -> float:
     """Portal Parceiros não traz VL_FATURA; default explícito zero."""
     val = row.get('vl_fatura') if hasattr(row, 'get') else None
@@ -157,10 +198,11 @@ def extrair_vl_fatura_fpd(row) -> float:
         return 0.0
 
 
-def extrair_indicador_fpd(row) -> Optional[str]:
-    """INDICADOR da planilha (coluna G): FPD, SPD, TPD."""
+def extrair_indicador_fpd(row) -> str:
+    """INDICADOR da planilha (FPD, SPD, TPD). Sem a coluna, assume a 1ª fatura."""
+    from crm_app.fpd_status_mapping import normalizar_indicador_fpd
+
     val = row.get('indicador') if hasattr(row, 'get') else None
     if val is None or pd.isna(val):
-        return None
-    s = str(val).strip().upper()
-    return s or None
+        return 'FPD'
+    return normalizar_indicador_fpd(val)

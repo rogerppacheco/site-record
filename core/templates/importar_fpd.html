@@ -160,6 +160,57 @@
         .importar-page .progress-container,
         .importar-page .filter-card { border: 1px solid var(--border-color); color: var(--text-primary); }
 
+        .historico-container {
+            max-width: 1600px;
+            margin: 0 auto 40px;
+            padding: 0 20px;
+        }
+        #historicoImportacoes .table { font-size: 0.875rem; }
+        #historicoImportacoes .table th,
+        #historicoImportacoes .table td { white-space: nowrap; }
+        #historicoImportacoes .fpd-aviso-link {
+            text-decoration: none;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #historicoImportacoes .fpd-aviso-link:hover { text-decoration: underline; }
+        #historicoImportacoes .fpd-col-arquivo {
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #historicoImportacoes .fpd-col-resultado { white-space: nowrap; }
+        #historicoImportacoes .fpd-detalhe td {
+            white-space: normal !important;
+            text-align: left !important;
+            border-top: 0;
+            padding-top: 0;
+        }
+        #historicoImportacoes .fpd-detalhe .alert {
+            white-space: pre-wrap;
+            text-align: left !important;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            max-height: 320px;
+            overflow: auto;
+        }
+        @media (max-width: 768px) {
+            #historicoImportacoes .fpd-detalhe {
+                display: block;
+                padding: 0 0 0.75rem;
+                margin: -0.5rem 0 1rem;
+                border: 0;
+                box-shadow: none;
+                background: transparent;
+            }
+            #historicoImportacoes .fpd-detalhe td {
+                display: block;
+                padding: 0;
+            }
+            #historicoImportacoes .fpd-detalhe td::before { content: none; }
+        }
+
 </style>
 {% endblock %}
 
@@ -236,15 +287,15 @@
                 <span id="progressMessage">Preparando...</span>
             </div>
         </div>
+    </div>
 
-        <!-- Histórico de Importações -->
-        <div class="mt-5">
-            <h4 class="fw-bold text-dark mb-3">
-                <i class="bi bi-clock-history"></i> Histórico de Importações FPD
-            </h4>
-            <div id="historicoImportacoes" class="table-responsive">
-                <p class="text-center text-muted">Carregando histórico...</p>
-            </div>
+    <!-- Histórico de Importações -->
+    <div class="historico-container">
+        <h4 class="fw-bold text-dark mb-3">
+            <i class="bi bi-clock-history"></i> Histórico de Importações FPD
+        </h4>
+        <div id="historicoImportacoes" class="table-responsive">
+            <p class="text-center text-muted">Carregando histórico...</p>
         </div>
     </div>
 
@@ -627,6 +678,21 @@
             }
         }
 
+        const detalhesAbertosFPD = new Set();
+
+        function escHtml(valor) {
+            return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function textoDetalheFPD(log) {
+            const partes = [];
+            if (log.mensagem_erro) partes.push(String(log.mensagem_erro));
+            if (log.exemplos_nao_encontrados) {
+                partes.push('Exemplos de O.S. não encontradas:\n' + String(log.exemplos_nao_encontrados));
+            }
+            return partes.join('\n\n');
+        }
+
         function exibirHistorico(logs) {
             const container = document.getElementById('historicoImportacoes');
             
@@ -639,14 +705,15 @@
                             <th>Iniciado</th>
                             <th>Duração</th>
                             <th>Processadas</th>
-                            <th>Detalhes</th>
+                            <th>Resultado</th>
+                            <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
 
             logs.forEach(log => {
-                const statusBadge = getStatusBadge(log.status, log.status_display);
+                let statusBadge = getStatusBadge(log.status, log.status_display);
                 const duracao = log.duracao_segundos 
                     ? `${log.duracao_segundos}s` 
                     : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
@@ -658,20 +725,46 @@
                     }
                 }
                 const processadas = log.total_processadas || 0;
-                
+                const semVinculo = log.total_contratos_nao_encontrados || 0;
+
+                if (log.status === 'PROCESSANDO' && log.total_linhas > 0) {
+                    const percent = Math.round((processadas / log.total_linhas) * 100);
+                    statusBadge = `<span class="badge bg-info"><i class="bi bi-arrow-repeat"></i> Processando ${processadas}/${log.total_linhas} (${percent}%)</span>`;
+                }
+
+                const nomeArquivo = escHtml(log.nome_arquivo || '-');
+                const detalhe = textoDetalheFPD(log);
+                const temAviso = !!detalhe;
+                const ehErro = log.status === 'ERRO';
+                const aberto = detalhesAbertosFPD.has(log.id);
+
                 html += `
-                    <tr>
-                        <td><small>${log.nome_arquivo}</small></td>
+                    <tr class="align-middle">
+                        <td class="fpd-col-arquivo"><small title="${nomeArquivo}">${nomeArquivo}</small></td>
                         <td>${statusBadge}</td>
-                        <td><small>${iniciado}</small></td>
+                        <td class="text-nowrap"><small>${escHtml(iniciado)}</small></td>
                         <td>${duracao}</td>
                         <td>${processadas}</td>
-                        <td>
-                            ${log.mensagem_erro ? `<small class="text-danger">${log.mensagem_erro}</small>` : ''}
-                            ${log.novos_inseridos > 0 ? `<span class="badge bg-success">${log.novos_inseridos} novos</span> ` : ''}
-                            ${log.atualizados > 0 ? `<span class="badge bg-info">${log.atualizados} atualizados</span>` : ''}
+                        <td class="fpd-col-resultado">
+                            ${semVinculo > 0 ? `<span class="badge bg-warning text-dark">${semVinculo} sem vínculo</span>` : ''}
+                            ${temAviso ? `<a href="#" role="button" class="fpd-aviso-link ms-1 ${ehErro ? 'text-danger' : 'text-warning'}" onclick="toggleDetalheFPD(${log.id}); return false;">
+                                <i class="bi ${ehErro ? 'bi-x-octagon' : 'bi-exclamation-triangle'}"></i> ${ehErro ? 'Erro' : 'Avisos'}
+                                <i class="bi ${aberto ? 'bi-chevron-up' : 'bi-chevron-down'}" id="fpd-chevron-${log.id}"></i>
+                            </a>` : ''}
+                        </td>
+                        <td class="text-center text-nowrap">
+                            <div class="btn-icon-group">
+                                ${temAviso ? `<button type="button" class="btn btn-icon btn-icon-sm btn-icon-info" onclick="copiarDetalheFPD(${log.id}, this)" title="Copiar mensagem" aria-label="Copiar mensagem"><i class="bi bi-clipboard"></i></button>` : ''}
+                                ${semVinculo > 0 ? `<a href="/qualidade/" class="btn btn-icon btn-icon-sm btn-icon-warning" title="Abrir Qualidade" aria-label="Abrir Qualidade"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
+                            </div>
                         </td>
                     </tr>
+                    ${temAviso ? `
+                    <tr id="fpd-detalhe-${log.id}" class="fpd-detalhe ${aberto ? '' : 'd-none'}">
+                        <td colspan="7">
+                            <div id="fpd-detalhe-texto-${log.id}" class="alert ${ehErro ? 'alert-danger' : 'alert-warning'} mb-0 py-2 small">${escHtml(detalhe)}</div>
+                        </td>
+                    </tr>` : ''}
                 `;
             });
 
@@ -681,6 +774,32 @@
             `;
 
             container.innerHTML = html;
+        }
+
+        function toggleDetalheFPD(logId) {
+            const linha = document.getElementById(`fpd-detalhe-${logId}`);
+            const chevron = document.getElementById(`fpd-chevron-${logId}`);
+            if (!linha) return;
+            const abrir = linha.classList.contains('d-none');
+            linha.classList.toggle('d-none', !abrir);
+            if (chevron) chevron.className = `bi ${abrir ? 'bi-chevron-up' : 'bi-chevron-down'}`;
+            if (abrir) detalhesAbertosFPD.add(logId); else detalhesAbertosFPD.delete(logId);
+        }
+
+        async function copiarDetalheFPD(logId, btn) {
+            const box = document.getElementById(`fpd-detalhe-texto-${logId}`);
+            const texto = box ? box.textContent : '';
+            if (!texto) return;
+            try {
+                await navigator.clipboard.writeText(texto);
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.className = 'bi bi-check-lg';
+                    setTimeout(() => { icon.className = 'bi bi-clipboard'; }, 1500);
+                }
+            } catch (error) {
+                alert('Não foi possível copiar a mensagem.');
+            }
         }
 
         function getStatusBadge(status, display) {

@@ -1,5 +1,6 @@
 """Testes de normalização Portal Parceiros (FPD/OSAB)."""
 
+import io
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +12,7 @@ from crm_app.portal_parceiros_import_utils import (
     coluna_tem_valores,
     extrair_indicador_fpd,
     extrair_vl_fatura_fpd,
+    ler_excel_fpd,
     normalizar_colunas_fpd,
     normalizar_colunas_osab,
     resolver_coluna_pedido_osab,
@@ -82,6 +84,34 @@ class PortalParceirosImportUtilsTest(SimpleTestCase):
         registros = out.to_dict('records')
         self.assertIn('2026-09-14', str(registros[0]['DATA_AGENDAMENTO']))
         self.assertIn('2026-09-13', str(registros[1]['DATA_AGENDAMENTO']))
+
+    def test_nr_ordem_ignora_maiusculas(self):
+        for coluna in ('nr_ordem', 'NR_ORDEM', 'Nr_Ordem'):
+            out = normalizar_colunas_fpd(pd.DataFrame({coluna: ['9569823']}))
+            self.assertTrue(coluna_nr_ordem_fpd_presente(out), coluna)
+
+    def test_fpd_escolhe_aba_com_nr_ordem_e_nao_o_resumo(self):
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            pd.DataFrame({
+                'MÊS FATURA': ['FATURA PAGA'],
+                '202608': [613],
+                '202609': [657],
+            }).to_excel(writer, sheet_name='Planilha1', index=False)
+            pd.DataFrame({
+                'id_contrato': ['2666130'],
+                'nr_ordem': ['09569823'],
+                'nr_fatura': ['11248607438'],
+            }).to_excel(writer, sheet_name='BASE_PRE_FPD_ABERTO', index=False)
+        buf.seek(0)
+
+        df = ler_excel_fpd(buf)
+        out = normalizar_colunas_fpd(df)
+
+        self.assertEqual(df.attrs['aba_fpd'], 'BASE_PRE_FPD_ABERTO')
+        self.assertTrue(coluna_nr_ordem_fpd_presente(out))
+        self.assertEqual(out.iloc[0]['nr_ordem'], '09569823')
+        self.assertEqual(extrair_indicador_fpd(out.iloc[0]), 'FPD')
 
     def test_fpd_status_nao_paga(self):
         self.assertEqual(normalizar_status_fpd('NAO PAGA'), 'NAO_PAGO')
