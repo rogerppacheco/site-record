@@ -234,6 +234,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                     <div class="hist-prog-etapa" id="bio-prog-msg"></div>
                 </div>
             </div>
+            <div id="bio-cobertura" class="alert alert-warning py-2 px-3 small d-none" role="status"></div>
 
             <div id="nio-prog" class="hist-prog d-none" role="status" aria-live="polite">
                 <div class="spinner-border" id="nio-prog-spin" aria-hidden="true"></div>
@@ -280,7 +281,9 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <button type="button" data-bio="LINK_ENVIADO">Link enviado <span class="nio-qtd" data-qtd="LINK_ENVIADO"></span></button>
                         <button type="button" data-bio="REFAZER">Refazer <span class="nio-qtd" data-qtd="REFAZER"></span></button>
                         <button type="button" data-bio="RISCO">Risco/Reprovado <span class="nio-qtd" data-qtd="RISCO"></span></button>
-                        <button type="button" data-bio="SEM_BIOMETRIA">Sem biometria <span class="nio-qtd" data-qtd="SEM_BIOMETRIA"></span></button>
+                        <button type="button" data-bio="SEM_BIOMETRIA" title="Venda sem nenhum envio no GED, com o GED já buscado no horário da venda">Sem biometria <span class="nio-qtd" data-qtd="SEM_BIOMETRIA"></span></button>
+                        <button type="button" data-bio="APTO_SEM_VENDA" title="Biometria apta sem venda criada no CRM">Apto sem venda <span class="nio-qtd" data-qtd="APTO_SEM_VENDA"></span></button>
+                        <button type="button" data-bio="NAO_VERIFICADO" title="Venda num horário que ainda não foi buscado no GED">Aguardando GED <span class="nio-qtd" data-qtd="NAO_VERIFICADO"></span></button>
                     </div>
                     <select id="f-mes" class="form-select form-select-sm funil-select" aria-label="Mês da data do pedido" title="Mês pela Data do pedido">
                         <option value="">Todos os meses</option>
@@ -691,7 +694,10 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('acoes-churn').classList.toggle('d-none', !churn);
         document.getElementById('acoes-bio').classList.toggle('d-none', !bio);
         if (!churn) document.getElementById('nio-prog').classList.add('d-none');
-        if (!bio) document.getElementById('bio-prog').classList.add('d-none');
+        if (!bio) {
+            document.getElementById('bio-prog').classList.add('d-none');
+            document.getElementById('bio-cobertura').classList.add('d-none');
+        }
         document.getElementById('thead-pap').classList.toggle('d-none', !pap);
         document.getElementById('thead-churn').classList.toggle('d-none', !churn);
         document.getElementById('thead-bio').classList.toggle('d-none', !bio);
@@ -1170,12 +1176,18 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         REFAZER: { rotulo: 'Refazer', cls: 'bg-warning-subtle text-warning-emphasis border border-warning-subtle', icone: 'bi-arrow-repeat' },
         RISCO: { rotulo: 'Risco/Reprovado', cls: 'bg-danger-subtle text-danger border border-danger-subtle', icone: 'bi-shield-exclamation' },
         SEM_BIOMETRIA: { rotulo: 'Sem biometria', cls: 'bg-secondary-subtle text-secondary border', icone: 'bi-dash-circle' },
+        NAO_VERIFICADO: { rotulo: 'Aguardando GED', cls: 'bg-light text-muted border', icone: 'bi-cloud-slash' },
     };
     const fmtDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
 
     function linhaBio(r) {
         const s = BIO_SITUACAO[r.situacao] || BIO_SITUACAO.SEM_BIOMETRIA;
-        const dica = r.ultimo_resultado ? `${r.ultimo_resultado} · ${r.qtd_envios} envio(s) no GED` : 'Nenhum envio no GED360';
+        const dica = r.situacao === 'NAO_VERIFICADO'
+            ? 'O horário desta venda ainda não foi buscado no GED. Use "Buscar no GED".'
+            : r.ultimo_resultado ? `${r.ultimo_resultado} · ${r.qtd_envios} envio(s) no GED` : 'Nenhum envio no GED360';
+        const vinculo = r.vinculo
+            ? `<div class="small text-muted mt-1"><i class="bi bi-link-45deg"></i> ${esc(r.vinculo)}</div>`
+            : (r.situacao === 'APTO' && !r.venda_id ? '<div class="small text-danger mt-1">Nenhuma venda criada</div>' : '');
         const venda = r.venda_id
             ? `<div class="small text-nowrap">${esc(fmtDataHora(r.data_venda))}</div>
                ${r.ordem_servico ? `<div class="small text-muted">O.S. ${destacar(r.ordem_servico)}</div>` : ''}
@@ -1193,7 +1205,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 <td>${venda}</td>
                 <td class="small">${destacar(r.vendedor || '—')}</td>
                 <td class="text-nowrap"><span class="badge badge-nio ${s.cls}" title="${esc(dica)}"><i class="bi ${s.icone} me-1"></i>${s.rotulo}</span>
-                    ${r.ultimo_resultado ? `<div class="small text-muted mt-1">${esc(r.ultimo_resultado)}</div>` : ''}</td>
+                    ${r.ultimo_resultado ? `<div class="small text-muted mt-1">${esc(r.ultimo_resultado)}</div>` : ''}${vinculo}</td>
                 <td>${envio}</td>
                 <td class="small text-nowrap">${destacar(r.telefone || '—')}</td>
                 <td class="text-end pe-4">
@@ -1244,7 +1256,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             renderPaginacao();
 
             const contagens = data.contagens || {};
-            const totalCpfs = Object.values(contagens).reduce((a, b) => a + (b || 0), 0);
+            const totalCpfs = Object.keys(BIO_SITUACAO).reduce((a, k) => a + (contagens[k] || 0), 0);
             contagens.REPESCAR = (contagens.LINK_ENVIADO || 0) + (contagens.REFAZER || 0) + (contagens.SEM_BIOMETRIA || 0);
             document.getElementById('count-bio').textContent = totalCpfs.toLocaleString('pt-BR');
             document.querySelectorAll('#funil-seg-bio .nio-qtd').forEach(el => {
@@ -1252,8 +1264,20 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
             });
             const ult = data.ultima_importacao;
-            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Se algum envio foi apto, o CPF conta como apto; senão, vale o envio mais recente.'
-                + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : ' Ainda não houve busca no GED: use "Buscar no GED".');
+            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente.'
+                + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : '');
+            const aviso = document.getElementById('bio-cobertura');
+            const fimPeriodo = new Date(`${histState.ate}T23:59:59`);
+            const buscadoAte = data.ged_buscado_ate ? new Date(data.ged_buscado_ate) : null;
+            if (!buscadoAte) {
+                aviso.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> O início deste período ainda não foi buscado no GED. Vendas sem dados do GED aparecem como <strong>Aguardando GED</strong>: use <strong>Buscar no GED</strong>.';
+                aviso.classList.remove('d-none');
+            } else if (buscadoAte < fimPeriodo && buscadoAte < new Date(Date.now() - 30 * 60000)) {
+                aviso.innerHTML = `<i class="bi bi-info-circle-fill me-1"></i> GED buscado até <strong>${esc(fmtDataHora(data.ged_buscado_ate))}</strong>. Vendas depois disso aparecem como <strong>Aguardando GED</strong> até a próxima busca.`;
+                aviso.classList.remove('d-none');
+            } else {
+                aviso.classList.add('d-none');
+            }
 
             const itens = data.lista || [];
             if (!itens.length) {
@@ -1311,8 +1335,13 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     }
 
     document.getElementById('btn-bio-buscar').addEventListener('click', async () => {
-        const de = histState.de, ate = histState.ate;
-        if (!de || !ate) { alert('Informe a data inicial e a final do período.'); return; }
+        if (!histState.de || !histState.ate) { alert('Informe a data inicial e a final do período.'); return; }
+        // Um dia antes do período: a biometria pode ter sido feita na véspera da venda.
+        const hoje = ultimosDias(1).ate;
+        const ate = histState.ate > hoje ? hoje : histState.ate;
+        const vespera = new Date(`${histState.de}T12:00:00`);
+        vespera.setDate(vespera.getDate() - 1);
+        const de = vespera.toISOString().slice(0, 10);
         if (!confirm(`Buscar no GED360 as biometrias enviadas de ${fmtDataIso(de)} a ${fmtDataIso(ate)}?`)) return;
         try {
             const r = await fetch(API_BIO_IMPORTACAO, {

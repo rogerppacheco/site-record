@@ -29,8 +29,16 @@ LINK_ENVIADO = 'LINK_ENVIADO'
 REFAZER = 'REFAZER'
 RISCO = 'RISCO'
 SEM_BIOMETRIA = 'SEM_BIOMETRIA'
-SITUACOES = (APTO, EM_ANALISE, LINK_ENVIADO, REFAZER, RISCO, SEM_BIOMETRIA)
+NAO_VERIFICADO = 'NAO_VERIFICADO'
+SITUACOES = (APTO, EM_ANALISE, LINK_ENVIADO, REFAZER, RISCO, SEM_BIOMETRIA, NAO_VERIFICADO)
 SITUACOES_REPESCAR = (LINK_ENVIADO, REFAZER, SEM_BIOMETRIA)
+
+# A biometria costuma ser feita minutos antes da venda; envios mais antigos que isso são de outra tentativa.
+JANELA_BIO_ANTES_VENDA = timedelta(days=7)
+# Para afirmar "sem biometria", o GED precisa ter sido buscado desde este tempo antes da venda até a venda.
+COBERTURA_ANTES_VENDA = timedelta(days=1)
+# Venda anterior ao último envio por mais que isso não é a venda daquela biometria (é uma tentativa nova).
+DISTANCIA_MAX_VENDA_BIO = timedelta(days=30)
 
 COLUNAS_CSV = {
     'protocolo': 'Protocolo',
@@ -137,6 +145,25 @@ def dividir_periodo(inicio: date, fim: date, dias: int = MAX_DIAS_POR_DOWNLOAD) 
     return partes
 
 
+def _fora_do_loop(funcao, *args) -> None:
+    """O Playwright síncrono mantém um loop async na thread; o ORM do Django recusa rodar dentro dele."""
+    erros = []
+
+    def alvo():
+        try:
+            funcao(*args)
+        except Exception as exc:  # noqa: BLE001
+            erros.append(exc)
+        finally:
+            close_old_connections()
+
+    thread = threading.Thread(target=alvo, daemon=True)
+    thread.start()
+    thread.join()
+    if erros:
+        raise erros[0]
+
+
 def baixar_relatorios_ged(login: str, senha: str, dominio: Optional[str], partes: list[tuple[date, date]],
                           ao_avancar=None, headless: bool = True) -> list[bytes]:
     """Faz login no GED uma vez e baixa um CSV por parte do período. Sempre sai da sessão."""
@@ -156,7 +183,7 @@ def baixar_relatorios_ged(login: str, senha: str, dominio: Optional[str], partes
                 raise RuntimeError(erro)
             for indice, (inicio, fim) in enumerate(partes, start=1):
                 if ao_avancar:
-                    ao_avancar(f'Baixando {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} ({indice} de {len(partes)})')
+                    _fora_do_loop(ao_avancar, f'Baixando {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} ({indice} de {len(partes)})')
                 pagina.goto(RELATORIO_URL, wait_until='domcontentloaded')
                 pagina.locator('#dat_envio_inicial').wait_for(state='attached', timeout=30000)
                 pagina.evaluate(
@@ -263,7 +290,7 @@ def _executar_importacao(importacao_id: int) -> None:
     from django.conf import settings
 
     from crm_app.models import RepescagemBioImportacao as I
-    from crm_app.pool_brpronto import liberar_login_brpronto, obter_login_brpronto
+    from crm_app.pool_brpronto import liberar_login_brpronto, obter_login_brpronto, renovar_login_brpronto
 
     close_old_connections()
     importacao = I.objects.get(pk=importacao_id)
@@ -279,6 +306,7 @@ def _executar_importacao(importacao_id: int) -> None:
         def ao_avancar(texto: str) -> None:
             importacao.etapa = texto
             importacao.save(update_fields=['etapa', 'atualizado_em'])
+            renovar_login_brpronto(bo.id)
 
         partes = dividir_periodo(importacao.data_inicial, importacao.data_final)
         arquivos = baixar_relatorios_ged(
@@ -331,14 +359,82 @@ def serializar_importacao(importacao) -> Optional[dict]:
     }
 
 
+def _inicio_do_dia(dia: date) -> datetime:
+    return timezone.make_aware(datetime.combine(dia, datetime.min.time()), timezone.get_current_timezone())
+
+
+def cobertura_ged() -> list[tuple[datetime, datetime]]:
+    """Intervalos já buscados no GED (importações concluídas), unidos. Vai até o início da busca, não além."""
+    from crm_app.models import RepescagemBioImportacao as I
+
+    intervalos = []
+    for data_inicial, data_final, iniciado_em in I.objects.filter(status=I.STATUS_CONCLUIDO).values_list(
+        'data_inicial', 'data_final', 'iniciado_em',
+    ):
+        fim = _inicio_do_dia(data_final + timedelta(days=1))
+        if iniciado_em:
+            fim = min(fim, iniciado_em)
+        intervalos.append((_inicio_do_dia(data_inicial), fim))
+    intervalos.sort()
+    unidos: list[list[datetime]] = []
+    for ini, fim in intervalos:
+        if unidos and ini <= unidos[-1][1]:
+            unidos[-1][1] = max(unidos[-1][1], fim)
+        else:
+            unidos.append([ini, fim])
+    return [(ini, fim) for ini, fim in unidos]
+
+
+def periodo_coberto(inicio: datetime, fim: datetime, cobertura: list[tuple[datetime, datetime]]) -> bool:
+    return any(ini <= inicio and fim <= c_fim for ini, c_fim in cobertura)
+
+
+def _texto_intervalo(delta: timedelta) -> str:
+    minutos = int(abs(delta).total_seconds() // 60)
+    if minutos < 60:
+        return f'{minutos} min'
+    if minutos < 48 * 60:
+        return f'{minutos // 60} h'
+    return f'{minutos // 1440} dias'
+
+
+def vincular_venda(etapas: list[dict], data_venda: Optional[datetime],
+                   cobertura: list[tuple[datetime, datetime]]) -> dict:
+    """Cruza os envios do GED de um CPF com a venda do CRM.
+
+    Devolve a situação, se a venda pertence a essas biometrias, os envios considerados e o texto do vínculo
+    (ex.: 'apto 6 min antes da venda').
+    """
+    if data_venda and etapas:
+        if data_venda < max(e['data_envio'] for e in etapas) - DISTANCIA_MAX_VENDA_BIO:
+            data_venda = None
+    if data_venda:
+        etapas = [e for e in etapas if e['data_envio'] >= data_venda - JANELA_BIO_ANTES_VENDA]
+
+    if not etapas:
+        if data_venda and not periodo_coberto(data_venda - COBERTURA_ANTES_VENDA, data_venda, cobertura):
+            return {'situacao': NAO_VERIFICADO, 'venda_vinculada': True, 'etapas': [], 'vinculo': ''}
+        return {'situacao': SEM_BIOMETRIA, 'venda_vinculada': bool(data_venda), 'etapas': [], 'vinculo': ''}
+
+    situacao = consolidar_situacao(etapas)
+    vinculo = ''
+    if data_venda:
+        aptas = [e for e in etapas if classificar_resultado(e['resultado_analise']) == APTO]
+        decisiva = min(aptas, key=lambda e: e['data_envio']) if aptas else max(etapas, key=lambda e: e['data_envio'])
+        delta = data_venda - decisiva['data_envio']
+        rotulo = 'apto' if aptas else 'último envio'
+        vinculo = f"{rotulo} {_texto_intervalo(delta)} {'antes' if delta >= timedelta(0) else 'depois'} da venda"
+    return {'situacao': situacao, 'venda_vinculada': bool(data_venda), 'etapas': etapas, 'vinculo': vinculo}
+
+
 def montar_base(data_inicial: date, data_final: date) -> list[dict]:
     """Uma linha por CPF: quem enviou biometria no período ou tem venda criada no período, cruzado com o CRM."""
     from crm_app.models import RepescagemBioRegistro as R
     from crm_app.models import Venda
 
-    tz = timezone.get_current_timezone()
-    inicio = timezone.make_aware(datetime.combine(data_inicial, datetime.min.time()), tz)
-    fim = timezone.make_aware(datetime.combine(data_final + timedelta(days=1), datetime.min.time()), tz)
+    inicio = _inicio_do_dia(data_inicial)
+    fim = _inicio_do_dia(data_final + timedelta(days=1))
+    cobertura = cobertura_ged()
 
     cpfs_ged = set(R.objects.filter(data_envio__gte=inicio, data_envio__lt=fim).values_list('cpf', flat=True))
     vendas_periodo = (
@@ -370,15 +466,19 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
 
     base = []
     for cpf in cpfs:
-        etapas = etapas_por_cpf.get(cpf, [])
         venda = venda_por_cpf.get(cpf)
+        cruzamento = vincular_venda(etapas_por_cpf.get(cpf, []), venda['data_criacao'] if venda else None, cobertura)
+        if not cruzamento['venda_vinculada']:
+            venda = None
+        etapas = cruzamento['etapas']
         ultima = max(etapas, key=lambda e: e['data_envio']) if etapas else None
         vendedor = ''
         if venda:
             vendedor = venda['vendedor__first_name'] or venda['vendedor__username'] or ''
         base.append({
             'cpf': cpf,
-            'situacao': consolidar_situacao(etapas),
+            'situacao': cruzamento['situacao'],
+            'vinculo': cruzamento['vinculo'],
             'nome_cliente': venda['cliente__nome_razao_social'] if venda else '',
             'venda_id': venda['id'] if venda else None,
             'data_venda': venda['data_criacao'].isoformat() if venda and venda['data_criacao'] else None,

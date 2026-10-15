@@ -49,6 +49,46 @@ class ConsolidarSituacaoTests(SimpleTestCase):
         self.assertEqual(svc.consolidar_situacao(etapas), svc.LINK_ENVIADO)
 
 
+class VincularVendaTests(SimpleTestCase):
+    COBERTURA = [(_dt('01/10/2026 00:00'), _dt('15/10/2026 17:00'))]
+
+    def test_link_e_apto_antes_da_venda(self):
+        etapas = [
+            {'resultado_analise': 'Link Enviado', 'data_envio': _dt('15/10/2026 16:02')},
+            {'resultado_analise': 'Doc. Apto para Venda', 'data_envio': _dt('15/10/2026 16:08')},
+        ]
+        r = svc.vincular_venda(etapas, _dt('15/10/2026 16:14'), self.COBERTURA)
+        self.assertEqual(r['situacao'], svc.APTO)
+        self.assertTrue(r['venda_vinculada'])
+        self.assertEqual(r['vinculo'], 'apto 6 min antes da venda')
+
+    def test_sem_envio_com_ged_buscado_e_sem_biometria(self):
+        r = svc.vincular_venda([], _dt('15/10/2026 16:14'), self.COBERTURA)
+        self.assertEqual(r['situacao'], svc.SEM_BIOMETRIA)
+
+    def test_sem_envio_fora_da_cobertura_e_nao_verificado(self):
+        self.assertEqual(svc.vincular_venda([], _dt('15/10/2026 18:00'), self.COBERTURA)['situacao'], svc.NAO_VERIFICADO)
+        self.assertEqual(svc.vincular_venda([], _dt('15/10/2026 16:14'), [])['situacao'], svc.NAO_VERIFICADO)
+
+    def test_bio_antiga_nao_vale_para_venda_nova(self):
+        etapas = [{'resultado_analise': 'Doc. Apto para Venda', 'data_envio': _dt('01/08/2026 10:00')}]
+        r = svc.vincular_venda(etapas, _dt('14/10/2026 10:00'), self.COBERTURA)
+        self.assertEqual(r['situacao'], svc.SEM_BIOMETRIA)
+        self.assertTrue(r['venda_vinculada'])
+
+    def test_venda_antiga_nao_e_da_bio_nova(self):
+        etapas = [{'resultado_analise': 'Doc. Apto para Venda', 'data_envio': _dt('14/10/2026 10:00')}]
+        r = svc.vincular_venda(etapas, _dt('01/08/2026 10:00'), self.COBERTURA)
+        self.assertEqual(r['situacao'], svc.APTO)
+        self.assertFalse(r['venda_vinculada'])
+
+    def test_link_depois_da_venda(self):
+        etapas = [{'resultado_analise': 'Link Enviado', 'data_envio': _dt('15/10/2026 12:00')}]
+        r = svc.vincular_venda(etapas, _dt('14/10/2026 10:00'), self.COBERTURA)
+        self.assertEqual(r['situacao'], svc.LINK_ENVIADO)
+        self.assertEqual(r['vinculo'], 'último envio 26 h depois da venda')
+
+
 class ParseCsvTests(SimpleTestCase):
     CABECALHO = ('Protocolo;CPF/CNPJ;MSISDN;Data de Digitalização;Data de Envio;Data de Conferência;Código PDV;'
                  'Login Digitalização;Tipo de Serviço;Origem da Digitalização;Resultado da Análise;'

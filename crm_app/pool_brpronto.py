@@ -1,10 +1,10 @@
 # crm_app/pool_brpronto.py
 """
-Pool de logins Br Pronto PDV (ged360) para consulta de biometria.
+Pool de logins Br Pronto PDV (ged360) usado por todas as automações de biometria
+(auditoria Checar biometria, comando BIO no WhatsApp e Repescagem Bio).
 
-Somente contas com brpronto_login + brpronto_senha e
-brpronto_disponivel_para_automacao=True entram no pool.
-O GED bloqueia sessão simultânea — o serviço sempre faz logoff; o lock
+Os logins ficam em Governança > Contas de Serviço (Robôs), função "Br Pronto / GED360".
+O GED bloqueia sessão simultânea — o serviço sempre faz logoff; a trava (em_uso)
 evita dois jobs usarem o mesmo login ao mesmo tempo.
 """
 from __future__ import annotations
@@ -19,7 +19,8 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-LOCK_TIMEOUT_MINUTOS = 15
+FUNCAO_ROBO_BRPRONTO = "BRPRONTO_GED"
+LOCK_TIMEOUT_MINUTOS = 20
 
 MSG_TODOS_BRPRONTO_EM_USO = (
     "⚠️ *Todos os logins Br Pronto estão em uso*\n\n"
@@ -29,111 +30,95 @@ MSG_TODOS_BRPRONTO_EM_USO = (
 
 MSG_NENHUM_BRPRONTO = (
     "⚠️ *Nenhum login Br Pronto liberado para automação*\n\n"
-    "Cadastre Login/Senha Br Pronto no usuário e marque "
-    "*Disponibilizar login Br Pronto para o bot* na Governança."
+    "Cadastre o login em *Governança > Contas de Serviço (Robôs)* "
+    "com a função *Br Pronto / GED360 (Biometria)*."
 )
 
 
+def _robos_brpronto():
+    from usuarios.models import CredencialRoboPAP
+
+    return (
+        CredencialRoboPAP.objects.filter(funcao=FUNCAO_ROBO_BRPRONTO, ativo=True)
+        .exclude(matricula="")
+        .exclude(senha="")
+    )
+
+
 def _limpar_locks_expirados() -> int:
-    from crm_app.models import BrProntoBoEmUso
+    from usuarios.models import CredencialRoboPAP
 
     limite = timezone.now() - timedelta(minutes=LOCK_TIMEOUT_MINUTOS)
-    deletados = BrProntoBoEmUso.objects.filter(locked_at__lt=limite).delete()
-    if deletados[0] > 0:
-        logger.info("[POOL BrPronto] Liberados %s lock(s) expirado(s)", deletados[0])
-    return deletados[0]
+    liberados = CredencialRoboPAP.objects.filter(
+        funcao=FUNCAO_ROBO_BRPRONTO, em_uso=True, ultimo_uso__lt=limite,
+    ).update(em_uso=False)
+    if liberados:
+        logger.info("[POOL BrPronto] Liberados %s lock(s) expirado(s)", liberados)
+    return liberados
 
 
 def obter_login_brpronto(
     solicitante_telefone: str = "",
     sessao_whatsapp_id: Optional[int] = None,
     origem: str = "bio",
-) -> Tuple[Optional["Usuario"], Optional[str]]:
+):
     """
-    Obtém um login Br Pronto disponível (randômico entre livres).
+    Obtém um login Br Pronto disponível (randômico entre os livres).
 
     Returns:
-        (usuario, None) em sucesso
+        (robo, None) em sucesso — o robô expõe brpronto_login, brpronto_senha e brpronto_dominio
         (None, mensagem_erro) quando indisponível
     """
-    from usuarios.models import Usuario
-    from crm_app.models import BrProntoBoEmUso
+    from usuarios.models import CredencialRoboPAP
 
     _limpar_locks_expirados()
 
-    ids_em_uso = set(BrProntoBoEmUso.objects.values_list("bo_usuario_id", flat=True))
+    elegiveis = _robos_brpronto()
+    if not elegiveis.exists():
+        return None, MSG_NENHUM_BRPRONTO
 
-    qs = (
-        Usuario.objects.filter(
-            is_active=True,
-            brpronto_disponivel_para_automacao=True,
-        )
-        .exclude(brpronto_login__isnull=True)
-        .exclude(brpronto_login="")
-        .exclude(brpronto_senha__isnull=True)
-        .exclude(brpronto_senha="")
-    )
-    if ids_em_uso:
-        qs = qs.exclude(id__in=ids_em_uso)
-
-    candidatos = list(qs)
-    if not candidatos:
-        # Distinguir: ninguém cadastrado vs todos em uso
-        total_cfg = (
-            Usuario.objects.filter(
-                is_active=True,
-                brpronto_disponivel_para_automacao=True,
-            )
-            .exclude(brpronto_login__isnull=True)
-            .exclude(brpronto_login="")
-            .exclude(brpronto_senha__isnull=True)
-            .exclude(brpronto_senha="")
-            .count()
-        )
-        if total_cfg == 0:
-            return None, MSG_NENHUM_BRPRONTO
-        return None, MSG_TODOS_BRPRONTO_EM_USO
-
+    candidatos = list(elegiveis.filter(em_uso=False))
     random.shuffle(candidatos)
-    for bo in candidatos:
-        try:
-            with transaction.atomic():
-                BrProntoBoEmUso.objects.create(
-                    bo_usuario=bo,
-                    solicitante_telefone=solicitante_telefone or "",
-                    sessao_whatsapp_id=sessao_whatsapp_id,
-                    origem=origem or "",
-                )
-            logger.info(
-                "[POOL BrPronto] %s (login=%s) alocado para %s origem=%s",
-                bo.username,
-                bo.brpronto_login,
-                solicitante_telefone or "sistema",
-                origem,
-            )
-            return bo, None
-        except Exception as e:
-            logger.debug("[POOL BrPronto] BO %s indisponível: %s", bo.id, e)
-            continue
+    for candidato in candidatos:
+        with transaction.atomic():
+            robo = CredencialRoboPAP.objects.select_for_update().get(id=candidato.id)
+            if robo.em_uso:
+                continue
+            robo.em_uso = True
+            robo.ultimo_uso = timezone.now()
+            robo.save(update_fields=["em_uso", "ultimo_uso"])
+        logger.info(
+            "[POOL BrPronto] login=%s alocado para %s origem=%s",
+            robo.matricula,
+            solicitante_telefone or "sistema",
+            origem,
+        )
+        return robo, None
 
     return None, MSG_TODOS_BRPRONTO_EM_USO
+
+
+def renovar_login_brpronto(robo_id: int) -> None:
+    """Renova a trava de um login em uso por um job longo, para não expirar no meio."""
+    from usuarios.models import CredencialRoboPAP
+
+    CredencialRoboPAP.objects.filter(id=robo_id, em_uso=True).update(ultimo_uso=timezone.now())
 
 
 def liberar_login_brpronto(
     bo_usuario_id: int,
     solicitante_telefone: str = "",
 ) -> bool:
-    """Libera o lock do login Br Pronto após a consulta."""
-    from crm_app.models import BrProntoBoEmUso
+    """Libera a trava do login Br Pronto após a consulta."""
+    from usuarios.models import CredencialRoboPAP
 
     try:
-        qs = BrProntoBoEmUso.objects.filter(bo_usuario_id=bo_usuario_id)
-        if solicitante_telefone:
-            qs = qs.filter(solicitante_telefone=solicitante_telefone)
-        n, _ = qs.delete()
+        n = CredencialRoboPAP.objects.filter(
+            id=bo_usuario_id, funcao=FUNCAO_ROBO_BRPRONTO, em_uso=True,
+        ).update(em_uso=False)
         if n:
             logger.info(
-                "[POOL BrPronto] Liberado bo_id=%s telefone=%s",
+                "[POOL BrPronto] Liberado robo_id=%s telefone=%s",
                 bo_usuario_id,
                 solicitante_telefone or "-",
             )
@@ -144,14 +129,13 @@ def liberar_login_brpronto(
 
 
 def liberar_todos_brpronto() -> Tuple[int, str]:
-    """Libera todos os locks Br Pronto (painel / emergência)."""
-    from crm_app.models import BrProntoBoEmUso
+    """Libera todas as travas Br Pronto (painel / emergência)."""
+    from usuarios.models import CredencialRoboPAP
 
     try:
-        total = BrProntoBoEmUso.objects.count()
+        total = CredencialRoboPAP.objects.filter(funcao=FUNCAO_ROBO_BRPRONTO, em_uso=True).update(em_uso=False)
         if total == 0:
             return 0, "Nenhum login Br Pronto estava em uso."
-        BrProntoBoEmUso.objects.all().delete()
         return total, f"Liberados {total} login(s) Br Pronto."
     except Exception as e:
         logger.exception("[POOL BrPronto] Erro ao liberar todos: %s", e)

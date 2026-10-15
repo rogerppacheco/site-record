@@ -57,12 +57,17 @@ class RepescagemBioListaView(APIView):
 
         base = svc.montar_base(inicio, fim)
         contagens = {s: 0 for s in svc.SITUACOES}
+        contagens['APTO_SEM_VENDA'] = 0
         for linha in base:
             contagens[linha['situacao']] += 1
+            if linha['situacao'] == svc.APTO and not linha['venda_id']:
+                contagens['APTO_SEM_VENDA'] += 1
 
         situacao = (request.query_params.get('situacao') or '').strip().upper()
         if situacao == 'REPESCAR':
             base = [b for b in base if b['situacao'] in svc.SITUACOES_REPESCAR]
+        elif situacao == 'APTO_SEM_VENDA':
+            base = [b for b in base if b['situacao'] == svc.APTO and not b['venda_id']]
         elif situacao in svc.SITUACOES:
             base = [b for b in base if b['situacao'] == situacao]
 
@@ -90,8 +95,11 @@ class RepescagemBioListaView(APIView):
         lista = base[(page - 1) * page_size: page * page_size]
 
         ultima = RepescagemBioImportacao.objects.filter(status=RepescagemBioImportacao.STATUS_CONCLUIDO).first()
+        inicio_dt = svc._inicio_do_dia(inicio)
+        buscado_ate = next((b for a, b in svc.cobertura_ged() if a <= inicio_dt < b), None)
         return Response({
             'periodo': {'de': inicio.isoformat(), 'ate': fim.isoformat()},
+            'ged_buscado_ate': buscado_ate.isoformat() if buscado_ate else None,
             'contagens': contagens,
             'lista': lista,
             'paginacao': {'page': page, 'page_size': page_size, 'total': total, 'total_pages': total_pages},
