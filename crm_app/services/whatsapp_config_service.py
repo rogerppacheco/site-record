@@ -17,13 +17,6 @@ _PROVIDERS_VALIDOS = frozenset(
     }
 )
 
-_PROVIDERS_CLIENTE_CLOUD = frozenset(
-    {
-        WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE,
-        WhatsAppIntegracaoConfig.PROVIDER_HYBRID,
-    }
-)
-
 
 def get_active_whatsapp_provider_name() -> str:
     """Provedor efetivo: registro único no banco; fallback para env/settings."""
@@ -43,8 +36,8 @@ def get_active_whatsapp_provider_name() -> str:
 
 
 def cliente_usa_cloud_api() -> bool:
-    """True quando o provedor ativo prevê Cloud API para cliente (híbrido/WhatsAtende)."""
-    return get_active_whatsapp_provider_name() in _PROVIDERS_CLIENTE_CLOUD
+    """True quando envios a cliente saem pelo número oficial (Meta Cloud ou WhatsAtende B)."""
+    return canal_cliente_pronto()
 
 
 def canal_cliente_pronto() -> bool:
@@ -332,14 +325,10 @@ def credenciais_meta_cloud_ok() -> bool:
     return _credenciais_meta_ok()
 
 def backend_cliente_efetivo() -> str:
-    """Backend real dos envios a cliente: meta | whatsatende_b | zapi | evolution."""
-    name = get_active_whatsapp_provider_name()
-    if name == WhatsAppIntegracaoConfig.PROVIDER_META:
-        return "meta"
-    if name == WhatsAppIntegracaoConfig.PROVIDER_HYBRID:
-        return "meta" if _credenciais_meta_ok() else "whatsatende_b"
-    if name == WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE:
-        return "whatsatende_b"
-    if name == WhatsAppIntegracaoConfig.PROVIDER_EVOLUTION:
-        return "evolution"
-    return "zapi"
+    """Backend real dos envios a cliente: meta | whatsatende_b | bloqueado."""
+    from crm_app.services.whatsapp.factory import PURPOSE_CLIENTE, resolve_backend_for_purpose
+
+    if not canal_cliente_pronto():
+        return "bloqueado"
+    backend, _ = resolve_backend_for_purpose(get_active_whatsapp_provider_name(), PURPOSE_CLIENTE)
+    return "meta" if backend == "meta" else "whatsatende_b"
