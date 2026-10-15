@@ -168,6 +168,23 @@ class AvaliarRepescagemTests(SimpleTestCase):
             ),
             (False, 'CONSTA PEDIDO: consultando pedido no PAP…'),
         )
+        self.assertEqual(
+            svc.avaliar_repescagem(
+                svc.APTO, _dt('13/10/2026 16:20'), '', 'CONSTA PEDIDO', agora=self.AGORA,
+                ultimo_envio=_dt('13/10/2026 10:00'),
+                info_pedido_pap={'consultado': False, 'em_andamento': False},
+            ),
+            (False, 'CONSTA PEDIDO: aguardando consulta do pedido no PAP'),
+        )
+
+    def test_duplicidade_nao_repesca(self):
+        self.assertEqual(
+            svc.avaliar_repescagem(
+                svc.APTO, _dt('13/10/2026 14:54'), '', 'DUPLICIDADE', agora=self.AGORA,
+                ultimo_envio=_dt('12/10/2026 10:00'),
+            ),
+            (False, 'Venda com tratamento DUPLICIDADE'),
+        )
 
     def test_consta_pedido_sem_pedido_no_pap(self):
         self.assertEqual(

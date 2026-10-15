@@ -286,7 +286,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                     </div>
                     <div class="funil-seg d-none" id="funil-seg-rep" role="group" aria-label="Repescável">
                         <button type="button" class="active" data-rep="">Repescável: todos</button>
-                        <button type="button" data-rep="SIM" title="Biometria no GED há mais de 48 horas (fora risco/reprovado), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO só após 30 dias do pedido no PAP."><i class="bi bi-arrow-repeat"></i> Repescável <span class="nio-qtd" data-qtd-rep="SIM"></span></button>
+                        <button type="button" data-rep="SIM" title="Biometria no GED há mais de 48 horas (fora risco/reprovado e fora DUPLICIDADE), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO só após 30 dias do pedido no PAP."><i class="bi bi-arrow-repeat"></i> Repescável <span class="nio-qtd" data-qtd-rep="SIM"></span></button>
                         <button type="button" data-rep="NAO">Não repescável <span class="nio-qtd" data-qtd-rep="NAO"></span></button>
                     </div>
                     <select id="f-mes" class="form-select form-select-sm funil-select" aria-label="Mês da data do pedido" title="Mês pela Data do pedido">
@@ -614,6 +614,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     };
     let histMeta = { page: 1, totalPages: 1, count: 0 };
     let histAbort = null;
+    let histReqId = 0; // ignora resposta atrasada quando outro carregamento já começou
     let rodapePapHtml = '';
     let periodoPap = null;
     let nioPoll = null;
@@ -1237,27 +1238,40 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (histAbort) histAbort.abort();
         histAbort = new AbortController();
         const sinal = histAbort.signal;
+        const reqId = ++histReqId;
 
-        if (tbody.querySelector('.funil-row-anim')) scroll.classList.add('funil-carregando');
-        else tbody.innerHTML = linhasSkeleton(Math.min(histState.pageSize, 8));
+        // Sempre skeleton ao filtrar: evita ficar com lista antiga (ex.: "Não") com o chip SIM ativo.
+        tbody.innerHTML = linhasSkeleton(Math.min(histState.pageSize, 8));
+        scroll.classList.remove('funil-carregando');
 
         const params = new URLSearchParams({ page: String(histState.page), page_size: String(histState.pageSize) });
         if (histState.de) params.set('de', histState.de);
         if (histState.ate) params.set('ate', histState.ate);
         if (histState.q) params.set('busca', histState.q);
         if (histState.bio) params.set('situacao', histState.bio);
-        if (histState.rep) params.set('repescavel', histState.rep);
+        // `rep` alinha com a URL do funil; `repescavel` mantém compatibilidade com a API.
+        if (histState.rep) {
+            params.set('rep', histState.rep);
+            params.set('repescavel', histState.rep);
+        }
 
         try {
             const r = await fetch(API_BIO + '?' + params.toString(), {
                 headers: { 'Authorization': 'Bearer ' + getToken() },
                 signal: sinal,
+                cache: 'no-store',
             });
             const data = await r.json().catch(() => ({}));
-            if (sinal.aborted) return;
+            if (sinal.aborted || reqId !== histReqId) return;
             if (!r.ok) {
                 const detalhe = data.detail || `Erro HTTP ${r.status} ao carregar a Repescagem Bio.`;
                 tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">${esc(detalhe)}</td></tr>`;
+                return;
+            }
+            // API nova ecoa filtro_repescavel; se o chip está ativo e a API não aplicou, não renderiza lixo.
+            if (histState.rep && Object.prototype.hasOwnProperty.call(data, 'filtro_repescavel')
+                && data.filtro_repescavel !== histState.rep) {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">Filtro Repescável não aplicado pela API. Atualize a página.</td></tr>`;
                 return;
             }
 
@@ -1286,7 +1300,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
             });
             const ult = data.ultima_importacao;
-            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente. Repescável: último envio no GED há mais de 48 horas (fora risco/reprovado), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO: consulta o PAP Nio e só libera após 30 dias do pedido (outro PDV).'
+            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente. Repescável: último envio no GED há mais de 48 horas (fora risco/reprovado e fora DUPLICIDADE), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO: consulta o PAP Nio e só libera após 30 dias do pedido.'
                 + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : '');
             const aviso = document.getElementById('bio-cobertura');
             const fimPeriodo = new Date(`${histState.ate}T23:59:59`);
@@ -1301,7 +1315,10 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 aviso.classList.add('d-none');
             }
 
-            const itens = data.lista || [];
+            let itens = data.lista || [];
+            // Defesa: se a API devolver linhas fora do chip, não mostra "Não" com SIM ativo.
+            if (histState.rep === 'SIM') itens = itens.filter(r => !!r.repescavel);
+            else if (histState.rep === 'NAO') itens = itens.filter(r => !r.repescavel);
             if (!itens.length) {
                 const temFiltro = !!(histState.q || histState.bio || histState.rep);
                 tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
@@ -1314,12 +1331,12 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             }
             if (rolarTopo) scroll.scrollTop = 0;
         } catch (e) {
-            if (e.name === 'AbortError') return;
+            if (e.name === 'AbortError' || reqId !== histReqId) return;
             tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">Erro ao carregar a Repescagem Bio: ${esc(e.message)}</td></tr>`;
         } finally {
-            if (!sinal.aborted) scroll.classList.remove('funil-carregando');
+            if (!sinal.aborted && reqId === histReqId) scroll.classList.remove('funil-carregando');
         }
-        if (!bioPoll) verificarImportacaoBio();
+        if (!bioPoll && reqId === histReqId) verificarImportacaoBio();
     }
 
     const API_BIO_IMPORTACAO = API_BIO + 'importacoes/';

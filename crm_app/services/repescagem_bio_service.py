@@ -452,6 +452,10 @@ def _eh_consta_pedido(status_tratamento: str) -> bool:
     return 'CONSTA PEDIDO' in _sem_acento(status_tratamento)
 
 
+def _eh_duplicidade(status_tratamento: str) -> bool:
+    return 'DUPLICIDADE' in _sem_acento(status_tratamento)
+
+
 def _texto_dias(n: int) -> str:
     n = max(0, int(n))
     return '1 dia' if n == 1 else f'{n} dias'
@@ -513,14 +517,27 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
     if not alvos:
         return {}
 
-    filtro = None
-    for cpf in alvos:
-        parte = Q(payload__icontains=cpf) | Q(numero_pedido=_numero_cache_sem_pedido(cpf))
-        filtro = parte if filtro is None else (filtro | parte)
+    # Evita payload__icontains (varre o JSON e deixa a listagem lenta a cada filtro).
+    # Usa a chave cpf do JSON + cache desta aba + marcadores BIO-SEM-*.
+    from django.db.models.expressions import RawSQL
 
-    for numero, data_criacao, payload, capturado_em in HistoricoPapPedido.objects.filter(filtro).values_list(
-        'numero_pedido', 'data_criacao_pap', 'payload', 'capturado_em',
-    ):
+    numeros_sem = [_numero_cache_sem_pedido(cpf) for cpf in alvos]
+    qs = (
+        HistoricoPapPedido.objects.annotate(
+            cpf_digits=RawSQL(
+                "regexp_replace(coalesce(payload->>'cpf', payload->'dadosCliente'->>'cpf', ''), '[^0-9]', '', 'g')",
+                (),
+            ),
+        )
+        .filter(
+            Q(numero_pedido__in=numeros_sem)
+            | Q(origem=ORIGEM_CACHE_CONSTA)
+            | Q(cpf_digits__in=list(alvos))
+        )
+        .values_list('numero_pedido', 'data_criacao_pap', 'payload', 'capturado_em')
+    )
+
+    for numero, data_criacao, payload, capturado_em in qs:
         payload = payload if isinstance(payload, dict) else {}
         cpf = _cpf_do_payload(payload)
         if not cpf and str(numero).startswith('BIO-SEM-'):
@@ -672,16 +689,28 @@ def _consultar_consta_no_pap(cpf: str) -> None:
         close_old_connections()
 
 
-def disparar_consultas_consta_pap(cpfs: Iterable[str]) -> None:
-    """Dispara no máximo uma thread por CPF para consultar o PAP (não bloqueia a listagem)."""
+def disparar_consultas_consta_pap(cpfs: Iterable[str], limite: int = 1) -> list[str]:
+    """Dispara no máximo `limite` consultas PAP por request. Devolve os CPFs enfileirados.
+
+    Cada Consulta OS abre o navegador e compete pelo login BO; vários de uma vez
+    deixam a listagem e o restante do sistema pesados.
+    """
+    candidatos = []
     for cpf in {normalizar_documento(c) for c in cpfs if normalizar_documento(c)}:
         with _lock_consulta_consta:
             if cpf in _consultas_consta_em_andamento:
                 continue
+            if limite > 0 and len(_consultas_consta_em_andamento) >= limite:
+                break
             _consultas_consta_em_andamento.add(cpf)
+            candidatos.append(cpf)
+        if len(candidatos) >= limite:
+            break
+    for cpf in candidatos:
         threading.Thread(
             target=_consultar_consta_no_pap, args=(cpf,), name=f'repescagem-consta-{cpf}', daemon=True,
         ).start()
+    return candidatos
 
 
 def avaliar_repescagem(situacao: str, data_venda: Optional[datetime], ordem_servico: str = '',
@@ -699,6 +728,8 @@ def avaliar_repescagem(situacao: str, data_venda: Optional[datetime], ordem_serv
         return False, 'Sem registro no GED'
     if situacao == RISCO:
         return False, 'Biometria reprovada/risco'
+    if _eh_duplicidade(status_tratamento):
+        return False, 'Venda com tratamento DUPLICIDADE'
     os_venda = (ordem_servico or '').strip() if data_venda else ''
     if os_venda:
         return False, f'Venda com O.S. {os_venda}'
@@ -708,8 +739,10 @@ def avaliar_repescagem(situacao: str, data_venda: Optional[datetime], ordem_serv
     if _eh_consta_pedido(status_tratamento):
         info = info_pedido_pap or {}
         data_pap = info.get('data_criacao') or data_pedido_pap
-        if info.get('em_andamento') or not info.get('consultado'):
+        if info.get('em_andamento'):
             return False, 'CONSTA PEDIDO: consultando pedido no PAP…'
+        if not info.get('consultado'):
+            return False, 'CONSTA PEDIDO: aguardando consulta do pedido no PAP'
         if info.get('sem_pedido') or not data_pap:
             return False, 'CONSTA PEDIDO: nenhum pedido encontrado no PAP'
         idade_pedido = agora - data_pap
@@ -783,13 +816,22 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
             continue
         faltando.append(cpf)
     if faltando:
-        disparar_consultas_consta_pap(faltando)
-        for cpf in faltando:
+        # Uma consulta por request: várias Consultas OS ao mesmo tempo deixam o funil lento.
+        disparados = disparar_consultas_consta_pap(faltando, limite=1)
+        for cpf in disparados:
             info_pap_por_cpf.setdefault(cpf, {
                 'consultado': False, 'data_criacao': None, 'de_outro_pdv': None,
                 'numero_os': '', 'em_andamento': True,
             })
             info_pap_por_cpf[cpf]['em_andamento'] = True
+        # Os demais aguardam a próxima carga da lista (sem marcar "consultando" em massa).
+        for cpf in faltando:
+            if cpf in disparados:
+                continue
+            info_pap_por_cpf.setdefault(cpf, {
+                'consultado': False, 'data_criacao': None, 'de_outro_pdv': None,
+                'numero_os': '', 'em_andamento': False,
+            })
 
     base = []
     for cpf in cpfs:
