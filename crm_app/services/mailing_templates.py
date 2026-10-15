@@ -41,7 +41,7 @@ TEMPLATE_SPECS = [
             'Fale conosco — podemos te ajudar.'
         ),
         'variaveis': [['{{1}}', 'Primeiro nome', 'Maria']],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 1,
     },
     {
@@ -56,7 +56,7 @@ TEMPLATE_SPECS = [
             'Se precisar de suporte, fale conosco.'
         ),
         'variaveis': [['{{1}}', 'Primeiro nome', 'João']],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 1,
     },
     {
@@ -71,7 +71,7 @@ TEMPLATE_SPECS = [
             'Podemos esclarecer suas dúvidas por aqui.'
         ),
         'variaveis': [['{{1}}', 'Primeiro nome', 'Ana']],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 1,
     },
     {
@@ -86,7 +86,7 @@ TEMPLATE_SPECS = [
             'Fale conosco.'
         ),
         'variaveis': [['{{1}}', 'Primeiro nome', 'Carlos']],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 1,
     },
     {
@@ -104,7 +104,7 @@ TEMPLATE_SPECS = [
             ['{{1}}', 'Primeiro nome', 'Lucia'],
             ['{{2}}', 'Cidade ou bairro', 'Uberlândia'],
         ],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 2,
     },
     {
@@ -122,7 +122,7 @@ TEMPLATE_SPECS = [
             ['{{1}}', 'Primeiro nome', 'Pedro'],
             ['{{2}}', 'Cidade ou bairro', 'Franca'],
         ],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 2,
     },
     {
@@ -140,7 +140,7 @@ TEMPLATE_SPECS = [
             ['{{1}}', 'Primeiro nome', 'Fernanda'],
             ['{{2}}', 'Cidade ou bairro', 'Uberaba'],
         ],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 2,
     },
     {
@@ -155,7 +155,7 @@ TEMPLATE_SPECS = [
             'Fale conosco.'
         ),
         'variaveis': [['{{1}}', 'Primeiro nome', 'Rafael']],
-        'botoes': ['Falar conosco', 'Agora não'],
+        'botoes': ['Falar conosco', 'Estou com dúvida'],
         'params_count': 1,
     },
 ]

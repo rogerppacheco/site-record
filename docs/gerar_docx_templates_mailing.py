@@ -18,7 +18,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nSua internet está com algum problema?\n\nFale conosco — podemos te ajudar.",
         "variaveis": [["{{1}}", "Primeiro nome", "Maria"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_instalacao_v1",
@@ -26,7 +26,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nTudo certo com a internet no seu endereço?\n\nSe precisar de suporte, fale conosco.",
         "variaveis": [["{{1}}", "Primeiro nome", "João"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_mudanca_v1",
@@ -34,7 +34,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nHouve mudança de endereço ou instalação?\n\nPodemos esclarecer suas dúvidas por aqui.",
         "variaveis": [["{{1}}", "Primeiro nome", "Ana"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_servico_v1",
@@ -42,7 +42,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nSobre o serviço de internet no seu endereço: podemos te orientar.\n\nFale conosco.",
         "variaveis": [["{{1}}", "Primeiro nome", "Carlos"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_cancelamento_v1",
@@ -50,7 +50,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nVimos que o serviço em {{2}} foi cancelado.\n\nSe quiser informações, fale conosco.",
         "variaveis": [["{{1}}", "Primeiro nome", "Lucia"], ["{{2}}", "Cidade ou bairro", "Uberlândia"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_fechado_v1",
@@ -58,7 +58,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nO contrato em {{2}} aparece fechado.\n\nSe tiver dúvidas, podemos te ajudar.",
         "variaveis": [["{{1}}", "Primeiro nome", "Pedro"], ["{{2}}", "Cidade ou bairro", "Franca"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_aberto_v1",
@@ -66,7 +66,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nHá um chamado em andamento em {{2}}.\n\nPrecisa de orientação? Fale conosco.",
         "variaveis": [["{{1}}", "Primeiro nome", "Fernanda"], ["{{2}}", "Cidade ou bairro", "Uberaba"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
     {
         "nome": "mailing_generico_v1",
@@ -74,7 +74,7 @@ TEMPLATE_SPECS = [
         "categoria": "MARKETING",
         "corpo": "Olá, {{1}}.\n\nPodemos te ajudar com informações sobre internet no seu endereço.\n\nFale conosco.",
         "variaveis": [["{{1}}", "Primeiro nome", "Rafael"]],
-        "botoes": ["Falar conosco", "Agora não"],
+        "botoes": ["Falar conosco", "Estou com dúvida"],
     },
 ]
 
@@ -129,7 +129,7 @@ def main() -> None:
     _funil.add_p(
         doc,
         "Mensagens curtas para induzir o cliente a pedir informação. Sem preço, promoção ou pitch. "
-        "Botões: Falar conosco | Agora não.",
+        "Botões: Falar conosco | Estou com dúvida.",
         after=12,
     )
     for spec in specs:

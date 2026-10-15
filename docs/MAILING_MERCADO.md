@@ -15,7 +15,7 @@ Importa listas compradas (XLS), dispara templates Meta (tom informativo, **sem o
 2. Revisar contagens por situação no alerta do lote
 3. **Disparar lote** (primeiro ciclo imediato; scheduler continua a cada 2 min)
 4. Respostas (texto ou botão *Falar conosco*) → status `RESPONDEU` na mesma aba
-5. *Agora não* → opt-out (`IGNORADO`)
+5. *Falar conosco* ou *Estou com dúvida* → resposta no Funil (`RESPONDEU`)
 
 ## Templates Meta (MARKETING / pt_BR)
 
@@ -33,7 +33,7 @@ Gerar: `python docs/gerar_docx_templates_mailing.py`
 | `mailing_aberto_v1` | ATV aberto/técnico |
 | `mailing_generico_v1` | fallback |
 
-Botões: **Falar conosco** | **Agora não**
+Botões: **Falar conosco** | **Estou com dúvida**
 
 ## API
 
