@@ -17,7 +17,7 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-WORKERS = 3
+WORKERS = 5
 VALIDADE_CONSULTA = timedelta(hours=24)
 LOTE_SEM_PROGRESSO_MAX = timedelta(minutes=5)
 TENTATIVAS_POR_CPF = 4
@@ -27,6 +27,15 @@ STATUS_QUITADOS = {
     'CANCELED', 'CANCELLED', 'CANCELADO', 'CANCELADA',
 }
 STATUS_VENCIDOS = {'OVERDUE', 'LATE', 'ATRASADO', 'ATRASADA', 'VENCIDO', 'VENCIDA'}
+
+SEGUNDA_VIA_API = 'https://www.niointernet.com.br/api/rest/invoices/document'
+SEGUNDA_VIA_PAGINA = 'https://www.niointernet.com.br/ajuda/servicos/segunda-via/'
+# Valor fixo usado pelo próprio site da 2ª via; sem o Referer a API responde 404.
+SEGUNDA_VIA_TOKEN = '1234567890abcdef'
+SEGUNDA_VIA_UA = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/130.0 Safari/537.36'
+)
 
 _lock_inicio = threading.Lock()
 
@@ -159,26 +168,80 @@ class _Pausa:
             self._ate = max(self._ate, time.monotonic() + segundos)
 
 
-def consultar_documento(doc: str, pausa: _Pausa, cancelado: threading.Event) -> dict:
-    """Consulta um CPF/CNPJ na API da Nio com retentativa. Não toca no banco."""
-    from crm_app.nio_api import consultar_dividas_nio, invalidate_token_cache
-    from crm_app.models import ChurnConsultaDebitoNio as M
+class _DocumentoInvalido(Exception):
+    pass
+
+
+def faturas_negocia(doc: str) -> list[dict]:
+    """Dívidas no Nio Negocia (cobrança). Não enxerga contas de contrato recém-cancelado."""
+    from crm_app.nio_api import consultar_dividas_nio
+
+    res = consultar_dividas_nio(doc, offset=0, limit=50, headless=True)
+    if res.get('erro_400'):
+        detalhe = str(res.get('detail') or '')
+        if 'not found' in detalhe.lower():
+            return []
+        raise _DocumentoInvalido(detalhe or 'CPF inválido na Nio')
+    return list(res.get('invoices') or [])
+
+
+def faturas_segunda_via(doc: str) -> list[dict]:
+    """Contas em aberto da 2ª via do site da Nio (inclui contrato cancelado por inadimplência)."""
+    import requests
+
+    sessao = requests.Session()
+    sessao.headers.update({
+        'User-Agent': SEGUNDA_VIA_UA,
+        'Referer': SEGUNDA_VIA_PAGINA,
+        'Accept': '*/*',
+        'Token': SEGUNDA_VIA_TOKEN,
+    })
+    r1 = sessao.get(SEGUNDA_VIA_API, headers={'Document': doc}, timeout=30)
+    r1.raise_for_status()
+    hash_doc = (r1.json() or {}).get('hash')
+    if not hash_doc:
+        raise ValueError('2ª via sem hash na resposta')
+    r2 = sessao.get(SEGUNDA_VIA_API, headers={'Hash': hash_doc}, timeout=30)
+    if r2.status_code == 500 and 'não encontrado' in r2.text.lower():
+        return []
+    r2.raise_for_status()
+    dados = r2.json() or {}
+
+    faturas = []
+    contas = [b for p in dados.get('products') or [] for b in p.get('bills') or []]
+    contas += dados.get('businessInvoices') or []
+    for conta in contas:
+        status = str(conta.get('statusBill') or '')
+        if status == 'invalid_status':
+            continue
+        atraso = conta.get('delayedDays') or 0
+        faturas.append({
+            'amount': conta.get('amountDue'),
+            'due_date_raw': conta.get('paymentDueDate'),
+            'status': 'OVERDUE' if atraso > 0 else 'OPEN',
+            'origem': '2via',
+            'status_nio': status,
+        })
+    return faturas
+
+
+def _chave_fatura(fatura: dict) -> tuple:
+    return (_parse_data(fatura.get('due_date_raw') or fatura.get('expiration')), _parse_valor(fatura.get('amount')))
+
+
+def _consultar_fonte(nome: str, funcao, doc: str, pausa: _Pausa, cancelado: threading.Event):
+    """Chama uma fonte com retentativa. Devolve (faturas, erro); faturas None quando cancelado ou falhou."""
+    from crm_app.nio_api import invalidate_token_cache
 
     ultimo_erro = ''
     for tentativa in range(TENTATIVAS_POR_CPF):
         if cancelado.is_set():
-            return {'situacao': None}
+            return None, ''
         pausa.aguardar()
         try:
-            res = consultar_dividas_nio(doc, offset=0, limit=50, headless=True)
-            if res.get('erro_400'):
-                detalhe = str(res.get('detail') or '')
-                if 'not found' in detalhe.lower():
-                    resultado = classificar_faturas([])
-                    resultado['detalhe'] = 'Nio: nenhuma dívida encontrada para o CPF'
-                    return resultado
-                return {'situacao': M.ERRO, 'detalhe': (detalhe or 'CPF inválido na Nio')[:255]}
-            return classificar_faturas(res.get('invoices') or [])
+            return funcao(doc), ''
+        except _DocumentoInvalido as exc:
+            return None, f'{nome}: {exc}'
         except Exception as exc:  # noqa: BLE001 — qualquer falha vira retentativa ou ERRO
             codigo = _status_http(exc)
             ultimo_erro = f'HTTP {codigo}' if codigo else str(exc)[:200]
@@ -188,7 +251,29 @@ def consultar_documento(doc: str, pausa: _Pausa, cancelado: threading.Event) -> 
                 invalidate_token_cache()
             else:
                 time.sleep(2 * (tentativa + 1))
-    return {'situacao': M.ERRO, 'detalhe': f'Falha na consulta Nio: {ultimo_erro}'[:255]}
+    return None, f'Falha na consulta {nome}: {ultimo_erro}'
+
+
+def consultar_documento(doc: str, pausa: _Pausa, cancelado: threading.Event) -> dict:
+    """Consulta o CPF/CNPJ no Nio Negocia e na 2ª via; só é adimplente se nenhuma das duas mostrar conta."""
+    from crm_app.models import ChurnConsultaDebitoNio as M
+
+    negocia, erro_negocia = _consultar_fonte('Nio Negocia', faturas_negocia, doc, pausa, cancelado)
+    via2, erro_via2 = _consultar_fonte('2ª via', faturas_segunda_via, doc, pausa, cancelado)
+    if cancelado.is_set():
+        return {'situacao': None}
+    if negocia is None or via2 is None:
+        return {'situacao': M.ERRO, 'detalhe': ' | '.join(e for e in (erro_negocia, erro_via2) if e)[:255]}
+
+    faturas = {}
+    for fatura in negocia + via2:
+        faturas.setdefault(_chave_fatura(fatura), fatura)
+    resultado = classificar_faturas(faturas.values())
+    if resultado['situacao'] == M.ADIMPLENTE:
+        resultado['detalhe'] = 'Nenhuma conta em aberto no Nio Negocia nem na 2ª via'
+    else:
+        resultado['detalhe'] = f'Nio Negocia: {len(negocia)} conta(s) · 2ª via: {len(via2)} conta(s)'
+    return resultado
 
 
 def encerrar_lotes_parados() -> None:
