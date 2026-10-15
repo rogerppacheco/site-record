@@ -206,6 +206,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                             <i class="bi bi-fingerprint text-primary me-2"></i> REPESCAGEM BIO <span class="badge bg-secondary ms-2 rounded-pill" id="count-bio">—</span>
                         </button>
                     </li>
+                    <li class="nav-item">
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-mailing" data-tipo="MAILING" type="button">
+                            <i class="bi bi-envelope-paper text-info me-2"></i> MAILING <span class="badge bg-secondary ms-2 rounded-pill" id="count-mailing">—</span>
+                        </button>
+                    </li>
                 </ul>
                 <div class="pb-2 pe-2 d-flex gap-2" id="acoes-pap">
                     <!-- Botão Discreto de Nova Busca -->
@@ -240,7 +245,23 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <i class="bi bi-cloud-download me-2"></i>Buscar no GED
                     </button>
                 </div>
+                <div class="pb-2 pe-2 d-flex gap-2 flex-wrap d-none" id="acoes-mailing">
+                    <label class="btn btn-outline-primary fw-semibold mb-0 shadow-sm px-3" title="Importa XLS OPTIC ou ATV ALG">
+                        <i class="bi bi-upload me-2"></i>Importar XLS
+                        <input type="file" id="mailing-file" accept=".xlsx,.xls" class="d-none">
+                    </label>
+                    <select id="f-mailing-status" class="form-select form-select-sm funil-select" aria-label="Status mailing" style="width:auto;min-width:160px">
+                        <option value="RESPONDEU">Respostas</option>
+                        <option value="TRATADO">Tratados</option>
+                        <option value="ENVIADO">Enviados (sem resposta)</option>
+                        <option value="TODOS_FUNIL">Todos no funil</option>
+                    </select>
+                    <button type="button" class="btn btn-primary fw-semibold shadow-sm px-3 d-none" id="btn-mailing-disparar" title="Inicia/continua o disparo do último lote importado">
+                        <i class="bi bi-send me-2"></i>Disparar lote
+                    </button>
+                </div>
             </div>
+            <div id="mailing-lote-info" class="alert alert-info py-2 px-3 small d-none" role="status"></div>
 
             <div id="bio-prog" class="hist-prog d-none" role="status" aria-live="polite">
                 <div class="spinner-border" id="bio-prog-spin" aria-hidden="true"></div>
@@ -355,6 +376,16 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                                     <th class="py-3">Último envio no GED</th>
                                     <th class="py-3">Telefone</th>
                                     <th class="text-end pe-4 py-3">Repescável?</th>
+                                </tr>
+                                <tr id="thead-mailing" class="d-none">
+                                    <th class="ps-4 py-3">Cliente</th>
+                                    <th class="py-3">CPF</th>
+                                    <th class="py-3">Telefone</th>
+                                    <th class="py-3">Cidade</th>
+                                    <th class="py-3">Situação</th>
+                                    <th class="py-3">Lote</th>
+                                    <th class="py-3">Resposta</th>
+                                    <th class="text-end pe-4 py-3">Ação</th>
                                 </tr>
                             </thead>
                             <tbody id="tbody-resultados">
@@ -618,7 +649,9 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     
     const TIPOS_HIST = ['INTERESSE', 'PRE_VENDA', 'VENDA'];
     const TIPOS_ABAS = TIPOS_HIST.concat(['CHURN', 'BIO']);
-    const TIPOS_PROPRIOS = ['CHURN', 'BIO'];
+    const TIPOS_PROPRIOS = ['CHURN', 'BIO', 'MAILING'];
+    const API_MAILING = '/api/crm/mailings/';
+    let mailingLoteAtivo = null;
     const BADGE_TIPO = { INTERESSE: 'count-interesse', PRE_VENDA: 'count-prevenda', VENDA: 'count-venda' };
     const API_CHURN = '/api/crm/esteira/churn-tratamento/';
     const API_BIO = '/api/crm/repescagem-bio/';
@@ -701,24 +734,29 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('ic-ordem-data').className = histState.ordem === 'antigos' ? 'bi bi-sort-up' : 'bi bi-sort-down';
         const churn = histState.tipo === 'CHURN';
         const bio = histState.tipo === 'BIO';
-        const pap = !churn && !bio;
+        const mailing = histState.tipo === 'MAILING';
+        const pap = !churn && !bio && !mailing;
         const temFiltro = churn
             ? !!(histState.q || histState.de || histState.ate || histState.nio)
             : bio
                 ? !!(histState.q || histState.bio || histState.rep)
-                : !!(histState.q || histState.status || histState.situacao || histState.de || histState.ate);
+                : mailing
+                    ? !!(histState.q)
+                    : !!(histState.q || histState.status || histState.situacao || histState.de || histState.ate);
         document.getElementById('f-limpar').classList.toggle('d-none', !temFiltro);
         document.getElementById('f-status').classList.toggle('d-none', !pap);
         document.getElementById('funil-seg').classList.toggle('d-none', !pap);
         fNio.classList.toggle('d-none', !churn);
         fBio.classList.toggle('d-none', !bio);
         fRep.classList.toggle('d-none', !bio);
-        document.getElementById('funil-periodo').classList.toggle('d-none', churn);
+        document.getElementById('funil-periodo').classList.toggle('d-none', churn || mailing);
         document.getElementById('funil-periodo').title = bio ? 'Data de envio da biometria no GED ou data da venda no CRM' : 'Data do pedido no PAP';
-        document.getElementById('f-mes').classList.toggle('d-none', bio);
+        document.getElementById('f-mes').classList.toggle('d-none', bio || mailing);
         document.getElementById('acoes-pap').classList.toggle('d-none', !pap);
         document.getElementById('acoes-churn').classList.toggle('d-none', !churn);
         document.getElementById('acoes-bio').classList.toggle('d-none', !bio);
+        document.getElementById('acoes-mailing').classList.toggle('d-none', !mailing);
+        if (!mailing) document.getElementById('mailing-lote-info').classList.add('d-none');
         if (!churn) document.getElementById('nio-prog').classList.add('d-none');
         if (!bio) {
             document.getElementById('bio-prog').classList.add('d-none');
@@ -727,12 +765,15 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('thead-pap').classList.toggle('d-none', !pap);
         document.getElementById('thead-churn').classList.toggle('d-none', !churn);
         document.getElementById('thead-bio').classList.toggle('d-none', !bio);
+        document.getElementById('thead-mailing').classList.toggle('d-none', !mailing);
         const busca = document.getElementById('f-busca');
         busca.placeholder = churn
             ? 'Busca: O.S., cliente, CPF… atalhos: adimplente, inadimplente'
             : bio
                 ? 'Busca: cliente, CPF, O.S.… atalhos: apto, link, repescar, sem bio'
-                : 'Busca: protocolo, O.S., cliente, CPF… atalhos: novos, base';
+                : mailing
+                    ? 'Busca: nome, CPF, telefone ou cidade'
+                    : 'Busca: protocolo, O.S., cliente, CPF… atalhos: novos, base';
         document.getElementById('f-mes').title = churn ? 'Mês da retirada do churn' : 'Mês pela Data do pedido';
     }
 
@@ -1394,6 +1435,113 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (!bioPoll && reqId === histReqId) verificarImportacaoBio();
     }
 
+    function linhaMailing(r) {
+        const wa = r.telefone
+            ? `<a class="btn btn-sm btn-success rounded-pill" target="_blank" rel="noopener" href="https://wa.me/${esc(r.telefone)}"><i class="bi bi-whatsapp"></i></a>`
+            : '';
+        const tratar = r.status === 'RESPONDEU'
+            ? `<button type="button" class="btn btn-sm btn-outline-primary rounded-pill fw-semibold ms-1 btn-mailing-tratar" data-id="${r.id}">Tratar</button>`
+            : `<span class="badge bg-secondary">${esc(r.status)}</span>`;
+        return `<tr class="funil-row-anim">
+            <td class="ps-4">${esc(r.nome || '—')}</td>
+            <td>${esc(r.cpf || '—')}</td>
+            <td>${esc(r.telefone || '—')}</td>
+            <td>${esc(r.cidade || r.bairro || '—')}</td>
+            <td><span class="badge bg-info text-dark">${esc(r.situacao)}</span><div class="small text-muted">${esc(r.situacao_origem || '')}</div></td>
+            <td class="small">${esc(r.lote_nome || '')}</td>
+            <td class="small">${esc(r.resposta_texto || '—')}<div class="text-muted">${esc(r.respondido_em ? fmtDataHora(r.respondido_em) : '')}</div></td>
+            <td class="text-end pe-4">${wa}${tratar}</td>
+        </tr>`;
+    }
+
+    async function carregarMailing({ rolarTopo = false } = {}) {
+        const tbody = document.getElementById('tbody-resultados');
+        const scroll = document.getElementById('funil-scroll');
+        if (histAbort) histAbort.abort();
+        histAbort = new AbortController();
+        const sinal = histAbort.signal;
+        if (tbody.querySelector('.funil-row-anim')) scroll.classList.add('funil-carregando');
+        else tbody.innerHTML = linhasSkeleton(Math.min(histState.pageSize, 8));
+
+        const statusFiltro = document.getElementById('f-mailing-status').value || 'RESPONDEU';
+        const params = new URLSearchParams({
+            status: statusFiltro,
+            page: String(histState.page),
+            page_size: String(histState.pageSize),
+        });
+        if (histState.q) params.set('q', histState.q);
+
+        try {
+            const r = await fetch(API_MAILING + 'funil/?' + params.toString(), {
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+                signal: sinal,
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">${esc(data.detail || 'Erro ao carregar mailings.')}</td></tr>`;
+                return;
+            }
+            const pag = data.paginacao || {};
+            histMeta = { page: pag.page || 1, totalPages: Math.max(1, pag.total_pages || 1), count: pag.total || 0 };
+            histState.page = histMeta.page;
+            gravarEstadoNaUrl();
+            renderPaginacao();
+            const cont = data.contagens || {};
+            document.getElementById('count-mailing').textContent = (cont.RESPONDEU || 0).toLocaleString('pt-BR');
+            document.getElementById('rodape-info').textContent =
+                'Mailings comprados: respostas ao template Meta entram aqui. Importar XLS (OPTIC ou ATV ALG) e disparar o lote.';
+            const itens = data.lista || [];
+            if (!itens.length) {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>
+                    Nenhum contato neste filtro. Importe um XLS e dispare o lote, ou aguarde respostas.
+                </td></tr>`;
+            } else {
+                tbody.innerHTML = itens.map(linhaMailing).join('');
+            }
+            if (rolarTopo) scroll.scrollTop = 0;
+            await atualizarInfoLoteMailing();
+        } catch (e) {
+            if (e.name === 'AbortError') return;
+            tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">Erro: ${esc(e.message)}</td></tr>`;
+        } finally {
+            if (!sinal.aborted) scroll.classList.remove('funil-carregando');
+        }
+    }
+
+    function renderLoteMailingInfo(lote) {
+        const box = document.getElementById('mailing-lote-info');
+        const btn = document.getElementById('btn-mailing-disparar');
+        mailingLoteAtivo = lote;
+        if (!lote || histState.tipo !== 'MAILING') {
+            box.classList.add('d-none');
+            btn.classList.add('d-none');
+            return;
+        }
+        box.classList.remove('d-none');
+        btn.classList.remove('d-none');
+        const cont = lote.contagens_situacao || {};
+        const sits = Object.entries(cont).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
+        box.innerHTML = `<strong>Lote #${lote.id}</strong> ${esc(lote.nome)} · ${esc(lote.tipo_layout)} ·
+            <strong>${esc(lote.status)}</strong> · ${lote.total_validos} válidos ·
+            enviados ${lote.total_enviados} · falhas ${lote.total_falhas} · respostas ${lote.total_respostas}
+            <div class="text-muted">${esc(sits)}</div>`;
+        btn.disabled = lote.status === 'DISPARANDO';
+        btn.innerHTML = lote.status === 'DISPARANDO'
+            ? '<span class="spinner-border spinner-border-sm me-2"></span>Disparando…'
+            : '<i class="bi bi-send me-2"></i>Disparar lote';
+    }
+
+    async function atualizarInfoLoteMailing() {
+        try {
+            const r = await fetch(API_MAILING, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+            if (!r.ok) return;
+            const data = await r.json();
+            const lista = data.lista || [];
+            renderLoteMailingInfo(lista[0] || null);
+        } catch (e) {}
+    }
+
     const API_BIO_IMPORTACAO = API_BIO + 'importacoes/';
 
     function renderImportacaoBio(imp) {
@@ -1453,6 +1601,67 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         }
     });
 
+    document.getElementById('mailing-file').addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('arquivo', file);
+        fd.append('nome', file.name.replace(/\.[^.]+$/, ''));
+        try {
+            const r = await fetch(API_MAILING, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+                body: fd,
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) { alert(data.detail || `Erro HTTP ${r.status}`); return; }
+            renderLoteMailingInfo(data);
+            alert(`Lote #${data.id} importado: ${data.total_validos} telefones válidos de ${data.total_contatos} contatos.`);
+            if (histState.tipo === 'MAILING') carregarMailing({});
+        } catch (err) {
+            alert('Falha no upload: ' + err.message);
+        }
+    });
+
+    document.getElementById('btn-mailing-disparar').addEventListener('click', async () => {
+        if (!mailingLoteAtivo) { alert('Importe um XLS primeiro.'); return; }
+        if (!confirm(`Disparar templates Meta do lote #${mailingLoteAtivo.id}? Mensagens sem oferta, só pedido de contato.`)) return;
+        try {
+            const r = await fetch(API_MAILING + mailingLoteAtivo.id + '/disparo/', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) { alert(data.detail || `Erro HTTP ${r.status}`); return; }
+            renderLoteMailingInfo(data.lote);
+            alert(`Ciclo iniciado: +${(data.ciclo && data.ciclo.enviados) || 0} enviados. O scheduler continua o resto.`);
+        } catch (err) {
+            alert('Falha ao disparar: ' + err.message);
+        }
+    });
+
+    document.getElementById('f-mailing-status').addEventListener('change', () => {
+        if (histState.tipo === 'MAILING') aplicarFiltros({});
+    });
+
+    document.getElementById('tbody-resultados').addEventListener('click', async (e) => {
+        const btn = e.target.closest('.btn-mailing-tratar');
+        if (!btn) return;
+        const id = btn.getAttribute('data-id');
+        try {
+            const r = await fetch(API_MAILING + 'contatos/' + id + '/tratar/', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) { alert(data.detail || 'Erro ao marcar tratado.'); return; }
+            carregarMailing({});
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+
     function linhaPedido(p) {
         const [dia, hora] = String(p.data_status || '').split(' ');
         return `
@@ -1480,6 +1689,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         gravarEstadoNaUrl();
         if (histState.tipo === 'CHURN') return carregarChurn({ rolarTopo });
         if (histState.tipo === 'BIO') return carregarBio({ rolarTopo });
+        if (histState.tipo === 'MAILING') return carregarMailing({ rolarTopo });
 
         if (histAbort) histAbort.abort();
         histAbort = new AbortController();

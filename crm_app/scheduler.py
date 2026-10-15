@@ -53,6 +53,17 @@ def buscar_repescagem_bio_ged_automatico():
         logger.error("Erro na busca automática Repescagem Bio: %s", e)
 
 
+def processar_disparo_mailing():
+    """Continua o envio de lotes de mailing em DISPARANDO (~25/min por ciclo)."""
+    try:
+        from crm_app.services.mailing_dispatch_service import processar_lotes_em_disparo
+        n = processar_lotes_em_disparo()
+        if n:
+            logger.info("Mailing: %s lote(s) processado(s) neste ciclo.", n)
+    except Exception as e:
+        logger.error("Erro no disparo de mailing: %s", e)
+
+
 def buscar_faturas_automatico():
     try:
         logger.info("🤖 Iniciando busca automática de faturas no Nio...")
@@ -281,6 +292,14 @@ def _registrar_jobs(scheduler):
         trigger=IntervalTrigger(minutes=5),
         id='processar_fila_boas_vindas',
         name='Processar fila de boas-vindas (a cada 5 min)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(processar_disparo_mailing),
+        trigger=IntervalTrigger(minutes=2),
+        id='processar_disparo_mailing',
+        name='Disparo mailings de mercado (a cada 2 min)',
         replace_existing=True,
         max_instances=1,
     )

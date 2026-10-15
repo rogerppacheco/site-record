@@ -5789,6 +5789,193 @@ class RepescagemBioRegistro(models.Model):
         return f'{self.protocolo} {self.cpf} {self.resultado_analise}'
 
 
+class MailingLote(models.Model):
+    """Lote de mailing comprado no mercado (import XLS → disparo template Meta)."""
+
+    LAYOUT_OPTIC = 'OPTIC'
+    LAYOUT_ATV_ALG = 'ATV_ALG'
+    LAYOUT_CHOICES = (
+        (LAYOUT_OPTIC, 'Óptica / FTTH (OPTIC)'),
+        (LAYOUT_ATV_ALG, 'Atividade Algar (ATV ALG)'),
+    )
+
+    STATUS_RASCUNHO = 'RASCUNHO'
+    STATUS_PRONTO = 'PRONTO'
+    STATUS_DISPARANDO = 'DISPARANDO'
+    STATUS_PAUSADO = 'PAUSADO'
+    STATUS_CONCLUIDO = 'CONCLUIDO'
+    STATUS_ERRO = 'ERRO'
+    STATUS_CHOICES = (
+        (STATUS_RASCUNHO, 'Rascunho'),
+        (STATUS_PRONTO, 'Pronto'),
+        (STATUS_DISPARANDO, 'Disparando'),
+        (STATUS_PAUSADO, 'Pausado'),
+        (STATUS_CONCLUIDO, 'Concluído'),
+        (STATUS_ERRO, 'Erro'),
+    )
+
+    nome = models.CharField(max_length=160)
+    tipo_layout = models.CharField(max_length=16, choices=LAYOUT_CHOICES, db_index=True)
+    arquivo_nome = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_RASCUNHO, db_index=True)
+    total_linhas = models.PositiveIntegerField(default=0)
+    total_contatos = models.PositiveIntegerField(default=0)
+    total_validos = models.PositiveIntegerField(default=0)
+    total_enviados = models.PositiveIntegerField(default=0)
+    total_falhas = models.PositiveIntegerField(default=0)
+    total_respostas = models.PositiveIntegerField(default=0)
+    contagens_situacao = models.JSONField(default=dict, blank=True)
+    mensagem = models.TextField(blank=True, default='')
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mailing_lotes',
+    )
+    disparado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mailing_lotes_disparados',
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    disparo_iniciado_em = models.DateTimeField(null=True, blank=True)
+    disparo_finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_mailing_lote'
+        verbose_name = 'Mailing (lote)'
+        verbose_name_plural = 'Mailings (lotes)'
+        ordering = ['-criado_em']
+
+    def __str__(self) -> str:
+        return f'Mailing #{self.pk} {self.nome} ({self.status})'
+
+
+class MailingContato(models.Model):
+    """Contato de um lote de mailing."""
+
+    SIT_REPARO = 'REPARO'
+    SIT_INSTALACAO = 'INSTALACAO'
+    SIT_MUDANCA = 'MUDANCA'
+    SIT_SERVICO = 'SERVICO'
+    SIT_CANCELAMENTO = 'CANCELAMENTO'
+    SIT_FECHADO = 'FECHADO'
+    SIT_ABERTO = 'ABERTO'
+    SIT_GENERICO = 'GENERICO'
+    SITUACAO_CHOICES = (
+        (SIT_REPARO, 'Reparo'),
+        (SIT_INSTALACAO, 'Instalação'),
+        (SIT_MUDANCA, 'Mudança'),
+        (SIT_SERVICO, 'Serviço'),
+        (SIT_CANCELAMENTO, 'Cancelamento'),
+        (SIT_FECHADO, 'Fechado'),
+        (SIT_ABERTO, 'Aberto/Técnico'),
+        (SIT_GENERICO, 'Genérico'),
+    )
+
+    STATUS_NOVO = 'NOVO'
+    STATUS_ENVIADO = 'ENVIADO'
+    STATUS_FALHOU = 'FALHOU'
+    STATUS_RESPONDEU = 'RESPONDEU'
+    STATUS_TRATADO = 'TRATADO'
+    STATUS_IGNORADO = 'IGNORADO'
+    STATUS_CHOICES = (
+        (STATUS_NOVO, 'Novo'),
+        (STATUS_ENVIADO, 'Enviado'),
+        (STATUS_FALHOU, 'Falhou'),
+        (STATUS_RESPONDEU, 'Respondeu'),
+        (STATUS_TRATADO, 'Tratado'),
+        (STATUS_IGNORADO, 'Ignorado'),
+    )
+
+    lote = models.ForeignKey(MailingLote, on_delete=models.CASCADE, related_name='contatos')
+    nome = models.CharField(max_length=200, blank=True, default='')
+    cpf = models.CharField(max_length=14, blank=True, default='', db_index=True)
+    telefone_e164 = models.CharField(max_length=20, blank=True, default='', db_index=True)
+    telefone_raw = models.CharField(max_length=40, blank=True, default='')
+    cidade = models.CharField(max_length=120, blank=True, default='')
+    uf = models.CharField(max_length=2, blank=True, default='')
+    endereco = models.CharField(max_length=255, blank=True, default='')
+    bairro = models.CharField(max_length=120, blank=True, default='')
+    situacao = models.CharField(max_length=20, choices=SITUACAO_CHOICES, default=SIT_GENERICO, db_index=True)
+    situacao_origem = models.CharField(max_length=80, blank=True, default='')
+    produto = models.CharField(max_length=160, blank=True, default='')
+    payload = models.JSONField(default=dict, blank=True)
+    telefone_valido = models.BooleanField(default=False, db_index=True)
+    opt_out = models.BooleanField(default=False, db_index=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_NOVO, db_index=True)
+    resposta_texto = models.CharField(max_length=255, blank=True, default='')
+    respondido_em = models.DateTimeField(null=True, blank=True)
+    tratado_em = models.DateTimeField(null=True, blank=True)
+    tratado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mailing_contatos_tratados',
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crm_mailing_contato'
+        verbose_name = 'Mailing (contato)'
+        verbose_name_plural = 'Mailings (contatos)'
+        indexes = [
+            models.Index(fields=['lote', 'status']),
+            models.Index(fields=['lote', 'situacao']),
+            models.Index(fields=['telefone_e164', 'status']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['lote', 'telefone_e164'],
+                name='uniq_mailing_lote_telefone',
+                condition=~models.Q(telefone_e164=''),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.nome} {self.telefone_e164} ({self.situacao})'
+
+
+class MailingEnvio(models.Model):
+    """Histórico de envio de template Meta para um contato de mailing."""
+
+    STATUS_ENTREGA_ACEITO = 'ACEITO'
+    STATUS_ENTREGA_ENVIADO = 'ENVIADO'
+    STATUS_ENTREGA_ENTREGUE = 'ENTREGUE'
+    STATUS_ENTREGA_LIDO = 'LIDO'
+    STATUS_ENTREGA_FALHOU = 'FALHOU'
+    STATUS_ENTREGA_CHOICES = [
+        (STATUS_ENTREGA_ACEITO, 'Aceito pela API'),
+        (STATUS_ENTREGA_ENVIADO, 'Enviado'),
+        (STATUS_ENTREGA_ENTREGUE, 'Entregue'),
+        (STATUS_ENTREGA_LIDO, 'Lido'),
+        (STATUS_ENTREGA_FALHOU, 'Falha de entrega'),
+    ]
+
+    contato = models.ForeignKey(MailingContato, on_delete=models.CASCADE, related_name='envios')
+    template_nome = models.CharField(max_length=120)
+    message_id = models.CharField(max_length=191, blank=True, default='', db_index=True)
+    status_entrega = models.CharField(max_length=20, choices=STATUS_ENTREGA_CHOICES, blank=True, default='')
+    sucesso = models.BooleanField(default=False)
+    erro = models.TextField(blank=True, default='')
+    enviado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    status_atualizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_mailing_envio'
+        verbose_name = 'Mailing (envio)'
+        verbose_name_plural = 'Mailings (envios)'
+        ordering = ['-enviado_em']
+
+    def __str__(self) -> str:
+        return f'{self.template_nome} → {self.contato_id} ({self.status_entrega or "-"})'
+
+
 class GdpPrecoMunicipioManager(models.Manager):
     def get_queryset(self) -> GdpPrecoMunicipioQuerySet:
         return GdpPrecoMunicipioQuerySet(self.model, using=self._db)

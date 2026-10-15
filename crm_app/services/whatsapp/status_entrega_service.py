@@ -228,6 +228,26 @@ def persistir_resultado_entrega(
         )
         return 0
 
+    try:
+        from crm_app.models import MailingEnvio
+
+        for env in MailingEnvio.objects.filter(message_id__in=ids):
+            if not _pode_atualizar_status(env.status_entrega, status_novo):
+                continue
+            env.status_entrega = status_novo
+            env.status_atualizado_em = agora
+            if status_novo == STATUS_FALHOU:
+                env.sucesso = False
+                if msg_erro:
+                    env.erro = msg_erro[:2000]
+            elif status_novo in (STATUS_ENVIADO, STATUS_ENTREGUE, STATUS_LIDO):
+                env.sucesso = True
+            env.save(update_fields=['status_entrega', 'status_atualizado_em', 'sucesso', 'erro'])
+            atualizados += 1
+    except Exception as exc:
+        if exc.__class__.__name__ != "DatabaseOperationForbidden":
+            logger.exception("[StatusEntrega] Falha ao atualizar MailingEnvio ids=%s", ids)
+
     if atualizados:
         logger.info(
             "[StatusEntrega] historico atualizado n=%s ids=%s status=%s code=%s source=%s",

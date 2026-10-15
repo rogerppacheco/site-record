@@ -7746,6 +7746,17 @@ def processar_webhook_whatsapp(data, request=None):
         logger.info("[Webhook] Mensagem de grupo ignorada - bot não responde em grupos")
         return {'status': 'ok', 'mensagem': 'Mensagem de grupo ignorada'}
 
+    # Mailings de mercado: qualquer resposta (texto/botão) de contato ENVIADO → Funil MAILING
+    if mensagem_texto and not is_group:
+        try:
+            from crm_app.services.mailing_inbound_service import processar_resposta_mailing
+            mailing_hit = processar_resposta_mailing(telefone_usuario or telefone, mensagem_texto)
+            if mailing_hit and mailing_hit.get('opt_out'):
+                return {'status': 'ok', 'mensagem': 'Mailing opt-out registrado', 'mailing': mailing_hit}
+            # segue o fluxo normal do bot; a resposta já ficou no Funil
+        except Exception:
+            logger.exception('[Webhook] Falha ao processar resposta de mailing')
+
     # Extrair URL de imagem (Z-API: image.imageUrl) - para etapa inclusao_foto
     image_url = None
     if 'image' in data and isinstance(data.get('image'), dict):

@@ -1,0 +1,92 @@
+Templates Meta — Mailings de mercado
+Categoria: MARKETING | Idioma: pt_BR
+Botões Quick Reply: Falar conosco | Agora não
+Objetivo: induzir contato / informação — SEM oferta, preço ou pitch.
+
+==============================================================================
+mailing_reparo_v1
+==============================================================================
+Olá, {{1}}.
+
+Sua internet está com algum problema?
+
+Fale conosco — podemos te ajudar.
+
+{{1}} = primeiro nome (ex.: Maria)
+
+==============================================================================
+mailing_instalacao_v1
+==============================================================================
+Olá, {{1}}.
+
+Tudo certo com a internet no seu endereço?
+
+Se precisar de suporte, fale conosco.
+
+{{1}} = primeiro nome (ex.: João)
+
+==============================================================================
+mailing_mudanca_v1
+==============================================================================
+Olá, {{1}}.
+
+Houve mudança de endereço ou instalação?
+
+Podemos esclarecer suas dúvidas por aqui.
+
+{{1}} = primeiro nome (ex.: Ana)
+
+==============================================================================
+mailing_servico_v1
+==============================================================================
+Olá, {{1}}.
+
+Sobre o serviço de internet no seu endereço: podemos te orientar.
+
+Fale conosco.
+
+{{1}} = primeiro nome (ex.: Carlos)
+
+==============================================================================
+mailing_cancelamento_v1
+==============================================================================
+Olá, {{1}}.
+
+Vimos que o serviço em {{2}} foi cancelado.
+
+Se quiser informações, fale conosco.
+
+{{1}} = primeiro nome | {{2}} = cidade/bairro (ex.: Lucia / Uberlândia)
+
+==============================================================================
+mailing_fechado_v1
+==============================================================================
+Olá, {{1}}.
+
+O contrato em {{2}} aparece fechado.
+
+Se tiver dúvidas, podemos te ajudar.
+
+{{1}} = primeiro nome | {{2}} = cidade/bairro (ex.: Pedro / Franca)
+
+==============================================================================
+mailing_aberto_v1
+==============================================================================
+Olá, {{1}}.
+
+Há um chamado em andamento em {{2}}.
+
+Precisa de orientação? Fale conosco.
+
+{{1}} = primeiro nome | {{2}} = cidade/bairro (ex.: Fernanda / Uberaba)
+
+==============================================================================
+mailing_generico_v1
+==============================================================================
+Olá, {{1}}.
+
+Podemos te ajudar com informações sobre internet no seu endereço.
+
+Fale conosco.
+
+{{1}} = primeiro nome (ex.: Rafael)

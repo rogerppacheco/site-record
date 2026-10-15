@@ -29,6 +29,16 @@ TEMPLATE_PENDENCIA_REAGENDAMENTO = "nio_pendencia_reagendamento_v1"
 TEMPLATE_BOAS_VINDAS = "nio_boas_vindas_v1"
 TEMPLATE_REAGENDAMENTO_CLIENTE = "nio_reagendamento_cliente_v1"
 
+# Mailings de mercado (MARKETING — listas frias; copy sem oferta)
+TEMPLATE_MAILING_REPARO = "mailing_reparo_v1"
+TEMPLATE_MAILING_INSTALACAO = "mailing_instalacao_v1"
+TEMPLATE_MAILING_MUDANCA = "mailing_mudanca_v1"
+TEMPLATE_MAILING_SERVICO = "mailing_servico_v1"
+TEMPLATE_MAILING_CANCELAMENTO = "mailing_cancelamento_v1"
+TEMPLATE_MAILING_FECHADO = "mailing_fechado_v1"
+TEMPLATE_MAILING_ABERTO = "mailing_aberto_v1"
+TEMPLATE_MAILING_GENERICO = "mailing_generico_v1"
+
 NIO_WHATSAPP_OFICIAL_EXIBICAO = "21 3605-1000"
 
 LANGUAGE_PT_BR = "pt_BR"

@@ -13,6 +13,13 @@ from .esteira_churn_tratamento_api import (
     EsteiraChurnTratamentoView,
 )
 from .repescagem_bio_api import RepescagemBioImportacaoView, RepescagemBioListaView
+from .mailing_api import (
+    MailingContatoTratarView,
+    MailingFunilListaView,
+    MailingLoteDetailView,
+    MailingLoteDisparoView,
+    MailingLoteListCreateView,
+)
 from .record_apoia_api import (
     RecordApoiaUploadView,
     RecordApoiaListView,
@@ -475,6 +482,11 @@ urlpatterns = [
     path('esteira/churn-tratamento/debitos-nio/<int:pk>/cancelar/', ChurnDebitoNioLoteCancelarView.as_view(), name='churn-debitos-nio-cancelar'),
     path('repescagem-bio/', RepescagemBioListaView.as_view(), name='repescagem-bio-lista'),
     path('repescagem-bio/importacoes/', RepescagemBioImportacaoView.as_view(), name='repescagem-bio-importacao'),
+    path('mailings/', MailingLoteListCreateView.as_view(), name='mailing-lotes'),
+    path('mailings/funil/', MailingFunilListaView.as_view(), name='mailing-funil'),
+    path('mailings/contatos/<int:pk>/tratar/', MailingContatoTratarView.as_view(), name='mailing-contato-tratar'),
+    path('mailings/<int:pk>/', MailingLoteDetailView.as_view(), name='mailing-lote-detail'),
+    path('mailings/<int:pk>/disparo/', MailingLoteDisparoView.as_view(), name='mailing-lote-disparo'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---
