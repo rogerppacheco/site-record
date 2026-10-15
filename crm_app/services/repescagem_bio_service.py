@@ -20,7 +20,10 @@ RELATORIO_URL = 'https://ged360.niointernet.com.br/brprontopdv/relatorios/relato
 ORIGEM_POOL = 'repescagem_bio'
 TELEFONE_POOL = 'repescagem_bio'
 MAX_DIAS_POR_DOWNLOAD = 15
-MAX_DIAS_PERIODO = 92
+# Busca manual e rotina: até ~6 meses (partes de 15 dias no Playwright).
+MAX_DIAS_PERIODO = 186
+# Rotina diária (07:00): sempre busca os últimos 6 meses no GED.
+DIAS_ROTINA_BIO = 183
 IMPORTACAO_SEM_PROGRESSO_MAX = timedelta(minutes=10)
 
 APTO = 'APTO'

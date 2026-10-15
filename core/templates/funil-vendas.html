@@ -52,7 +52,7 @@
     padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color, #e4e9f2);
     background: var(--bg-surface, #fff);
 }
-.funil-search { position: relative; flex: 1 1 260px; max-width: 380px; }
+.funil-search { position: relative; flex: 1 1 320px; min-width: 220px; max-width: none; }
 .funil-search > .bi-search { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--text-subtle, #8f9bb3); pointer-events: none; }
 .funil-search input { padding-left: 2.1rem; padding-right: 2rem; border-radius: 999px; }
 .funil-kbd {
@@ -61,14 +61,33 @@
     background: var(--bg-secondary, #e8edf5); color: var(--text-secondary, #5b6b7d); border: 1px solid var(--border-color, #e4e9f2);
 }
 .funil-search input:focus ~ .funil-kbd, .funil-search input:not(:placeholder-shown) ~ .funil-kbd { display: none; }
-.funil-select { width: auto; min-width: 170px; border-radius: 999px; }
-.funil-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--bg-secondary, #e8edf5); border: 1px solid var(--border-color, #e4e9f2); }
+.funil-select { width: auto; min-width: 150px; max-width: 240px; border-radius: 10px; }
+.funil-select-wide { min-width: 200px; max-width: 280px; }
+.funil-seg { display: inline-flex; flex-wrap: wrap; padding: 3px; border-radius: 999px; background: var(--bg-secondary, #e8edf5); border: 1px solid var(--border-color, #e4e9f2); }
 .funil-seg button {
     border: 0; background: transparent; color: var(--text-secondary, #5b6b7d);
     font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.85rem; border-radius: 999px; transition: all 0.15s ease;
 }
 .funil-seg button:hover { color: var(--text-primary, #1a2332); }
 .funil-seg button.active { background: var(--accent-primary, #0ea5e9); color: var(--text-on-accent, #fff); box-shadow: 0 2px 6px rgba(14,165,233,0.3); }
+.funil-toolbar .btn { border-radius: 10px; font-weight: 600; }
+#acoes-pap .btn, #acoes-churn .btn, #acoes-bio .btn { border-radius: 10px; }
+.funil-page { width: 100%; max-width: none; }
+.funil-page .card { border-radius: 12px; }
+.nav-pills-custom .nav-link {
+    border-radius: 10px; font-weight: 600; padding: 0.45rem 1rem;
+    border: 1px solid var(--border-color, #e4e9f2); color: var(--text-secondary, #5b6b7d);
+}
+.nav-pills-custom .nav-link.active {
+    background: var(--accent-primary, #0ea5e9); border-color: transparent; color: #fff;
+}
+.tab-res-custom { border-radius: 10px 10px 0 0 !important; padding: 0.65rem 1rem !important; font-size: 0.82rem !important; white-space: nowrap; }
+#tabs-resultados { flex-wrap: wrap; row-gap: 0.25rem; }
+#tabs-resultados .tab-res-custom.tab-res-active {
+    background: var(--accent-primary, #0ea5e9) !important; color: #fff !important;
+}
+#tabs-resultados .tab-res-custom.tab-res-active .badge { background: rgba(255,255,255,0.25) !important; }
+#tabs-resultados .tab-res-custom.tab-res-active i { color: #fff !important; }
 .funil-periodo { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-secondary, #5b6b7d); font-size: 0.8rem; }
 .funil-periodo input { width: 140px; border-radius: 999px; }
 .funil-limpar { color: var(--color-danger, #dc2626); font-weight: 600; border-radius: 999px; }
@@ -120,11 +139,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 {% endblock %}
 
 {% block content %}
-<main class="container-fluid py-4 px-4" style="max-width: 1400px;">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+<main class="container-fluid py-3 px-3 px-xl-4 funil-page">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
         <div>
             <h1 class="h3 mb-1 fw-bold"><i class="bi bi-funnel text-primary"></i> Funil de Tratamento</h1>
-            <p class="text-muted small mb-0">Gestão e tratamento de Interesses, Pré-Vendas, Vendas do PAP e Churn.</p>
+            <p class="text-muted small mb-0">Interesses, pré-vendas, vendas do PAP, repescagem de churn e biometria.</p>
         </div>
         <ul class="nav nav-pills nav-pills-custom" role="tablist">
             <li class="nav-item">
@@ -179,7 +198,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                     </li>
                     <li class="nav-item">
                         <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-churn" data-tipo="CHURN" type="button">
-                            <i class="bi bi-person-x-fill text-danger me-2"></i> TRATAR CHURN <span class="badge bg-secondary ms-2 rounded-pill" id="count-churn">—</span>
+                            <i class="bi bi-arrow-repeat text-danger me-2"></i> REPESCAR CHURN <span class="badge bg-secondary ms-2 rounded-pill" id="count-churn">—</span>
                         </button>
                     </li>
                     <li class="nav-item">
@@ -217,7 +236,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                     </div>
                 </div>
                 <div class="pb-2 pe-2 d-flex gap-2 d-none" id="acoes-bio">
-                    <button type="button" class="btn btn-primary fw-bold shadow-sm" id="btn-bio-buscar" title="Baixa do GED360 o relatório detalhado de digitalizações pela Data de Envio do período selecionado">
+                    <button type="button" class="btn btn-primary fw-semibold shadow-sm px-3" id="btn-bio-buscar" title="Baixa do GED360 o relatório detalhado de digitalizações pela Data de Envio do período selecionado. Rotina automática: todo dia às 07:00 (últimos 6 meses).">
                         <i class="bi bi-cloud-download me-2"></i>Buscar no GED
                     </button>
                 </div>
@@ -254,7 +273,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 <div class="funil-toolbar">
                     <div class="funil-search">
                         <i class="bi bi-search"></i>
-                        <input type="search" id="f-busca" class="form-control form-control-sm" placeholder="Protocolo, O.S., cliente ou CPF" aria-label="Buscar por protocolo, O.S., cliente ou CPF" autocomplete="off">
+                        <input type="search" id="f-busca" class="form-control form-control-sm" placeholder="Busca inteligente: nome, CPF, O.S., vendedor… ou atalhos: apto, link, repescar, adimplente" aria-label="Busca inteligente" autocomplete="off">
                         <kbd class="funil-kbd" title="Atalho: / foca a busca">/</kbd>
                     </div>
                     <select id="f-status" class="form-select form-select-sm funil-select" aria-label="Filtrar por status PAP">
@@ -265,30 +284,30 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <button type="button" data-situacao="novos"><i class="bi bi-stars"></i> Novos</button>
                         <button type="button" data-situacao="base">Já na base</button>
                     </div>
-                    <div class="funil-seg d-none" id="funil-seg-nio" role="group" aria-label="Situação de débito na Nio">
-                        <button type="button" class="active" data-nio="">Todos</button>
-                        <button type="button" data-nio="ADIMPLENTE">Adimplentes <span class="nio-qtd" data-qtd="ADIMPLENTE"></span></button>
-                        <button type="button" data-nio="INADIMPLENTE">Inadimplentes <span class="nio-qtd" data-qtd="INADIMPLENTE"></span></button>
-                        <button type="button" data-nio="A_VENCER">A vencer <span class="nio-qtd" data-qtd="A_VENCER"></span></button>
-                        <button type="button" data-nio="NAO_CONSULTADO">Não consultados <span class="nio-qtd" data-qtd="NAO_CONSULTADO"></span></button>
-                        <button type="button" data-nio="ERRO">Erro <span class="nio-qtd" data-qtd="ERRO"></span></button>
-                    </div>
-                    <div class="funil-seg d-none" id="funil-seg-bio" role="group" aria-label="Situação da biometria">
-                        <button type="button" class="active" data-bio="">Todas as situações</button>
-                        <button type="button" data-bio="APTO">Fez (apto) <span class="nio-qtd" data-qtd="APTO"></span></button>
-                        <button type="button" data-bio="EM_ANALISE">Em análise <span class="nio-qtd" data-qtd="EM_ANALISE"></span></button>
-                        <button type="button" data-bio="LINK_ENVIADO">Link enviado <span class="nio-qtd" data-qtd="LINK_ENVIADO"></span></button>
-                        <button type="button" data-bio="REFAZER">Refazer <span class="nio-qtd" data-qtd="REFAZER"></span></button>
-                        <button type="button" data-bio="RISCO">Risco/Reprovado <span class="nio-qtd" data-qtd="RISCO"></span></button>
-                        <button type="button" data-bio="SEM_BIOMETRIA" title="Venda sem nenhum envio no GED, com o GED já buscado no horário da venda">Sem biometria <span class="nio-qtd" data-qtd="SEM_BIOMETRIA"></span></button>
-                        <button type="button" data-bio="APTO_SEM_VENDA" title="Biometria apta sem venda criada no CRM">Apto sem venda <span class="nio-qtd" data-qtd="APTO_SEM_VENDA"></span></button>
-                        <button type="button" data-bio="NAO_VERIFICADO" title="Venda num horário que ainda não foi buscado no GED">Aguardando GED <span class="nio-qtd" data-qtd="NAO_VERIFICADO"></span></button>
-                    </div>
-                    <div class="funil-seg d-none" id="funil-seg-rep" role="group" aria-label="Repescável">
-                        <button type="button" class="active" data-rep="">Repescável: todos</button>
-                        <button type="button" data-rep="SIM" title="Biometria no GED há mais de 48 horas (fora risco/reprovado e fora DUPLICIDADE), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO só após 30 dias do pedido no PAP."><i class="bi bi-arrow-repeat"></i> Repescável <span class="nio-qtd" data-qtd-rep="SIM"></span></button>
-                        <button type="button" data-rep="NAO">Não repescável <span class="nio-qtd" data-qtd-rep="NAO"></span></button>
-                    </div>
+                    <select id="f-nio" class="form-select form-select-sm funil-select d-none" aria-label="Situação de débito na Nio">
+                        <option value="">Débito Nio: todos</option>
+                        <option value="ADIMPLENTE">Adimplentes</option>
+                        <option value="INADIMPLENTE">Inadimplentes</option>
+                        <option value="A_VENCER">A vencer</option>
+                        <option value="NAO_CONSULTADO">Não consultados</option>
+                        <option value="ERRO">Erro</option>
+                    </select>
+                    <select id="f-bio" class="form-select form-select-sm funil-select funil-select-wide d-none" aria-label="Situação da biometria">
+                        <option value="">Biometria: todas</option>
+                        <option value="APTO">Fez (apto)</option>
+                        <option value="EM_ANALISE">Em análise</option>
+                        <option value="LINK_ENVIADO">Link enviado</option>
+                        <option value="REFAZER">Refazer</option>
+                        <option value="RISCO">Risco/Reprovado</option>
+                        <option value="SEM_BIOMETRIA">Sem biometria</option>
+                        <option value="APTO_SEM_VENDA">Apto sem venda</option>
+                        <option value="NAO_VERIFICADO">Aguardando GED</option>
+                    </select>
+                    <select id="f-rep" class="form-select form-select-sm funil-select d-none" aria-label="Repescável" title="Biometria há mais de 48h, sem O.S. ou sem venda; fora risco e DUPLICIDADE; CONSTA PEDIDO após 30 dias no PAP">
+                        <option value="">Repescável: todos</option>
+                        <option value="SIM">Só repescáveis</option>
+                        <option value="NAO">Só não repescáveis</option>
+                    </select>
                     <select id="f-mes" class="form-select form-select-sm funil-select" aria-label="Mês da data do pedido" title="Mês pela Data do pedido">
                         <option value="">Todos os meses</option>
                     </select>
@@ -298,7 +317,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <span>até</span>
                         <input type="date" id="f-ate" class="form-control form-control-sm" aria-label="Data do pedido até">
                     </div>
-                    <button type="button" id="f-limpar" class="btn btn-sm funil-limpar d-none"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button>
+                    <button type="button" id="f-limpar" class="btn btn-sm funil-limpar d-none"><i class="bi bi-x-circle me-1"></i>Limpar</button>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive funil-scroll" id="funil-scroll">
@@ -673,15 +692,12 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.querySelectorAll('#funil-seg button').forEach(b => {
             b.classList.toggle('active', b.getAttribute('data-situacao') === histState.situacao);
         });
-        document.querySelectorAll('#funil-seg-nio button').forEach(b => {
-            b.classList.toggle('active', b.getAttribute('data-nio') === histState.nio);
-        });
-        document.querySelectorAll('#funil-seg-bio button').forEach(b => {
-            b.classList.toggle('active', b.getAttribute('data-bio') === histState.bio);
-        });
-        document.querySelectorAll('#funil-seg-rep button').forEach(b => {
-            b.classList.toggle('active', b.getAttribute('data-rep') === histState.rep);
-        });
+        const fNio = document.getElementById('f-nio');
+        const fBio = document.getElementById('f-bio');
+        const fRep = document.getElementById('f-rep');
+        if (fNio) fNio.value = histState.nio || '';
+        if (fBio) fBio.value = histState.bio || '';
+        if (fRep) fRep.value = histState.rep || '';
         document.getElementById('ic-ordem-data').className = histState.ordem === 'antigos' ? 'bi bi-sort-up' : 'bi bi-sort-down';
         const churn = histState.tipo === 'CHURN';
         const bio = histState.tipo === 'BIO';
@@ -694,9 +710,9 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('f-limpar').classList.toggle('d-none', !temFiltro);
         document.getElementById('f-status').classList.toggle('d-none', !pap);
         document.getElementById('funil-seg').classList.toggle('d-none', !pap);
-        document.getElementById('funil-seg-nio').classList.toggle('d-none', !churn);
-        document.getElementById('funil-seg-bio').classList.toggle('d-none', !bio);
-        document.getElementById('funil-seg-rep').classList.toggle('d-none', !bio);
+        fNio.classList.toggle('d-none', !churn);
+        fBio.classList.toggle('d-none', !bio);
+        fRep.classList.toggle('d-none', !bio);
         document.getElementById('funil-periodo').classList.toggle('d-none', churn);
         document.getElementById('funil-periodo').title = bio ? 'Data de envio da biometria no GED ou data da venda no CRM' : 'Data do pedido no PAP';
         document.getElementById('f-mes').classList.toggle('d-none', bio);
@@ -712,8 +728,47 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('thead-churn').classList.toggle('d-none', !churn);
         document.getElementById('thead-bio').classList.toggle('d-none', !bio);
         const busca = document.getElementById('f-busca');
-        busca.placeholder = churn ? 'O.S., cliente ou CPF' : bio ? 'Cliente, CPF, O.S., vendedor ou telefone' : 'Protocolo, O.S., cliente ou CPF';
+        busca.placeholder = churn
+            ? 'Busca: O.S., cliente, CPF… atalhos: adimplente, inadimplente'
+            : bio
+                ? 'Busca: cliente, CPF, O.S.… atalhos: apto, link, repescar, sem bio'
+                : 'Busca: protocolo, O.S., cliente, CPF… atalhos: novos, base';
         document.getElementById('f-mes').title = churn ? 'Mês da retirada do churn' : 'Mês pela Data do pedido';
+    }
+
+    /** Interpreta atalhos na busca (ex.: "repescar", "apto joao") e devolve { q, ...filtros }. */
+    function interpretarBuscaInteligente(texto) {
+        let restante = String(texto || '').trim();
+        const mudancas = {};
+        const regras = [
+            { re: /\b(repescar|repescavel|repescável)\b/gi, tipo: 'BIO', campo: 'rep', valor: 'SIM' },
+            { re: /\b(nao\s*repescavel|não\s*repescável)\b/gi, tipo: 'BIO', campo: 'rep', valor: 'NAO' },
+            { re: /\b(apto\s*sem\s*venda)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'APTO_SEM_VENDA' },
+            { re: /\b(sem\s*bio(metria)?)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'SEM_BIOMETRIA' },
+            { re: /\b(aguardando\s*ged)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'NAO_VERIFICADO' },
+            { re: /\b(link(\s*enviado)?)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'LINK_ENVIADO' },
+            { re: /\b(em\s*an[aá]lise)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'EM_ANALISE' },
+            { re: /\b(refazer)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'REFAZER' },
+            { re: /\b(risco|reprovado)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'RISCO' },
+            { re: /\b(apto|fez)\b/gi, tipo: 'BIO', campo: 'bio', valor: 'APTO' },
+            { re: /\b(adimplente[s]?)\b/gi, tipo: 'CHURN', campo: 'nio', valor: 'ADIMPLENTE' },
+            { re: /\b(inadimplente[s]?)\b/gi, tipo: 'CHURN', campo: 'nio', valor: 'INADIMPLENTE' },
+            { re: /\b(a\s*vencer)\b/gi, tipo: 'CHURN', campo: 'nio', valor: 'A_VENCER' },
+            { re: /\b(novos?)\b/gi, tipo: 'PAP', campo: 'situacao', valor: 'novos' },
+            { re: /\b(j[aá]\s*na\s*base|base)\b/gi, tipo: 'PAP', campo: 'situacao', valor: 'base' },
+        ];
+        for (const regra of regras) {
+            if (!regra.re.test(restante)) continue;
+            regra.re.lastIndex = 0;
+            if (regra.tipo === 'BIO' && histState.tipo !== 'BIO') continue;
+            if (regra.tipo === 'CHURN' && histState.tipo !== 'CHURN') continue;
+            if (regra.tipo === 'PAP' && TIPOS_PROPRIOS.includes(histState.tipo)) continue;
+            mudancas[regra.campo] = regra.valor;
+            restante = restante.replace(regra.re, ' ').replace(/\s+/g, ' ').trim();
+            break; // um atalho por vez, o resto fica como texto livre
+        }
+        mudancas.q = restante;
+        return mudancas;
     }
 
     function ultimosDias(qtd) {
@@ -727,6 +782,18 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     function aplicarFiltros(mudancas) {
         Object.assign(histState, mudancas, { page: 1 });
         carregarPedidos();
+    }
+
+    /** Atualiza o texto das options com contagens, preservando o rótulo base em data-label. */
+    function atualizarContagensSelect(selectId, contagens) {
+        const sel = document.getElementById(selectId);
+        if (!sel) return;
+        [...sel.options].forEach(opt => {
+            if (!opt.dataset.label) opt.dataset.label = opt.textContent.replace(/\s*\([\d.]+\)\s*$/, '').trim();
+            const base = opt.dataset.label;
+            const n = opt.value ? contagens[opt.value] : null;
+            opt.textContent = (n != null && n > 0) ? `${base} (${Number(n).toLocaleString('pt-BR')})` : base;
+        });
     }
 
     function irParaPagina(pagina) {
@@ -756,32 +823,30 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         });
     });
 
+    function aplicarBuscaDaCaixa(texto) {
+        aplicarFiltros(interpretarBuscaInteligente(texto));
+    }
     document.getElementById('f-busca').addEventListener('input', (e) => {
         clearTimeout(buscaDebounce);
         const valor = e.target.value;
-        buscaDebounce = setTimeout(() => aplicarFiltros({ q: valor.trim() }), 350);
+        buscaDebounce = setTimeout(() => aplicarBuscaDaCaixa(valor), 350);
     });
     document.getElementById('f-busca').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { clearTimeout(buscaDebounce); aplicarFiltros({ q: e.target.value.trim() }); }
+        if (e.key === 'Enter') { clearTimeout(buscaDebounce); aplicarBuscaDaCaixa(e.target.value); }
         if (e.key === 'Escape' && e.target.value) { e.target.value = ''; clearTimeout(buscaDebounce); aplicarFiltros({ q: '' }); }
     });
     document.getElementById('f-status').addEventListener('change', (e) => aplicarFiltros({ status: e.target.value }));
     document.querySelectorAll('#funil-seg button').forEach(b => {
         b.addEventListener('click', () => aplicarFiltros({ situacao: b.getAttribute('data-situacao') }));
     });
-    document.querySelectorAll('#funil-seg-nio button').forEach(b => {
-        b.addEventListener('click', () => aplicarFiltros({ nio: b.getAttribute('data-nio') }));
-    });
-    document.querySelectorAll('#funil-seg-bio button').forEach(b => {
-        b.addEventListener('click', () => aplicarFiltros({ bio: b.getAttribute('data-bio') }));
-    });
-    document.querySelectorAll('#funil-seg-rep button').forEach(b => {
-        b.addEventListener('click', () => aplicarFiltros({ rep: b.getAttribute('data-rep') }));
-    });
+    document.getElementById('f-nio').addEventListener('change', (e) => aplicarFiltros({ nio: e.target.value }));
+    document.getElementById('f-bio').addEventListener('change', (e) => aplicarFiltros({ bio: e.target.value }));
+    document.getElementById('f-rep').addEventListener('change', (e) => aplicarFiltros({ rep: e.target.value }));
     document.getElementById('f-de').addEventListener('change', (e) => aplicarFiltros({ de: e.target.value }));
     document.getElementById('f-ate').addEventListener('change', (e) => aplicarFiltros({ ate: e.target.value }));
     document.getElementById('f-limpar').addEventListener('click', () => {
         if (histState.tipo === 'BIO') { aplicarFiltros({ q: '', bio: '', rep: '' }); return; }
+        if (histState.tipo === 'CHURN') { aplicarFiltros({ q: '', nio: '', de: '', ate: '' }); return; }
         aplicarFiltros({ q: '', status: '', situacao: '', de: '', ate: '', nio: '' });
     });
     document.getElementById('th-ordem-data').addEventListener('click', () => {
@@ -1085,10 +1150,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             const contagens = data.contagens_nio || {};
             const totalSemNio = Object.values(contagens).reduce((a, b) => a + (b || 0), 0);
             document.getElementById('count-churn').textContent = totalSemNio.toLocaleString('pt-BR');
-            document.querySelectorAll('#funil-seg-nio .nio-qtd').forEach(el => {
-                const n = contagens[el.getAttribute('data-qtd')];
-                el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
-            });
+            atualizarContagensSelect('f-nio', contagens);
             document.getElementById('rodape-info').textContent = 'Cruzamento pela O.S. (pedido e nr_ordem), o mesmo da Esteira. A lista traz nome e CPF do cliente da venda encontrada no CRM.';
 
             const itens = data.lista || [];
@@ -1290,15 +1352,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             const contagens = data.contagens || {};
             const totalCpfs = Object.keys(BIO_SITUACAO).reduce((a, k) => a + (contagens[k] || 0), 0);
             document.getElementById('count-bio').textContent = totalCpfs.toLocaleString('pt-BR');
-            document.querySelectorAll('#funil-seg-bio .nio-qtd').forEach(el => {
-                const n = contagens[el.getAttribute('data-qtd')];
-                el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
-            });
-            const repescaveis = data.contagens_repescavel || {};
-            document.querySelectorAll('#funil-seg-rep .nio-qtd').forEach(el => {
-                const n = repescaveis[el.getAttribute('data-qtd-rep')];
-                el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
-            });
+            atualizarContagensSelect('f-bio', contagens);
+            atualizarContagensSelect('f-rep', data.contagens_repescavel || {});
             const ult = data.ultima_importacao;
             document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente. Repescável: último envio no GED há mais de 48 horas (fora risco/reprovado e fora DUPLICIDADE), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO: consulta o PAP Nio e só libera após 30 dias do pedido.'
                 + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : '');

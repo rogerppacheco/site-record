@@ -43,6 +43,16 @@ def _wrap_scheduler_job(func: _F) -> _F:
     return wrapper  # type: ignore[return-value]
 
 
+def buscar_repescagem_bio_ged_automatico():
+    """Todo dia às 07:00: baixa ~6 meses de biometrias do GED360 (Br Pronto)."""
+    try:
+        logger.info("Iniciando busca automática Repescagem Bio (GED360)…")
+        call_command('buscar_repescagem_bio_ged')
+        logger.info("Busca automática Repescagem Bio enfileirada.")
+    except Exception as e:
+        logger.error("Erro na busca automática Repescagem Bio: %s", e)
+
+
 def buscar_faturas_automatico():
     try:
         logger.info("🤖 Iniciando busca automática de faturas no Nio...")
@@ -231,6 +241,14 @@ def _registrar_jobs(scheduler):
         trigger=CronTrigger.from_crontab('0 7 * * *', timezone=tz_match),
         id='finalizar_match_nio_noturno',
         name='Encerra relatório do match Nio (07:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(buscar_repescagem_bio_ged_automatico),
+        trigger=CronTrigger.from_crontab('0 7 * * *', timezone=tz_match),
+        id='buscar_repescagem_bio_ged',
+        name='Repescagem Bio — busca GED360 6 meses (07:00)',
         replace_existing=True,
         max_instances=1,
     )
