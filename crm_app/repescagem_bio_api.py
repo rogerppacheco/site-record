@@ -130,6 +130,8 @@ class RepescagemBioListaView(APIView):
         except ValueError:
             page = 1
         lista = base[(page - 1) * page_size: page * page_size]
+        from crm_app.services.funil_template_envio_service import enriquecer_linha_bio
+        lista = [enriquecer_linha_bio(item) for item in lista]
 
         ultima = RepescagemBioImportacao.objects.filter(status=RepescagemBioImportacao.STATUS_CONCLUIDO).first()
         inicio_dt = svc._inicio_do_dia(inicio)

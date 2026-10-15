@@ -17,7 +17,7 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-# Nomes aprovados / em aprovação na WABA (conexão #194)
+# Nomes aprovados / em aprovação na WABA (WhatsAtende Número B — conexão #247)
 TEMPLATE_CONFIRMACAO_PEDIDO = "nio_confirmacao_pedido_v1"
 TEMPLATE_LEMBRETE_INSTALACAO = "nio_lembrete_instalacao_v1"
 TEMPLATE_INSTALACAO_CONFIRMADA = "nio_instalacao_confirmada_v1_2"
@@ -28,6 +28,12 @@ TEMPLATE_FATURA_REDUCAO_SINAL = "nio_fatura_reducao_sinal_v1"
 TEMPLATE_PENDENCIA_REAGENDAMENTO = "nio_pendencia_reagendamento_v1"
 TEMPLATE_BOAS_VINDAS = "nio_boas_vindas_v1"
 TEMPLATE_REAGENDAMENTO_CLIENTE = "nio_reagendamento_cliente_v1"
+
+# Funil de Tratamento (utilitários)
+TEMPLATE_CONSULTA_VIABILIDADE = "nio_consulta_viabilidade_v1"
+TEMPLATE_REATIVACAO_CONTRATO = "nio_reativacao_contrato_v1"
+# Editar/reaprovar este nome na WABA #247: {{1}}=primeiro nome, {{2}}=Prot. {protocolo}
+TEMPLATE_SELFIE_PENDENTE = "nio_selfie_pendente_v1"
 
 # Mailings de mercado (MARKETING — listas frias; copy sem oferta)
 TEMPLATE_MAILING_REPARO = "mailing_reparo_v1"

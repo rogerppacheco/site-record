@@ -6,7 +6,7 @@ from django.db import migrations, connection
 def create_indexes_postgresql(apps, schema_editor):
     """Cria índices otimizados apenas para PostgreSQL"""
     if connection.vendor != 'postgresql':
-        print("⚠️  Pulando criação de índices PostgreSQL - banco atual é", connection.vendor)
+        print("[skip] Indices PostgreSQL - banco atual e", connection.vendor)
         return
     
     with connection.cursor() as cursor:
@@ -52,7 +52,7 @@ def create_indexes_postgresql(apps, schema_editor):
             WHERE auditor_atual_id IS NOT NULL AND ativo IS TRUE;
         """)
         
-        print("✓ Índices de performance PostgreSQL criados com sucesso!")
+        print("[ok] Indices de performance PostgreSQL criados com sucesso!")
 
 
 def drop_indexes_postgresql(apps, schema_editor):

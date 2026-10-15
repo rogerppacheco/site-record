@@ -45,6 +45,7 @@ class DadosCreditoAssertiva:
     telefones: tuple[str, ...]
     emails: tuple[str, ...]
     endereco: Optional[EnderecoAssertiva]
+    nome: str = ""
 
     @property
     def telefone_principal(self) -> Optional[str]:
@@ -57,6 +58,11 @@ class DadosCreditoAssertiva:
     @property
     def email_principal(self) -> Optional[str]:
         return self.emails[0] if self.emails else None
+
+    @property
+    def primeiro_nome(self) -> str:
+        partes = (self.nome or "").strip().split()
+        return partes[0].title() if partes else ""
 
 
 class AssertivaLocalizeService:
@@ -126,6 +132,7 @@ class AssertivaLocalizeService:
             telefones=self._selecionar_telefones(resposta),
             emails=self._selecionar_emails(resposta),
             endereco=self._selecionar_endereco(resposta),
+            nome=self._selecionar_nome(resposta),
         )
 
     def _validar_configuracao(self) -> None:
@@ -329,3 +336,80 @@ class AssertivaLocalizeService:
         if not candidatos:
             return None
         return max(candidatos, key=lambda candidato: (candidato[0], candidato[1]))[2]
+
+    @staticmethod
+    def _selecionar_nome(resposta: dict[str, Any]) -> str:
+        """Extrai nome/razão social do payload Localize (vários formatos possíveis)."""
+        chaves = (
+            "nome",
+            "nomeCompleto",
+            "nomeCivil",
+            "razaoSocial",
+            "nomeRazaoSocial",
+            "nomeEmpresarial",
+        )
+        for chave in chaves:
+            valor = resposta.get(chave)
+            if isinstance(valor, str) and valor.strip():
+                return valor.strip()[:200]
+        for nested_key in ("cadastroBasico", "dadosCadastrais", "pessoa", "cadastro"):
+            nested = resposta.get(nested_key)
+            if not isinstance(nested, dict):
+                continue
+            for chave in chaves:
+                valor = nested.get(chave)
+                if isinstance(valor, str) and valor.strip():
+                    return valor.strip()[:200]
+        return ""
+
+
+_NOME_CACHE_TTL = 3600  # hot path curto; fonte da verdade = BD
+
+
+def obter_nome_por_cpf(cpf: str) -> Optional[str]:
+    """Devolve o nome completo: BD (persistente) → Assertiva → grava BD."""
+    digitos = _DOCUMENTO_RE.sub("", cpf or "")
+    if len(digitos) not in (11, 14):
+        return None
+
+    cache_key = f"assertiva:nome:{digitos}"
+    cached = cache.get(cache_key)
+    if isinstance(cached, str) and cached.strip():
+        return cached.strip()
+
+    from crm_app.models import AssertivaNomeCache
+
+    registro = (
+        AssertivaNomeCache.objects.filter(cpf=digitos)
+        .only("nome")
+        .first()
+    )
+    if registro:
+        nome_bd = (registro.nome or "").strip()
+        if nome_bd:
+            cache.set(cache_key, nome_bd, timeout=_NOME_CACHE_TTL)
+            return nome_bd
+
+    try:
+        dados = AssertivaLocalizeService().consultar_para_credito(digitos)
+    except AssertivaError as exc:
+        logger.info("[ASSERTIVA] Nome indisponível para %s: %s", digitos[-4:], exc)
+        return None
+
+    nome = (dados.nome or "").strip()
+    if not nome:
+        return None
+
+    AssertivaNomeCache.objects.update_or_create(
+        cpf=digitos,
+        defaults={"nome": nome[:200], "fonte": "assertiva"},
+    )
+    cache.set(cache_key, nome, timeout=_NOME_CACHE_TTL)
+    return nome
+
+
+def obter_primeiro_nome_por_cpf(cpf: str) -> Optional[str]:
+    nome = obter_nome_por_cpf(cpf)
+    if not nome:
+        return None
+    return nome.split()[0].title()

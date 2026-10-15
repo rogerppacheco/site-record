@@ -659,6 +659,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     const BADGE_TIPO = { INTERESSE: 'count-interesse', PRE_VENDA: 'count-prevenda', VENDA: 'count-venda' };
     const API_CHURN = '/api/crm/esteira/churn-tratamento/';
     const API_BIO = '/api/crm/repescagem-bio/';
+    const API_FUNIL_TMPL = '/api/crm/funil-templates/';
     const TAMANHOS_PAGINA = [25, 50, 100, 200];
     const LS_FUNIL_PAGE_SIZE = 'funil_hist_page_size';
     // Chaves curtas na URL: o estado sobrevive a F5 e pode ser compartilhado por link.
@@ -1132,6 +1133,23 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         return `<span class="badge badge-nio ${s.cls}" title="${esc(dica)}"><i class="bi ${s.icone} me-1"></i>${s.rotulo}</span>${valor}`;
     }
 
+    function btnEnviarTemplate(aba, id, r) {
+        const elegivel = !!r.elegivel_envio;
+        const motivo = r.motivo_inelegivel || '';
+        const prev = r.preview_envio || {};
+        const previewBits = [prev.nome, prev.protocolo || prev.contrato || prev.pedido, prev.endereco]
+            .filter(Boolean).join(' · ');
+        const title = elegivel
+            ? (previewBits ? `Enviar template: ${previewBits}` : 'Enviar template WhatsApp')
+            : (motivo || 'Não elegível para envio');
+        const cls = elegivel ? 'btn-success' : 'btn-outline-secondary';
+        return `<button type="button" class="btn btn-sm ${cls} rounded-pill fw-bold btn-funil-tmpl"
+            data-aba="${esc(aba)}" data-id="${esc(String(id || ''))}"
+            ${elegivel ? '' : 'disabled'} title="${esc(title)}">
+            <i class="bi bi-whatsapp me-1"></i>Enviar
+        </button>${!elegivel && motivo ? `<div class="small text-muted mt-1" style="max-width:160px">${esc(motivo)}</div>` : ''}`;
+    }
+
     function linhaChurn(r) {
         const motivo = r.DS_MOTIVO_RETIRADA || r.TP_RETIRADA || '—';
         return `
@@ -1143,9 +1161,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 <td class="text-muted small text-nowrap">${esc(fmtDataIso(r.dt_retirada))}</td>
                 <td class="small">${esc(r.vendedor || '—')}</td>
                 <td class="text-nowrap">${badgeNio(r)}</td>
-                <td class="text-end pe-4">
-                    <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="alert('Funcionalidade de Tratamento em desenvolvimento')">Tratar</button>
-                </td>
+                <td class="text-end pe-4">${btnEnviarTemplate('CHURN', r.churn_id, r)}</td>
             </tr>`;
     }
 
@@ -1317,7 +1333,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const repescar = r.repescavel
             ? `<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle-fill me-1"></i>Sim</span>
                <div class="small text-muted mt-1">${esc(r.motivo_repescagem || '')}</div>
-               <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold mt-1" onclick="alert('Funcionalidade de Repescagem em desenvolvimento')">Repescar</button>`
+               <div class="mt-1">${btnEnviarTemplate('BIO', r.cpf, r)}</div>`
             : `<span class="badge bg-light text-muted border"><i class="bi bi-x-circle me-1"></i>Não</span>
                <div class="small text-muted mt-1">${esc(r.motivo_repescagem || '')}</div>`;
         const envio = r.ultimo_envio
@@ -1670,24 +1686,55 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     });
 
     document.getElementById('tbody-resultados').addEventListener('click', async (e) => {
-        const btn = e.target.closest('.btn-mailing-tratar');
-        if (!btn) return;
-        const id = btn.getAttribute('data-id');
+        const btnMail = e.target.closest('.btn-mailing-tratar');
+        if (btnMail) {
+            const id = btnMail.getAttribute('data-id');
+            try {
+                const r = await fetch(API_MAILING + 'contatos/' + id + '/tratar/', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + getToken() },
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) { alert(data.detail || 'Erro ao marcar tratado.'); return; }
+                carregarMailing({});
+            } catch (err) {
+                alert(err.message);
+            }
+            return;
+        }
+
+        const btnTmpl = e.target.closest('.btn-funil-tmpl');
+        if (!btnTmpl || btnTmpl.disabled) return;
+        const aba = btnTmpl.getAttribute('data-aba');
+        const id = btnTmpl.getAttribute('data-id');
+        const preview = btnTmpl.getAttribute('title') || '';
+        if (!confirm(`Enviar template Meta (${aba})?\n\n${preview}`)) return;
+        btnTmpl.disabled = true;
         try {
-            const r = await fetch(API_MAILING + 'contatos/' + id + '/tratar/', {
+            const r = await fetch(API_FUNIL_TMPL + 'enviar/', {
                 method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + getToken() },
+                headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ aba, id }),
             });
             const data = await r.json().catch(() => ({}));
-            if (!r.ok) { alert(data.detail || 'Erro ao marcar tratado.'); return; }
-            carregarMailing({});
+            if (!r.ok || !data.ok) {
+                alert(data.detail || 'Falha no envio do template.');
+                btnTmpl.disabled = false;
+                return;
+            }
+            alert('Template enviado com sucesso.');
+            carregarPedidos({});
         } catch (err) {
-            alert(err.message);
+            alert('Erro ao enviar: ' + err.message);
+            btnTmpl.disabled = false;
         }
     });
 
     function linhaPedido(p) {
         const [dia, hora] = String(p.data_status || '').split(' ');
+        const acao = (String(p.tipo_venda || histState.tipo || '').toUpperCase() === 'INTERESSE')
+            ? btnEnviarTemplate('INTERESSE', p.id, p)
+            : `<button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="alert('Funcionalidade de Tratamento em desenvolvimento')">Tratar</button>`;
         return `
             <tr class="funil-row-anim">
                 <td class="ps-4 fw-bold font-monospace text-primary">${destacar(p.protocolo || '-')}${p.os_instalacao ? `<div class="small fw-normal text-muted">O.S. ${destacar(p.os_instalacao)}</div>` : ''}</td>
@@ -1700,9 +1747,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         ? '<span class="badge bg-success-subtle text-success border border-success-subtle badge-status"><i class="bi bi-stars"></i> Novo</span>'
                         : '<span class="badge bg-light text-muted border badge-status">Já na Base</span>'}
                 </td>
-                <td class="text-end pe-4">
-                    <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="alert('Funcionalidade de Tratamento em desenvolvimento')">Tratar</button>
-                </td>
+                <td class="text-end pe-4">${acao}</td>
             </tr>`;
     }
 

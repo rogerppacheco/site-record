@@ -5789,6 +5789,106 @@ class RepescagemBioRegistro(models.Model):
         return f'{self.protocolo} {self.cpf} {self.resultado_analise}'
 
 
+class FunilTemplateEnvio(models.Model):
+    """Log de envios de template Meta no Funil (Interesse / Churn / Bio)."""
+
+    ABA_INTERESSE = 'INTERESSE'
+    ABA_CHURN = 'CHURN'
+    ABA_BIO = 'BIO'
+    ABA_CHOICES = (
+        (ABA_INTERESSE, 'Interesse'),
+        (ABA_CHURN, 'Repescar Churn'),
+        (ABA_BIO, 'Repescagem Bio'),
+    )
+
+    STATUS_ACEITO = 'ACEITO'
+    STATUS_ENVIADO = 'ENVIADO'
+    STATUS_ENTREGUE = 'ENTREGUE'
+    STATUS_LIDO = 'LIDO'
+    STATUS_FALHOU = 'FALHOU'
+    STATUS_CHOICES = (
+        (STATUS_ACEITO, 'Aceito pela API'),
+        (STATUS_ENVIADO, 'Enviado'),
+        (STATUS_ENTREGUE, 'Entregue'),
+        (STATUS_LIDO, 'Lido'),
+        (STATUS_FALHOU, 'Falhou'),
+    )
+
+    aba = models.CharField(max_length=16, choices=ABA_CHOICES, db_index=True)
+    ref_id = models.CharField(max_length=64, db_index=True, help_text='ID da linha (pedido PAP, churn_id ou CPF bio)')
+    cpf = models.CharField(max_length=14, blank=True, default='', db_index=True)
+    telefone = models.CharField(max_length=20, blank=True, default='')
+    template_nome = models.CharField(max_length=120)
+    body_params = models.JSONField(default=list, blank=True)
+    message_id = models.CharField(max_length=191, blank=True, default='', db_index=True)
+    status_entrega = models.CharField(max_length=20, choices=STATUS_CHOICES, blank=True, default='')
+    sucesso = models.BooleanField(default=False)
+    erro = models.TextField(blank=True, default='')
+    enviado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='funil_template_envios',
+    )
+    enviado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_funil_template_envio'
+        verbose_name = 'Envio template Funil'
+        verbose_name_plural = 'Envios template Funil'
+        ordering = ['-enviado_em']
+        indexes = [
+            models.Index(fields=['aba', 'ref_id', '-enviado_em']),
+            models.Index(fields=['cpf', 'template_nome', '-enviado_em']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.aba} {self.ref_id} {self.template_nome} ({self.status_entrega or "-"})'
+
+
+class AssertivaNomeCache(models.Model):
+    """Nome completo obtido na Assertiva Localize, persistido por CPF/CNPJ (não expira)."""
+
+    cpf = models.CharField(max_length=14, unique=True, help_text='CPF/CNPJ só dígitos')
+    nome = models.CharField(max_length=200)
+    fonte = models.CharField(max_length=32, default='assertiva', blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_assertiva_nome_cache'
+        verbose_name = 'Cache nome Assertiva'
+        verbose_name_plural = 'Caches nome Assertiva'
+
+    def __str__(self) -> str:
+        return f'{self.cpf} {self.nome}'
+
+
+class RepescagemBioPedidoPap(models.Model):
+    """Data do pedido PAP (Consulta OS) por CPF na Repescagem Bio — não expira quando há data."""
+
+    cpf = models.CharField(max_length=14, unique=True, help_text='CPF só dígitos')
+    data_pedido = models.DateTimeField(null=True, blank=True)
+    numero_pedido = models.CharField(max_length=40, blank=True, default='')
+    numero_os = models.CharField(max_length=40, blank=True, default='')
+    de_outro_pdv = models.BooleanField(null=True, blank=True)
+    sem_pedido = models.BooleanField(default=False)
+    fonte = models.CharField(max_length=32, default='consulta_os_pap', blank=True)
+    consultado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crm_repescagem_bio_pedido_pap'
+        verbose_name = 'Pedido PAP (Repescagem Bio)'
+        verbose_name_plural = 'Pedidos PAP (Repescagem Bio)'
+
+    def __str__(self) -> str:
+        if self.sem_pedido:
+            return f'{self.cpf} sem pedido'
+        return f'{self.cpf} {self.data_pedido}'
+
+
 class MailingLote(models.Model):
     """Lote de mailing comprado no mercado (import XLS → disparo template Meta)."""
 

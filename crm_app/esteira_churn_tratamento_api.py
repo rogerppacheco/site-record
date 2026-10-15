@@ -294,6 +294,18 @@ class EsteiraChurnTratamentoView(APIView):
         start = (page - 1) * page_size
         lista_pagina = linhas[start:start + page_size]
 
+        # Elegibilidade de template (página atual) — telefone/endereço vêm da venda CRM.
+        from crm_app.services.funil_template_envio_service import enriquecer_linha_churn
+        venda_ids = [x['venda_id'] for x in lista_pagina if x.get('venda_id')]
+        vendas_map = {
+            v.pk: v
+            for v in Venda.objects.filter(pk__in=venda_ids).select_related('cliente')
+        } if venda_ids else {}
+        lista_pagina = [
+            enriquecer_linha_churn(item, venda=vendas_map.get(item.get('venda_id')))
+            for item in lista_pagina
+        ]
+
         ranking = sorted(ranking_map.values(), key=lambda x: (-x['total_churn'], x['vendedor']))
         pos = 1
         for r in ranking:

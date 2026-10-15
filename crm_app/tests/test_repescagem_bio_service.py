@@ -1,8 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
+from crm_app.models import HistoricoPapPedido, RepescagemBioPedidoPap
 from crm_app.services import repescagem_bio_service as svc
 
 
@@ -263,3 +264,59 @@ class DividirPeriodoTests(SimpleTestCase):
     def test_um_dia(self):
         self.assertEqual(svc.dividir_periodo(date(2026, 10, 15), date(2026, 10, 15)),
                          [(date(2026, 10, 15), date(2026, 10, 15))])
+
+
+class PersistenciaDataPedidoPapTests(TestCase):
+    """Data do pedido PAP: RepescagemBioPedidoPap (fonte da verdade, sem expirar)."""
+
+    CPF = '12345678901'
+
+    def test_hit_bd_nao_depende_de_historico_legado(self):
+        data_pedido = _dt('08/10/2026 12:08')
+        RepescagemBioPedidoPap.objects.create(
+            cpf=self.CPF,
+            data_pedido=data_pedido,
+            numero_pedido='PED-HIT',
+            numero_os='11726750',
+            de_outro_pdv=True,
+            sem_pedido=False,
+        )
+        infos = svc.infos_pedido_pap_por_cpf([self.CPF], agora=_dt('15/10/2026 16:00'))
+        info = infos[self.CPF]
+        self.assertTrue(info['consultado'])
+        self.assertFalse(info.get('sem_pedido'))
+        self.assertEqual(info['data_criacao'], data_pedido)
+        self.assertEqual(info['numero_os'], '11726750')
+
+    def test_miss_grava_bd_e_segunda_leitura_reutiliza(self):
+        data_pedido = _dt('08/10/2026 12:08')
+        svc._gravar_cache_pedido_pap(self.CPF, [{
+            'numero_os': '11726750',
+            'data_hora': '08/10/2026 12:08',
+            'status': 'CONSTA',
+            'nao_pertence_pdv': True,
+        }])
+        reg = RepescagemBioPedidoPap.objects.get(cpf=self.CPF)
+        self.assertEqual(reg.data_pedido, data_pedido)
+        self.assertFalse(reg.sem_pedido)
+        self.assertEqual(HistoricoPapPedido.objects.get(numero_pedido='OS-11726750').data_criacao_pap, data_pedido)
+
+        agora = _dt('15/10/2026 16:00')
+        n1 = svc.infos_pedido_pap_por_cpf([self.CPF], agora=agora)
+        n2 = svc.infos_pedido_pap_por_cpf([self.CPF], agora=agora + timedelta(days=60))
+        self.assertEqual(n1[self.CPF]['data_criacao'], data_pedido)
+        self.assertEqual(n2[self.CPF]['data_criacao'], data_pedido)
+        self.assertTrue(n2[self.CPF]['consultado'])
+
+    def test_sem_pedido_expira_ttl_curto_para_reconsultar(self):
+        svc._gravar_cache_pedido_pap(self.CPF, [])
+        agora = timezone.now()
+        dentro = svc.infos_pedido_pap_por_cpf([self.CPF], agora=agora)
+        self.assertTrue(dentro[self.CPF]['consultado'])
+        self.assertTrue(dentro[self.CPF].get('sem_pedido'))
+        self.assertTrue(RepescagemBioPedidoPap.objects.get(cpf=self.CPF).sem_pedido)
+
+        fora = svc.infos_pedido_pap_por_cpf(
+            [self.CPF], agora=agora + svc.TTL_SEM_PEDIDO_PAP + timedelta(minutes=1),
+        )
+        self.assertFalse(fora[self.CPF]['consultado'])

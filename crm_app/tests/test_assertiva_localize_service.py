@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from typing import Any, Optional
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import requests
 from django.core.cache import cache
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
+from crm_app.models import AssertivaNomeCache
 from crm_app.services.assertiva_localize_service import (
     AssertivaConfigurationError,
     AssertivaError,
     AssertivaLocalizeService,
+    obter_nome_por_cpf,
+    obter_primeiro_nome_por_cpf,
 )
 
 
@@ -76,6 +79,7 @@ class AssertivaLocalizeServiceTests(SimpleTestCase):
     def test_seleciona_contatos_e_endereco_mais_confiaveis(self) -> None:
         payload = {
             "resposta": {
+                "nome": "MARIA DA SILVA SANTOS",
                 "telefones": {
                     "moveis": [
                         {
@@ -124,6 +128,8 @@ class AssertivaLocalizeServiceTests(SimpleTestCase):
 
         dados = servico.consultar_para_credito("123.456.789-01")
 
+        self.assertEqual(dados.nome, "MARIA DA SILVA SANTOS")
+        self.assertEqual(dados.primeiro_nome, "Maria")
         self.assertEqual(dados.telefone_principal, "31999992222")
         self.assertEqual(dados.telefone_secundario, "31988881111")
         self.assertEqual(dados.email_principal, "cliente@exemplo.com")
@@ -184,3 +190,81 @@ class AssertivaLocalizeServiceTests(SimpleTestCase):
             "não respondeu dentro do tempo esperado",
         ):
             servico.consultar_para_credito("12345678901")
+
+    def test_selecionar_nome_em_cadastro_basico(self) -> None:
+        nome = AssertivaLocalizeService._selecionar_nome(
+            {"cadastroBasico": {"nomeCompleto": "  PEDRO ALVES  "}}
+        )
+        self.assertEqual(nome, "PEDRO ALVES")
+
+
+@override_settings(
+    ASSERTIVA_API_BASE_URL="https://api.assertiva.test",
+    ASSERTIVA_TOKEN_URL="https://api.assertiva.test/oauth2/v3/token",
+    CACHES={
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "assertiva-nome-bd-tests",
+        }
+    },
+)
+class ObterNomePorCpfPersistenciaTests(TestCase):
+    def setUp(self) -> None:
+        cache.clear()
+
+    def _servico_com_nome(self, nome: str) -> AssertivaLocalizeService:
+        fake_session = FakeSession({"resposta": {"nome": nome}})
+        return AssertivaLocalizeService(
+            client_id="client-id",
+            client_secret="client-secret",
+            http_session=fake_session,  # type: ignore[arg-type]
+        )
+
+    def test_hit_bd_nao_chama_api(self) -> None:
+        AssertivaNomeCache.objects.create(
+            cpf="12345678901",
+            nome="JOANA PRADO LIMA",
+            fonte="assertiva",
+        )
+        with patch(
+            "crm_app.services.assertiva_localize_service.AssertivaLocalizeService"
+        ) as mock_cls:
+            nome = obter_nome_por_cpf("123.456.789-01")
+        self.assertEqual(nome, "JOANA PRADO LIMA")
+        mock_cls.assert_not_called()
+
+    def test_miss_consulta_api_e_grava_bd(self) -> None:
+        servico = self._servico_com_nome("JOANA PRADO LIMA")
+        with patch(
+            "crm_app.services.assertiva_localize_service.AssertivaLocalizeService",
+            return_value=servico,
+        ):
+            nome = obter_nome_por_cpf("12345678901")
+        self.assertEqual(nome, "JOANA PRADO LIMA")
+        registro = AssertivaNomeCache.objects.get(cpf="12345678901")
+        self.assertEqual(registro.nome, "JOANA PRADO LIMA")
+        self.assertEqual(registro.fonte, "assertiva")
+        self.assertEqual(obter_primeiro_nome_por_cpf("12345678901"), "Joana")
+
+    def test_falha_api_retorna_none_sem_gravar(self) -> None:
+        with patch(
+            "crm_app.services.assertiva_localize_service.AssertivaLocalizeService",
+            side_effect=AssertivaError("indisponível"),
+        ):
+            nome = obter_nome_por_cpf("12345678901")
+        self.assertIsNone(nome)
+        self.assertFalse(AssertivaNomeCache.objects.filter(cpf="12345678901").exists())
+
+    def test_segunda_chamada_usa_bd_sem_api(self) -> None:
+        servico = self._servico_com_nome("PEDRO ALVES COSTA")
+        with patch(
+            "crm_app.services.assertiva_localize_service.AssertivaLocalizeService",
+            return_value=servico,
+        ) as mock_cls:
+            n1 = obter_nome_por_cpf("12345678901")
+            cache.clear()  # força lookup via BD, não cache Django
+            n2 = obter_nome_por_cpf("12345678901")
+        self.assertEqual(n1, "PEDRO ALVES COSTA")
+        self.assertEqual(n2, "PEDRO ALVES COSTA")
+        self.assertEqual(mock_cls.call_count, 1)
+        self.assertEqual(AssertivaNomeCache.objects.filter(cpf="12345678901").count(), 1)

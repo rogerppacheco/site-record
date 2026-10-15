@@ -373,15 +373,22 @@ class FunilHistoricoPapPedidosView(APIView):
         inicio = (page - 1) * page_size
         qs = qs_tipo.order_by(*ordenacao)[inicio:inicio + page_size]
 
+        from crm_app.services.funil_template_envio_service import enriquecer_linha_interesse
+
         res = []
         for p in qs:
             payload = p.payload or {}
             mapped = map_pedido_api(payload, p.tipo_venda)
+            mapped["tipo_venda"] = p.tipo_venda or mapped.get("tipo_venda")
             num_norm = normalizar_pedido(p.numero_pedido)
 
             cliente_val = mapped.get("cliente") or payload.get("cliente") or payload.get("nomeCliente") or "Desconhecido"
             doc_val = mapped.get("cpf") or mapped.get("documento") or payload.get("cpf") or payload.get("documento") or ""
             status_val = p.status_exibicao or "Desconhecido"
+
+            envio = {}
+            if (p.tipo_venda or "").upper() == "INTERESSE":
+                envio = enriquecer_linha_interesse(mapped, pedido_id=p.id)
 
             res.append({
                 "id": p.id,
@@ -393,6 +400,7 @@ class FunilHistoricoPapPedidosView(APIView):
                 "status_primario": status_val,
                 "novo_nesta_busca": num_norm in novos_set,
                 "data_status": mapped.get("data_pedido") or "",
+                **envio,
             })
 
         return Response({

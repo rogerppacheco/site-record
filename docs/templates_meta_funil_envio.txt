@@ -1,0 +1,71 @@
+Templates Funil de Tratamento — envio WhatsAtende conexão #247
+Categoria: UTILITY | Idioma: pt_BR
+
+==============================================================================
+INTERESSE — nio_consulta_viabilidade_v1 (já aprovado)
+==============================================================================
+Olá, {{1}}.
+
+Informação sobre o seu pedido de internet.
+
+Crédito e viabilidade aprovados para o endereço {{2}}.
+
+O pedido Nio Fibra {{3}} está pronto para continuar.
+
+Clique em uma das opções abaixo:
+
+{{1}} = primeiro nome
+{{2}} = endereço resumido
+{{3}} = número do pedido PAP
+Botões: Continuar pedido | Falar com atendente | Estou com dúvida
+
+Elegível: INTERESSE com telefone + nome + endereço + pedido; CPF sem Venda no CRM.
+
+==============================================================================
+REPESCAR CHURN — nio_reativacao_contrato_v1 (já aprovado)
+==============================================================================
+Olá, {{1}}.
+
+O contrato Nio Fibra {{2}}, no endereço {{3}}, está cancelado.
+
+A reativação da fibra neste endereço pode ser solicitada por este WhatsApp.
+
+{{1}} = primeiro nome
+{{2}} = O.S. / pedido
+{{3}} = endereço resumido
+Botões: Quero reativar | Falar com atendente | Estou com dúvida
+
+Elegível: situacao_nio=ADIMPLENTE + telefone + nome + endereço da venda CRM.
+
+==============================================================================
+BIO (repescável) — nio_selfie_pendente_v1 (EDITAR / REAPROVAR na WABA #247)
+==============================================================================
+Olá, {{1}}.
+
+Informação sobre a instalação da sua internet.
+
+Seu pedido {{2}} não foi concluído. Está faltando a selfie.
+
+Para concluí-lo, favor fazer a selfie.
+
+Clique nas opções abaixo:
+
+{{1}} = primeiro nome (CRM ou Assertiva)
+{{2}} = Prot. {protocolo GED}  ex.: Prot. 1453635
+Botões: Falar com atendente | Estou com dúvida
+
+Elegível: repescavel=SIM + telefone + protocolo + nome.
+
+==============================================================================
+CHECKLIST ops — conexão WhatsAtende #247
+==============================================================================
+[ ] WHATSATENDE_WHATSAPP_ID_B=247 no Railway
+[ ] WHATSATENDE_TOKEN_B=<token da conexão Record #247>
+[ ] WHATSAPP_USE_NIO_TEMPLATES=true
+[ ] envios_cliente_ativos=true (WhatsApp config no CRM)
+[ ] Template nio_consulta_viabilidade_v1 aprovado (UTILITY pt_BR)
+[ ] Template nio_reativacao_contrato_v1 aprovado (UTILITY pt_BR)
+[ ] Template nio_selfie_pendente_v1 editado com 2 vars (nome + Prot.) e REAPROVADO
+[ ] Botões selfie: Falar com atendente | Estou com dúvida
+[ ] Smoke: enviar 1 Interesse + 1 Churn ADIMPLENTE + 1 Bio repescável pelo Funil
+[ ] Confirmar dedup 48h (segundo envio bloqueado sem force)

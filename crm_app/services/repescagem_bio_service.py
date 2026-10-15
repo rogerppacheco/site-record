@@ -497,13 +497,16 @@ def _cpf_do_payload(payload: dict) -> str:
 
 
 def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = None) -> dict[str, dict]:
-    """Lê o cache (HistoricoPapPedido) e devolve, por CPF, data do pedido / sem pedido / ainda não consultado.
+    """Lê a data do pedido PAP por CPF.
 
+    Ordem: RepescagemBioPedidoPap (fonte da verdade, data não expira) → legado
+    HistoricoPapPedido. Apenas 'sem pedido' tem TTL curto para permitir nova Consulta OS.
     Cada valor: {consultado, data_criacao, de_outro_pdv, numero_os, em_andamento}.
     """
     from django.db.models import Q
+    from django.db.models.expressions import RawSQL
 
-    from crm_app.models import HistoricoPapPedido
+    from crm_app.models import HistoricoPapPedido, RepescagemBioPedidoPap
 
     agora = agora or timezone.now()
     alvos = {normalizar_documento(c) for c in cpfs if normalizar_documento(c)}
@@ -520,11 +523,47 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
     if not alvos:
         return {}
 
-    # Evita payload__icontains (varre o JSON e deixa a listagem lenta a cada filtro).
-    # Usa a chave cpf do JSON + cache desta aba + marcadores BIO-SEM-*.
-    from django.db.models.expressions import RawSQL
+    ja_no_modelo_dedicado: set[str] = set()
+    for reg in RepescagemBioPedidoPap.objects.filter(cpf__in=list(alvos)):
+        ja_no_modelo_dedicado.add(reg.cpf)
+        if reg.sem_pedido or not reg.data_pedido:
+            quando = reg.consultado_em or agora
+            if agora - quando <= TTL_SEM_PEDIDO_PAP:
+                vazios[reg.cpf] = {
+                    'consultado': True,
+                    'data_criacao': None,
+                    'de_outro_pdv': None,
+                    'numero_os': '',
+                    'em_andamento': False,
+                    'sem_pedido': True,
+                }
+            # TTL expirado → consultado=False (dispara nova Consulta OS); não cai no legado.
+            continue
+        vazios[reg.cpf] = {
+            'consultado': True,
+            'data_criacao': reg.data_pedido,
+            'de_outro_pdv': reg.de_outro_pdv,
+            'numero_os': (reg.numero_os or '')[:40],
+            'em_andamento': False,
+            'sem_pedido': False,
+        }
 
-    numeros_sem = [_numero_cache_sem_pedido(cpf) for cpf in alvos]
+    # Só busca legado HistoricoPapPedido para CPFs que nunca tiveram registro dedicado.
+    faltando = {
+        cpf for cpf, info in vazios.items()
+        if not info.get('consultado') and cpf not in ja_no_modelo_dedicado
+    }
+    if not faltando:
+        return vazios
+
+    # Legado: registros antigos só em HistoricoPapPedido (antes do modelo dedicado).
+    # RawSQL com JSON/regexp_replace é específico do PostgreSQL.
+    from django.db import connection
+
+    if connection.vendor != 'postgresql':
+        return vazios
+
+    numeros_sem = [_numero_cache_sem_pedido(cpf) for cpf in faltando]
     qs = (
         HistoricoPapPedido.objects.annotate(
             cpf_digits=RawSQL(
@@ -535,7 +574,7 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
         .filter(
             Q(numero_pedido__in=numeros_sem)
             | Q(origem=ORIGEM_CACHE_CONSTA)
-            | Q(cpf_digits__in=list(alvos))
+            | Q(cpf_digits__in=list(faltando))
         )
         .values_list('numero_pedido', 'data_criacao_pap', 'payload', 'capturado_em')
     )
@@ -545,7 +584,7 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
         cpf = _cpf_do_payload(payload)
         if not cpf and str(numero).startswith('BIO-SEM-'):
             cpf = normalizar_documento(str(numero)[len('BIO-SEM-'):])
-        if cpf not in alvos:
+        if cpf not in faltando:
             continue
         if payload.get('semPedido'):
             quando = capturado_em or agora
@@ -564,7 +603,6 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
         if not data_criacao:
             continue
         atual = vazios[cpf]
-        # Pedido mais antigo costuma ser o que bloqueou a venda (CONSTA PEDIDO).
         if not atual.get('consultado') or (
             atual.get('data_criacao') and data_criacao < atual['data_criacao']
         ) or (atual.get('consultado') and atual.get('sem_pedido')):
@@ -583,13 +621,24 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
 
 
 def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
-    """Grava o resultado da Consulta OS no HistoricoPapPedido para a próxima listagem."""
-    from crm_app.models import HistoricoPapPedido
+    """Persiste o resultado da Consulta OS: RepescagemBioPedidoPap (fonte da verdade) + legado HistoricoPapPedido."""
+    from crm_app.models import HistoricoPapPedido, RepescagemBioPedidoPap
 
     cpf = normalizar_documento(cpf)
     if not cpf:
         return
     if not detalhes:
+        RepescagemBioPedidoPap.objects.update_or_create(
+            cpf=cpf,
+            defaults={
+                'data_pedido': None,
+                'numero_pedido': '',
+                'numero_os': '',
+                'de_outro_pdv': None,
+                'sem_pedido': True,
+                'fonte': 'consulta_os_pap',
+            },
+        )
         HistoricoPapPedido.objects.update_or_create(
             numero_pedido=_numero_cache_sem_pedido(cpf),
             defaults={
@@ -608,6 +657,9 @@ def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
         )
         return
 
+    # Pedido mais antigo costuma ser o que bloqueou a venda (CONSTA PEDIDO).
+    melhor: Optional[dict] = None
+    melhor_data: Optional[datetime] = None
     for item in detalhes:
         data_criacao = _parse_data_hora_pap(item.get('data_hora') or item.get('dataCriacao'))
         numero_os = re.sub(r'\D', '', str(item.get('numero_os') or item.get('numeroOs') or ''))
@@ -637,7 +689,38 @@ def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
                 'payload': payload,
             },
         )
+        if data_criacao and (melhor_data is None or data_criacao < melhor_data):
+            melhor_data = data_criacao
+            melhor = {
+                'data_pedido': data_criacao,
+                'numero_pedido': numero_pedido,
+                'numero_os': numero_os[:40],
+                'de_outro_pdv': outro,
+            }
+
     HistoricoPapPedido.objects.filter(numero_pedido=_numero_cache_sem_pedido(cpf)).delete()
+    if melhor:
+        RepescagemBioPedidoPap.objects.update_or_create(
+            cpf=cpf,
+            defaults={
+                **melhor,
+                'sem_pedido': False,
+                'fonte': 'consulta_os_pap',
+            },
+        )
+    else:
+        # Consulta retornou linhas sem data parseável — marca sem pedido para não loop infinito.
+        RepescagemBioPedidoPap.objects.update_or_create(
+            cpf=cpf,
+            defaults={
+                'data_pedido': None,
+                'numero_pedido': '',
+                'numero_os': '',
+                'de_outro_pdv': None,
+                'sem_pedido': True,
+                'fonte': 'consulta_os_pap',
+            },
+        )
 
 
 def _consultar_consta_no_pap(cpf: str) -> None:
@@ -801,7 +884,7 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
     ):
         venda_por_cpf.setdefault(normalizar_documento(venda['cliente__cpf_cnpj']), venda)
 
-    # CONSTA PEDIDO: só avalia com data do pedido no PAP. Cache primeiro; o que faltar dispara Consulta OS.
+    # CONSTA PEDIDO: só avalia com data do pedido no PAP. BD primeiro; o que faltar dispara Consulta OS.
     cpfs_consta = {
         cpf for cpf, venda in venda_por_cpf.items()
         if _eh_consta_pedido(venda.get('status_tratamento__nome') or '')

@@ -13,6 +13,7 @@ from .esteira_churn_tratamento_api import (
     EsteiraChurnTratamentoView,
 )
 from .repescagem_bio_api import RepescagemBioImportacaoView, RepescagemBioListaView
+from .funil_template_api import FunilTemplateEnviarView, FunilTemplatePreflightView
 from .mailing_api import (
     MailingContatoTratarView,
     MailingFunilListaView,
@@ -482,6 +483,8 @@ urlpatterns = [
     path('esteira/churn-tratamento/debitos-nio/<int:pk>/cancelar/', ChurnDebitoNioLoteCancelarView.as_view(), name='churn-debitos-nio-cancelar'),
     path('repescagem-bio/', RepescagemBioListaView.as_view(), name='repescagem-bio-lista'),
     path('repescagem-bio/importacoes/', RepescagemBioImportacaoView.as_view(), name='repescagem-bio-importacao'),
+    path('funil-templates/enviar/', FunilTemplateEnviarView.as_view(), name='funil-template-enviar'),
+    path('funil-templates/preflight/', FunilTemplatePreflightView.as_view(), name='funil-template-preflight'),
     path('mailings/', MailingLoteListCreateView.as_view(), name='mailing-lotes'),
     path('mailings/funil/', MailingFunilListaView.as_view(), name='mailing-funil'),
     path('mailings/contatos/<int:pk>/tratar/', MailingContatoTratarView.as_view(), name='mailing-contato-tratar'),
