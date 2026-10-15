@@ -1,6 +1,6 @@
 """Testes da API Churn / Cancelamentos na Esteira."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from django.utils import timezone
 from rest_framework import status
@@ -78,3 +78,36 @@ class EsteiraChurnTratamentoTests(APITestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row['TP_RETIRADA'], 'CANCELAMENTO')
         self.assertEqual(row['cd_tr_vdd_original'], 'TT999')
+        self.assertEqual(row['nome_cliente'], 'CLIENTE CHURN TESTE')
+        self.assertEqual(row['cpf_cliente'], '98765432100')
+
+    def test_todos_os_meses_inclui_outra_safra(self):
+        outro = Cliente.objects.create(cpf_cnpj='11122233344', nome_razao_social='OUTRO CLIENTE')
+        Venda.objects.create(
+            vendedor=self.vendedor,
+            cliente=outro,
+            status_tratamento=self.st_cad,
+            status_esteira=self.st_inst,
+            ordem_servico='11112222',
+            data_instalacao=date(2020, 1, 10),
+            ativo=True,
+        )
+        ImportacaoChurn.objects.create(
+            numero_pedido='11112222',
+            nr_ordem='11112222',
+            tipo_retirada='CANCELAMENTO',
+            motivo_retirada='MUDANCA',
+            anomes_retirada='202001',
+            dt_retirada=date(2020, 1, 15),
+        )
+        self.client.force_authenticate(user=self.gestor)
+        so_junho = self.client.get('/api/crm/esteira/churn-tratamento/?mes_referencia=2025-06')
+        ids_junho = {x.get('cpf_cliente') for x in so_junho.json()['lista']}
+        self.assertIn('98765432100', ids_junho)
+        self.assertNotIn('11122233344', ids_junho)
+
+        todos = self.client.get('/api/crm/esteira/churn-tratamento/?mes_referencia=todos')
+        ids_todos = {x.get('cpf_cliente') for x in todos.json()['lista']}
+        self.assertIn('98765432100', ids_todos)
+        self.assertIn('11122233344', ids_todos)
+        self.assertTrue(any(m.get('mes') == '2020-01' for m in todos.json().get('meses') or []))

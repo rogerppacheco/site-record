@@ -6,7 +6,8 @@ from calendar import monthrange
 from datetime import date
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -37,6 +38,23 @@ def _parse_mes_referencia(raw: str | None) -> tuple[date, date, str]:
             fim = hoje
             mes_ref = inicio.strftime('%Y-%m')
     return inicio, fim, mes_ref
+
+
+def _meses_churn(campo_mes: str) -> list[dict]:
+    """Meses disponíveis na base churn, para o filtro da aba do Funil."""
+    campo_data = 'dt_gross' if campo_mes == 'gross' else 'dt_retirada'
+    linhas = (
+        ImportacaoChurn.objects.exclude(**{f'{campo_data}__isnull': True})
+        .annotate(mes=TruncMonth(campo_data))
+        .values('mes')
+        .annotate(total=Count('id'))
+        .order_by('-mes')
+    )
+    return [
+        {'mes': linha['mes'].strftime('%Y-%m'), 'total': linha['total']}
+        for linha in linhas
+        if linha['mes']
+    ]
 
 
 def _fmt_data(val) -> str | None:
@@ -80,7 +98,12 @@ class EsteiraChurnTratamentoView(APIView):
             )
 
         User = get_user_model()
-        inicio_mes, fim_mes, mes_ref = _parse_mes_referencia(request.query_params.get('mes_referencia'))
+        raw_mes = (request.query_params.get('mes_referencia') or '').strip()
+        todos_meses = raw_mes.lower() in ('todos', 'all')
+        if todos_meses:
+            inicio_mes, fim_mes, mes_ref = date(2000, 1, 1), timezone.localdate(), 'todos'
+        else:
+            inicio_mes, fim_mes, mes_ref = _parse_mes_referencia(raw_mes or None)
         campo_mes = (request.query_params.get('campo_mes') or 'retirada').strip().lower()
         if campo_mes not in ('retirada', 'gross'):
             campo_mes = 'retirada'
@@ -89,13 +112,14 @@ class EsteiraChurnTratamentoView(APIView):
         variantes_anomes = anomes_filtro_variantes(anomes_alvo)
 
         churn_qs = ImportacaoChurn.objects.all().order_by('-dt_retirada', '-id')
-        if campo_mes == 'gross':
-            churn_qs = churn_qs.filter(anomes_gross__in=variantes_anomes)
-        else:
-            churn_qs = churn_qs.filter(
-                Q(anomes_retirada__in=variantes_anomes)
-                | Q(dt_retirada__gte=inicio_mes, dt_retirada__lte=fim_mes)
-            )
+        if not todos_meses:
+            if campo_mes == 'gross':
+                churn_qs = churn_qs.filter(anomes_gross__in=variantes_anomes)
+            else:
+                churn_qs = churn_qs.filter(
+                    Q(anomes_retirada__in=variantes_anomes)
+                    | Q(dt_retirada__gte=inicio_mes, dt_retirada__lte=fim_mes)
+                )
 
         anomes_gross_extra = (request.query_params.get('anomes_gross') or '').strip()
         if anomes_gross_extra:
@@ -281,6 +305,7 @@ class EsteiraChurnTratamentoView(APIView):
                 'consultores': consultores_opts,
                 'tipos_retirada': sorted({t for t in tipos_opts if t}),
             },
+            'meses': _meses_churn(campo_mes),
             'notas': {
                 'cruzamento': (
                     'Cruzamento pelo número do pedido/O.S. (variantes com e sem zeros). '
