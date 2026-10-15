@@ -6924,6 +6924,10 @@ _CHURN_ALIASES = {
     'NR_PEDIDO': 'NUMERO_PEDIDO',
     'TP_RETIRADA': 'TIPO_RETIRADA',
     'DS_MOTIVO_RETIRADA': 'MOTIVO_RETIRADA',
+    'ANOMES_RET': 'ANOMES_RETIRADA',
+    'DT_INSTALACAO': 'DT_GROSS',
+    'NM_MUNICIPIO': 'MUNICIPIO',
+    'SG_UF': 'UF',
 }
 _CHURN_COLUNA_MAP = {
     'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor',
@@ -7000,7 +7004,12 @@ def _data_planilha_churn(val):
         return val.date()
     if isinstance(val, date):
         return val
-    convertido = pd.to_datetime(val, errors='coerce')
+    # .xlsb (pyxlsb) entrega datas como número serial do Excel; pd.to_datetime leria como nanossegundos (1970).
+    if isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, bool):
+        if 1 <= float(val) <= 2958465:
+            return (datetime(1899, 12, 30) + timedelta(days=int(float(val)))).date()
+        return None
+    convertido = pd.to_datetime(val, errors='coerce', dayfirst=True)
     if pd.isna(convertido):
         return None
     return convertido.date()
