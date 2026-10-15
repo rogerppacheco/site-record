@@ -12,6 +12,7 @@ from .esteira_churn_tratamento_api import (
     ChurnDebitoNioLoteView,
     EsteiraChurnTratamentoView,
 )
+from .repescagem_bio_api import RepescagemBioImportacaoView, RepescagemBioListaView
 from .record_apoia_api import (
     RecordApoiaUploadView,
     RecordApoiaListView,
@@ -472,6 +473,8 @@ urlpatterns = [
     path('esteira/churn-tratamento/', EsteiraChurnTratamentoView.as_view(), name='esteira-churn-tratamento'),
     path('esteira/churn-tratamento/debitos-nio/', ChurnDebitoNioLoteView.as_view(), name='churn-debitos-nio-lote'),
     path('esteira/churn-tratamento/debitos-nio/<int:pk>/cancelar/', ChurnDebitoNioLoteCancelarView.as_view(), name='churn-debitos-nio-cancelar'),
+    path('repescagem-bio/', RepescagemBioListaView.as_view(), name='repescagem-bio-lista'),
+    path('repescagem-bio/importacoes/', RepescagemBioImportacaoView.as_view(), name='repescagem-bio-importacao'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---

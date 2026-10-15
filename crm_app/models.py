@@ -5714,6 +5714,81 @@ class ChurnConsultaDebitoNio(models.Model):
         return f'{self.cpf} {self.situacao}'
 
 
+class RepescagemBioImportacao(models.Model):
+    """Download do relatório detalhado de digitalizações do GED360 (Br Pronto) por período de envio."""
+
+    STATUS_EM_ANDAMENTO = 'EM_ANDAMENTO'
+    STATUS_CONCLUIDO = 'CONCLUIDO'
+    STATUS_ERRO = 'ERRO'
+    STATUS_CHOICES = (
+        (STATUS_EM_ANDAMENTO, 'Em andamento'),
+        (STATUS_CONCLUIDO, 'Concluído'),
+        (STATUS_ERRO, 'Erro'),
+    )
+
+    iniciado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='repescagem_bio_importacoes',
+    )
+    data_inicial = models.DateField()
+    data_final = models.DateField()
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_EM_ANDAMENTO, db_index=True)
+    etapa = models.CharField(max_length=255, blank=True, default='')
+    login_ged = models.CharField(max_length=50, blank=True, default='')
+    linhas = models.PositiveIntegerField(default=0)
+    novos = models.PositiveIntegerField(default=0)
+    atualizados = models.PositiveIntegerField(default=0)
+    cpfs = models.PositiveIntegerField(default=0)
+    mensagem = models.TextField(blank=True, default='')
+    iniciado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_repescagem_bio_importacao'
+        verbose_name = 'Importação Repescagem Bio (GED360)'
+        verbose_name_plural = 'Importações Repescagem Bio (GED360)'
+        ordering = ['-iniciado_em']
+
+    def __str__(self) -> str:
+        return f'Repescagem Bio #{self.pk} {self.data_inicial:%d/%m/%Y}-{self.data_final:%d/%m/%Y} {self.status}'
+
+
+class RepescagemBioRegistro(models.Model):
+    """Uma linha do relatório detalhado de digitalizações do GED360 (cada etapa de um protocolo)."""
+
+    protocolo = models.CharField(max_length=30)
+    origem_digitalizacao = models.CharField(max_length=60, blank=True, default='')
+    data_envio = models.DateTimeField(db_index=True)
+    cpf = models.CharField(max_length=14, db_index=True)
+    msisdn = models.CharField(max_length=20, blank=True, default='')
+    data_digitalizacao = models.DateTimeField(null=True, blank=True)
+    data_conferencia = models.DateTimeField(null=True, blank=True)
+    login_digitalizacao = models.CharField(max_length=30, blank=True, default='', db_index=True)
+    tipo_servico = models.CharField(max_length=60, blank=True, default='')
+    resultado_analise = models.CharField(max_length=80, blank=True, default='')
+    selfie_capturada = models.CharField(max_length=10, blank=True, default='')
+    origem_pedido = models.CharField(max_length=30, blank=True, default='')
+    codigo_pdv = models.CharField(max_length=20, blank=True, default='')
+    importacao = models.ForeignKey(
+        RepescagemBioImportacao, on_delete=models.SET_NULL, null=True, blank=True, related_name='registros',
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_repescagem_bio_registro'
+        verbose_name = 'Registro Repescagem Bio (GED360)'
+        verbose_name_plural = 'Registros Repescagem Bio (GED360)'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['protocolo', 'origem_digitalizacao', 'data_envio'], name='uniq_repescagem_bio_etapa',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.protocolo} {self.cpf} {self.resultado_analise}'
+
+
 class GdpPrecoMunicipioManager(models.Manager):
     def get_queryset(self) -> GdpPrecoMunicipioQuerySet:
         return GdpPrecoMunicipioQuerySet(self.model, using=self._db)

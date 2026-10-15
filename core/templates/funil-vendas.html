@@ -182,6 +182,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                             <i class="bi bi-person-x-fill text-danger me-2"></i> TRATAR CHURN <span class="badge bg-secondary ms-2 rounded-pill" id="count-churn">—</span>
                         </button>
                     </li>
+                    <li class="nav-item">
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-bio" data-tipo="BIO" type="button">
+                            <i class="bi bi-fingerprint text-primary me-2"></i> REPESCAGEM BIO <span class="badge bg-secondary ms-2 rounded-pill" id="count-bio">—</span>
+                        </button>
+                    </li>
                 </ul>
                 <div class="pb-2 pe-2 d-flex gap-2" id="acoes-pap">
                     <!-- Botão Discreto de Nova Busca -->
@@ -210,6 +215,23 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                             <li><button type="button" class="dropdown-item" id="btn-nio-forcar"><i class="bi bi-arrow-repeat me-2"></i>Reconsultar todos (ignora as últimas 24 horas)</button></li>
                         </ul>
                     </div>
+                </div>
+                <div class="pb-2 pe-2 d-flex gap-2 d-none" id="acoes-bio">
+                    <button type="button" class="btn btn-primary fw-bold shadow-sm" id="btn-bio-buscar" title="Baixa do GED360 o relatório detalhado de digitalizações pela Data de Envio do período selecionado">
+                        <i class="bi bi-cloud-download me-2"></i>Buscar no GED
+                    </button>
+                </div>
+            </div>
+
+            <div id="bio-prog" class="hist-prog d-none" role="status" aria-live="polite">
+                <div class="spinner-border" id="bio-prog-spin" aria-hidden="true"></div>
+                <div class="hist-prog-corpo">
+                    <div class="hist-prog-topo">
+                        <span class="hist-prog-titulo" id="bio-prog-titulo">Buscando no GED360…</span>
+                        <span class="hist-prog-tempo" id="bio-prog-periodo"></span>
+                    </div>
+                    <div class="hist-prog-barra indeterminada" id="bio-prog-barra"><div></div></div>
+                    <div class="hist-prog-etapa" id="bio-prog-msg"></div>
                 </div>
             </div>
 
@@ -250,6 +272,16 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <button type="button" data-nio="NAO_CONSULTADO">Não consultados <span class="nio-qtd" data-qtd="NAO_CONSULTADO"></span></button>
                         <button type="button" data-nio="ERRO">Erro <span class="nio-qtd" data-qtd="ERRO"></span></button>
                     </div>
+                    <div class="funil-seg d-none" id="funil-seg-bio" role="group" aria-label="Situação da biometria">
+                        <button type="button" class="active" data-bio="">Todos</button>
+                        <button type="button" data-bio="REPESCAR" title="Link enviado, refazer ou sem biometria"><i class="bi bi-arrow-repeat"></i> A repescar <span class="nio-qtd" data-qtd="REPESCAR"></span></button>
+                        <button type="button" data-bio="APTO">Fez (apto) <span class="nio-qtd" data-qtd="APTO"></span></button>
+                        <button type="button" data-bio="EM_ANALISE">Em análise <span class="nio-qtd" data-qtd="EM_ANALISE"></span></button>
+                        <button type="button" data-bio="LINK_ENVIADO">Link enviado <span class="nio-qtd" data-qtd="LINK_ENVIADO"></span></button>
+                        <button type="button" data-bio="REFAZER">Refazer <span class="nio-qtd" data-qtd="REFAZER"></span></button>
+                        <button type="button" data-bio="RISCO">Risco/Reprovado <span class="nio-qtd" data-qtd="RISCO"></span></button>
+                        <button type="button" data-bio="SEM_BIOMETRIA">Sem biometria <span class="nio-qtd" data-qtd="SEM_BIOMETRIA"></span></button>
+                    </div>
                     <select id="f-mes" class="form-select form-select-sm funil-select" aria-label="Mês da data do pedido" title="Mês pela Data do pedido">
                         <option value="">Todos os meses</option>
                     </select>
@@ -286,6 +318,16 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                                     <th class="py-3">Data da retirada</th>
                                     <th class="py-3">Consultor</th>
                                     <th class="py-3">Situação Nio</th>
+                                    <th class="text-end pe-4 py-3">Ação</th>
+                                </tr>
+                                <tr id="thead-bio" class="d-none">
+                                    <th class="ps-4 py-3">Cliente</th>
+                                    <th class="py-3">CPF</th>
+                                    <th class="py-3">Venda no CRM</th>
+                                    <th class="py-3">Vendedor</th>
+                                    <th class="py-3">Biometria</th>
+                                    <th class="py-3">Último envio no GED</th>
+                                    <th class="py-3">Telefone</th>
                                     <th class="text-end pe-4 py-3">Ação</th>
                                 </tr>
                             </thead>
@@ -549,17 +591,19 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     // LÓGICA DE TRATAMENTO HISTORICO PAP
     
     const TIPOS_HIST = ['INTERESSE', 'PRE_VENDA', 'VENDA'];
-    const TIPOS_ABAS = TIPOS_HIST.concat(['CHURN']);
+    const TIPOS_ABAS = TIPOS_HIST.concat(['CHURN', 'BIO']);
+    const TIPOS_PROPRIOS = ['CHURN', 'BIO'];
     const BADGE_TIPO = { INTERESSE: 'count-interesse', PRE_VENDA: 'count-prevenda', VENDA: 'count-venda' };
     const API_CHURN = '/api/crm/esteira/churn-tratamento/';
+    const API_BIO = '/api/crm/repescagem-bio/';
     const TAMANHOS_PAGINA = [25, 50, 100, 200];
     const LS_FUNIL_PAGE_SIZE = 'funil_hist_page_size';
     // Chaves curtas na URL: o estado sobrevive a F5 e pode ser compartilhado por link.
-    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio' };
+    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio', bio: 'bio' };
 
     const histState = {
         tipo: 'INTERESSE', page: 1, pageSize: 25,
-        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '',
+        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '', bio: '',
     };
     let histMeta = { page: 1, totalPages: 1, count: 0 };
     let histAbort = null;
@@ -567,6 +611,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     let periodoPap = null;
     let nioPoll = null;
     let nioLoteAtual = null;
+    let bioPoll = null;
+    let bioImportacaoAtual = null;
     let buscaDebounce = null;
 
     function esc(v) {
@@ -621,24 +667,45 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.querySelectorAll('#funil-seg-nio button').forEach(b => {
             b.classList.toggle('active', b.getAttribute('data-nio') === histState.nio);
         });
+        document.querySelectorAll('#funil-seg-bio button').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-bio') === histState.bio);
+        });
         document.getElementById('ic-ordem-data').className = histState.ordem === 'antigos' ? 'bi bi-sort-up' : 'bi bi-sort-down';
         const churn = histState.tipo === 'CHURN';
+        const bio = histState.tipo === 'BIO';
+        const pap = !churn && !bio;
         const temFiltro = churn
             ? !!(histState.q || histState.de || histState.ate || histState.nio)
-            : !!(histState.q || histState.status || histState.situacao || histState.de || histState.ate);
+            : bio
+                ? !!(histState.q || histState.bio)
+                : !!(histState.q || histState.status || histState.situacao || histState.de || histState.ate);
         document.getElementById('f-limpar').classList.toggle('d-none', !temFiltro);
-        document.getElementById('f-status').classList.toggle('d-none', churn);
-        document.getElementById('funil-seg').classList.toggle('d-none', churn);
+        document.getElementById('f-status').classList.toggle('d-none', !pap);
+        document.getElementById('funil-seg').classList.toggle('d-none', !pap);
         document.getElementById('funil-seg-nio').classList.toggle('d-none', !churn);
+        document.getElementById('funil-seg-bio').classList.toggle('d-none', !bio);
         document.getElementById('funil-periodo').classList.toggle('d-none', churn);
-        document.getElementById('acoes-pap').classList.toggle('d-none', churn);
+        document.getElementById('funil-periodo').title = bio ? 'Data de envio da biometria no GED ou data da venda no CRM' : 'Data do pedido no PAP';
+        document.getElementById('f-mes').classList.toggle('d-none', bio);
+        document.getElementById('acoes-pap').classList.toggle('d-none', !pap);
         document.getElementById('acoes-churn').classList.toggle('d-none', !churn);
+        document.getElementById('acoes-bio').classList.toggle('d-none', !bio);
         if (!churn) document.getElementById('nio-prog').classList.add('d-none');
-        document.getElementById('thead-pap').classList.toggle('d-none', churn);
+        if (!bio) document.getElementById('bio-prog').classList.add('d-none');
+        document.getElementById('thead-pap').classList.toggle('d-none', !pap);
         document.getElementById('thead-churn').classList.toggle('d-none', !churn);
+        document.getElementById('thead-bio').classList.toggle('d-none', !bio);
         const busca = document.getElementById('f-busca');
-        busca.placeholder = churn ? 'O.S., cliente ou CPF' : 'Protocolo, O.S., cliente ou CPF';
+        busca.placeholder = churn ? 'O.S., cliente ou CPF' : bio ? 'Cliente, CPF, O.S., vendedor ou telefone' : 'Protocolo, O.S., cliente ou CPF';
         document.getElementById('f-mes').title = churn ? 'Mês da retirada do churn' : 'Mês pela Data do pedido';
+    }
+
+    function ultimosDias(qtd) {
+        const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const fim = new Date();
+        const ini = new Date();
+        ini.setDate(fim.getDate() - (qtd - 1));
+        return { de: iso(ini), ate: iso(fim) };
     }
 
     function aplicarFiltros(mudancas) {
@@ -660,11 +727,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             const tipo = e.currentTarget.getAttribute('data-tipo');
             if (tipo === histState.tipo) return;
             // Os status do PAP mudam entre Interesse/Pré-venda/Venda.
-            const mudancas = { tipo, status: '', nio: '' };
-            if (tipo === 'CHURN') {
-                periodoPap = { de: histState.de, ate: histState.ate };
-                Object.assign(mudancas, { situacao: '', de: '', ate: '' });
-            } else if (histState.tipo === 'CHURN' && periodoPap) {
+            const mudancas = { tipo, status: '', nio: '', bio: '' };
+            if (TIPOS_PROPRIOS.includes(tipo)) {
+                if (!TIPOS_PROPRIOS.includes(histState.tipo)) periodoPap = { de: histState.de, ate: histState.ate };
+                Object.assign(mudancas, { situacao: '', de: '', ate: '' }, tipo === 'BIO' ? ultimosDias(7) : {});
+            } else if (TIPOS_PROPRIOS.includes(histState.tipo) && periodoPap) {
                 mudancas.de = periodoPap.de;
                 mudancas.ate = periodoPap.ate;
                 periodoPap = null;
@@ -689,9 +756,13 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     document.querySelectorAll('#funil-seg-nio button').forEach(b => {
         b.addEventListener('click', () => aplicarFiltros({ nio: b.getAttribute('data-nio') }));
     });
+    document.querySelectorAll('#funil-seg-bio button').forEach(b => {
+        b.addEventListener('click', () => aplicarFiltros({ bio: b.getAttribute('data-bio') }));
+    });
     document.getElementById('f-de').addEventListener('change', (e) => aplicarFiltros({ de: e.target.value }));
     document.getElementById('f-ate').addEventListener('change', (e) => aplicarFiltros({ ate: e.target.value }));
     document.getElementById('f-limpar').addEventListener('click', () => {
+        if (histState.tipo === 'BIO') { aplicarFiltros({ q: '', bio: '' }); return; }
         aplicarFiltros({ q: '', status: '', situacao: '', de: '', ate: '', nio: '' });
     });
     document.getElementById('th-ordem-data').addEventListener('click', () => {
@@ -750,10 +821,10 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const ini = count ? (page - 1) * histState.pageSize + 1 : 0;
         const fim = Math.min(page * histState.pageSize, count);
         const fmt = n => n.toLocaleString('pt-BR');
-        const rotulo = histState.tipo === 'CHURN' ? 'registros' : 'pedidos';
+        const rotulo = { CHURN: 'registros', BIO: 'clientes' }[histState.tipo] || 'pedidos';
         document.getElementById('pag-hist-info').innerHTML = count
             ? `Mostrando <strong>${fmt(ini)}–${fmt(fim)}</strong> de <strong>${fmt(count)}</strong> ${rotulo}`
-            : (histState.tipo === 'CHURN' ? 'Nenhum registro' : 'Nenhum pedido');
+            : ({ CHURN: 'Nenhum registro', BIO: 'Nenhum cliente' }[histState.tipo] || 'Nenhum pedido');
         document.getElementById('pag-hist-prev').disabled = page <= 1;
         document.getElementById('pag-hist-next').disabled = page >= totalPages;
         document.getElementById('pag-hist-paginas').innerHTML = paginasVisiveis(page, totalPages).map(n => n === null
@@ -1092,6 +1163,173 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         verificarLoteNio();
     });
 
+    const BIO_SITUACAO = {
+        APTO: { rotulo: 'Fez (apto)', cls: 'bg-success-subtle text-success border border-success-subtle', icone: 'bi-check-circle-fill' },
+        EM_ANALISE: { rotulo: 'Em análise', cls: 'bg-info-subtle text-info-emphasis border border-info-subtle', icone: 'bi-hourglass-split' },
+        LINK_ENVIADO: { rotulo: 'Link enviado', cls: 'bg-warning-subtle text-warning-emphasis border border-warning-subtle', icone: 'bi-send' },
+        REFAZER: { rotulo: 'Refazer', cls: 'bg-warning-subtle text-warning-emphasis border border-warning-subtle', icone: 'bi-arrow-repeat' },
+        RISCO: { rotulo: 'Risco/Reprovado', cls: 'bg-danger-subtle text-danger border border-danger-subtle', icone: 'bi-shield-exclamation' },
+        SEM_BIOMETRIA: { rotulo: 'Sem biometria', cls: 'bg-secondary-subtle text-secondary border', icone: 'bi-dash-circle' },
+    };
+    const fmtDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+
+    function linhaBio(r) {
+        const s = BIO_SITUACAO[r.situacao] || BIO_SITUACAO.SEM_BIOMETRIA;
+        const dica = r.ultimo_resultado ? `${r.ultimo_resultado} · ${r.qtd_envios} envio(s) no GED` : 'Nenhum envio no GED360';
+        const venda = r.venda_id
+            ? `<div class="small text-nowrap">${esc(fmtDataHora(r.data_venda))}</div>
+               ${r.ordem_servico ? `<div class="small text-muted">O.S. ${destacar(r.ordem_servico)}</div>` : ''}
+               ${r.status_esteira ? `<span class="badge bg-light text-muted border">${esc(r.status_esteira)}</span>` : ''}`
+            : '<span class="small text-muted">Sem venda no CRM</span>';
+        const envio = r.ultimo_envio
+            ? `<div class="small text-nowrap">${esc(fmtDataHora(r.ultimo_envio))}</div>
+               <div class="small text-muted">${esc(r.ultima_origem || '')}${r.login_ged ? ` · ${esc(r.login_ged)}` : ''}</div>
+               ${r.protocolo ? `<div class="small text-muted font-monospace">Prot. ${destacar(r.protocolo)}</div>` : ''}`
+            : '<span class="small text-muted">—</span>';
+        return `
+            <tr class="funil-row-anim">
+                <td class="ps-4 fw-medium text-dark">${destacar(r.nome_cliente || '—')}</td>
+                <td class="text-muted small text-nowrap">${destacar(r.cpf || '—')}</td>
+                <td>${venda}</td>
+                <td class="small">${destacar(r.vendedor || '—')}</td>
+                <td class="text-nowrap"><span class="badge badge-nio ${s.cls}" title="${esc(dica)}"><i class="bi ${s.icone} me-1"></i>${s.rotulo}</span>
+                    ${r.ultimo_resultado ? `<div class="small text-muted mt-1">${esc(r.ultimo_resultado)}</div>` : ''}</td>
+                <td>${envio}</td>
+                <td class="small text-nowrap">${destacar(r.telefone || '—')}</td>
+                <td class="text-end pe-4">
+                    <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="alert('Funcionalidade de Repescagem em desenvolvimento')">Repescar</button>
+                </td>
+            </tr>`;
+    }
+
+    async function carregarBio({ rolarTopo = false } = {}) {
+        const tbody = document.getElementById('tbody-resultados');
+        const scroll = document.getElementById('funil-scroll');
+        if (histAbort) histAbort.abort();
+        histAbort = new AbortController();
+        const sinal = histAbort.signal;
+
+        if (tbody.querySelector('.funil-row-anim')) scroll.classList.add('funil-carregando');
+        else tbody.innerHTML = linhasSkeleton(Math.min(histState.pageSize, 8));
+
+        const params = new URLSearchParams({ page: String(histState.page), page_size: String(histState.pageSize) });
+        if (histState.de) params.set('de', histState.de);
+        if (histState.ate) params.set('ate', histState.ate);
+        if (histState.q) params.set('busca', histState.q);
+        if (histState.bio) params.set('situacao', histState.bio);
+
+        try {
+            const r = await fetch(API_BIO + '?' + params.toString(), {
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+                signal: sinal,
+            });
+            const data = await r.json().catch(() => ({}));
+            if (sinal.aborted) return;
+            if (!r.ok) {
+                const detalhe = data.detail || `Erro HTTP ${r.status} ao carregar a Repescagem Bio.`;
+                tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">${esc(detalhe)}</td></tr>`;
+                return;
+            }
+
+            const pag = data.paginacao || {};
+            histMeta = { page: pag.page || 1, totalPages: Math.max(1, pag.total_pages || 1), count: pag.total || 0 };
+            histState.page = histMeta.page;
+            if (data.periodo) {
+                histState.de = data.periodo.de;
+                histState.ate = data.periodo.ate;
+                document.getElementById('f-de').value = histState.de;
+                document.getElementById('f-ate').value = histState.ate;
+            }
+            gravarEstadoNaUrl();
+            renderPaginacao();
+
+            const contagens = data.contagens || {};
+            const totalCpfs = Object.values(contagens).reduce((a, b) => a + (b || 0), 0);
+            contagens.REPESCAR = (contagens.LINK_ENVIADO || 0) + (contagens.REFAZER || 0) + (contagens.SEM_BIOMETRIA || 0);
+            document.getElementById('count-bio').textContent = totalCpfs.toLocaleString('pt-BR');
+            document.querySelectorAll('#funil-seg-bio .nio-qtd').forEach(el => {
+                const n = contagens[el.getAttribute('data-qtd')];
+                el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
+            });
+            const ult = data.ultima_importacao;
+            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Se algum envio foi apto, o CPF conta como apto; senão, vale o envio mais recente.'
+                + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : ' Ainda não houve busca no GED: use "Buscar no GED".');
+
+            const itens = data.lista || [];
+            if (!itens.length) {
+                const temFiltro = !!(histState.q || histState.bio);
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>
+                    ${temFiltro ? 'Nenhum cliente para esses filtros.' : 'Nenhuma biometria nem venda neste período. Use "Buscar no GED" para baixar o relatório.'}
+                    ${temFiltro ? '<div class="mt-3"><button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="document.getElementById(\'f-limpar\').click()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button></div>' : ''}
+                </td></tr>`;
+            } else {
+                tbody.innerHTML = itens.map(linhaBio).join('');
+            }
+            if (rolarTopo) scroll.scrollTop = 0;
+        } catch (e) {
+            if (e.name === 'AbortError') return;
+            tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">Erro ao carregar a Repescagem Bio: ${esc(e.message)}</td></tr>`;
+        } finally {
+            if (!sinal.aborted) scroll.classList.remove('funil-carregando');
+        }
+        if (!bioPoll) verificarImportacaoBio();
+    }
+
+    const API_BIO_IMPORTACAO = API_BIO + 'importacoes/';
+
+    function renderImportacaoBio(imp) {
+        const box = document.getElementById('bio-prog');
+        bioImportacaoAtual = imp;
+        const emAndamento = imp && imp.status === 'EM_ANDAMENTO';
+        document.getElementById('btn-bio-buscar').disabled = !!emAndamento;
+        if (!imp || histState.tipo !== 'BIO') { box.classList.add('d-none'); return; }
+        box.classList.remove('d-none');
+        document.getElementById('bio-prog-spin').classList.toggle('d-none', !emAndamento);
+        const barra = document.getElementById('bio-prog-barra');
+        barra.classList.toggle('indeterminada', !!emAndamento);
+        barra.firstElementChild.style.width = emAndamento ? '' : '100%';
+        const titulos = { EM_ANDAMENTO: 'Buscando no GED360…', CONCLUIDO: 'Última busca no GED360 concluída', ERRO: 'Busca no GED360 com erro' };
+        document.getElementById('bio-prog-titulo').textContent = titulos[imp.status] || 'Busca no GED360';
+        document.getElementById('bio-prog-periodo').textContent = `Envios de ${fmtDataIso(imp.data_inicial)} a ${fmtDataIso(imp.data_final)}`;
+        const quando = imp.finalizado_em ? ` · ${fmtDataHora(imp.finalizado_em)}` : '';
+        document.getElementById('bio-prog-msg').textContent = (emAndamento ? (imp.etapa || 'Iniciando…') : (imp.mensagem || '')) + quando;
+    }
+
+    async function verificarImportacaoBio() {
+        try {
+            const r = await fetch(API_BIO_IMPORTACAO, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+            if (!r.ok) return;
+            const { importacao } = await r.json();
+            const estavaRodando = bioImportacaoAtual && bioImportacaoAtual.status === 'EM_ANDAMENTO';
+            renderImportacaoBio(importacao);
+            const rodando = importacao && importacao.status === 'EM_ANDAMENTO';
+            if (rodando && !bioPoll) bioPoll = setInterval(verificarImportacaoBio, 3000);
+            if (!rodando && bioPoll) { clearInterval(bioPoll); bioPoll = null; }
+            if (estavaRodando && !rodando && histState.tipo === 'BIO') carregarPedidos();
+        } catch (e) {}
+    }
+
+    document.getElementById('btn-bio-buscar').addEventListener('click', async () => {
+        const de = histState.de, ate = histState.ate;
+        if (!de || !ate) { alert('Informe a data inicial e a final do período.'); return; }
+        if (!confirm(`Buscar no GED360 as biometrias enviadas de ${fmtDataIso(de)} a ${fmtDataIso(ate)}?`)) return;
+        try {
+            const r = await fetch(API_BIO_IMPORTACAO, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data_inicial: de, data_final: ate }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) { alert(data.detail || `Erro HTTP ${r.status} ao iniciar a busca.`); return; }
+            if (!data.criada) alert('Já existe uma busca no GED em andamento. Acompanhando o progresso.');
+            renderImportacaoBio(data.importacao);
+            if (!bioPoll) bioPoll = setInterval(verificarImportacaoBio, 3000);
+        } catch (e) {
+            alert('Erro ao iniciar a busca: ' + e.message);
+        }
+    });
+
     function linhaPedido(p) {
         const [dia, hora] = String(p.data_status || '').split(' ');
         return `
@@ -1118,6 +1356,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         sincronizarControles();
         gravarEstadoNaUrl();
         if (histState.tipo === 'CHURN') return carregarChurn({ rolarTopo });
+        if (histState.tipo === 'BIO') return carregarBio({ rolarTopo });
 
         if (histAbort) histAbort.abort();
         histAbort = new AbortController();
