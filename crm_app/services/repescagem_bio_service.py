@@ -31,7 +31,15 @@ RISCO = 'RISCO'
 SEM_BIOMETRIA = 'SEM_BIOMETRIA'
 NAO_VERIFICADO = 'NAO_VERIFICADO'
 SITUACOES = (APTO, EM_ANALISE, LINK_ENVIADO, REFAZER, RISCO, SEM_BIOMETRIA, NAO_VERIFICADO)
-SITUACOES_REPESCAR = (LINK_ENVIADO, REFAZER, SEM_BIOMETRIA)
+ROTULOS_SITUACAO = {
+    APTO: 'apto',
+    EM_ANALISE: 'em análise',
+    LINK_ENVIADO: 'link enviado',
+    REFAZER: 'refazer',
+}
+
+# Venda sem O.S. por mais que isso, com biometria no GED, vira repescagem.
+PRAZO_OS = timedelta(hours=48)
 
 # A biometria costuma ser feita minutos antes da venda; envios mais antigos que isso são de outra tentativa.
 JANELA_BIO_ANTES_VENDA = timedelta(days=7)
@@ -427,6 +435,28 @@ def vincular_venda(etapas: list[dict], data_venda: Optional[datetime],
     return {'situacao': situacao, 'venda_vinculada': bool(data_venda), 'etapas': etapas, 'vinculo': vinculo}
 
 
+def avaliar_repescagem(situacao: str, data_venda: Optional[datetime], ordem_servico: str = '',
+                       status_tratamento: str = '', agora: Optional[datetime] = None) -> tuple[bool, str]:
+    """Repescável: CPF com biometria no GED, sem risco, e sem venda ou com venda sem O.S. há mais de PRAZO_OS.
+
+    data_venda é a da venda vinculada à biometria (vincular_venda). Devolve (repescavel, motivo).
+    """
+    if situacao in (SEM_BIOMETRIA, NAO_VERIFICADO):
+        return False, 'Sem registro no GED'
+    if situacao == RISCO:
+        return False, 'Biometria reprovada/risco'
+    if not data_venda:
+        return True, f'Biometria sem venda no CRM ({ROTULOS_SITUACAO.get(situacao, situacao)})'
+    os_venda = (ordem_servico or '').strip()
+    if os_venda:
+        return False, f'Venda com O.S. {os_venda}'
+    idade = (agora or timezone.now()) - data_venda
+    if idade <= PRAZO_OS:
+        return False, f'Aguardando cadastro da O.S. (venda há {int(idade.total_seconds() // 3600)}h)'
+    motivo = f'Venda sem O.S. há {idade.days} dias'
+    return True, f'{motivo} · tratamento: {status_tratamento}' if status_tratamento else motivo
+
+
 def montar_base(data_inicial: date, data_final: date) -> list[dict]:
     """Uma linha por CPF: quem enviou biometria no período ou tem venda criada no período, cruzado com o CRM."""
     from crm_app.models import RepescagemBioRegistro as R
@@ -435,6 +465,7 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
     inicio = _inicio_do_dia(data_inicial)
     fim = _inicio_do_dia(data_final + timedelta(days=1))
     cobertura = cobertura_ged()
+    agora = timezone.now()
 
     cpfs_ged = set(R.objects.filter(data_envio__gte=inicio, data_envio__lt=fim).values_list('cpf', flat=True))
     vendas_periodo = (
@@ -459,7 +490,7 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
         .order_by('cliente__cpf_cnpj', '-data_criacao')
         .values(
             'id', 'cliente__cpf_cnpj', 'cliente__nome_razao_social', 'data_criacao', 'ordem_servico', 'telefone1',
-            'vendedor__username', 'vendedor__first_name', 'status_esteira__nome',
+            'vendedor__username', 'vendedor__first_name', 'status_esteira__nome', 'status_tratamento__nome',
         )
     ):
         venda_por_cpf.setdefault(normalizar_documento(venda['cliente__cpf_cnpj']), venda)
@@ -475,9 +506,17 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
         vendedor = ''
         if venda:
             vendedor = venda['vendedor__first_name'] or venda['vendedor__username'] or ''
+        status_tratamento = (venda['status_tratamento__nome'] or '') if venda else ''
+        repescavel, motivo = avaliar_repescagem(
+            cruzamento['situacao'], venda['data_criacao'] if venda else None,
+            (venda['ordem_servico'] or '') if venda else '', status_tratamento, agora,
+        )
         base.append({
             'cpf': cpf,
             'situacao': cruzamento['situacao'],
+            'repescavel': repescavel,
+            'motivo_repescagem': motivo,
+            'status_tratamento': status_tratamento,
             'vinculo': cruzamento['vinculo'],
             'nome_cliente': venda['cliente__nome_razao_social'] if venda else '',
             'venda_id': venda['id'] if venda else None,

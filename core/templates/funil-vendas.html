@@ -275,7 +275,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                     </div>
                     <div class="funil-seg d-none" id="funil-seg-bio" role="group" aria-label="Situação da biometria">
                         <button type="button" class="active" data-bio="">Todos</button>
-                        <button type="button" data-bio="REPESCAR" title="Link enviado, refazer ou sem biometria"><i class="bi bi-arrow-repeat"></i> A repescar <span class="nio-qtd" data-qtd="REPESCAR"></span></button>
+                        <button type="button" data-bio="REPESCAR" title="CPF com biometria no GED (fora risco/reprovado) sem venda no CRM, ou com venda sem O.S. há mais de 48 horas"><i class="bi bi-arrow-repeat"></i> A repescar <span class="nio-qtd" data-qtd="REPESCAR"></span></button>
                         <button type="button" data-bio="APTO">Fez (apto) <span class="nio-qtd" data-qtd="APTO"></span></button>
                         <button type="button" data-bio="EM_ANALISE">Em análise <span class="nio-qtd" data-qtd="EM_ANALISE"></span></button>
                         <button type="button" data-bio="LINK_ENVIADO">Link enviado <span class="nio-qtd" data-qtd="LINK_ENVIADO"></span></button>
@@ -331,7 +331,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                                     <th class="py-3">Biometria</th>
                                     <th class="py-3">Último envio no GED</th>
                                     <th class="py-3">Telefone</th>
-                                    <th class="text-end pe-4 py-3">Ação</th>
+                                    <th class="text-end pe-4 py-3">Repescável?</th>
                                 </tr>
                             </thead>
                             <tbody id="tbody-resultados">
@@ -1191,8 +1191,15 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const venda = r.venda_id
             ? `<div class="small text-nowrap">${esc(fmtDataHora(r.data_venda))}</div>
                ${r.ordem_servico ? `<div class="small text-muted">O.S. ${destacar(r.ordem_servico)}</div>` : ''}
-               ${r.status_esteira ? `<span class="badge bg-light text-muted border">${esc(r.status_esteira)}</span>` : ''}`
+               ${r.status_esteira ? `<span class="badge bg-light text-muted border">${esc(r.status_esteira)}</span>` : ''}
+               ${r.status_tratamento ? `<div class="small text-muted" title="Status de tratamento no CRM">${esc(r.status_tratamento)}</div>` : ''}`
             : '<span class="small text-muted">Sem venda no CRM</span>';
+        const repescar = r.repescavel
+            ? `<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle-fill me-1"></i>Sim</span>
+               <div class="small text-muted mt-1">${esc(r.motivo_repescagem || '')}</div>
+               <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold mt-1" onclick="alert('Funcionalidade de Repescagem em desenvolvimento')">Repescar</button>`
+            : `<span class="badge bg-light text-muted border"><i class="bi bi-x-circle me-1"></i>Não</span>
+               <div class="small text-muted mt-1">${esc(r.motivo_repescagem || '')}</div>`;
         const envio = r.ultimo_envio
             ? `<div class="small text-nowrap">${esc(fmtDataHora(r.ultimo_envio))}</div>
                <div class="small text-muted">${esc(r.ultima_origem || '')}${r.login_ged ? ` · ${esc(r.login_ged)}` : ''}</div>
@@ -1208,9 +1215,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                     ${r.ultimo_resultado ? `<div class="small text-muted mt-1">${esc(r.ultimo_resultado)}</div>` : ''}${vinculo}</td>
                 <td>${envio}</td>
                 <td class="small text-nowrap">${destacar(r.telefone || '—')}</td>
-                <td class="text-end pe-4">
-                    <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="alert('Funcionalidade de Repescagem em desenvolvimento')">Repescar</button>
-                </td>
+                <td class="text-end pe-4" style="max-width: 200px;">${repescar}</td>
             </tr>`;
     }
 
@@ -1257,14 +1262,13 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 
             const contagens = data.contagens || {};
             const totalCpfs = Object.keys(BIO_SITUACAO).reduce((a, k) => a + (contagens[k] || 0), 0);
-            contagens.REPESCAR = (contagens.LINK_ENVIADO || 0) + (contagens.REFAZER || 0) + (contagens.SEM_BIOMETRIA || 0);
             document.getElementById('count-bio').textContent = totalCpfs.toLocaleString('pt-BR');
             document.querySelectorAll('#funil-seg-bio .nio-qtd').forEach(el => {
                 const n = contagens[el.getAttribute('data-qtd')];
                 el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
             });
             const ult = data.ultima_importacao;
-            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente.'
+            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente. Repescável: biometria no GED (fora risco/reprovado) sem venda no CRM, ou com venda sem O.S. há mais de 48 horas.'
                 + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : '');
             const aviso = document.getElementById('bio-cobertura');
             const fimPeriodo = new Date(`${histState.ate}T23:59:59`);

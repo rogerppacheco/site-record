@@ -89,6 +89,40 @@ class VincularVendaTests(SimpleTestCase):
         self.assertEqual(r['vinculo'], 'último envio 26 h depois da venda')
 
 
+class AvaliarRepescagemTests(SimpleTestCase):
+    AGORA = _dt('15/10/2026 16:00')
+
+    def test_sem_registro_no_ged_nao_repesca(self):
+        for situacao in (svc.SEM_BIOMETRIA, svc.NAO_VERIFICADO):
+            with self.subTest(situacao=situacao):
+                self.assertEqual(svc.avaliar_repescagem(situacao, _dt('10/10/2026 10:00'), agora=self.AGORA),
+                                 (False, 'Sem registro no GED'))
+
+    def test_risco_nao_repesca(self):
+        self.assertEqual(svc.avaliar_repescagem(svc.RISCO, None, agora=self.AGORA), (False, 'Biometria reprovada/risco'))
+
+    def test_sem_venda_repesca_qualquer_situacao_do_ged(self):
+        for situacao, rotulo in ((svc.APTO, 'apto'), (svc.EM_ANALISE, 'em análise'),
+                                 (svc.LINK_ENVIADO, 'link enviado'), (svc.REFAZER, 'refazer')):
+            with self.subTest(situacao=situacao):
+                self.assertEqual(svc.avaliar_repescagem(situacao, None, agora=self.AGORA),
+                                 (True, f'Biometria sem venda no CRM ({rotulo})'))
+
+    def test_venda_com_os_nao_repesca(self):
+        self.assertEqual(svc.avaliar_repescagem(svc.LINK_ENVIADO, _dt('01/10/2026 10:00'), '11725616', agora=self.AGORA),
+                         (False, 'Venda com O.S. 11725616'))
+
+    def test_venda_sem_os_dentro_do_prazo_aguarda(self):
+        self.assertEqual(svc.avaliar_repescagem(svc.APTO, _dt('14/10/2026 10:00'), '', agora=self.AGORA),
+                         (False, 'Aguardando cadastro da O.S. (venda há 30h)'))
+
+    def test_venda_sem_os_fora_do_prazo_repesca(self):
+        self.assertEqual(svc.avaliar_repescagem(svc.APTO, _dt('12/10/2026 10:00'), '  ', 'CLIENTE DESISTIU', agora=self.AGORA),
+                         (True, 'Venda sem O.S. há 3 dias · tratamento: CLIENTE DESISTIU'))
+        self.assertEqual(svc.avaliar_repescagem(svc.LINK_ENVIADO, _dt('13/10/2026 15:00'), agora=self.AGORA),
+                         (True, 'Venda sem O.S. há 2 dias'))
+
+
 class ParseCsvTests(SimpleTestCase):
     CABECALHO = ('Protocolo;CPF/CNPJ;MSISDN;Data de Digitalização;Data de Envio;Data de Conferência;Código PDV;'
                  'Login Digitalização;Tipo de Serviço;Origem da Digitalização;Resultado da Análise;'

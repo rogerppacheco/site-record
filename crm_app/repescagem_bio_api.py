@@ -58,14 +58,17 @@ class RepescagemBioListaView(APIView):
         base = svc.montar_base(inicio, fim)
         contagens = {s: 0 for s in svc.SITUACOES}
         contagens['APTO_SEM_VENDA'] = 0
+        contagens['REPESCAR'] = 0
         for linha in base:
             contagens[linha['situacao']] += 1
             if linha['situacao'] == svc.APTO and not linha['venda_id']:
                 contagens['APTO_SEM_VENDA'] += 1
+            if linha['repescavel']:
+                contagens['REPESCAR'] += 1
 
         situacao = (request.query_params.get('situacao') or '').strip().upper()
         if situacao == 'REPESCAR':
-            base = [b for b in base if b['situacao'] in svc.SITUACOES_REPESCAR]
+            base = [b for b in base if b['repescavel']]
         elif situacao == 'APTO_SEM_VENDA':
             base = [b for b in base if b['situacao'] == svc.APTO and not b['venda_id']]
         elif situacao in svc.SITUACOES:
@@ -77,6 +80,7 @@ class RepescagemBioListaView(APIView):
             base = [
                 b for b in base
                 if busca in (b['nome_cliente'] or '').lower()
+                or busca in (b['status_tratamento'] or '').lower()
                 or busca in (b['vendedor'] or '').lower()
                 or (digitos and (digitos in b['cpf'] or digitos in (b['ordem_servico'] or '')
                                  or digitos in (b['protocolo'] or '') or digitos in (b['telefone'] or '')))
