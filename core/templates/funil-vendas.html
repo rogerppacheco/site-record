@@ -250,13 +250,17 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <i class="bi bi-upload me-2"></i>Importar XLS
                         <input type="file" id="mailing-file" accept=".xlsx,.xls" class="d-none">
                     </label>
-                    <select id="f-mailing-status" class="form-select form-select-sm funil-select" aria-label="Status mailing" style="width:auto;min-width:160px">
+                    <select id="f-mailing-lote" class="form-select form-select-sm funil-select" aria-label="Lote" style="width:auto;min-width:200px" title="Qual lote exibir">
+                        <option value="">Todos os lotes</option>
+                    </select>
+                    <select id="f-mailing-status" class="form-select form-select-sm funil-select" aria-label="Status mailing" style="width:auto;min-width:180px">
+                        <option value="NOVO" selected>Na fila (importados)</option>
+                        <option value="ENVIADO">Enviados (sem resposta)</option>
                         <option value="RESPONDEU">Respostas</option>
                         <option value="TRATADO">Tratados</option>
-                        <option value="ENVIADO">Enviados (sem resposta)</option>
-                        <option value="TODOS_FUNIL">Todos no funil</option>
+                        <option value="TODOS">Todos do lote</option>
                     </select>
-                    <button type="button" class="btn btn-primary fw-semibold shadow-sm px-3 d-none" id="btn-mailing-disparar" title="Inicia/continua o disparo do último lote importado">
+                    <button type="button" class="btn btn-primary fw-semibold shadow-sm px-3 d-none" id="btn-mailing-disparar" title="Inicia/continua o disparo do lote selecionado">
                         <i class="bi bi-send me-2"></i>Disparar lote
                     </button>
                 </div>
@@ -1463,12 +1467,14 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (tbody.querySelector('.funil-row-anim')) scroll.classList.add('funil-carregando');
         else tbody.innerHTML = linhasSkeleton(Math.min(histState.pageSize, 8));
 
-        const statusFiltro = document.getElementById('f-mailing-status').value || 'RESPONDEU';
+        const statusFiltro = document.getElementById('f-mailing-status').value || 'NOVO';
+        const loteSel = document.getElementById('f-mailing-lote').value || '';
         const params = new URLSearchParams({
             status: statusFiltro,
             page: String(histState.page),
             page_size: String(histState.pageSize),
         });
+        if (loteSel) params.set('lote_id', loteSel);
         if (histState.q) params.set('q', histState.q);
 
         try {
@@ -1487,20 +1493,23 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             gravarEstadoNaUrl();
             renderPaginacao();
             const cont = data.contagens || {};
-            document.getElementById('count-mailing').textContent = (cont.RESPONDEU || 0).toLocaleString('pt-BR');
+            document.getElementById('count-mailing').textContent = (cont.NOVO || cont.TOTAL || 0).toLocaleString('pt-BR');
             document.getElementById('rodape-info').textContent =
-                'Mailings comprados: respostas ao template Meta entram aqui. Importar XLS (OPTIC ou ATV ALG) e disparar o lote.';
+                'Mailings: filtre por lote e status. "Na fila" = importados prontos para disparo. Respostas ao template Meta aparecem em "Respostas".';
+            preencherSelectLotes(data.lotes || []);
+            renderLotesMailingInfo(data.lotes || []);
             const itens = data.lista || [];
             if (!itens.length) {
+                const dica = statusFiltro === 'RESPONDEU'
+                    ? 'Ainda não há respostas. Dispare o lote e aguarde o cliente clicar em "Falar conosco".'
+                    : 'Nenhum contato neste filtro. Troque o status para "Na fila (importados)" ou "Todos do lote".';
                 tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
-                    <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>
-                    Nenhum contato neste filtro. Importe um XLS e dispare o lote, ou aguarde respostas.
+                    <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>${dica}
                 </td></tr>`;
             } else {
                 tbody.innerHTML = itens.map(linhaMailing).join('');
             }
             if (rolarTopo) scroll.scrollTop = 0;
-            await atualizarInfoLoteMailing();
         } catch (e) {
             if (e.name === 'AbortError') return;
             tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">Erro: ${esc(e.message)}</td></tr>`;
@@ -1509,37 +1518,45 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         }
     }
 
-    function renderLoteMailingInfo(lote) {
-        const box = document.getElementById('mailing-lote-info');
-        const btn = document.getElementById('btn-mailing-disparar');
-        mailingLoteAtivo = lote;
-        if (!lote || histState.tipo !== 'MAILING') {
-            box.classList.add('d-none');
-            btn.classList.add('d-none');
-            return;
-        }
-        box.classList.remove('d-none');
-        btn.classList.remove('d-none');
-        const cont = lote.contagens_situacao || {};
-        const sits = Object.entries(cont).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
-        box.innerHTML = `<strong>Lote #${lote.id}</strong> ${esc(lote.nome)} · ${esc(lote.tipo_layout)} ·
-            <strong>${esc(lote.status)}</strong> · ${lote.total_validos} válidos ·
-            enviados ${lote.total_enviados} · falhas ${lote.total_falhas} · respostas ${lote.total_respostas}
-            <div class="text-muted">${esc(sits)}</div>`;
-        btn.disabled = lote.status === 'DISPARANDO';
-        btn.innerHTML = lote.status === 'DISPARANDO'
-            ? '<span class="spinner-border spinner-border-sm me-2"></span>Disparando…'
-            : '<i class="bi bi-send me-2"></i>Disparar lote';
+    function preencherSelectLotes(lotes) {
+        const sel = document.getElementById('f-mailing-lote');
+        const atual = sel.value;
+        const opts = ['<option value="">Todos os lotes</option>'].concat(
+            (lotes || []).map(l => `<option value="${l.id}">#${l.id} ${esc(l.nome)} (${l.tipo_layout} · ${l.total_validos} válidos)</option>`)
+        );
+        sel.innerHTML = opts.join('');
+        if (atual && [...sel.options].some(o => o.value === atual)) sel.value = atual;
+        else if (!atual && lotes && lotes[0]) sel.value = String(lotes[0].id);
     }
 
-    async function atualizarInfoLoteMailing() {
-        try {
-            const r = await fetch(API_MAILING, { headers: { 'Authorization': 'Bearer ' + getToken() } });
-            if (!r.ok) return;
-            const data = await r.json();
-            const lista = data.lista || [];
-            renderLoteMailingInfo(lista[0] || null);
-        } catch (e) {}
+    function renderLotesMailingInfo(lotes) {
+        const box = document.getElementById('mailing-lote-info');
+        const btn = document.getElementById('btn-mailing-disparar');
+        if (histState.tipo !== 'MAILING' || !lotes || !lotes.length) {
+            box.classList.add('d-none');
+            btn.classList.add('d-none');
+            mailingLoteAtivo = null;
+            return;
+        }
+        const loteId = document.getElementById('f-mailing-lote').value;
+        const lote = (loteId && lotes.find(l => String(l.id) === loteId)) || lotes[0];
+        mailingLoteAtivo = lote;
+        box.classList.remove('d-none');
+        btn.classList.remove('d-none');
+        const linhas = lotes.map(l => {
+            const cont = l.contagens_situacao || {};
+            const sits = Object.entries(cont).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
+            const ativo = lote && l.id === lote.id ? ' <span class="badge bg-primary">selecionado</span>' : '';
+            return `<div class="mb-1"><strong>Lote #${l.id}</strong> ${esc(l.nome)} · ${esc(l.tipo_layout)} ·
+                <strong>${esc(l.status)}</strong> · ${l.total_validos} válidos ·
+                enviados ${l.total_enviados} · falhas ${l.total_falhas} · respostas ${l.total_respostas}${ativo}
+                <div class="text-muted">${esc(sits)}</div></div>`;
+        }).join('');
+        box.innerHTML = linhas;
+        btn.disabled = !lote || lote.status === 'DISPARANDO';
+        btn.innerHTML = lote && lote.status === 'DISPARANDO'
+            ? '<span class="spinner-border spinner-border-sm me-2"></span>Disparando…'
+            : '<i class="bi bi-send me-2"></i>Disparar lote';
     }
 
     const API_BIO_IMPORTACAO = API_BIO + 'importacoes/';
@@ -1616,9 +1633,12 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             });
             const data = await r.json().catch(() => ({}));
             if (!r.ok) { alert(data.detail || `Erro HTTP ${r.status}`); return; }
-            renderLoteMailingInfo(data);
             alert(`Lote #${data.id} importado: ${data.total_validos} telefones válidos de ${data.total_contatos} contatos.`);
-            if (histState.tipo === 'MAILING') carregarMailing({});
+            document.getElementById('f-mailing-status').value = 'NOVO';
+            if (histState.tipo === 'MAILING') {
+                histState.page = 1;
+                carregarMailing({ rolarTopo: true });
+            }
         } catch (err) {
             alert('Falha no upload: ' + err.message);
         }
@@ -1634,15 +1654,19 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             });
             const data = await r.json().catch(() => ({}));
             if (!r.ok) { alert(data.detail || `Erro HTTP ${r.status}`); return; }
-            renderLoteMailingInfo(data.lote);
             alert(`Ciclo iniciado: +${(data.ciclo && data.ciclo.enviados) || 0} enviados. O scheduler continua o resto.`);
+            document.getElementById('f-mailing-status').value = 'ENVIADO';
+            carregarMailing({ rolarTopo: true });
         } catch (err) {
             alert('Falha ao disparar: ' + err.message);
         }
     });
 
     document.getElementById('f-mailing-status').addEventListener('change', () => {
-        if (histState.tipo === 'MAILING') aplicarFiltros({});
+        if (histState.tipo === 'MAILING') { histState.page = 1; carregarMailing({ rolarTopo: true }); }
+    });
+    document.getElementById('f-mailing-lote').addEventListener('change', () => {
+        if (histState.tipo === 'MAILING') { histState.page = 1; carregarMailing({ rolarTopo: true }); }
     });
 
     document.getElementById('tbody-resultados').addEventListener('click', async (e) => {

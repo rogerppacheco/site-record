@@ -155,20 +155,28 @@ class MailingFunilListaView(APIView):
         negado = _sem_permissao(request)
         if negado:
             return negado
-        status_filtro = (request.query_params.get('status') or 'RESPONDEU').strip().upper()
+        status_filtro = (request.query_params.get('status') or 'NOVO').strip().upper()
         busca = (request.query_params.get('q') or request.query_params.get('busca') or '').strip()
         situacao = (request.query_params.get('situacao') or '').strip().upper()
+        lote_id = (request.query_params.get('lote_id') or '').strip()
         page = max(1, int(request.query_params.get('page') or 1))
         page_size = min(100, max(10, int(request.query_params.get('page_size') or 25)))
 
         qs = MailingContato.objects.select_related('lote').all()
+        if lote_id.isdigit():
+            qs = qs.filter(lote_id=int(lote_id))
         if status_filtro == 'PENDENTES':
             qs = qs.filter(status=MailingContato.STATUS_RESPONDEU)
+        elif status_filtro == 'FILA':
+            qs = qs.filter(status=MailingContato.STATUS_NOVO, telefone_valido=True, opt_out=False)
+        elif status_filtro == 'TODOS':
+            pass
         elif status_filtro == 'TODOS_FUNIL':
             qs = qs.filter(status__in=[
                 MailingContato.STATUS_RESPONDEU,
                 MailingContato.STATUS_TRATADO,
                 MailingContato.STATUS_ENVIADO,
+                MailingContato.STATUS_NOVO,
             ])
         elif status_filtro:
             qs = qs.filter(status=status_filtro)
@@ -178,7 +186,7 @@ class MailingFunilListaView(APIView):
         if busca:
             digitos = import_svc.normalizar_documento(busca)
             from django.db.models import Q
-            filt = Q(nome__icontains=busca) | Q(cidade__icontains=busca) | Q(telefone_e164__icontains=busca)
+            filt = Q(nome__icontains=busca) | Q(cidade__icontains=busca) | Q(telefone_e164__icontains=busca) | Q(bairro__icontains=busca)
             if digitos:
                 filt |= Q(cpf__icontains=digitos) | Q(telefone_e164__icontains=digitos)
             qs = qs.filter(filt)
@@ -188,10 +196,15 @@ class MailingFunilListaView(APIView):
         inicio = (page - 1) * page_size
         lista = [_serialize_contato(c) for c in qs[inicio:inicio + page_size]]
 
+        base_cont = MailingContato.objects.all()
+        if lote_id.isdigit():
+            base_cont = base_cont.filter(lote_id=int(lote_id))
         contagens = {
-            'RESPONDEU': MailingContato.objects.filter(status=MailingContato.STATUS_RESPONDEU).count(),
-            'TRATADO': MailingContato.objects.filter(status=MailingContato.STATUS_TRATADO).count(),
-            'ENVIADO': MailingContato.objects.filter(status=MailingContato.STATUS_ENVIADO).count(),
+            'NOVO': base_cont.filter(status=MailingContato.STATUS_NOVO, telefone_valido=True).count(),
+            'RESPONDEU': base_cont.filter(status=MailingContato.STATUS_RESPONDEU).count(),
+            'TRATADO': base_cont.filter(status=MailingContato.STATUS_TRATADO).count(),
+            'ENVIADO': base_cont.filter(status=MailingContato.STATUS_ENVIADO).count(),
+            'TOTAL': base_cont.count(),
         }
         return Response({
             'lista': lista,
@@ -202,6 +215,7 @@ class MailingFunilListaView(APIView):
                 'total_pages': max(1, (total + page_size - 1) // page_size),
             },
             'contagens': contagens,
+            'lotes': [_serialize_lote(l) for l in MailingLote.objects.all()[:20]],
         })
 
 
