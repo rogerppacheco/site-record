@@ -596,11 +596,6 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('f-mes').title = churn ? 'Mês da retirada do churn' : 'Mês pela Data do pedido';
     }
 
-    function mesAtual() {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
-
     function aplicarFiltros(mudancas) {
         Object.assign(histState, mudancas, { page: 1 });
         carregarPedidos();
@@ -623,9 +618,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             const mudancas = { tipo, status: '' };
             if (tipo === 'CHURN') {
                 periodoPap = { de: histState.de, ate: histState.ate };
-                mudancas.situacao = '';
-                if (!histState.de && !histState.ate) Object.assign(mudancas, limitesDoMes(mesAtual()));
-                else if (mesSelecionado() === 'custom' && histState.de) Object.assign(mudancas, limitesDoMes(histState.de.slice(0, 7)));
+                Object.assign(mudancas, { situacao: '', de: '', ate: '' });
             } else if (histState.tipo === 'CHURN' && periodoPap) {
                 mudancas.de = periodoPap.de;
                 mudancas.ate = periodoPap.ate;

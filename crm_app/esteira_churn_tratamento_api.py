@@ -138,9 +138,6 @@ class EsteiraChurnTratamentoView(APIView):
             churn_qs = churn_qs.filter(motivo_retirada__icontains=motivo_f)
 
         users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
-        if is_member(request.user, ['Supervisor']):
-            users = users.filter(Q(supervisor=request.user) | Q(id=request.user.id))
-
         consultor_id = request.query_params.get('consultor_id') or request.query_params.get('vendedor_id')
         if consultor_id:
             try:
