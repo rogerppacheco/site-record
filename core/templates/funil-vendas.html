@@ -274,8 +274,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <button type="button" data-nio="ERRO">Erro <span class="nio-qtd" data-qtd="ERRO"></span></button>
                     </div>
                     <div class="funil-seg d-none" id="funil-seg-bio" role="group" aria-label="Situação da biometria">
-                        <button type="button" class="active" data-bio="">Todos</button>
-                        <button type="button" data-bio="REPESCAR" title="CPF com biometria no GED (fora risco/reprovado) sem venda no CRM, ou com venda sem O.S. há mais de 48 horas"><i class="bi bi-arrow-repeat"></i> A repescar <span class="nio-qtd" data-qtd="REPESCAR"></span></button>
+                        <button type="button" class="active" data-bio="">Todas as situações</button>
                         <button type="button" data-bio="APTO">Fez (apto) <span class="nio-qtd" data-qtd="APTO"></span></button>
                         <button type="button" data-bio="EM_ANALISE">Em análise <span class="nio-qtd" data-qtd="EM_ANALISE"></span></button>
                         <button type="button" data-bio="LINK_ENVIADO">Link enviado <span class="nio-qtd" data-qtd="LINK_ENVIADO"></span></button>
@@ -284,6 +283,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <button type="button" data-bio="SEM_BIOMETRIA" title="Venda sem nenhum envio no GED, com o GED já buscado no horário da venda">Sem biometria <span class="nio-qtd" data-qtd="SEM_BIOMETRIA"></span></button>
                         <button type="button" data-bio="APTO_SEM_VENDA" title="Biometria apta sem venda criada no CRM">Apto sem venda <span class="nio-qtd" data-qtd="APTO_SEM_VENDA"></span></button>
                         <button type="button" data-bio="NAO_VERIFICADO" title="Venda num horário que ainda não foi buscado no GED">Aguardando GED <span class="nio-qtd" data-qtd="NAO_VERIFICADO"></span></button>
+                    </div>
+                    <div class="funil-seg d-none" id="funil-seg-rep" role="group" aria-label="Repescável">
+                        <button type="button" class="active" data-rep="">Repescável: todos</button>
+                        <button type="button" data-rep="SIM" title="Biometria no GED há mais de 48 horas (fora risco/reprovado), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO só após 30 dias do pedido no PAP."><i class="bi bi-arrow-repeat"></i> Repescável <span class="nio-qtd" data-qtd-rep="SIM"></span></button>
+                        <button type="button" data-rep="NAO">Não repescável <span class="nio-qtd" data-qtd-rep="NAO"></span></button>
                     </div>
                     <select id="f-mes" class="form-select form-select-sm funil-select" aria-label="Mês da data do pedido" title="Mês pela Data do pedido">
                         <option value="">Todos os meses</option>
@@ -602,11 +606,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     const TAMANHOS_PAGINA = [25, 50, 100, 200];
     const LS_FUNIL_PAGE_SIZE = 'funil_hist_page_size';
     // Chaves curtas na URL: o estado sobrevive a F5 e pode ser compartilhado por link.
-    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio', bio: 'bio' };
+    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio', bio: 'bio', rep: 'rep' };
 
     const histState = {
         tipo: 'INTERESSE', page: 1, pageSize: 25,
-        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '', bio: '',
+        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '', bio: '', rep: '',
     };
     let histMeta = { page: 1, totalPages: 1, count: 0 };
     let histAbort = null;
@@ -642,6 +646,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             else if (k === 'tipo') { if (TIPOS_ABAS.includes(v)) histState.tipo = v; }
             else histState[k] = v;
         });
+        if (histState.bio === 'REPESCAR') Object.assign(histState, { bio: '', rep: 'SIM' });
     }
 
     function gravarEstadoNaUrl() {
@@ -673,6 +678,9 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.querySelectorAll('#funil-seg-bio button').forEach(b => {
             b.classList.toggle('active', b.getAttribute('data-bio') === histState.bio);
         });
+        document.querySelectorAll('#funil-seg-rep button').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-rep') === histState.rep);
+        });
         document.getElementById('ic-ordem-data').className = histState.ordem === 'antigos' ? 'bi bi-sort-up' : 'bi bi-sort-down';
         const churn = histState.tipo === 'CHURN';
         const bio = histState.tipo === 'BIO';
@@ -680,13 +688,14 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const temFiltro = churn
             ? !!(histState.q || histState.de || histState.ate || histState.nio)
             : bio
-                ? !!(histState.q || histState.bio)
+                ? !!(histState.q || histState.bio || histState.rep)
                 : !!(histState.q || histState.status || histState.situacao || histState.de || histState.ate);
         document.getElementById('f-limpar').classList.toggle('d-none', !temFiltro);
         document.getElementById('f-status').classList.toggle('d-none', !pap);
         document.getElementById('funil-seg').classList.toggle('d-none', !pap);
         document.getElementById('funil-seg-nio').classList.toggle('d-none', !churn);
         document.getElementById('funil-seg-bio').classList.toggle('d-none', !bio);
+        document.getElementById('funil-seg-rep').classList.toggle('d-none', !bio);
         document.getElementById('funil-periodo').classList.toggle('d-none', churn);
         document.getElementById('funil-periodo').title = bio ? 'Data de envio da biometria no GED ou data da venda no CRM' : 'Data do pedido no PAP';
         document.getElementById('f-mes').classList.toggle('d-none', bio);
@@ -733,7 +742,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             const tipo = e.currentTarget.getAttribute('data-tipo');
             if (tipo === histState.tipo) return;
             // Os status do PAP mudam entre Interesse/Pré-venda/Venda.
-            const mudancas = { tipo, status: '', nio: '', bio: '' };
+            const mudancas = { tipo, status: '', nio: '', bio: '', rep: '' };
             if (TIPOS_PROPRIOS.includes(tipo)) {
                 if (!TIPOS_PROPRIOS.includes(histState.tipo)) periodoPap = { de: histState.de, ate: histState.ate };
                 Object.assign(mudancas, { situacao: '', de: '', ate: '' }, tipo === 'BIO' ? ultimosDias(7) : {});
@@ -765,10 +774,13 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     document.querySelectorAll('#funil-seg-bio button').forEach(b => {
         b.addEventListener('click', () => aplicarFiltros({ bio: b.getAttribute('data-bio') }));
     });
+    document.querySelectorAll('#funil-seg-rep button').forEach(b => {
+        b.addEventListener('click', () => aplicarFiltros({ rep: b.getAttribute('data-rep') }));
+    });
     document.getElementById('f-de').addEventListener('change', (e) => aplicarFiltros({ de: e.target.value }));
     document.getElementById('f-ate').addEventListener('change', (e) => aplicarFiltros({ ate: e.target.value }));
     document.getElementById('f-limpar').addEventListener('click', () => {
-        if (histState.tipo === 'BIO') { aplicarFiltros({ q: '', bio: '' }); return; }
+        if (histState.tipo === 'BIO') { aplicarFiltros({ q: '', bio: '', rep: '' }); return; }
         aplicarFiltros({ q: '', status: '', situacao: '', de: '', ate: '', nio: '' });
     });
     document.getElementById('th-ordem-data').addEventListener('click', () => {
@@ -1234,6 +1246,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (histState.ate) params.set('ate', histState.ate);
         if (histState.q) params.set('busca', histState.q);
         if (histState.bio) params.set('situacao', histState.bio);
+        if (histState.rep) params.set('repescavel', histState.rep);
 
         try {
             const r = await fetch(API_BIO + '?' + params.toString(), {
@@ -1267,8 +1280,13 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 const n = contagens[el.getAttribute('data-qtd')];
                 el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
             });
+            const repescaveis = data.contagens_repescavel || {};
+            document.querySelectorAll('#funil-seg-rep .nio-qtd').forEach(el => {
+                const n = repescaveis[el.getAttribute('data-qtd-rep')];
+                el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
+            });
             const ult = data.ultima_importacao;
-            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente. Repescável: biometria no GED (fora risco/reprovado) sem venda no CRM, ou com venda sem O.S. há mais de 48 horas.'
+            document.getElementById('rodape-info').textContent = 'Uma linha por CPF: quem enviou biometria no GED360 ou tem venda criada no período. Valem os envios a partir de 7 dias antes da venda; se algum foi apto, o CPF conta como apto, senão vale o mais recente. Repescável: último envio no GED há mais de 48 horas (fora risco/reprovado), sem venda no CRM ou com venda sem O.S. há mais de 48 horas. CONSTA PEDIDO: consulta o PAP Nio e só libera após 30 dias do pedido (outro PDV).'
                 + (ult ? ` Última busca no GED: ${fmtDataIso(ult.data_inicial)} a ${fmtDataIso(ult.data_final)} (${fmtDataHora(ult.finalizado_em)}).` : '');
             const aviso = document.getElementById('bio-cobertura');
             const fimPeriodo = new Date(`${histState.ate}T23:59:59`);
@@ -1285,7 +1303,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 
             const itens = data.lista || [];
             if (!itens.length) {
-                const temFiltro = !!(histState.q || histState.bio);
+                const temFiltro = !!(histState.q || histState.bio || histState.rep);
                 tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
                     <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>
                     ${temFiltro ? 'Nenhum cliente para esses filtros.' : 'Nenhuma biometria nem venda neste período. Use "Buscar no GED" para baixar o relatório.'}

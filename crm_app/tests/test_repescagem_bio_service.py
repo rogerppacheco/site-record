@@ -122,6 +122,79 @@ class AvaliarRepescagemTests(SimpleTestCase):
         self.assertEqual(svc.avaliar_repescagem(svc.LINK_ENVIADO, _dt('13/10/2026 15:00'), agora=self.AGORA),
                          (True, 'Venda sem O.S. há 2 dias'))
 
+    def test_biometria_com_menos_de_48h_nao_repesca_mesmo_sem_venda(self):
+        self.assertEqual(
+            svc.avaliar_repescagem(svc.LINK_ENVIADO, None, agora=self.AGORA, ultimo_envio=_dt('15/10/2026 10:00')),
+            (False, 'Aguardando 48h da biometria (enviada há 6h)'),
+        )
+        self.assertEqual(
+            svc.avaliar_repescagem(svc.LINK_ENVIADO, _dt('12/10/2026 10:00'), agora=self.AGORA,
+                                   ultimo_envio=_dt('14/10/2026 18:00')),
+            (False, 'Aguardando 48h da biometria (enviada há 22h)'),
+        )
+
+    def test_biometria_com_mais_de_48h_sem_venda_repesca(self):
+        repescavel, _ = svc.avaliar_repescagem(svc.LINK_ENVIADO, None, agora=self.AGORA,
+                                               ultimo_envio=_dt('13/10/2026 10:00'))
+        self.assertTrue(repescavel)
+
+    def test_venda_com_os_tem_prioridade_no_motivo(self):
+        self.assertEqual(
+            svc.avaliar_repescagem(svc.APTO, _dt('15/10/2026 10:00'), '11726750', agora=self.AGORA,
+                                   ultimo_envio=_dt('15/10/2026 09:00')),
+            (False, 'Venda com O.S. 11726750'),
+        )
+
+    def test_consta_pedido_com_menos_de_30_dias_no_pap_nao_repesca(self):
+        # Caso Vieira: biometria apta, sem O.S., CONSTA PEDIDO, pedido PAP há 7 dias.
+        self.assertEqual(
+            svc.avaliar_repescagem(
+                svc.APTO, _dt('08/10/2026 15:13'), '', 'CONSTA PEDIDO', agora=self.AGORA,
+                ultimo_envio=_dt('08/10/2026 15:13'),
+                info_pedido_pap={
+                    'consultado': True, 'data_criacao': _dt('08/10/2026 12:08'),
+                    'de_outro_pdv': True, 'sem_pedido': False,
+                },
+            ),
+            (False, 'CONSTA PEDIDO: pedido no PAP há 7 dias (aguarda 30 dias)'),
+        )
+
+    def test_consta_pedido_sem_consulta_aguarda_pap(self):
+        self.assertEqual(
+            svc.avaliar_repescagem(
+                svc.APTO, _dt('13/10/2026 16:20'), '', 'CONSTA PEDIDO', agora=self.AGORA,
+                ultimo_envio=_dt('13/10/2026 10:00'),
+                info_pedido_pap={'consultado': False, 'em_andamento': True},
+            ),
+            (False, 'CONSTA PEDIDO: consultando pedido no PAP…'),
+        )
+
+    def test_consta_pedido_sem_pedido_no_pap(self):
+        self.assertEqual(
+            svc.avaliar_repescagem(
+                svc.APTO, _dt('13/10/2026 16:20'), '', 'CONSTA PEDIDO', agora=self.AGORA,
+                ultimo_envio=_dt('13/10/2026 10:00'),
+                info_pedido_pap={'consultado': True, 'sem_pedido': True, 'data_criacao': None},
+            ),
+            (False, 'CONSTA PEDIDO: nenhum pedido encontrado no PAP'),
+        )
+
+    def test_consta_pedido_com_mais_de_30_dias_pode_repescar(self):
+        repescavel, motivo = svc.avaliar_repescagem(
+            svc.APTO, _dt('01/09/2026 10:00'), '', 'CONSTA PEDIDO', agora=self.AGORA,
+            ultimo_envio=_dt('01/09/2026 10:00'),
+            info_pedido_pap={
+                'consultado': True, 'data_criacao': _dt('01/09/2026 10:00'),
+                'de_outro_pdv': True, 'sem_pedido': False,
+            },
+        )
+        self.assertTrue(repescavel)
+        self.assertIn('CONSTA PEDIDO', motivo)
+
+    def test_texto_dias(self):
+        self.assertEqual(svc._texto_dias(1), '1 dia')
+        self.assertEqual(svc._texto_dias(7), '7 dias')
+
 
 class ParseCsvTests(SimpleTestCase):
     CABECALHO = ('Protocolo;CPF/CNPJ;MSISDN;Data de Digitalização;Data de Envio;Data de Conferência;Código PDV;'

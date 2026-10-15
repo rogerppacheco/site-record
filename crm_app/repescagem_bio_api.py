@@ -74,6 +74,12 @@ class RepescagemBioListaView(APIView):
         elif situacao in svc.SITUACOES:
             base = [b for b in base if b['situacao'] == situacao]
 
+        contagens_repescavel = {'SIM': sum(1 for b in base if b['repescavel'])}
+        contagens_repescavel['NAO'] = len(base) - contagens_repescavel['SIM']
+        repescavel = (request.query_params.get('repescavel') or '').strip().upper()
+        if repescavel in ('SIM', 'NAO'):
+            base = [b for b in base if b['repescavel'] == (repescavel == 'SIM')]
+
         busca = (request.query_params.get('busca') or '').strip().lower()
         if busca:
             digitos = svc.normalizar_documento(busca)
@@ -103,6 +109,7 @@ class RepescagemBioListaView(APIView):
         buscado_ate = next((b for a, b in svc.cobertura_ged() if a <= inicio_dt < b), None)
         return Response({
             'periodo': {'de': inicio.isoformat(), 'ate': fim.isoformat()},
+            'contagens_repescavel': contagens_repescavel,
             'ged_buscado_ate': buscado_ate.isoformat() if buscado_ate else None,
             'contagens': contagens,
             'lista': lista,

@@ -40,6 +40,15 @@ ROTULOS_SITUACAO = {
 
 # Venda sem O.S. por mais que isso, com biometria no GED, vira repescagem.
 PRAZO_OS = timedelta(hours=48)
+# Biometria enviada há menos que isso ainda pode ser concluída pelo cliente: não repescar.
+PRAZO_BIO = timedelta(hours=48)
+# CONSTA PEDIDO: pedido de outro PDV no PAP precisa ter mais que isso para liberar a repescagem.
+PRAZO_CONSTA_PEDIDO = timedelta(days=30)
+# Janela da Consulta OS no PAP ao buscar o pedido que originou o CONSTA PEDIDO.
+JANELA_CONSULTA_CONSTA_PAP = timedelta(days=180)
+# Não reconsultar o PAP de novo antes disso se a última busca não achou pedido.
+TTL_SEM_PEDIDO_PAP = timedelta(hours=6)
+ORIGEM_CACHE_CONSTA = 'repescagem_bio_consta'
 
 # A biometria costuma ser feita minutos antes da venda; envios mais antigos que isso são de outra tentativa.
 JANELA_BIO_ANTES_VENDA = timedelta(days=7)
@@ -435,25 +444,286 @@ def vincular_venda(etapas: list[dict], data_venda: Optional[datetime],
     return {'situacao': situacao, 'venda_vinculada': bool(data_venda), 'etapas': etapas, 'vinculo': vinculo}
 
 
+_lock_consulta_consta = threading.Lock()
+_consultas_consta_em_andamento: set[str] = set()
+
+
+def _eh_consta_pedido(status_tratamento: str) -> bool:
+    return 'CONSTA PEDIDO' in _sem_acento(status_tratamento)
+
+
+def _texto_dias(n: int) -> str:
+    n = max(0, int(n))
+    return '1 dia' if n == 1 else f'{n} dias'
+
+
+def _parse_data_hora_pap(valor) -> Optional[datetime]:
+    """Aceita ISO da API ou 'dd/mm/yyyy HH:MM' da Consulta OS."""
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return timezone.make_aware(valor) if timezone.is_naive(valor) else valor
+    s = str(valor).strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+        return timezone.make_aware(dt) if timezone.is_naive(dt) else dt
+    except ValueError:
+        pass
+    for fmt in ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y'):
+        try:
+            return timezone.make_aware(datetime.strptime(s, fmt))
+        except ValueError:
+            continue
+    return None
+
+
+def _numero_cache_sem_pedido(cpf: str) -> str:
+    return f'BIO-SEM-{normalizar_documento(cpf)}'
+
+
+def _cpf_do_payload(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return ''
+    return normalizar_documento(payload.get('cpf') or (payload.get('dadosCliente') or {}).get('cpf'))
+
+
+def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = None) -> dict[str, dict]:
+    """Lê o cache (HistoricoPapPedido) e devolve, por CPF, data do pedido / sem pedido / ainda não consultado.
+
+    Cada valor: {consultado, data_criacao, de_outro_pdv, numero_os, em_andamento}.
+    """
+    from django.db.models import Q
+
+    from crm_app.models import HistoricoPapPedido
+
+    agora = agora or timezone.now()
+    alvos = {normalizar_documento(c) for c in cpfs if normalizar_documento(c)}
+    vazios = {
+        cpf: {
+            'consultado': False,
+            'data_criacao': None,
+            'de_outro_pdv': None,
+            'numero_os': '',
+            'em_andamento': cpf in _consultas_consta_em_andamento,
+        }
+        for cpf in alvos
+    }
+    if not alvos:
+        return {}
+
+    filtro = None
+    for cpf in alvos:
+        parte = Q(payload__icontains=cpf) | Q(numero_pedido=_numero_cache_sem_pedido(cpf))
+        filtro = parte if filtro is None else (filtro | parte)
+
+    for numero, data_criacao, payload, capturado_em in HistoricoPapPedido.objects.filter(filtro).values_list(
+        'numero_pedido', 'data_criacao_pap', 'payload', 'capturado_em',
+    ):
+        payload = payload if isinstance(payload, dict) else {}
+        cpf = _cpf_do_payload(payload)
+        if not cpf and str(numero).startswith('BIO-SEM-'):
+            cpf = normalizar_documento(str(numero)[len('BIO-SEM-'):])
+        if cpf not in alvos:
+            continue
+        if payload.get('semPedido'):
+            quando = capturado_em or agora
+            if agora - quando <= TTL_SEM_PEDIDO_PAP:
+                vazios[cpf] = {
+                    'consultado': True,
+                    'data_criacao': None,
+                    'de_outro_pdv': None,
+                    'numero_os': '',
+                    'em_andamento': False,
+                    'sem_pedido': True,
+                }
+            continue
+        if not data_criacao:
+            data_criacao = _parse_data_hora_pap(payload.get('dataCriacao'))
+        if not data_criacao:
+            continue
+        atual = vazios[cpf]
+        # Pedido mais antigo costuma ser o que bloqueou a venda (CONSTA PEDIDO).
+        if not atual.get('consultado') or (
+            atual.get('data_criacao') and data_criacao < atual['data_criacao']
+        ) or (atual.get('consultado') and atual.get('sem_pedido')):
+            outro = payload.get('nao_pertence_pdv')
+            if outro is None and payload.get(ORIGEM_CACHE_CONSTA):
+                outro = True
+            vazios[cpf] = {
+                'consultado': True,
+                'data_criacao': data_criacao,
+                'de_outro_pdv': bool(outro) if outro is not None else None,
+                'numero_os': str(payload.get('numeroOs') or payload.get('osInstalacao') or '')[:40],
+                'em_andamento': False,
+                'sem_pedido': False,
+            }
+    return vazios
+
+
+def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
+    """Grava o resultado da Consulta OS no HistoricoPapPedido para a próxima listagem."""
+    from crm_app.models import HistoricoPapPedido
+
+    cpf = normalizar_documento(cpf)
+    if not cpf:
+        return
+    if not detalhes:
+        HistoricoPapPedido.objects.update_or_create(
+            numero_pedido=_numero_cache_sem_pedido(cpf),
+            defaults={
+                'tipo_venda': HistoricoPapPedido.TIPO_VENDA,
+                'pdv': '',
+                'status': 'SEM_PEDIDO',
+                'data_criacao_pap': None,
+                'origem': ORIGEM_CACHE_CONSTA,
+                'payload': {
+                    'cpf': cpf,
+                    'semPedido': True,
+                    ORIGEM_CACHE_CONSTA: True,
+                    'consultadoEm': timezone.now().isoformat(),
+                },
+            },
+        )
+        return
+
+    for item in detalhes:
+        data_criacao = _parse_data_hora_pap(item.get('data_hora') or item.get('dataCriacao'))
+        numero_os = re.sub(r'\D', '', str(item.get('numero_os') or item.get('numeroOs') or ''))
+        numero_pedido = (
+            str(item.get('numeroPedido') or '').strip()
+            or (f'OS-{numero_os}' if numero_os else f'BIO-{cpf}-{int((data_criacao or timezone.now()).timestamp())}')
+        )[:40]
+        outro = bool(item.get('nao_pertence_pdv'))
+        payload = {
+            'cpf': cpf,
+            'numeroPedido': numero_pedido,
+            'numeroOs': numero_os,
+            'dataCriacao': data_criacao.isoformat() if data_criacao else None,
+            'status': item.get('status') or '',
+            'plano': item.get('plano') or '',
+            'nao_pertence_pdv': outro,
+            ORIGEM_CACHE_CONSTA: True,
+        }
+        HistoricoPapPedido.objects.update_or_create(
+            numero_pedido=numero_pedido,
+            defaults={
+                'tipo_venda': HistoricoPapPedido.TIPO_VENDA,
+                'pdv': 'OUTRO' if outro else '',
+                'status': str(item.get('status') or '')[:80],
+                'data_criacao_pap': data_criacao,
+                'origem': ORIGEM_CACHE_CONSTA,
+                'payload': payload,
+            },
+        )
+    HistoricoPapPedido.objects.filter(numero_pedido=_numero_cache_sem_pedido(cpf)).delete()
+
+
+def _consultar_consta_no_pap(cpf: str) -> None:
+    """Thread: Consulta OS no PAP Nio por CPF e grava o cache. Só para CONSTA PEDIDO sem data."""
+    from django.conf import settings
+
+    from crm_app.pool_bo_pap import liberar_bo, obter_login_bo
+    from crm_app.services_pap_nio import PAPNioAutomation
+
+    cpf = normalizar_documento(cpf)
+    telefone_lock = f'{TELEFONE_POOL}_consta_{cpf}'
+    bo = None
+    automacao = None
+    try:
+        close_old_connections()
+        bo, erro = obter_login_bo(telefone_lock, None, tipo_automacao='pedido')
+        if not bo:
+            logger.warning('[RepescagemBio] CONSTA PAP sem login BO para %s: %s', cpf, erro)
+            return
+        automacao = PAPNioAutomation(
+            matricula_pap=bo.matricula_pap,
+            senha_pap=bo.senha_pap,
+            vendedor_nome='RepescagemBio-CONSTA',
+            headless=getattr(settings, 'PAP_HEADLESS', True),
+            capture_screenshots=False,
+            optimize_for_credit=True,
+        )
+        data_inicio = (timezone.localdate() - JANELA_CONSULTA_CONSTA_PAP)
+        sucesso, msg, detalhes, _ = automacao.consulta_os_por_cpf_com_resultado(
+            cpf, data_inicio=data_inicio,
+        )
+        if not sucesso:
+            logger.warning('[RepescagemBio] CONSULTA OS falhou para %s: %s', cpf, msg)
+            return
+        _gravar_cache_pedido_pap(cpf, detalhes or [])
+        logger.info(
+            '[RepescagemBio] CONSTA PAP %s: %s pedido(s)',
+            cpf, len(detalhes or []),
+        )
+    except Exception:
+        logger.exception('[RepescagemBio] Erro na consulta PAP CONSTA %s', cpf)
+    finally:
+        if automacao:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
+        if bo:
+            liberar_bo(bo.id, telefone_lock)
+        with _lock_consulta_consta:
+            _consultas_consta_em_andamento.discard(cpf)
+        close_old_connections()
+
+
+def disparar_consultas_consta_pap(cpfs: Iterable[str]) -> None:
+    """Dispara no máximo uma thread por CPF para consultar o PAP (não bloqueia a listagem)."""
+    for cpf in {normalizar_documento(c) for c in cpfs if normalizar_documento(c)}:
+        with _lock_consulta_consta:
+            if cpf in _consultas_consta_em_andamento:
+                continue
+            _consultas_consta_em_andamento.add(cpf)
+        threading.Thread(
+            target=_consultar_consta_no_pap, args=(cpf,), name=f'repescagem-consta-{cpf}', daemon=True,
+        ).start()
+
+
 def avaliar_repescagem(situacao: str, data_venda: Optional[datetime], ordem_servico: str = '',
-                       status_tratamento: str = '', agora: Optional[datetime] = None) -> tuple[bool, str]:
-    """Repescável: CPF com biometria no GED, sem risco, e sem venda ou com venda sem O.S. há mais de PRAZO_OS.
+                       status_tratamento: str = '', agora: Optional[datetime] = None,
+                       ultimo_envio: Optional[datetime] = None,
+                       data_pedido_pap: Optional[datetime] = None,
+                       info_pedido_pap: Optional[dict] = None) -> tuple[bool, str]:
+    """Repescável: biometria no GED há mais de PRAZO_BIO, sem risco, sem O.S. (ou sem venda) há mais de
+    PRAZO_OS; se o tratamento for CONSTA PEDIDO, o pedido no PAP precisa ter mais de PRAZO_CONSTA_PEDIDO.
 
     data_venda é a da venda vinculada à biometria (vincular_venda). Devolve (repescavel, motivo).
     """
+    agora = agora or timezone.now()
     if situacao in (SEM_BIOMETRIA, NAO_VERIFICADO):
         return False, 'Sem registro no GED'
     if situacao == RISCO:
         return False, 'Biometria reprovada/risco'
-    if not data_venda:
-        return True, f'Biometria sem venda no CRM ({ROTULOS_SITUACAO.get(situacao, situacao)})'
-    os_venda = (ordem_servico or '').strip()
+    os_venda = (ordem_servico or '').strip() if data_venda else ''
     if os_venda:
         return False, f'Venda com O.S. {os_venda}'
-    idade = (agora or timezone.now()) - data_venda
+    if ultimo_envio and agora - ultimo_envio <= PRAZO_BIO:
+        horas = int((agora - ultimo_envio).total_seconds() // 3600)
+        return False, f'Aguardando 48h da biometria (enviada há {horas}h)'
+    if _eh_consta_pedido(status_tratamento):
+        info = info_pedido_pap or {}
+        data_pap = info.get('data_criacao') or data_pedido_pap
+        if info.get('em_andamento') or not info.get('consultado'):
+            return False, 'CONSTA PEDIDO: consultando pedido no PAP…'
+        if info.get('sem_pedido') or not data_pap:
+            return False, 'CONSTA PEDIDO: nenhum pedido encontrado no PAP'
+        idade_pedido = agora - data_pap
+        if idade_pedido <= PRAZO_CONSTA_PEDIDO:
+            return False, (
+                f'CONSTA PEDIDO: pedido no PAP há {_texto_dias(idade_pedido.days)} (aguarda 30 dias)'
+            )
+        # Pedido com mais de 30 dias: segue as demais regras (sem O.S. etc.).
+    if not data_venda:
+        return True, f'Biometria sem venda no CRM ({ROTULOS_SITUACAO.get(situacao, situacao)})'
+    idade = agora - data_venda
     if idade <= PRAZO_OS:
         return False, f'Aguardando cadastro da O.S. (venda há {int(idade.total_seconds() // 3600)}h)'
-    motivo = f'Venda sem O.S. há {idade.days} dias'
+    motivo = f'Venda sem O.S. há {_texto_dias(idade.days)}'
     return True, f'{motivo} · tratamento: {status_tratamento}' if status_tratamento else motivo
 
 
@@ -495,6 +765,32 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
     ):
         venda_por_cpf.setdefault(normalizar_documento(venda['cliente__cpf_cnpj']), venda)
 
+    # CONSTA PEDIDO: só avalia com data do pedido no PAP. Cache primeiro; o que faltar dispara Consulta OS.
+    cpfs_consta = {
+        cpf for cpf, venda in venda_por_cpf.items()
+        if _eh_consta_pedido(venda.get('status_tratamento__nome') or '')
+    }
+    info_pap_por_cpf = infos_pedido_pap_por_cpf(cpfs_consta, agora)
+    # Só consulta o PAP quando a bio no GED existe e ainda não há O.S.: senão a regra já fecha sozinha.
+    faltando = []
+    for cpf in cpfs_consta:
+        if info_pap_por_cpf.get(cpf, {}).get('consultado'):
+            continue
+        venda = venda_por_cpf.get(cpf) or {}
+        if (venda.get('ordem_servico') or '').strip():
+            continue
+        if cpf not in cpfs_ged and cpf not in etapas_por_cpf:
+            continue
+        faltando.append(cpf)
+    if faltando:
+        disparar_consultas_consta_pap(faltando)
+        for cpf in faltando:
+            info_pap_por_cpf.setdefault(cpf, {
+                'consultado': False, 'data_criacao': None, 'de_outro_pdv': None,
+                'numero_os': '', 'em_andamento': True,
+            })
+            info_pap_por_cpf[cpf]['em_andamento'] = True
+
     base = []
     for cpf in cpfs:
         venda = venda_por_cpf.get(cpf)
@@ -507,9 +803,13 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
         if venda:
             vendedor = venda['vendedor__first_name'] or venda['vendedor__username'] or ''
         status_tratamento = (venda['status_tratamento__nome'] or '') if venda else ''
+        info_pap = info_pap_por_cpf.get(cpf)
         repescavel, motivo = avaliar_repescagem(
             cruzamento['situacao'], venda['data_criacao'] if venda else None,
             (venda['ordem_servico'] or '') if venda else '', status_tratamento, agora,
+            ultima['data_envio'] if ultima else None,
+            (info_pap or {}).get('data_criacao'),
+            info_pap,
         )
         base.append({
             'cpf': cpf,
