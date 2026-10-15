@@ -81,6 +81,25 @@ class EsteiraChurnTratamentoTests(APITestCase):
         self.assertEqual(row['nome_cliente'], 'CLIENTE CHURN TESTE')
         self.assertEqual(row['cpf_cliente'], '98765432100')
 
+    def test_situacao_nio_na_lista_e_filtro(self):
+        from crm_app.models import ChurnConsultaDebitoNio
+
+        ChurnConsultaDebitoNio.objects.create(
+            cpf='98765432100', situacao='INADIMPLENTE', qtd_vencidas=1,
+            valor_vencido='90.00', consultado_em=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.gestor)
+        base = '/api/crm/esteira/churn-tratamento/?mes_referencia=2025-06'
+        data = self.client.get(base).json()
+        row = next(x for x in data['lista'] if x.get('venda_id') == self.venda.id)
+        self.assertEqual(row['situacao_nio'], 'INADIMPLENTE')
+        self.assertEqual(row['debito_nio']['valor_vencido'], 90.0)
+        self.assertEqual(data['contagens_nio']['INADIMPLENTE'], 1)
+
+        so_adimplentes = self.client.get(base + '&situacao_nio=ADIMPLENTE').json()
+        self.assertEqual(so_adimplentes['paginacao']['total'], 0)
+        self.assertEqual(so_adimplentes['contagens_nio']['INADIMPLENTE'], 1)
+
     def test_todos_os_meses_inclui_outra_safra(self):
         outro = Cliente.objects.create(cpf_cnpj='11122233344', nome_razao_social='OUTRO CLIENTE')
         Venda.objects.create(

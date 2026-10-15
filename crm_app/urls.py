@@ -7,7 +7,11 @@ from usuarios.views import LoginView, DefinirNovaSenhaView
 
 # Record Apoia APIs
 from .esteira_gestao_aproveitamento_api import GestaoAproveitamentoEsteiraView
-from .esteira_churn_tratamento_api import EsteiraChurnTratamentoView
+from .esteira_churn_tratamento_api import (
+    ChurnDebitoNioLoteCancelarView,
+    ChurnDebitoNioLoteView,
+    EsteiraChurnTratamentoView,
+)
 from .record_apoia_api import (
     RecordApoiaUploadView,
     RecordApoiaListView,
@@ -466,6 +470,8 @@ urlpatterns = [
     path('esteira/nio-reagendamento/<int:venda_id>/', NioReagendamentoUnitarioView.as_view(), name='esteira-nio-reagendamento-unitario'),
     path('esteira/gestao-aproveitamento/', GestaoAproveitamentoEsteiraView.as_view(), name='esteira-gestao-aproveitamento'),
     path('esteira/churn-tratamento/', EsteiraChurnTratamentoView.as_view(), name='esteira-churn-tratamento'),
+    path('esteira/churn-tratamento/debitos-nio/', ChurnDebitoNioLoteView.as_view(), name='churn-debitos-nio-lote'),
+    path('esteira/churn-tratamento/debitos-nio/<int:pk>/cancelar/', ChurnDebitoNioLoteCancelarView.as_view(), name='churn-debitos-nio-cancelar'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---

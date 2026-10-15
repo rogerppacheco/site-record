@@ -108,6 +108,9 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 .funil-pag-ir { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; }
 .funil-pag-ir input { width: 4.5rem; border-radius: 10px; text-align: center; }
 #pag-hist-size { width: auto; border-radius: 10px; }
+.nio-qtd { font-size: 0.72rem; opacity: 0.8; margin-left: 0.15rem; }
+.nio-qtd:empty { display: none; }
+.badge-nio { font-weight: 600; padding: 0.4em 0.75em; border-radius: 6px; font-size: 0.75rem; cursor: default; }
 @media (max-width: 768px) {
     .funil-pag { justify-content: center; }
     .funil-pag-info { text-align: center; width: 100%; }
@@ -197,6 +200,31 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         </ul>
                     </div>
                 </div>
+                <div class="pb-2 pe-2 d-flex gap-2 d-none" id="acoes-churn">
+                    <div class="btn-group shadow-sm">
+                        <button type="button" class="btn btn-primary fw-bold" id="btn-nio-consultar" title="Consulta débitos na Nio para os CPFs da aba (pula quem foi consultado nas últimas 24 horas)">
+                            <i class="bi bi-shield-check me-2"></i>Consultar débitos Nio
+                        </button>
+                        <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais opções da consulta"></button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow">
+                            <li><button type="button" class="dropdown-item" id="btn-nio-forcar"><i class="bi bi-arrow-repeat me-2"></i>Reconsultar todos (ignora as últimas 24 horas)</button></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div id="nio-prog" class="hist-prog d-none" role="status" aria-live="polite">
+                <div class="spinner-border" id="nio-prog-spin" aria-hidden="true"></div>
+                <div class="hist-prog-corpo">
+                    <div class="hist-prog-topo">
+                        <span class="hist-prog-titulo" id="nio-prog-titulo">Consultando débitos na Nio…</span>
+                        <span class="hist-prog-tempo" id="nio-prog-qtd"></span>
+                    </div>
+                    <div class="hist-prog-barra" id="nio-prog-barra"><div></div></div>
+                    <div class="hist-prog-info" id="nio-prog-info"></div>
+                    <div class="hist-prog-etapa" id="nio-prog-msg"></div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill d-none" id="btn-nio-cancelar"><i class="bi bi-stop-circle me-1"></i>Cancelar</button>
             </div>
 
             <div class="card card-modern border-top-0 shadow-sm funil-card" style="border-top-left-radius: 0;">
@@ -213,6 +241,14 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <button type="button" class="active" data-situacao="">Todos</button>
                         <button type="button" data-situacao="novos"><i class="bi bi-stars"></i> Novos</button>
                         <button type="button" data-situacao="base">Já na base</button>
+                    </div>
+                    <div class="funil-seg d-none" id="funil-seg-nio" role="group" aria-label="Situação de débito na Nio">
+                        <button type="button" class="active" data-nio="">Todos</button>
+                        <button type="button" data-nio="ADIMPLENTE">Adimplentes <span class="nio-qtd" data-qtd="ADIMPLENTE"></span></button>
+                        <button type="button" data-nio="INADIMPLENTE">Inadimplentes <span class="nio-qtd" data-qtd="INADIMPLENTE"></span></button>
+                        <button type="button" data-nio="A_VENCER">A vencer <span class="nio-qtd" data-qtd="A_VENCER"></span></button>
+                        <button type="button" data-nio="NAO_CONSULTADO">Não consultados <span class="nio-qtd" data-qtd="NAO_CONSULTADO"></span></button>
+                        <button type="button" data-nio="ERRO">Erro <span class="nio-qtd" data-qtd="ERRO"></span></button>
                     </div>
                     <select id="f-mes" class="form-select form-select-sm funil-select" aria-label="Mês da data do pedido" title="Mês pela Data do pedido">
                         <option value="">Todos os meses</option>
@@ -249,6 +285,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                                     <th class="py-3">Motivo</th>
                                     <th class="py-3">Data da retirada</th>
                                     <th class="py-3">Consultor</th>
+                                    <th class="py-3">Situação Nio</th>
                                     <th class="text-end pe-4 py-3">Ação</th>
                                 </tr>
                             </thead>
@@ -518,16 +555,18 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     const TAMANHOS_PAGINA = [25, 50, 100, 200];
     const LS_FUNIL_PAGE_SIZE = 'funil_hist_page_size';
     // Chaves curtas na URL: o estado sobrevive a F5 e pode ser compartilhado por link.
-    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord' };
+    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio' };
 
     const histState = {
         tipo: 'INTERESSE', page: 1, pageSize: 25,
-        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes',
+        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '',
     };
     let histMeta = { page: 1, totalPages: 1, count: 0 };
     let histAbort = null;
     let rodapePapHtml = '';
     let periodoPap = null;
+    let nioPoll = null;
+    let nioLoteAtual = null;
     let buscaDebounce = null;
 
     function esc(v) {
@@ -576,19 +615,25 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         document.getElementById('f-de').value = histState.de;
         document.getElementById('f-ate').value = histState.ate;
         document.getElementById('pag-hist-size').value = String(histState.pageSize);
-        document.querySelectorAll('.funil-seg button').forEach(b => {
+        document.querySelectorAll('#funil-seg button').forEach(b => {
             b.classList.toggle('active', b.getAttribute('data-situacao') === histState.situacao);
+        });
+        document.querySelectorAll('#funil-seg-nio button').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-nio') === histState.nio);
         });
         document.getElementById('ic-ordem-data').className = histState.ordem === 'antigos' ? 'bi bi-sort-up' : 'bi bi-sort-down';
         const churn = histState.tipo === 'CHURN';
         const temFiltro = churn
-            ? !!(histState.q || histState.de || histState.ate)
+            ? !!(histState.q || histState.de || histState.ate || histState.nio)
             : !!(histState.q || histState.status || histState.situacao || histState.de || histState.ate);
         document.getElementById('f-limpar').classList.toggle('d-none', !temFiltro);
         document.getElementById('f-status').classList.toggle('d-none', churn);
         document.getElementById('funil-seg').classList.toggle('d-none', churn);
+        document.getElementById('funil-seg-nio').classList.toggle('d-none', !churn);
         document.getElementById('funil-periodo').classList.toggle('d-none', churn);
         document.getElementById('acoes-pap').classList.toggle('d-none', churn);
+        document.getElementById('acoes-churn').classList.toggle('d-none', !churn);
+        if (!churn) document.getElementById('nio-prog').classList.add('d-none');
         document.getElementById('thead-pap').classList.toggle('d-none', churn);
         document.getElementById('thead-churn').classList.toggle('d-none', !churn);
         const busca = document.getElementById('f-busca');
@@ -615,7 +660,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             const tipo = e.currentTarget.getAttribute('data-tipo');
             if (tipo === histState.tipo) return;
             // Os status do PAP mudam entre Interesse/Pré-venda/Venda.
-            const mudancas = { tipo, status: '' };
+            const mudancas = { tipo, status: '', nio: '' };
             if (tipo === 'CHURN') {
                 periodoPap = { de: histState.de, ate: histState.ate };
                 Object.assign(mudancas, { situacao: '', de: '', ate: '' });
@@ -638,13 +683,16 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (e.key === 'Escape' && e.target.value) { e.target.value = ''; clearTimeout(buscaDebounce); aplicarFiltros({ q: '' }); }
     });
     document.getElementById('f-status').addEventListener('change', (e) => aplicarFiltros({ status: e.target.value }));
-    document.querySelectorAll('.funil-seg button').forEach(b => {
+    document.querySelectorAll('#funil-seg button').forEach(b => {
         b.addEventListener('click', () => aplicarFiltros({ situacao: b.getAttribute('data-situacao') }));
+    });
+    document.querySelectorAll('#funil-seg-nio button').forEach(b => {
+        b.addEventListener('click', () => aplicarFiltros({ nio: b.getAttribute('data-nio') }));
     });
     document.getElementById('f-de').addEventListener('change', (e) => aplicarFiltros({ de: e.target.value }));
     document.getElementById('f-ate').addEventListener('change', (e) => aplicarFiltros({ ate: e.target.value }));
     document.getElementById('f-limpar').addEventListener('click', () => {
-        aplicarFiltros({ q: '', status: '', situacao: '', de: '', ate: '' });
+        aplicarFiltros({ q: '', status: '', situacao: '', de: '', ate: '', nio: '' });
     });
     document.getElementById('th-ordem-data').addEventListener('click', () => {
         aplicarFiltros({ ordem: histState.ordem === 'antigos' ? 'recentes' : 'antigos' });
@@ -858,6 +906,32 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(iso);
     }
 
+    const NIO_SITUACAO = {
+        ADIMPLENTE: { rotulo: 'Adimplente', cls: 'bg-success-subtle text-success border border-success-subtle', icone: 'bi-check-circle-fill' },
+        INADIMPLENTE: { rotulo: 'Inadimplente', cls: 'bg-danger-subtle text-danger border border-danger-subtle', icone: 'bi-exclamation-octagon-fill' },
+        A_VENCER: { rotulo: 'A vencer', cls: 'bg-warning-subtle text-warning-emphasis border border-warning-subtle', icone: 'bi-hourglass-split' },
+        ERRO: { rotulo: 'Erro', cls: 'bg-secondary-subtle text-secondary border', icone: 'bi-x-circle' },
+        NAO_CONSULTADO: { rotulo: 'Não consultado', cls: 'bg-light text-muted border', icone: 'bi-dash-circle' },
+    };
+    const fmtBRL = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function badgeNio(r) {
+        const s = NIO_SITUACAO[r.situacao_nio] || NIO_SITUACAO.NAO_CONSULTADO;
+        const d = r.debito_nio;
+        let dica = 'Ainda não consultado na Nio';
+        if (d) {
+            const partes = [];
+            if (d.qtd_vencidas) partes.push(`${d.qtd_vencidas} vencida(s): ${fmtBRL(d.valor_vencido)} desde ${fmtDataIso(d.vencimento_mais_antigo)}`);
+            if (d.qtd_a_vencer) partes.push(`${d.qtd_a_vencer} a vencer: ${fmtBRL(d.valor_a_vencer)}`);
+            if (d.detalhe) partes.push(d.detalhe);
+            if (!partes.length) partes.push('Nenhuma conta em aberto');
+            const quando = d.consultado_em ? new Date(d.consultado_em).toLocaleString('pt-BR') : '';
+            dica = partes.join(' · ') + (quando ? ` · consultado em ${quando}` : '');
+        }
+        const valor = r.situacao_nio === 'INADIMPLENTE' && d ? `<div class="small text-danger mt-1">${esc(fmtBRL(d.valor_vencido))}</div>` : '';
+        return `<span class="badge badge-nio ${s.cls}" title="${esc(dica)}"><i class="bi ${s.icone} me-1"></i>${s.rotulo}</span>${valor}`;
+    }
+
     function linhaChurn(r) {
         const motivo = r.DS_MOTIVO_RETIRADA || r.TP_RETIRADA || '—';
         return `
@@ -868,6 +942,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 <td><span class="badge bg-secondary badge-status">${esc(motivo)}</span></td>
                 <td class="text-muted small text-nowrap">${esc(fmtDataIso(r.dt_retirada))}</td>
                 <td class="small">${esc(r.vendedor || '—')}</td>
+                <td class="text-nowrap">${badgeNio(r)}</td>
                 <td class="text-end pe-4">
                     <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="alert('Funcionalidade de Tratamento em desenvolvimento')">Tratar</button>
                 </td>
@@ -895,6 +970,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         else if (mes === 'custom' && histState.de) params.set('mes_referencia', histState.de.slice(0, 7));
         else params.set('mes_referencia', 'todos');
         if (histState.q) params.set('busca', histState.q);
+        if (histState.nio) params.set('situacao_nio', histState.nio);
 
         try {
             const r = await fetch(API_CHURN + '?' + params.toString(), {
@@ -905,7 +981,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             if (sinal.aborted) return;
             if (!r.ok) {
                 const detalhe = data.detail || `Erro HTTP ${r.status} ao carregar o churn.`;
-                tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-4">${esc(detalhe)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">${esc(detalhe)}</td></tr>`;
                 return;
             }
 
@@ -916,13 +992,19 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             gravarEstadoNaUrl();
             renderMeses(data.meses);
             renderPaginacao();
-            document.getElementById('count-churn').textContent = total.toLocaleString('pt-BR');
+            const contagens = data.contagens_nio || {};
+            const totalSemNio = Object.values(contagens).reduce((a, b) => a + (b || 0), 0);
+            document.getElementById('count-churn').textContent = totalSemNio.toLocaleString('pt-BR');
+            document.querySelectorAll('#funil-seg-nio .nio-qtd').forEach(el => {
+                const n = contagens[el.getAttribute('data-qtd')];
+                el.textContent = n ? `(${n.toLocaleString('pt-BR')})` : '';
+            });
             document.getElementById('rodape-info').textContent = 'Cruzamento pela O.S. (pedido e nr_ordem), o mesmo da Esteira. A lista traz nome e CPF do cliente da venda encontrada no CRM.';
 
             const itens = data.lista || [];
             if (!itens.length) {
-                const temFiltro = !!(histState.q || histState.de || histState.ate);
-                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-muted">
+                const temFiltro = !!(histState.q || histState.de || histState.ate || histState.nio);
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
                     <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>
                     ${temFiltro ? 'Nenhum churn com cliente no CRM para esses filtros.' : 'Nenhum churn cruzado com o CRM neste período.'}
                     ${temFiltro ? '<div class="mt-3"><button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="document.getElementById(\'f-limpar\').click()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button></div>' : ''}
@@ -933,11 +1015,82 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             if (rolarTopo) scroll.scrollTop = 0;
         } catch (e) {
             if (e.name === 'AbortError') return;
-            tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-4">Erro ao carregar o churn: ${esc(e.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">Erro ao carregar o churn: ${esc(e.message)}</td></tr>`;
         } finally {
             if (!sinal.aborted) scroll.classList.remove('funil-carregando');
         }
+        if (!nioPoll) verificarLoteNio();
     }
+
+    const API_NIO_LOTE = API_CHURN + 'debitos-nio/';
+
+    function renderLoteNio(lote) {
+        const box = document.getElementById('nio-prog');
+        nioLoteAtual = lote;
+        const emAndamento = lote && lote.status === 'EM_ANDAMENTO';
+        document.getElementById('btn-nio-consultar').disabled = !!emAndamento;
+        document.getElementById('btn-nio-forcar').disabled = !!emAndamento;
+        if (!lote || histState.tipo !== 'CHURN') { box.classList.add('d-none'); return; }
+        box.classList.remove('d-none');
+        const pct = lote.total ? Math.round((lote.processados / lote.total) * 100) : 0;
+        document.getElementById('nio-prog-spin').classList.toggle('d-none', !emAndamento);
+        document.getElementById('btn-nio-cancelar').classList.toggle('d-none', !emAndamento);
+        document.getElementById('nio-prog-barra').firstElementChild.style.width = (emAndamento ? pct : 100) + '%';
+        const titulos = { EM_ANDAMENTO: 'Consultando débitos na Nio…', CONCLUIDO: 'Última consulta de débitos concluída', CANCELADO: 'Consulta de débitos cancelada', ERRO: 'Consulta de débitos interrompida' };
+        document.getElementById('nio-prog-titulo').textContent = titulos[lote.status] || 'Consulta de débitos';
+        document.getElementById('nio-prog-qtd').textContent = lote.total
+            ? `${lote.processados.toLocaleString('pt-BR')} de ${lote.total.toLocaleString('pt-BR')} CPFs (${pct}%)`
+            : '';
+        document.getElementById('nio-prog-info').innerHTML = `
+            <span>Adimplentes <strong>${lote.adimplentes}</strong></span>
+            <span>Inadimplentes <strong>${lote.inadimplentes}</strong></span>
+            <span>A vencer <strong>${lote.a_vencer}</strong></span>
+            <span>Erros <strong>${lote.erros}</strong></span>`;
+        const quando = lote.finalizado_em ? ` · ${new Date(lote.finalizado_em).toLocaleString('pt-BR')}` : '';
+        document.getElementById('nio-prog-msg').textContent = (lote.mensagem || '') + quando;
+    }
+
+    async function verificarLoteNio() {
+        try {
+            const r = await fetch(API_NIO_LOTE, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+            if (!r.ok) return;
+            const { lote } = await r.json();
+            const estavaRodando = nioLoteAtual && nioLoteAtual.status === 'EM_ANDAMENTO';
+            renderLoteNio(lote);
+            const rodando = lote && lote.status === 'EM_ANDAMENTO';
+            if (rodando && !nioPoll) nioPoll = setInterval(verificarLoteNio, 3000);
+            if (!rodando && nioPoll) { clearInterval(nioPoll); nioPoll = null; }
+            if (estavaRodando && !rodando && histState.tipo === 'CHURN') carregarPedidos();
+        } catch (e) {}
+    }
+
+    async function iniciarLoteNio(forcar) {
+        if (forcar && !confirm('Reconsultar TODOS os CPFs na Nio, inclusive os consultados nas últimas 24 horas?')) return;
+        try {
+            const r = await fetch(API_NIO_LOTE, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ forcar: !!forcar }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) { alert(data.detail || `Erro HTTP ${r.status} ao iniciar a consulta.`); return; }
+            if (!data.criado) alert('Já existe uma consulta em andamento. Acompanhando o progresso.');
+            renderLoteNio(data.lote);
+            if (!nioPoll) nioPoll = setInterval(verificarLoteNio, 3000);
+        } catch (e) {
+            alert('Erro ao iniciar a consulta: ' + e.message);
+        }
+    }
+
+    document.getElementById('btn-nio-consultar').addEventListener('click', () => iniciarLoteNio(false));
+    document.getElementById('btn-nio-forcar').addEventListener('click', () => iniciarLoteNio(true));
+    document.getElementById('btn-nio-cancelar').addEventListener('click', async () => {
+        if (!nioLoteAtual || !confirm('Cancelar a consulta de débitos? O que já foi consultado fica salvo.')) return;
+        await fetch(`${API_NIO_LOTE}${nioLoteAtual.id}/cancelar/`, {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() },
+        });
+        verificarLoteNio();
+    });
 
     function linhaPedido(p) {
         const [dia, hora] = String(p.data_status || '').split(' ');

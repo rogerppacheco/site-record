@@ -5637,6 +5637,83 @@ class QualidadeFocoTratamento(models.Model):
         return f'{self.usuario_id} {self.indicador} {seg}'
 
 
+class ChurnConsultaDebitoLote(models.Model):
+    """Lote de consulta de débitos na Nio para os clientes da aba Tratar Churn."""
+
+    STATUS_EM_ANDAMENTO = 'EM_ANDAMENTO'
+    STATUS_CONCLUIDO = 'CONCLUIDO'
+    STATUS_CANCELADO = 'CANCELADO'
+    STATUS_ERRO = 'ERRO'
+    STATUS_CHOICES = (
+        (STATUS_EM_ANDAMENTO, 'Em andamento'),
+        (STATUS_CONCLUIDO, 'Concluído'),
+        (STATUS_CANCELADO, 'Cancelado'),
+        (STATUS_ERRO, 'Erro'),
+    )
+
+    iniciado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='churn_consultas_debito',
+    )
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_EM_ANDAMENTO, db_index=True)
+    forcar = models.BooleanField(default=False)
+    total = models.PositiveIntegerField(default=0)
+    processados = models.PositiveIntegerField(default=0)
+    adimplentes = models.PositiveIntegerField(default=0)
+    inadimplentes = models.PositiveIntegerField(default=0)
+    a_vencer = models.PositiveIntegerField(default=0)
+    erros = models.PositiveIntegerField(default=0)
+    mensagem = models.TextField(blank=True, default='')
+    iniciado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_churn_consulta_debito_lote'
+        verbose_name = 'Lote consulta débito Nio (churn)'
+        verbose_name_plural = 'Lotes consulta débito Nio (churn)'
+        ordering = ['-iniciado_em']
+
+    def __str__(self) -> str:
+        return f'Lote débito churn #{self.pk} {self.status}'
+
+
+class ChurnConsultaDebitoNio(models.Model):
+    """Última situação de débito na Nio por CPF/CNPJ (aba Tratar Churn)."""
+
+    ADIMPLENTE = 'ADIMPLENTE'
+    INADIMPLENTE = 'INADIMPLENTE'
+    A_VENCER = 'A_VENCER'
+    ERRO = 'ERRO'
+    SITUACAO_CHOICES = (
+        (ADIMPLENTE, 'Adimplente'),
+        (INADIMPLENTE, 'Inadimplente'),
+        (A_VENCER, 'A vencer'),
+        (ERRO, 'Erro na consulta'),
+    )
+
+    cpf = models.CharField(max_length=14, unique=True)
+    situacao = models.CharField(max_length=16, choices=SITUACAO_CHOICES, db_index=True)
+    qtd_vencidas = models.PositiveIntegerField(default=0)
+    valor_vencido = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    vencimento_mais_antigo = models.DateField(null=True, blank=True)
+    qtd_a_vencer = models.PositiveIntegerField(default=0)
+    valor_a_vencer = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    detalhe = models.CharField(max_length=255, blank=True, default='')
+    consultado_em = models.DateTimeField(db_index=True)
+    lote = models.ForeignKey(
+        ChurnConsultaDebitoLote, on_delete=models.SET_NULL, null=True, blank=True, related_name='resultados',
+    )
+
+    class Meta:
+        db_table = 'crm_churn_consulta_debito_nio'
+        verbose_name = 'Débito Nio (churn)'
+        verbose_name_plural = 'Débitos Nio (churn)'
+
+    def __str__(self) -> str:
+        return f'{self.cpf} {self.situacao}'
+
+
 class GdpPrecoMunicipioManager(models.Manager):
     def get_queryset(self) -> GdpPrecoMunicipioQuerySet:
         return GdpPrecoMunicipioQuerySet(self.model, using=self._db)

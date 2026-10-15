@@ -14,10 +14,33 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from crm_app.churn_os_utils import anomes_filtro_variantes, build_venda_lookup_por_os, encontrar_venda_por_churn
-from crm_app.models import ImportacaoChurn, Venda
+from crm_app.models import ChurnConsultaDebitoNio, ImportacaoChurn, Venda
+from crm_app.services.churn_debito_nio_service import normalizar_documento
 from crm_app.utils import is_member
 
 GRUPOS_CHURN_TRATAMENTO_ESTEIRA = ['Diretoria', 'BackOffice', 'Admin']
+NAO_CONSULTADO = 'NAO_CONSULTADO'
+SITUACOES_NIO_FILTRO = (
+    ChurnConsultaDebitoNio.ADIMPLENTE,
+    ChurnConsultaDebitoNio.INADIMPLENTE,
+    ChurnConsultaDebitoNio.A_VENCER,
+    NAO_CONSULTADO,
+    ChurnConsultaDebitoNio.ERRO,
+)
+
+
+def _debito_display(debito: dict | None) -> dict | None:
+    if not debito:
+        return None
+    return {
+        'qtd_vencidas': debito['qtd_vencidas'],
+        'valor_vencido': float(debito['valor_vencido'] or 0),
+        'vencimento_mais_antigo': _fmt_data(debito['vencimento_mais_antigo']),
+        'qtd_a_vencer': debito['qtd_a_vencer'],
+        'valor_a_vencer': float(debito['valor_a_vencer'] or 0),
+        'detalhe': debito['detalhe'],
+        'consultado_em': debito['consultado_em'].isoformat() if debito['consultado_em'] else None,
+    }
 
 
 def _parse_mes_referencia(raw: str | None) -> tuple[date, date, str]:
@@ -168,6 +191,16 @@ class EsteiraChurnTratamentoView(APIView):
             '0', 'false', 'nao', 'não',
         )
 
+        situacao_nio_f = (request.query_params.get('situacao_nio') or '').strip().upper()
+        debitos = {
+            d['cpf']: d
+            for d in ChurnConsultaDebitoNio.objects.values(
+                'cpf', 'situacao', 'qtd_vencidas', 'valor_vencido', 'vencimento_mais_antigo',
+                'qtd_a_vencer', 'valor_a_vencer', 'detalhe', 'consultado_em',
+            )
+        }
+        contagens_nio = {s: 0 for s in SITUACOES_NIO_FILTRO}
+
         linhas = []
         ranking_map: dict[int, dict] = {}
 
@@ -212,6 +245,12 @@ class EsteiraChurnTratamentoView(APIView):
                 if busca not in blob:
                     continue
 
+            debito = debitos.get(normalizar_documento(cpf)) if cpf else None
+            situacao_nio = debito['situacao'] if debito else NAO_CONSULTADO
+            contagens_nio[situacao_nio] = contagens_nio.get(situacao_nio, 0) + 1
+            if situacao_nio_f and situacao_nio != situacao_nio_f:
+                continue
+
             churn_fields = _churn_display_fields(churn)
             linhas.append({
                 'venda_id': venda_id,
@@ -224,6 +263,8 @@ class EsteiraChurnTratamentoView(APIView):
                 'status_esteira': status_esteira,
                 'churn_id': churn.id,
                 'sem_venda_crm': venda is None,
+                'situacao_nio': situacao_nio,
+                'debito_nio': _debito_display(debito),
                 **churn_fields,
             })
 
@@ -290,6 +331,7 @@ class EsteiraChurnTratamentoView(APIView):
                 'linhas_lista': total,
                 'consultores_ranking': len(ranking),
             },
+            'contagens_nio': contagens_nio,
             'lista': lista_pagina,
             'paginacao': {
                 'page': page,
@@ -310,3 +352,45 @@ class EsteiraChurnTratamentoView(APIView):
                 ),
             },
         })
+
+
+class ChurnDebitoNioLoteView(APIView):
+    """GET: lote em andamento ou o último. POST: inicia consulta de débitos Nio (body: forcar)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from crm_app.models import ChurnConsultaDebitoLote
+        from crm_app.services.churn_debito_nio_service import lote_em_andamento, serializar_lote
+
+        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+            return Response({'detail': 'Acesso restrito à gestão.'}, status=status.HTTP_403_FORBIDDEN)
+        lote = lote_em_andamento() or ChurnConsultaDebitoLote.objects.select_related('iniciado_por').first()
+        return Response({'lote': serializar_lote(lote)})
+
+    def post(self, request):
+        from crm_app.services.churn_debito_nio_service import iniciar_lote, serializar_lote
+
+        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+            return Response({'detail': 'Acesso restrito à gestão.'}, status=status.HTTP_403_FORBIDDEN)
+        forcar = str(request.data.get('forcar', '')).strip().lower() in ('1', 'true', 'sim', 'yes')
+        lote, criado = iniciar_lote(request.user, forcar=forcar)
+        return Response(
+            {'lote': serializar_lote(lote), 'criado': criado},
+            status=status.HTTP_201_CREATED if criado else status.HTTP_200_OK,
+        )
+
+
+class ChurnDebitoNioLoteCancelarView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk: int):
+        from crm_app.models import ChurnConsultaDebitoLote as L
+        from crm_app.services.churn_debito_nio_service import serializar_lote
+
+        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+            return Response({'detail': 'Acesso restrito à gestão.'}, status=status.HTTP_403_FORBIDDEN)
+        L.objects.filter(pk=pk, status=L.STATUS_EM_ANDAMENTO).update(
+            status=L.STATUS_CANCELADO, atualizado_em=timezone.now(), mensagem='Cancelando…',
+        )
+        return Response({'lote': serializar_lote(L.objects.filter(pk=pk).first())})
