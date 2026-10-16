@@ -36,7 +36,12 @@ class FunilHistoricoPapConfigView(APIView):
     def get(self, request):
         if not is_member(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
-        from crm_app.historico_pap_service import busca_em_andamento, obter_status_sessao_pap, serializar_busca
+        from crm_app.historico_pap_service import (
+            busca_em_andamento,
+            obter_pausa_rotina_automatica,
+            obter_status_sessao_pap,
+            serializar_busca,
+        )
         from crm_app.models import HistoricoPapBusca, HistoricoPapPedido
         from crm_app.pool_historico_pap import candidatos_historico_pap, resumo_pool
 
@@ -47,6 +52,7 @@ class FunilHistoricoPapConfigView(APIView):
         cand = list(candidatos_historico_pap())
         mat_cand = getattr(cand[0], "matricula_pap", "") if cand else ""
         sessao_info = obter_status_sessao_pap(mat_cand)
+        pausa_rotina = obter_pausa_rotina_automatica()
 
         return Response(
             {
@@ -57,6 +63,7 @@ class FunilHistoricoPapConfigView(APIView):
                 "tem_credencial_pap": pool["disponiveis"] > 0 or pool["em_uso"] > 0,
                 "pool": pool,
                 "sessao_pap": sessao_info,
+                "rotina_automatica_pausada": pausa_rotina,
                 "pedidos_conhecidos": HistoricoPapPedido.objects.count(),
                 "grava_venda": False,
                 "busca_em_andamento": serializar_busca(busca, em_andamento=True) if busca else None,
