@@ -1,3 +1,6 @@
+# Artefato de collectstatic (nunca versionar — causa CSS/JS antigo em produção)
+staticfiles/
+
 # Arquivos de Cache do Python
 __pycache__/
 *.pyc

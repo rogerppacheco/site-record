@@ -11,7 +11,8 @@ WORKDIR /app
 
 # Copia arquivos do projeto
 # CACHEBUST invalida camadas seguintes (collectstatic) quando só JS/CSS mudam
-ARG CACHEBUST=1
+# Bump quando static/ mudar e o cache do Railway mantiver camada velha
+ARG CACHEBUST=20261016-menu-v6
 COPY . /app/
 
 # Instala dependências Python
@@ -26,7 +27,7 @@ ENV SECRET_KEY=build-collectstatic-only
 ENV DEBUG=False
 ENV EMAIL_HOST_USER=build@localhost
 ENV EMAIL_HOST_PASSWORD=build
-RUN python manage.py collectstatic --noinput --skip-checks
+RUN python manage.py collectstatic --noinput --clear --skip-checks
 
 # Comando de inicialização
 # NÃO usar --max-requests: recycle de worker mata threads daemon (Playwright no webhook).

@@ -12,10 +12,17 @@ else
 fi
 python manage.py createcachetable 2>/dev/null || true
 
-# Sempre regenera staticfiles no boot — evita CSS/JS antigos quando a imagem
-# Docker reutiliza camada de collectstatic desatualizada.
-echo "[STATIC] collectstatic (garante menu.js/CSS do App Shell)..."
-python manage.py collectstatic --noinput --skip-checks 2>/dev/null || true
+# --clear: no Docker o COPY zera mtimes iguais e o collectstatic sem --clear
+# marca tudo como "unmodified", mantendo staticfiles/ commitado (menu.js v5 etc.).
+echo "[STATIC] collectstatic --clear (fonte: static/ → staticfiles/)..."
+python manage.py collectstatic --noinput --clear --skip-checks
+if ! grep -q 'MENU.JS v6.0' /app/staticfiles/js/menu.js 2>/dev/null \
+   && ! grep -q 'MENU.JS v6.0' /app/staticfiles/js/menu.*.js 2>/dev/null; then
+  echo "[STATIC] ERRO: menu.js v6.0 nao apareceu em staticfiles apos collectstatic"
+  ls -la /app/static/js/menu.js /app/staticfiles/js/menu* 2>&1 || true
+  exit 1
+fi
+echo "[STATIC] menu.js v6.0 OK"
 
 echo "[GUNICORN] workers=${WORKERS} threads=${THREADS} timeout=1200"
 
