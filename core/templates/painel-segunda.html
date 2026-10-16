@@ -4,6 +4,11 @@
 
 {% block title %}Painel Segunda - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Painel Segunda{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .painel-segunda-page .painel-hero { background: var(--bg-card); padding: 1.5rem 2rem; margin-bottom: 1.5rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid var(--accent-primary); }
@@ -24,18 +29,10 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="container-fluid py-4 painel-segunda-page" style="max-width: 1600px;">
-        <div class="painel-hero card-modern">
-            <h2 class="mb-1 fw-bold text-dark"><i class="bi bi-calendar2-week text-primary me-2"></i>Painel Segunda</h2>
-            <p class="text-muted mb-0 small">Pagamento semanal (segunda a sábado). Acesso restrito a Diretoria e Admin.</p>
-        </div>
-
         <div class="semana-toolbar d-flex flex-wrap align-items-center gap-3 mb-3">
             <label class="fw-bold">Semana (segunda-feira):</label>
             <input type="date" id="input-semana" class="form-control form-control-sm" style="width: 160px;">

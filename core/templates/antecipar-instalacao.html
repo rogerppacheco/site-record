@@ -4,6 +4,11 @@
 
 {% block title %}Antecipar Instalação / Reparo / Instalação Física - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Antecipar Instalação{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .antecipar-page .tool-container { max-width: 820px; margin: 0 auto; padding: 20px; }
@@ -32,16 +37,11 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/" class="nav-button">Área Interna</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <div class="tool-container antecipar-page" id="tool-container">
-        <h2 class="mb-3"><i class="bi bi-lightning-charge-fill text-primary"></i> Antecipar Instalação / Reparo / Instalação Física</h2>
-
-        <ul class="nav nav-tabs mb-4" id="tab-main" role="tablist">
+<ul class="nav nav-tabs mb-4" id="tab-main" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="tab-solicitar-btn" data-bs-toggle="tab" data-bs-target="#tab-solicitar" type="button">Solicitar</button>
             </li>

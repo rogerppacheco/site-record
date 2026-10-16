@@ -4,6 +4,11 @@
 
 {% block title %}{{ SITE_MODULE_PREFIX }} Vertical - CDOI{% endblock %}
 
+
+{% block page_title %}Gestão CDOI{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
@@ -454,22 +459,12 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section cdoi-page">
         <div class="system-container">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 style="font-size: 1.8rem; margin: 0;"><i class="fa-solid fa-building text-primary"></i> Gestão CDOI</h1>
-                    <p class="text-muted mb-0">Solicitações e acionamentos para condomínios.</p>
-                </div>
-            </div>
-
-            <ul class="nav nav-tabs mb-4" id="cdoiTabs" role="tablist">
+<ul class="nav nav-tabs mb-4" id="cdoiTabs" role="tablist">
                 <li class="nav-item"><button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-content" type="button" onclick="carregarDashboardCdoi()"><i class="bi bi-speedometer2"></i> Dashboard</button></li>
                 <li class="nav-item"><button class="nav-link" id="nova-tab" data-bs-toggle="tab" data-bs-target="#nova-content" type="button"><i class="bi bi-plus-circle"></i> <span id="tab-titulo">Nova Solicitação</span></button></li>
                 {% if can_config %}

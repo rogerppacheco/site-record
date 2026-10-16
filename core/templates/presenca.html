@@ -4,6 +4,11 @@
 
 {% block title %}Controle de Presença - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Controle de Presença{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
@@ -156,21 +161,13 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section presenca-page">
         <div class="system-container">
             
-            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
-                <div>
-                    <h1 style="font-size: 1.8rem; margin: 0;">Controle de Presença</h1>
-                    <p class="text-muted mb-0">Gerencie a presença diária da equipe.</p>
-                </div>
-                
+            <div class="d-flex justify-content-end align-items-center mb-4 header-controls gap-2">
                 <div id="container-filtro-data" class="gap-2 restricted-access">
                     <input type="date" id="data-presenca" class="form-control" onchange="carregarDadosIniciais()">
                     <button class="btn btn-outline-secondary" onclick="carregarDadosIniciais()"><i class="bi bi-arrow-clockwise"></i></button>

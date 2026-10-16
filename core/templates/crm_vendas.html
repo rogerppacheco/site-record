@@ -4,6 +4,11 @@
 
 {% block title %}CRM de Vendas - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Vendas{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
 <link href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.bootstrap5.min.css" rel="stylesheet">
@@ -31,7 +36,13 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
         .nav-pills .nav-link { color: var(--text-secondary); background-color: var(--bg-secondary); border: 1px solid var(--border-color); margin-right: 5px; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
         .nav-pills .nav-link.active { background-color: var(--accent-primary); color: var(--text-on-accent); border-color: var(--accent-primary); }
         .nav-pills .nav-link:hover:not(.active) { background-color: var(--bg-card); }
-        .badge-contador { font-size: 0.75rem; background-color: rgba(0,0,0,0.1); color: inherit; padding: 2px 6px; border-radius: 10px; min-width: 25px; text-align: center; }
+        .badge-contador {
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; font-weight: 800; font-variant-numeric: tabular-nums;
+            background: #0f172a; color: #fff; padding: 0 0.4rem;
+            border-radius: 999px; min-width: 1.45rem; height: 1.3rem; line-height: 1;
+        }
+        .nav-pills .nav-link.active .badge-contador { background: #fff; color: #0c4a6e; }
 
         .dash-card { border-radius: 12px; border: none; color: white; padding: 20px; height: 100%; position: relative; overflow: hidden; transition: transform 0.2s; cursor: pointer; }
         .dash-card:hover { transform: translateY(-3px); }
@@ -179,18 +190,14 @@ input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section crm-vendas-page">
         <div class="card-modern system-container" style="max-width: 1700px;"> 
             <div class="d-flex justify-content-between align-items-start align-items-md-center mb-3 mb-md-4 flex-wrap gap-3 header-controls">
                 <div class="flex-shrink-0">
-                    <h1 style="font-size: 1.75rem; margin: 0;">Vendas</h1>
-                    <p class="text-muted mb-0 small">Gerencie vendas e acompanhe o status.</p>
+<p class="text-muted mb-0 small">Gerencie vendas e acompanhe o status.</p>
                 </div>
                 <div class="crm-vendas-toolbar-acoes ms-md-auto">
                     <button type="button" id="btn-exportar-excel-filtro" class="btn btn-sm btn-outline-success d-none" onclick="exportarExcelFiltrado()" title="Exportar vendas do filtro (vendas do mês + instaladas no mês)">

@@ -4,6 +4,15 @@
 
 {% block title %}Boas Vindas - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Boas Vindas{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
+
+{% block header_module_actions %}
+<a href="/atendimento-whatsapp/" class="btn btn-sm btn-primary"><i class="bi bi-whatsapp"></i><span class="header-action-label ms-1">Atendimento</span></a>
+{% endblock %}
 {% block extra_css %}
 <style>
         .boas-vindas-page .tool-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
@@ -19,18 +28,11 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/" class="nav-button">Área Interna</a></li>
-    <li><a href="/atendimento-whatsapp/" class="nav-button">Atendimento WhatsApp</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <div class="tool-container boas-vindas-page">
-        <h2 class="mb-3"><i class="bi bi-chat-heart-fill text-success"></i> Boas Vindas</h2>
-        <p class="text-muted mb-4">Instalações do dia anterior e envio de boas-vindas. Retornos dos clientes para tratamento pelo BO.</p>
-
-        <div class="row g-2 mb-4" id="painel-custos-wa">
+<div class="row g-2 mb-4" id="painel-custos-wa">
             <div class="col-md-3"><div class="p-3 bg-light rounded"><div class="small text-muted">Custo / msg Utility</div><div class="stat-mini" id="custo-utility">—</div></div></div>
             <div class="col-md-3"><div class="p-3 bg-light rounded"><div class="small text-muted">Gasto hoje</div><div class="stat-mini" id="custo-hoje">—</div></div></div>
             <div class="col-md-3"><div class="p-3 bg-light rounded"><div class="small text-muted">Gasto no mês</div><div class="stat-mini" id="custo-mes">—</div></div></div>

@@ -43,6 +43,10 @@
             icon.className = isDark ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
         }
         var label = isDark ? 'Ativar modo claro' : 'Ativar modo escuro';
+        var menuLabel = document.getElementById('header-theme-label');
+        if (menuLabel) {
+            menuLabel.textContent = isDark ? 'Modo claro' : 'Modo escuro';
+        }
         button.setAttribute('aria-label', label);
         button.setAttribute('title', label);
         button.setAttribute('aria-pressed', isDark ? 'true' : 'false');

@@ -158,9 +158,10 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+{% block page_title %}Área Interna{% endblock %}
+{% block header_back_class %}d-none{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 
 {% block content %}
 <main class="area-interna-page">
@@ -260,7 +261,7 @@
             <!-- R -->
             <a href="/record-apoia/" class="app-card card-modern" id="card-apoia">
                 <i class="bi bi-folder-fill app-icon icon-apoia"></i>
-                <span class="app-title">{{ SITE_MODULE_PREFIX }} Apoia</span>
+                <span class="app-title">Apoia</span>
             </a>
 
             <a href="/conhecimento-ia/" class="app-card card-modern" id="card-conhecimento-ia">
@@ -270,17 +271,17 @@
 
             <a href="/record-informa/" class="app-card card-modern" id="card-informa">
                 <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
-                <span class="app-title">{{ SITE_MODULE_PREFIX }} Informa</span>
+                <span class="app-title">Informa</span>
             </a>
 
             <a href="/crm-vendas/" class="app-card card-modern" id="card-vendas">
                 <i class="bi bi-people-fill app-icon icon-vendas"></i>
-                <span class="app-title">{{ SITE_MODULE_PREFIX }} Vendas</span>
+                <span class="app-title">Vendas</span>
             </a>
 
             <a href="{% url 'page_cdoi_novo' %}" class="app-card card-modern" id="card-cdoi">
                 <i class="bi bi-building app-icon icon-cdoi"></i>
-                <span class="app-title">{{ SITE_MODULE_PREFIX }} Vertical</span>
+                <span class="app-title">Vertical</span>
             </a>
         </div>
 </main>
@@ -317,7 +318,7 @@
                 'Admin': 'all',
 
                 // Acesso Backoffice (inclui Qualidade)
-                'BackOffice': ['card-antecipar', 'card-boas-vindas', 'card-atendimento-whatsapp', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia', 'card-qualidade', 'card-controle-tts', 'card-whatsapp-config'],
+                'BackOffice': ['card-antecipar', 'card-boas-vindas', 'card-atendimento-whatsapp', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia', 'card-qualidade', 'card-controle-tts', 'card-whatsapp-config', 'card-funil-vendas'],
 
                 // Qualidade (sem valores de bônus R$ — só Diretoria/Admin na API)
                 'Qualidade': ['card-qualidade', 'card-esteira', 'card-auditoria', 'card-boas-vindas', 'card-atendimento-whatsapp', 'card-vendas', 'card-informa', 'card-importacoes', 'card-apoia', 'card-conhecimento-ia'],

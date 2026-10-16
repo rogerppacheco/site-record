@@ -2,6 +2,14 @@
 {% load static %}
 
 {% block title %}Atendimento WhatsApp - {{ SITE_BRAND }}{% endblock %}
+{% block page_title %}Atendimento WhatsApp{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
+
+{% block header_module_actions %}
+<a href="/boas-vindas/" class="btn btn-sm btn-primary"><i class="bi bi-chat-heart"></i><span class="header-action-label ms-1">Boas Vindas</span></a>
+{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -31,16 +39,8 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/" class="nav-button">Área Interna</a></li>
-    <li><a href="/boas-vindas/" class="nav-button">Boas Vindas</a></li>
-    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
-
 {% block content %}
 <div class="wa-inbox">
-    <h2 class="mb-1"><i class="bi bi-whatsapp text-success"></i> Atendimento WhatsApp</h2>
-    <p class="text-muted mb-3">Todas as mensagens recebidas e enviadas no número oficial. Texto livre só dentro da janela de 24 horas da Meta.</p>
     <div class="wa-layout">
         <section class="wa-lista">
             <div class="wa-lista-head">

@@ -4,6 +4,11 @@
 
 {% block title %}Importar Preços GDP - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Importar GDP{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
 .import-container { max-width: 1200px; margin: 40px auto; padding: 20px; }
@@ -41,17 +46,13 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/importacoes/">Voltar</a></li>
-    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="importar-page">
     <div class="import-container">
         <div class="text-center mb-4">
-            <h2 class="fw-bold">Importar Preços GDP (Nio por Cidade)</h2>
-            <p class="text-muted">Planilha oficial de ofertas por município, meio de pagamento e velocidade</p>
+<p class="text-muted">Planilha oficial de ofertas por município, meio de pagamento e velocidade</p>
         </div>
 
         <div class="info-card card-modern">

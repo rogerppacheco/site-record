@@ -4,6 +4,11 @@
 
 {% block title %}Gestão de Comissionamento{% endblock %}
 
+
+{% block page_title %}Comissionamento{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 {% endblock %}
@@ -132,20 +137,13 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section comissionamento-page">
         <div class="card-modern system-container" style="max-width: 1600px;"> 
             
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2 class="fw-bold text-dark"><i class="bi bi-wallet2"></i> Gestão de Comissionamento</h2>
-                    <p class="text-muted mb-0">Fechamento mensal e histórico financeiro.</p>
-                </div>
+            <div class="d-flex justify-content-end align-items-center mb-4">
                 <div class="d-flex gap-2 bg-white p-2 rounded shadow-sm border">
                     <select class="form-select border-0 bg-light" id="filtro-mes">
                         <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>

@@ -1,26 +1,28 @@
 {% extends "base.html" %}
 
 {% block title %}Funil de Tratamento - {{ SITE_BRAND }}{% endblock %}
+{% block page_title %}Funil de Tratamento{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
+
+{% block header_module_actions %}
+<button class="btn btn-sm btn-primary" id="tab-hist" type="button" title="Histórico PAP">
+    <i class="bi bi-cloud-download"></i><span class="header-action-label ms-1">Histórico PAP</span>
+</button>
+<button class="btn btn-sm btn-outline-primary" id="tab-wpp" type="button" title="WhatsApp (Vender)">
+    <i class="bi bi-whatsapp"></i><span class="header-action-label ms-1">WhatsApp</span>
+</button>
+{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
 <style>
-.nav-pills-custom .nav-link {
-    color: var(--text-secondary);
-    border-radius: 50rem;
-    padding: 0.5rem 1.5rem;
-    margin-right: 0.5rem;
-    transition: all 0.2s ease;
-}
-.nav-pills-custom .nav-link.active {
-    background-color: var(--accent-primary, #0d6efd);
-    color: white;
-    box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
-}
+:root { --funil-chrome: calc(var(--app-header-h, 52px) + 118px); }
 .card-modern { border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-.table-modern th { border-bottom: 2px solid #eaeaea; color: var(--text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
-.table-modern td { vertical-align: middle; font-size: 0.9rem; border-bottom: 1px solid #f2f2f2; }
-.badge-status { font-weight: 500; padding: 0.4em 0.8em; border-radius: 6px; font-size: 0.75rem;}
+.table-modern th { border-bottom: 2px solid #eaeaea; color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.4px; }
+.table-modern td { vertical-align: middle; font-size: 0.84rem; border-bottom: 1px solid #f2f2f2; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.badge-status { font-weight: 500; padding: 0.3em 0.65em; border-radius: 6px; font-size: 0.7rem;}
 .hist-prog {
     display: flex; align-items: center; gap: 1rem; margin: 0 0 0.85rem; padding: 0.9rem 1.1rem;
     border-radius: 12px; border: 1px solid var(--border-color, #e4e9f2); border-left: 4px solid var(--accent-primary, #0ea5e9);
@@ -48,11 +50,11 @@
 
 .funil-card { overflow: hidden; }
 .funil-toolbar {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
-    padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color, #e4e9f2);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem;
+    padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border-color, #e4e9f2);
     background: var(--bg-surface, #fff);
 }
-.funil-search { position: relative; flex: 1 1 320px; min-width: 220px; max-width: none; }
+.funil-search { position: relative; flex: 1 1 280px; min-width: 200px; max-width: none; }
 .funil-search > .bi-search { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--text-subtle, #8f9bb3); pointer-events: none; }
 .funil-search input { padding-left: 2.1rem; padding-right: 2rem; border-radius: 999px; }
 .funil-kbd {
@@ -61,39 +63,78 @@
     background: var(--bg-secondary, #e8edf5); color: var(--text-secondary, #5b6b7d); border: 1px solid var(--border-color, #e4e9f2);
 }
 .funil-search input:focus ~ .funil-kbd, .funil-search input:not(:placeholder-shown) ~ .funil-kbd { display: none; }
-.funil-select { width: auto; min-width: 150px; max-width: 240px; border-radius: 10px; }
-.funil-select-wide { min-width: 200px; max-width: 280px; }
-.funil-seg { display: inline-flex; flex-wrap: wrap; padding: 3px; border-radius: 999px; background: var(--bg-secondary, #e8edf5); border: 1px solid var(--border-color, #e4e9f2); }
+.funil-select { width: auto; min-width: 140px; max-width: 220px; border-radius: 10px; }
+.funil-select-wide { min-width: 180px; max-width: 260px; }
+.funil-seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 999px; background: var(--bg-secondary, #e8edf5); border: 1px solid var(--border-color, #e4e9f2); }
 .funil-seg button {
     border: 0; background: transparent; color: var(--text-secondary, #5b6b7d);
-    font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.85rem; border-radius: 999px; transition: all 0.15s ease;
+    font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.7rem; border-radius: 999px; transition: all 0.15s ease;
 }
 .funil-seg button:hover { color: var(--text-primary, #1a2332); }
 .funil-seg button.active { background: var(--accent-primary, #0ea5e9); color: var(--text-on-accent, #fff); box-shadow: 0 2px 6px rgba(14,165,233,0.3); }
 .funil-toolbar .btn { border-radius: 10px; font-weight: 600; }
-#acoes-pap .btn, #acoes-churn .btn, #acoes-bio .btn { border-radius: 10px; }
-.funil-page { width: 100%; max-width: none; }
+#acoes-pap .btn, #acoes-churn .btn, #acoes-bio .btn, #acoes-mailing .btn { border-radius: 8px; font-size: 0.8rem; padding: 0.3rem 0.7rem; }
+.funil-page { width: 100%; max-width: none; padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
 .funil-page .card { border-radius: 12px; }
+.funil-tabs-row {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 0.5rem;
+    min-width: 0; margin-bottom: 0;
+}
+.funil-tabs-scroll {
+    display: flex; flex-wrap: nowrap; gap: 0.25rem; min-width: 0; flex: 1 1 auto;
+    overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; border-bottom: none; padding-bottom: 0;
+}
+.funil-tabs-scroll::-webkit-scrollbar { height: 4px; }
 .nav-pills-custom .nav-link {
-    border-radius: 10px; font-weight: 600; padding: 0.45rem 1rem;
+    border-radius: 8px; font-weight: 600; padding: 0.35rem 0.75rem;
     border: 1px solid var(--border-color, #e4e9f2); color: var(--text-secondary, #5b6b7d);
 }
 .nav-pills-custom .nav-link.active {
     background: var(--accent-primary, #0ea5e9); border-color: transparent; color: #fff;
 }
-.tab-res-custom { border-radius: 10px 10px 0 0 !important; padding: 0.65rem 1rem !important; font-size: 0.82rem !important; white-space: nowrap; }
-#tabs-resultados { flex-wrap: wrap; row-gap: 0.25rem; }
+.tab-res-custom {
+    border-radius: 8px 8px 0 0 !important; padding: 0.4rem 0.75rem !important;
+    font-size: 0.76rem !important; white-space: nowrap; flex: 0 0 auto;
+    display: inline-flex !important; align-items: center;
+}
+#tabs-resultados .tab-res-custom .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 1.55rem; height: 1.35rem; padding: 0 0.4rem;
+    margin-left: 0.35rem !important;
+    border-radius: 999px !important;
+    font-size: 0.8rem !important; font-weight: 800 !important;
+    font-variant-numeric: tabular-nums; line-height: 1;
+    background: #0f172a !important; color: #fff !important;
+    border: 1px solid rgba(255,255,255,0.12);
+}
 #tabs-resultados .tab-res-custom.tab-res-active {
     background: var(--accent-primary, #0ea5e9) !important; color: #fff !important;
 }
-#tabs-resultados .tab-res-custom.tab-res-active .badge { background: rgba(255,255,255,0.25) !important; }
+#tabs-resultados .tab-res-custom.tab-res-active .badge {
+    background: #fff !important; color: #0c4a6e !important;
+    border-color: transparent;
+}
 #tabs-resultados .tab-res-custom.tab-res-active i { color: #fff !important; }
+#btn-exportar-filtro .badge,
+#exportar-qtd {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 1.45rem; height: 1.25rem; padding: 0 0.4rem;
+    border-radius: 999px !important;
+    font-size: 0.78rem !important; font-weight: 800 !important;
+    font-variant-numeric: tabular-nums; line-height: 1;
+    background: #fff !important; color: #146c43 !important;
+}
 .funil-periodo { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-secondary, #5b6b7d); font-size: 0.8rem; }
 .funil-periodo input { width: 140px; border-radius: 999px; }
 .funil-limpar { color: var(--color-danger, #dc2626); font-weight: 600; border-radius: 999px; }
 .funil-limpar:hover { background: var(--badge-danger-bg, #fee2e2); color: var(--color-danger, #dc2626); }
 
-.funil-scroll { max-height: 65vh; overflow-y: auto; }
+.funil-scroll {
+    max-height: calc(100dvh - var(--funil-chrome));
+    overflow-y: auto;
+}
+.btn-funil-tmpl { white-space: nowrap; }
 .funil-th-sort {
     border: 0; background: transparent; padding: 0; color: inherit;
     font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer;
@@ -139,23 +180,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 {% endblock %}
 
 {% block content %}
-<main class="container-fluid py-3 px-3 px-xl-4 funil-page">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
-        <div>
-            <h1 class="h3 mb-1 fw-bold"><i class="bi bi-funnel text-primary"></i> Funil de Tratamento</h1>
-            <p class="text-muted small mb-0">Interesses, pré-vendas, vendas do PAP, repescagem de churn e biometria.</p>
-        </div>
-        <ul class="nav nav-pills nav-pills-custom" role="tablist">
-            <li class="nav-item">
-                <button class="nav-link active" id="tab-hist" type="button"><i class="bi bi-cloud-download me-2"></i>Histórico PAP</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="tab-wpp" type="button"><i class="bi bi-whatsapp me-2"></i>WhatsApp (Vender)</button>
-            </li>
-        </ul>
-    </div>
-
-    <div id="alert-403" class="alert alert-danger d-none rounded-3 shadow-sm">Sem permissão para acessar esta ferramenta.</div>
+<main class="container-fluid px-2 px-xl-3 funil-page">
+    <div id="alert-403" class="alert alert-danger d-none rounded-3 shadow-sm py-2">Sem permissão para acessar esta ferramenta.</div>
 
     <!-- PAINEL HISTORICO PAP (TRATAMENTO) -->
     <div id="painel-hist">
@@ -179,47 +205,46 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 </div>
             </div>
 
-            <div class="d-flex justify-content-between align-items-end mb-0 px-2">
-                <ul class="nav nav-tabs border-bottom-0 gap-1" id="tabs-resultados" role="tablist">
+            <div class="funil-tabs-row px-1">
+                <ul class="nav nav-tabs border-bottom-0 funil-tabs-scroll" id="tabs-resultados" role="tablist">
                     <li class="nav-item">
-                        <button class="nav-link tab-res-custom tab-res-active fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-interesse" data-tipo="INTERESSE" type="button">
-                            <i class="bi bi-star-fill text-warning me-2"></i> INTERESSE <span class="badge bg-secondary ms-2 rounded-pill" id="count-interesse">0</span>
+                        <button class="nav-link tab-res-custom tab-res-active fw-bold border-0 bg-light text-muted" id="tab-res-interesse" data-tipo="INTERESSE" type="button">
+                            <i class="bi bi-star-fill text-warning me-1"></i>INTERESSE <span class="badge bg-secondary ms-1 rounded-pill" id="count-interesse">0</span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-prevenda" data-tipo="PRE_VENDA" type="button">
-                            <i class="bi bi-clock-history text-info me-2"></i> PRÉ-VENDA <span class="badge bg-secondary ms-2 rounded-pill" id="count-prevenda">0</span>
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light text-muted" id="tab-res-prevenda" data-tipo="PRE_VENDA" type="button">
+                            <i class="bi bi-clock-history text-info me-1"></i>PRÉ-VENDA <span class="badge bg-secondary ms-1 rounded-pill" id="count-prevenda">0</span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-venda" data-tipo="VENDA" type="button">
-                            <i class="bi bi-check-circle-fill text-success me-2"></i> VENDA <span class="badge bg-secondary ms-2 rounded-pill" id="count-venda">0</span>
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light text-muted" id="tab-res-venda" data-tipo="VENDA" type="button">
+                            <i class="bi bi-check-circle-fill text-success me-1"></i>VENDA <span class="badge bg-secondary ms-1 rounded-pill" id="count-venda">0</span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-churn" data-tipo="CHURN" type="button">
-                            <i class="bi bi-arrow-repeat text-danger me-2"></i> REPESCAR CHURN <span class="badge bg-secondary ms-2 rounded-pill" id="count-churn">—</span>
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light text-muted" id="tab-res-churn" data-tipo="CHURN" type="button">
+                            <i class="bi bi-arrow-repeat text-danger me-1"></i>REPESCAR CHURN <span class="badge bg-secondary ms-1 rounded-pill" id="count-churn">—</span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-bio" data-tipo="BIO" type="button">
-                            <i class="bi bi-fingerprint text-primary me-2"></i> REPESCAGEM BIO <span class="badge bg-secondary ms-2 rounded-pill" id="count-bio">—</span>
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light text-muted" id="tab-res-bio" data-tipo="BIO" type="button">
+                            <i class="bi bi-fingerprint text-primary me-1"></i>REPESCAGEM BIO <span class="badge bg-secondary ms-1 rounded-pill" id="count-bio">—</span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light rounded-top text-muted py-3 px-4" id="tab-res-mailing" data-tipo="MAILING" type="button">
-                            <i class="bi bi-envelope-paper text-info me-2"></i> MAILING <span class="badge bg-secondary ms-2 rounded-pill" id="count-mailing">—</span>
+                        <button class="nav-link tab-res-custom fw-bold border-0 bg-light text-muted" id="tab-res-mailing" data-tipo="MAILING" type="button">
+                            <i class="bi bi-envelope-paper text-info me-1"></i>MAILING <span class="badge bg-secondary ms-1 rounded-pill" id="count-mailing">—</span>
                         </button>
                     </li>
                 </ul>
-                <div class="pb-2 pe-2 d-flex gap-2" id="acoes-pap">
-                    <!-- Botão Discreto de Nova Busca -->
-                    <button class="btn btn-outline-primary fw-bold shadow-sm" type="button" data-bs-toggle="modal" data-bs-target="#modalBusca">
-                        <i class="bi bi-search me-2"></i> Nova Busca
+                <div class="pb-1 d-flex gap-1 flex-shrink-0" id="acoes-pap">
+                    <button class="btn btn-outline-primary fw-semibold shadow-sm" type="button" data-bs-toggle="modal" data-bs-target="#modalBusca">
+                        <i class="bi bi-search me-1"></i>Nova Busca
                     </button>
                     <div class="btn-group shadow-sm">
-                        <button type="button" class="btn btn-success fw-bold" id="btn-exportar-filtro" title="Exporta para Excel todos os pedidos da aba com os filtros aplicados (todas as páginas)">
-                            <i class="bi bi-file-earmark-excel me-2"></i>Exportar <span class="badge bg-light text-success ms-1" id="exportar-qtd">0</span>
+                        <button type="button" class="btn btn-success fw-semibold" id="btn-exportar-filtro" title="Exporta para Excel todos os pedidos da aba com os filtros aplicados (todas as páginas)">
+                            <i class="bi bi-file-earmark-excel me-1"></i>Exportar <span class="badge ms-1" id="exportar-qtd">0</span>
                         </button>
                         <button type="button" class="btn btn-success dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais opções de exportação"></button>
                         <ul class="dropdown-menu dropdown-menu-end shadow">
@@ -229,10 +254,10 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         </ul>
                     </div>
                 </div>
-                <div class="pb-2 pe-2 d-flex gap-2 d-none" id="acoes-churn">
+                <div class="pb-1 d-flex gap-1 flex-shrink-0 d-none" id="acoes-churn">
                     <div class="btn-group shadow-sm">
-                        <button type="button" class="btn btn-primary fw-bold" id="btn-nio-consultar" title="Consulta débitos na Nio para os CPFs da aba (pula quem foi consultado nas últimas 24 horas)">
-                            <i class="bi bi-shield-check me-2"></i>Consultar débitos Nio
+                        <button type="button" class="btn btn-primary fw-semibold" id="btn-nio-consultar" title="Consulta débitos na Nio para os CPFs da aba (pula quem foi consultado nas últimas 24 horas)">
+                            <i class="bi bi-shield-check me-1"></i>Consultar Nio
                         </button>
                         <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais opções da consulta"></button>
                         <ul class="dropdown-menu dropdown-menu-end shadow">
@@ -240,14 +265,14 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         </ul>
                     </div>
                 </div>
-                <div class="pb-2 pe-2 d-flex gap-2 d-none" id="acoes-bio">
-                    <button type="button" class="btn btn-primary fw-semibold shadow-sm px-3" id="btn-bio-buscar" title="Baixa do GED360 o relatório detalhado de digitalizações pela Data de Envio do período selecionado. Rotina automática: todo dia às 07:00 (últimos 6 meses).">
-                        <i class="bi bi-cloud-download me-2"></i>Buscar no GED
+                <div class="pb-1 d-flex gap-1 flex-shrink-0 d-none" id="acoes-bio">
+                    <button type="button" class="btn btn-primary fw-semibold shadow-sm" id="btn-bio-buscar" title="Baixa do GED360 o relatório detalhado de digitalizações pela Data de Envio do período selecionado. Rotina automática: todo dia às 07:00 (últimos 6 meses).">
+                        <i class="bi bi-cloud-download me-1"></i>Buscar no GED
                     </button>
                 </div>
-                <div class="pb-2 pe-2 d-flex gap-2 flex-wrap d-none" id="acoes-mailing">
-                    <label class="btn btn-outline-primary fw-semibold mb-0 shadow-sm px-3" title="Importa XLS OPTIC ou ATV ALG">
-                        <i class="bi bi-upload me-2"></i>Importar XLS
+                <div class="pb-1 d-flex gap-1 flex-wrap flex-shrink-0 d-none" id="acoes-mailing">
+                    <label class="btn btn-outline-primary fw-semibold mb-0 shadow-sm" title="Importa XLS OPTIC ou CSV ALG">
+                        <i class="bi bi-upload me-1"></i>Importar XLS
                         <input type="file" id="mailing-file" accept=".xlsx,.xls" class="d-none">
                     </label>
                     <select id="f-mailing-lote" class="form-select form-select-sm funil-select" aria-label="Lote" style="width:auto;min-width:200px" title="Qual lote exibir">
@@ -260,8 +285,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <option value="TRATADO">Tratados</option>
                         <option value="TODOS">Todos do lote</option>
                     </select>
-                    <button type="button" class="btn btn-primary fw-semibold shadow-sm px-3 d-none" id="btn-mailing-disparar" title="Inicia/continua o disparo do lote selecionado">
-                        <i class="bi bi-send me-2"></i>Disparar lote
+                    <button type="button" class="btn btn-primary fw-semibold shadow-sm d-none" id="btn-mailing-disparar" title="Inicia/continua o disparo do lote selecionado">
+                        <i class="bi bi-send me-1"></i>Disparar lote
                     </button>
                 </div>
             </div>
@@ -349,47 +374,47 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <table class="table table-modern table-hover mb-0 align-middle">
                             <thead class="table-light sticky-top shadow-sm">
                                 <tr id="thead-pap">
-                                    <th class="ps-4 py-3">Protocolo / Pedido</th>
-                                    <th class="py-3">Cliente</th>
-                                    <th class="py-3">Documento</th>
-                                    <th class="py-3">Status PAP</th>
-                                    <th class="py-3">
+                                    <th class="ps-3 py-2">Protocolo / Pedido</th>
+                                    <th class="py-2">Cliente</th>
+                                    <th class="py-2">Documento</th>
+                                    <th class="py-2">Status PAP</th>
+                                    <th class="py-2">
                                         <button type="button" id="th-ordem-data" class="funil-th-sort" title="Inverter ordenação por data do pedido">
                                             Data do pedido <i class="bi bi-sort-down" id="ic-ordem-data"></i>
                                         </button>
                                     </th>
-                                    <th class="py-3">Situação CRM</th>
-                                    <th class="text-end pe-4 py-3">Ação</th>
+                                    <th class="py-2">Situação CRM</th>
+                                    <th class="text-end pe-3 py-2">Ação</th>
                                 </tr>
                                 <tr id="thead-churn" class="d-none">
-                                    <th class="ps-4 py-3">O.S. / Pedido</th>
-                                    <th class="py-3">Cliente</th>
-                                    <th class="py-3">CPF</th>
-                                    <th class="py-3">Motivo</th>
-                                    <th class="py-3">Data da retirada</th>
-                                    <th class="py-3">Consultor</th>
-                                    <th class="py-3">Situação Nio</th>
-                                    <th class="text-end pe-4 py-3">Ação</th>
+                                    <th class="ps-3 py-2">O.S. / Pedido</th>
+                                    <th class="py-2">Cliente</th>
+                                    <th class="py-2">CPF</th>
+                                    <th class="py-2">Motivo</th>
+                                    <th class="py-2">Data da retirada</th>
+                                    <th class="py-2">Consultor</th>
+                                    <th class="py-2">Situação Nio</th>
+                                    <th class="text-end pe-3 py-2">Ação</th>
                                 </tr>
                                 <tr id="thead-bio" class="d-none">
-                                    <th class="ps-4 py-3">Cliente</th>
-                                    <th class="py-3">CPF</th>
-                                    <th class="py-3">Venda no CRM</th>
-                                    <th class="py-3">Vendedor</th>
-                                    <th class="py-3">Biometria</th>
-                                    <th class="py-3">Último envio no GED</th>
-                                    <th class="py-3">Telefone</th>
-                                    <th class="text-end pe-4 py-3">Repescável?</th>
+                                    <th class="ps-3 py-2">Cliente</th>
+                                    <th class="py-2">CPF</th>
+                                    <th class="py-2">Venda no CRM</th>
+                                    <th class="py-2">Vendedor</th>
+                                    <th class="py-2">Biometria</th>
+                                    <th class="py-2">Último envio no GED</th>
+                                    <th class="py-2">Telefone</th>
+                                    <th class="text-end pe-3 py-2">Repescável?</th>
                                 </tr>
                                 <tr id="thead-mailing" class="d-none">
-                                    <th class="ps-4 py-3">Cliente</th>
-                                    <th class="py-3">CPF</th>
-                                    <th class="py-3">Telefone</th>
-                                    <th class="py-3">Cidade</th>
-                                    <th class="py-3">Situação</th>
-                                    <th class="py-3">Lote</th>
-                                    <th class="py-3">Resposta</th>
-                                    <th class="text-end pe-4 py-3">Ação</th>
+                                    <th class="ps-3 py-2">Cliente</th>
+                                    <th class="py-2">CPF</th>
+                                    <th class="py-2">Telefone</th>
+                                    <th class="py-2">Cidade</th>
+                                    <th class="py-2">Situação</th>
+                                    <th class="py-2">Lote</th>
+                                    <th class="py-2">Resposta</th>
+                                    <th class="text-end pe-3 py-2">Ação</th>
                                 </tr>
                             </thead>
                             <tbody id="tbody-resultados">
@@ -575,17 +600,24 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     }
 
     // Navegação de Abas Principais
+    function marcarAbaPrincipal(ativa) {
+        const hist = document.getElementById('tab-hist');
+        const wpp = document.getElementById('tab-wpp');
+        const histOn = ativa === 'hist';
+        hist.classList.toggle('btn-primary', histOn);
+        hist.classList.toggle('btn-outline-primary', !histOn);
+        wpp.classList.toggle('btn-primary', !histOn);
+        wpp.classList.toggle('btn-outline-primary', histOn);
+    }
     document.getElementById('tab-hist').addEventListener('click', () => {
         document.getElementById('painel-hist').classList.remove('d-none');
         document.getElementById('painel-wpp').classList.add('d-none');
-        document.getElementById('tab-hist').classList.add('active');
-        document.getElementById('tab-wpp').classList.remove('active');
+        marcarAbaPrincipal('hist');
     });
     document.getElementById('tab-wpp').addEventListener('click', () => {
         document.getElementById('painel-wpp').classList.remove('d-none');
         document.getElementById('painel-hist').classList.add('d-none');
-        document.getElementById('tab-wpp').classList.add('active');
-        document.getElementById('tab-hist').classList.remove('active');
+        marcarAbaPrincipal('wpp');
         carregarWpp();
     });
 
@@ -1147,7 +1179,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             data-aba="${esc(aba)}" data-id="${esc(String(id || ''))}"
             ${elegivel ? '' : 'disabled'} title="${esc(title)}">
             <i class="bi bi-whatsapp me-1"></i>Enviar
-        </button>${!elegivel && motivo ? `<div class="small text-muted mt-1" style="max-width:160px">${esc(motivo)}</div>` : ''}`;
+        </button>`;
     }
 
     function linhaChurn(r) {

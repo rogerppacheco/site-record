@@ -4,6 +4,11 @@
 
 {% block title %}{{ SITE_MODULE_PREFIX }} Informa - Comunicação Interna{% endblock %}
 
+
+{% block page_title %}Informa{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
 .record-informa-page .bg-white { background-color: var(--bg-card) !important; }
@@ -12,18 +17,11 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <div class="container py-5 record-informa-page" style="max-width: 1200px;">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold text-dark"><i class="bi bi-megaphone-fill text-warning me-2"></i> {{ SITE_MODULE_PREFIX }} Informa</h2>
-        </div>
-
-        <!-- Abas -->
+<!-- Abas -->
         <ul class="nav nav-tabs mb-4" id="recordInformaTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="comunicados-tab" data-bs-toggle="tab" data-bs-target="#comunicados" type="button" role="tab">

@@ -4,6 +4,11 @@
 
 {% block title %}Auditoria de Vendas - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Auditoria{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
 {% endblock %}
@@ -55,13 +60,15 @@
 }
 .auditoria-status-abas .aba-status {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
     border: 1px solid var(--border-color);
     background: transparent;
     color: var(--text-primary);
     border-radius: 999px;
-    padding: 0.02rem 0.5rem;
-    font-size: 0.7rem;
-    line-height: 1.45;
+    padding: 0.18rem 0.55rem;
+    font-size: 0.8rem;
+    line-height: 1.3;
     white-space: nowrap;
     cursor: pointer;
 }
@@ -71,8 +78,24 @@
     color: #fff;
 }
 .auditoria-status-abas .aba-status .qtd {
-    font-weight: 700;
-    margin-left: 0.28rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.45rem;
+    height: 1.3rem;
+    padding: 0 0.4rem;
+    margin-left: 0.4rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+    color: var(--text-primary);
+}
+.auditoria-status-abas .aba-status.active .qtd {
+    background: #fff;
+    color: #0c4a6e;
 }
 #painel-lista.auditoria-lista-tools {
     display: contents;
@@ -773,10 +796,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
@@ -787,8 +807,7 @@ main.area-interna-section.auditoria-page:not(.auditoria-modo-lista) {
         <div class="card-modern system-container auditoria-shell">
             <div class="auditoria-chrome-compact">
                 <div class="auditoria-toolbar-row">
-                    <h1 class="auditoria-page-title">Auditoria</h1>
-                    <span class="badge text-bg-secondary auditoria-aba-ativa-badge" id="auditoria-aba-ativa-label">Lista</span>
+<span class="badge text-bg-secondary auditoria-aba-ativa-badge" id="auditoria-aba-ativa-label">Lista</span>
 
                     <!-- Radios ocultos: mantêm a lógica JS atual das abas -->
                     <div id="aba-principal-auditoria" aria-hidden="true">

@@ -3,6 +3,11 @@
 
 {% block title %}Qualidade - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Qualidade{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
 .qualidade-page {
@@ -1042,20 +1047,14 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section qualidade-page" id="qualidade-page">
     <div class="system-container system-container-full card-modern qualidade-shell">
         <div class="qualidade-chrome">
         <div class="qualidade-topbar">
-            <div class="qualidade-brand q-titulo-bloco">
-                <h1><i class="bi bi-shield-check text-primary"></i> Qualidade</h1>
-            </div>
-            <ul class="nav nav-pills qualidade-tabs" role="tablist">
+<ul class="nav nav-pills qualidade-tabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="tab-painel" type="button" onclick="setAbaPrincipal('painel')">
                         <i class="bi bi-speedometer2"></i> Painel
@@ -1106,7 +1105,29 @@
                     <span>Promessas:</span>
                     <span class="q-chip-num" id="chip-promessas-txt">—</span>
                 </button>
-                <button class="btn btn-success btn-sm" onclick="exportarDados()" title="Exportar"><i class="bi bi-download"></i></button>
+                <div class="dropdown">
+                    <button class="btn btn-success btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Exportar">
+                        <i class="bi bi-download"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <button class="dropdown-item" type="button" onclick="exportarBaseFiltrada(false)">
+                                <i class="bi bi-funnel"></i> Base filtrada (esta tela)
+                            </button>
+                        </li>
+                        <li>
+                            <button class="dropdown-item" type="button" onclick="exportarBaseFiltrada(true)">
+                                <i class="bi bi-table"></i> Base do mês (todas as filas)
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <button class="dropdown-item" type="button" onclick="exportarDados()">
+                                <i class="bi bi-cash-coin"></i> Bônus por instalação
+                            </button>
+                        </li>
+                    </ul>
+                </div>
                 <div class="dropdown qualidade-acoes-menu">
                     <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Mais ações">
                         <i class="bi bi-three-dots"></i>
@@ -2617,38 +2638,10 @@
     async function carregarDashboard() {
         if (!mesAtual) return;
         const q = document.getElementById('filtro-q').value.trim();
-        const st = document.getElementById('filtro-status').value;
-        const el = document.getElementById('filtro-elegivel').value;
-        const stTrat = (document.getElementById('filtro-status-tratamento') || {}).value || '';
-        const confFpd = (document.getElementById('filtro-conferencia-fpd') || {}).value || '';
-        const faixaAtraso = (document.getElementById('filtro-faixa-atraso') || {}).value || '';
-        const faturasPagas = (document.getElementById('filtro-faturas-pagas') || {}).value || '';
-        const promessa = (document.getElementById('filtro-promessa') || {}).value || '';
-        const vendedor = (document.getElementById('filtro-vendedor') || {}).value || '';
         const hintBusca = document.getElementById('busca-geral-hint');
         if (hintBusca) hintBusca.classList.toggle('d-none', q.length < 2);
         atualizarResumoFiltrosAtivos();
-        const params = new URLSearchParams({
-            lente,
-            mes: mesAtual,
-            page: String(page),
-            page_size: pageSizeEfetivo(),
-            fila: filaEfetiva(),
-        });
-        if (lente === 'vencimento') {
-            params.set('indicador', indicadorTratamento || 'FPD');
-            if (segmentoTratamento) params.set('nm_seg', segmentoTratamento);
-        }
-        if (q) params.set('q', q);
-        if (st) params.set('status', st);
-        if (el) params.set('elegivel', el);
-        if (stTrat === 'sem') params.set('status_tratamento_id', 'sem');
-        else if (stTrat) params.set('status_tratamento_id', stTrat);
-        if (confFpd) params.set('conferencia_fpd', confFpd);
-        if (faixaAtraso) params.set('faixa_atraso', faixaAtraso);
-        if (faturasPagas !== '') params.set('faturas_pagas', faturasPagas);
-        if (promessa) params.set('promessa', promessa);
-        if (vendedor) params.set('vendedor', vendedor);
+        const params = montarParamsListagem();
 
         const tbody = document.getElementById('tbody-contratos');
         tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-3">Carregando…</td></tr>';
@@ -3627,6 +3620,83 @@
         carregarGestaoEnvios();
     };
 
+    function montarParamsListagem(opts) {
+        opts = opts || {};
+        const q = (document.getElementById('filtro-q').value || '').trim();
+        const st = (document.getElementById('filtro-status') || {}).value || '';
+        const el = (document.getElementById('filtro-elegivel') || {}).value || '';
+        const stTrat = (document.getElementById('filtro-status-tratamento') || {}).value || '';
+        const confFpd = (document.getElementById('filtro-conferencia-fpd') || {}).value || '';
+        const faixaAtraso = (document.getElementById('filtro-faixa-atraso') || {}).value || '';
+        const faturasPagas = (document.getElementById('filtro-faturas-pagas') || {}).value || '';
+        const promessa = (document.getElementById('filtro-promessa') || {}).value || '';
+        const vendedor = (document.getElementById('filtro-vendedor') || {}).value || '';
+        const params = new URLSearchParams({
+            lente,
+            mes: mesAtual,
+            page: String(opts.page != null ? opts.page : page),
+            page_size: opts.pageSize || pageSizeEfetivo(),
+            fila: opts.fila || filaEfetiva(),
+        });
+        if (lente === 'vencimento') {
+            params.set('indicador', indicadorTratamento || 'FPD');
+            if (segmentoTratamento) params.set('nm_seg', segmentoTratamento);
+        }
+        if (q) params.set('q', q);
+        if (st) params.set('status', st);
+        if (el) params.set('elegivel', el);
+        if (stTrat === 'sem') params.set('status_tratamento_id', 'sem');
+        else if (stTrat) params.set('status_tratamento_id', stTrat);
+        if (confFpd) params.set('conferencia_fpd', confFpd);
+        if (faixaAtraso) params.set('faixa_atraso', faixaAtraso);
+        if (faturasPagas !== '') params.set('faturas_pagas', faturasPagas);
+        if (promessa) params.set('promessa', promessa);
+        if (vendedor) params.set('vendedor', vendedor);
+        return params;
+    }
+
+    window.exportarBaseFiltrada = async function (todasFilas) {
+        const q = (document.getElementById('filtro-q').value || '').trim();
+        if (!mesAtual && q.length < 2) {
+            alert('Selecione um mês');
+            return;
+        }
+        const params = montarParamsListagem({
+            page: 1,
+            pageSize: '100',
+            fila: todasFilas ? 'todos' : filaEfetiva(),
+        });
+        const btn = document.querySelector('.qualidade-toolbar-acoes .btn-success');
+        if (btn) btn.disabled = true;
+        try {
+            const r = await fetch(`${API}/api/qualidade/exportar/?${params}`, {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') },
+            });
+            if (!r.ok) {
+                let msg = 'Falha ao exportar';
+                try {
+                    const data = await r.json();
+                    msg = data.error || msg;
+                } catch (_) { /* resposta não é JSON */ }
+                throw new Error(msg);
+            }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const disp = r.headers.get('Content-Disposition') || '';
+            const match = /filename="?([^"]+)"?/.exec(disp);
+            const indicador = (lente === 'vencimento' ? (indicadorTratamento || 'FPD') : 'instalacao');
+            a.href = url;
+            a.download = (match && match[1]) || `qualidade_${indicador}_${mesAtual || 'busca'}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert(e.message || 'Erro ao exportar');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
     window.exportarDados = async function () {
         const params = new URLSearchParams();
         if (mesAtual) params.set('safra', mesAtual);
@@ -4440,7 +4510,7 @@
         modalLigacaoQualidade = new bootstrap.Modal(document.getElementById('modalLigacaoQualidade'));
         modalHistoricoContato = new bootstrap.Modal(document.getElementById('modalHistoricoContato'));
         setTimeout(() => {
-            document.querySelectorAll('a[href="/area-interna/"]').forEach((a) => {
+            document.querySelectorAll('a[href="/area-interna/"]:not(.header-back)').forEach((a) => {
                 a.textContent = 'Voltar';
                 a.title = 'Voltar para a área interna';
             });

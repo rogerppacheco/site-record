@@ -4,6 +4,11 @@
 
 {% block title %}Importar FPD - Bônus M-10{% endblock %}
 
+
+{% block page_title %}Importar FPD{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .import-container {
@@ -214,16 +219,12 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/importacoes/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="importar-page"><div class="import-container">
         <div class="text-center mb-4">
-            <h2 class="fw-bold text-dark">Importar Base FPD / SPD / TPD</h2>
-            <p class="text-muted">Planilha da operadora com INDICADOR (FPD=1ª, SPD=2ª, TPD=3ª) — vínculo por NR_ORDEM</p>
+<p class="text-muted">Planilha da operadora com INDICADOR (FPD=1ª, SPD=2ª, TPD=3ª) — vínculo por NR_ORDEM</p>
         </div>
 
         <!-- Informações Importantes -->

@@ -4,6 +4,11 @@
 
 {% block title %}WhatsApp — Configuração{% endblock %}
 
+
+{% block page_title %}Configuração WhatsApp{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
 .whatsapp-config-page main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -14,16 +19,11 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="whatsapp-config-page">
-        <h2 class="fw-bold mb-1"><i class="bi bi-whatsapp text-success"></i> Configuração WhatsApp</h2>
-        <p class="text-muted mb-4">Escolha o provedor ativo. Em produção recomendamos o <strong>modo híbrido</strong>: Z-API para a equipe e WhatsAtende oficial para o cliente.</p>
-
-        <div class="card card-modern shadow-sm mb-4">
+<div class="card card-modern shadow-sm mb-4">
             <div class="card-header fw-bold">Provedor ativo</div>
             <div class="card-body">
                 <div class="row g-3 mb-3">

@@ -4,6 +4,11 @@
 
 {% block title %}Importar CNPJ Receita Federal - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Importar CNPJ{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .import-container { max-width: 900px; margin: 40px auto; padding: 20px; }
@@ -42,16 +47,12 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/importacoes/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="importar-page"><div class="import-container">
         <div class="text-center mb-4">
-            <h2 class="fw-bold text-dark"><i class="bi bi-building"></i> Importar CNPJ Receita Federal</h2>
-            <p class="text-muted">Arquivos ESTABELE (Estabelecimentos) - Layout oficial 30 colunas</p>
+<p class="text-muted">Arquivos ESTABELE (Estabelecimentos) - Layout oficial 30 colunas</p>
         </div>
 
         <div class="info-card card-modern">

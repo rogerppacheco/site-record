@@ -4,6 +4,11 @@
 
 {% block title %}Conhecimento IA - Alimentar o bot com PDFs e planilhas{% endblock %}
 
+
+{% block page_title %}Conhecimento IA{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .conhecimento-ia-page .container-ia { max-width: 900px; margin: 0 auto; padding: 20px; }
@@ -23,17 +28,11 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/" class="nav-button">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <div class="container-ia conhecimento-ia-page">
-        <h2 class="mb-2"><i class="bi bi-robot text-primary me-2"></i>Conhecimento IA</h2>
-        <p class="text-muted mb-4">Envie PDFs, planilhas e apresentações ou adicione sites. O texto extraído é usado pela IA do bot WhatsApp para responder dúvidas dos vendedores.</p>
-
-        <div class="card card-modern mb-4">
+<div class="card card-modern mb-4">
             <div class="card-header"><i class="bi bi-link-45deg me-2"></i>Adicionar site</div>
             <div class="card-body">
                 <p class="text-muted small mb-2">Informe a URL de uma página. Opcionalmente, marque "Crawlar site" para buscar também as páginas linkadas do mesmo domínio (até 30 páginas).</p>

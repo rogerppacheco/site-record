@@ -4,6 +4,11 @@
 
 {% block title %}Esteira de Vendas - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Esteira{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
 {% endblock %}
@@ -853,17 +858,13 @@ min-width: 100%;
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section esteira-page-main esteira-modo-lista">
         <div class="system-container esteira-shell" style="max-width: 1600px;">
             <div class="esteira-chrome">
-                <h1 class="esteira-page-title">Esteira</h1>
-                <ul class="nav nav-tabs esteira-abas" id="abas-esteira">
+<ul class="nav nav-tabs esteira-abas" id="abas-esteira">
                     <li class="nav-item"><a class="nav-link active" href="#" data-tab="TODOS" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
                     <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
                     <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>

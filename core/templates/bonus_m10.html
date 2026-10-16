@@ -4,6 +4,11 @@
 
 {% block title %}{{ SITE_MODULE_PREFIX }} Vertical - Bônus M-10 & FPD{% endblock %}
 
+
+{% block page_title %}Bônus M-10{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 {% endblock %}
@@ -80,18 +85,14 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section bonus-m10-page">
         <div class="system-container system-container-full card-modern">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="titulo-bonus-m10"><i class="bi bi-piggy-bank-fill text-success"></i> Bônus M-10 & FPD</h1>
-                    <p class="text-muted mb-0">Controle de pagamentos e elegibilidade para bônus</p>
+<p class="text-muted mb-0">Controle de pagamentos e elegibilidade para bônus</p>
                 </div>
                 <div>
                     <button class="btn btn-success" onclick="exportarDados()"><i class="bi bi-download"></i> Exportar Excel</button>

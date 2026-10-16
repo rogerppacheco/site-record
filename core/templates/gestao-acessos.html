@@ -4,6 +4,16 @@
 
 {% block title %}Gestão de Acessos - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Gestão de Acessos{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
+
+{% block header_module_actions %}
+<button class="btn btn-sm btn-primary" onclick="abrirModalUsuario()" title="Novo Usuário"><i class="bi bi-person-plus-fill"></i><span class="header-action-label ms-1">Novo Usuário</span></button>
+{% endblock %}
+
 {% block extra_css %}
 <style>
 .gestao-acessos-page .gestao-content {
@@ -20,21 +30,14 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="gestao-acessos-page gestao-content">
         <div class="alert alert-info py-2 small mb-3">
             <i class="bi bi-info-circle"></i> Esta ferramenta mostra apenas usuários que <strong>não</strong> são Admin ou Diretoria. Quem tem permissão pode editar perfil e dados destes usuários.
         </div>
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3>Gestão de Acessos</h3>
-            <button class="btn btn-primary" onclick="abrirModalUsuario()"><i class="bi bi-person-plus-fill"></i> Novo Usuário</button>
-        </div>
-        <div class="card card-modern mt-4">
+<div class="card card-modern mt-4">
             <div class="card-header py-3">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div>

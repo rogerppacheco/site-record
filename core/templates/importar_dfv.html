@@ -4,6 +4,11 @@
 
 {% block title %}Importar Base DFV - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Importar DFV{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .import-container {
@@ -138,16 +143,12 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/importacoes/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="importar-page"><div class="import-container">
         <div class="text-center mb-4">
-            <h2 class="fw-bold text-dark">Importar Base DFV</h2>
-            <p class="text-muted">Upload da base de endereços para validação de faturamento e viabilidade</p>
+<p class="text-muted">Upload da base de endereços para validação de faturamento e viabilidade</p>
         </div>
 
         <!-- Informações Importantes -->

@@ -4,6 +4,11 @@
 
 {% block title %}Validação de Importações Agendamento - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Validação Agendamento{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
 {% block extra_css %}
 <style>
         .validation-container {
@@ -281,11 +286,7 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/importacoes/">Importações</a></li>
-                        <li><a href="/importar-agendamento/">Importar Agendamento</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <div class="loading-overlay" id="loadingOverlay">
@@ -295,11 +296,7 @@
     <div class="validation-container validacao-page">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h2 class="fw-bold text-dark mb-1">
-                    <i class="bi bi-calendar-check-fill me-2" style="color: #6f42c1;"></i>
-                    Validação de Importações Agendamento
-                </h2>
-                <p class="text-muted mb-0">Monitore e valide todas as importações realizadas</p>
+<p class="text-muted mb-0">Monitore e valide todas as importações realizadas</p>
             </div>
             <a href="/importar-agendamento/" class="btn" style="background-color: #6f42c1; color: white;">
                 <i class="bi bi-upload me-2"></i>Nova Importação

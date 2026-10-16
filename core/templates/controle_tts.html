@@ -4,6 +4,18 @@
 
 {% block title %}Controle de TT's - {{ SITE_BRAND }}{% endblock %}
 
+
+{% block page_title %}Controle de TT's{% endblock %}
+{% block header_back_class %}{% endblock %}
+{% block header_user_menu_class %}{% endblock %}
+{% block header_nav %}{% endblock %}
+
+{% block header_module_actions %}
+<button type="button" class="btn btn-sm btn-primary" onclick="carregarTabela()" title="Atualizar">
+    <i class="bi bi-arrow-clockwise"></i><span class="header-action-label ms-1">Atualizar</span>
+</button>
+{% endblock %}
+
 {% block extra_css %}
 <style>
 .controle-tts-page.area-interna-section { padding: 24px 16px; max-width: 1600px; margin: 0 auto; display: block !important; align-items: stretch !important; justify-content: flex-start !important; }
@@ -34,23 +46,10 @@
 </style>
 {% endblock %}
 
-{% block header_nav %}
-    <li><a href="/area-interna/">Voltar</a></li>
-                        <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
-{% endblock %}
+
 
 {% block content %}
 <main class="area-interna-section controle-tts-page">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h1 style="font-size: 1.8rem; margin: 0;">Controle de TT's</h1>
-                <p class="text-muted mb-0">Última venda válida e dias sem vender (referência: dia anterior). Ordenado do maior para o menor.</p>
-            </div>
-            <button type="button" class="btn btn-outline-primary" onclick="carregarTabela()">
-                <i class="bi bi-arrow-clockwise"></i> Atualizar
-            </button>
-        </div>
-
         <div class="mb-3 small">
             <div class="d-flex flex-wrap align-items-center gap-3">
                 <span class="text-muted">Referência (ontem): <strong id="data-ref" class="text-dark">-</strong></span>
