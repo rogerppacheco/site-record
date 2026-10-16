@@ -53,6 +53,16 @@ def buscar_repescagem_bio_ged_automatico():
         logger.error("Erro na busca automática Repescagem Bio: %s", e)
 
 
+def buscar_historico_pap_funil_automatico():
+    """Todo dia às 06:00: busca Histórico PAP (Interesse + Venda) dos últimos 7 dias."""
+    try:
+        logger.info("Iniciando busca automática Histórico PAP (Funil: Interesse/Venda)…")
+        call_command('buscar_historico_pap_funil')
+        logger.info("Busca automática Histórico PAP enfileirada.")
+    except Exception as e:
+        logger.error("Erro na busca automática Histórico PAP: %s", e)
+
+
 def processar_disparo_mailing():
     """Continua o envio de lotes de mailing em DISPARANDO (~25/min por ciclo)."""
     try:
@@ -260,6 +270,14 @@ def _registrar_jobs(scheduler):
         trigger=CronTrigger.from_crontab('0 7 * * *', timezone=tz_match),
         id='buscar_repescagem_bio_ged',
         name='Repescagem Bio — busca GED360 6 meses (07:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(buscar_historico_pap_funil_automatico),
+        trigger=CronTrigger.from_crontab('0 6 * * *', timezone=tz_match),
+        id='buscar_historico_pap_funil',
+        name='Histórico PAP Funil — Interesse/Venda 7 dias (06:00)',
         replace_existing=True,
         max_instances=1,
     )
