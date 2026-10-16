@@ -40,7 +40,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        self.stdout.write("Iniciando exportação BI Dinâmica OSAB → import CRM…")
+        self.stdout.write("Iniciando exportacao BI Dinamica OSAB -> import CRM...")
         res = exportar_e_importar_osab_bi(
             matricula=options.get("matricula") or "",
             headless=not options.get("headed"),
