@@ -302,6 +302,7 @@ class CredencialRoboPAP(models.Model):
         ('WHATSAPP_BOT', 'Bot do WhatsApp (Crédito, OS, etc)'),
         ('HISTORICO_VENDAS', 'Auditoria/Histórico (Excel PAP)'),
         ('BRPRONTO_GED', 'Br Pronto / GED360 (Biometria)'),
+        ('IMPORT_OSAB_BI', 'Importação OSAB (BI Dinâmica)'),
         ('OUTROS', 'Outros'),
     ]
 

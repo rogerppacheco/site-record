@@ -883,9 +883,11 @@
                                 <option value="WHATSAPP_BOT">Bot do WhatsApp (Crédito, OS, etc)</option>
                                 <option value="HISTORICO_VENDAS">Auditoria/Histórico (Excel PAP)</option>
                                 <option value="BRPRONTO_GED">Br Pronto / GED360 (Biometria)</option>
+                                <option value="IMPORT_OSAB_BI">Importação OSAB (BI Dinâmica)</option>
                                 <option value="OUTROS">Outros</option>
                             </select>
                             <div class="form-text d-none" id="pap_login_ajuda_brpronto">Login do site ged360.niointernet.com.br/brprontopdv. Usado pela auditoria (Checar biometria), pelo comando BIO no WhatsApp e pela Repescagem Bio. Cadastre vários logins para rodar consultas em paralelo.</div>
+                            <div class="form-text d-none" id="pap_login_ajuda_osab_bi">Usado pelo robô que exporta a aba Dinâmica - OSAB do Power BI (PAP) e importa na Central de Importações. Agendado às 07:30, 13:00 e 19:00. Cadastre só uma conta ativa com essa função.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label" id="pap_login_matricula_label">Matrícula PAP</label>
@@ -4617,15 +4619,19 @@
         WHATSAPP_BOT: 'Bot do WhatsApp (Crédito, OS, etc)',
         HISTORICO_VENDAS: 'Auditoria/Histórico (Excel PAP)',
         BRPRONTO_GED: 'Br Pronto / GED360 (Biometria)',
+        IMPORT_OSAB_BI: 'Importação OSAB (BI Dinâmica)',
         OUTROS: 'Outros',
     };
 
     function ajustarCamposPapLogin() {
         const brpronto = document.getElementById('pap_login_funcao').value === 'BRPRONTO_GED';
+        const osabBi = document.getElementById('pap_login_funcao').value === 'IMPORT_OSAB_BI';
         document.getElementById('pap_login_matricula_label').textContent = brpronto ? 'Login Br Pronto (matrícula TT)' : 'Matrícula PAP';
         document.getElementById('pap_login_senha_label').textContent = brpronto ? 'Senha Br Pronto' : 'Senha PAP';
         document.getElementById('pap_login_dominio_grupo').classList.toggle('d-none', !brpronto);
         document.getElementById('pap_login_ajuda_brpronto').classList.toggle('d-none', !brpronto);
+        const ajudaOsab = document.getElementById('pap_login_ajuda_osab_bi');
+        if (ajudaOsab) ajudaOsab.classList.toggle('d-none', !osabBi);
     }
     document.getElementById('pap_login_funcao').addEventListener('change', ajustarCamposPapLogin);
 

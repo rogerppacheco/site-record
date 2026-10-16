@@ -63,6 +63,19 @@ def buscar_historico_pap_funil_automatico():
         logger.error("Erro na busca automática Histórico PAP: %s", e)
 
 
+def importar_osab_bi_pap_automatico():
+    """
+    07:30 / 13:00 / 19:00: exporta OSAB do BI (PAP Dinâmica) e importa no CRM.
+    Conta: Contas de Serviço PAP → função Importação OSAB (BI Dinâmica).
+    """
+    try:
+        logger.info("Iniciando importação automática OSAB via BI PAP…")
+        call_command("importar_osab_bi_pap")
+        logger.info("Importação automática OSAB via BI PAP concluída.")
+    except Exception as e:
+        logger.error("Erro na importação automática OSAB via BI PAP: %s", e)
+
+
 def processar_disparo_mailing():
     """Continua o envio de lotes de mailing em DISPARANDO (~25/min por ciclo)."""
     try:
@@ -281,6 +294,19 @@ def _registrar_jobs(scheduler):
         replace_existing=True,
         max_instances=1,
     )
+    for cron_expr, label in (
+        ("30 7 * * *", "07:30"),
+        ("0 13 * * *", "13:00"),
+        ("0 19 * * *", "19:00"),
+    ):
+        scheduler.add_job(
+            _wrap_scheduler_job(importar_osab_bi_pap_automatico),
+            trigger=CronTrigger.from_crontab(cron_expr, timezone=tz_match),
+            id=f"importar_osab_bi_pap_{label.replace(':', '')}",
+            name=f"OSAB BI PAP → Central Importações ({label})",
+            replace_existing=True,
+            max_instances=1,
+        )
     scheduler.add_job(
         _wrap_scheduler_job(processar_envio_performance_agendado),
         trigger=IntervalTrigger(minutes=1),
