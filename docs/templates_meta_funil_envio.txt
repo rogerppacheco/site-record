@@ -57,10 +57,10 @@ Botões: Falar com atendente | Estou com dúvida
 Elegível: repescavel=SIM + telefone + protocolo + nome.
 
 ==============================================================================
-CHECKLIST ops — conexão WhatsAtende #247
+CHECKLIST ops — Funil #247 + Qualidade #194 (canais separados)
 ==============================================================================
-[ ] WHATSATENDE_WHATSAPP_ID_B=247 no Railway
-[ ] WHATSATENDE_TOKEN_B=<token da conexão Record #247>
+[ ] WHATSATENDE_WHATSAPP_ID_FUNIL=247 + WHATSATENDE_TOKEN_FUNIL=<token Record #247>
+[ ] WHATSATENDE_WHATSAPP_ID_B=194 + WHATSATENDE_TOKEN_B=<token #194 Qualidade>
 [ ] WHATSAPP_USE_NIO_TEMPLATES=true
 [ ] envios_cliente_ativos=true (WhatsApp config no CRM)
 [ ] Template nio_consulta_viabilidade_v1 aprovado (UTILITY pt_BR)

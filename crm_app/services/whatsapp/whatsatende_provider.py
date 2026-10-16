@@ -32,8 +32,25 @@ class WhatsAtendeProvider(WhatsAppProvider):
             or DEFAULT_API_URL
         ).rstrip("/")
         self.role = (role or "interno").strip().lower()
-        if self.role == "cliente":
-            # Nunca cair no Número A: envio a cliente deve falhar se B não estiver pronto.
+        if self.role == "funil":
+            # Funil de Vendas — conexão própria (#247), sem misturar com Qualidade (#194).
+            self.token = (
+                getattr(settings, "WHATSATENDE_TOKEN_FUNIL", None)
+                or os.environ.get("WHATSATENDE_TOKEN_FUNIL")
+                or ""
+            ).strip()
+            self.whatsapp_id = str(
+                getattr(settings, "WHATSATENDE_WHATSAPP_ID_FUNIL", None)
+                or os.environ.get("WHATSATENDE_WHATSAPP_ID_FUNIL")
+                or ""
+            ).strip()
+            if not self.token:
+                logger.error(
+                    "[WhatsAtende] WHATSATENDE_TOKEN_FUNIL ausente — "
+                    "role=funil abortará envios (sem fallback para A/B)."
+                )
+        elif self.role == "cliente":
+            # Qualidade / esteira cliente — Número B (#194).
             self.token = (
                 getattr(settings, "WHATSATENDE_TOKEN_B", None)
                 or os.environ.get("WHATSATENDE_TOKEN_B")
@@ -103,7 +120,8 @@ class WhatsAtendeProvider(WhatsAppProvider):
                 json=payload,
                 timeout=timeout,
             )
-            if resp.status_code not in (200, 201):
+            # 202 = aceito na fila Meta (WhatsAtende assíncrono) — sucesso operacional.
+            if resp.status_code not in (200, 201, 202):
                 logger.error(
                     "[WhatsAtende] HTTP %s %s: %s",
                     resp.status_code,
@@ -111,7 +129,10 @@ class WhatsAtendeProvider(WhatsAppProvider):
                     resp.text[:500],
                 )
                 try:
-                    return resp.json()
+                    data = resp.json()
+                    if isinstance(data, dict):
+                        data.setdefault("statusCode", resp.status_code)
+                    return data
                 except ValueError:
                     return {"error": resp.text, "statusCode": resp.status_code}
             try:
@@ -142,7 +163,7 @@ class WhatsAtendeProvider(WhatsAppProvider):
     def resposta_indica_sucesso(self, resp: Any) -> bool:
         if not resp or not isinstance(resp, dict):
             return False
-        if resp.get("error") or resp.get("statusCode", 200) not in (200, 201):
+        if resp.get("error") or resp.get("statusCode", 200) not in (200, 201, 202):
             return False
         if self._message_id(resp):
             return True
@@ -150,7 +171,15 @@ class WhatsAtendeProvider(WhatsAppProvider):
         status = str(resp.get("status") or resp.get("message") or "").lower()
         if any(
             token in status
-            for token in ("scheduled", "success", "ok", "enviad", "pending", "created")
+            for token in (
+                "scheduled",
+                "success",
+                "ok",
+                "enviad",
+                "pending",
+                "created",
+                "queued",
+            )
         ):
             return True
         if resp.get("success") is True:

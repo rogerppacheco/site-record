@@ -11,6 +11,7 @@ from crm_app.services.whatsapp.zapi_provider import ZapiProvider
 
 PURPOSE_INTERNO = "interno"
 PURPOSE_CLIENTE = "cliente"
+PURPOSE_FUNIL = "funil"
 
 BACKEND_CLIENTE_BLOQUEADO = "bloqueado"
 BACKENDS_CLIENTE_OFICIAIS = frozenset({"meta", "whatsatende"})
@@ -32,6 +33,7 @@ def resolve_backend_for_purpose(provider_name: str, purpose: str) -> Tuple[str, 
     Cliente final nunca usa Z-API/Evolution (número comercial), qualquer que seja
     o provedor: whatsatende → WhatsAtende B; meta → Meta Cloud; demais → Meta Cloud
     se credenciais ok, senão WhatsAtende B.
+    Funil → WhatsAtende conexão FUNIL (#247), independente do B da Qualidade.
     hybrid: interno → Z-API.
     meta: interno → Z-API se configurada, senão Meta.
     whatsatende: dual A/B na mesma plataforma.
@@ -40,9 +42,12 @@ def resolve_backend_for_purpose(provider_name: str, purpose: str) -> Tuple[str, 
     from crm_app.services.whatsapp_config_service import credenciais_meta_cloud_ok
 
     name = (provider_name or "").strip().lower()
+    purpose_norm = (purpose or "").strip().lower()
+    if purpose_norm == PURPOSE_FUNIL:
+        return "whatsatende", PURPOSE_FUNIL
     role = (
         PURPOSE_CLIENTE
-        if (purpose or "").strip().lower() == PURPOSE_CLIENTE
+        if purpose_norm == PURPOSE_CLIENTE
         else PURPOSE_INTERNO
     )
     if role == PURPOSE_CLIENTE:
@@ -78,8 +83,14 @@ def get_whatsapp_provider(purpose: str = PURPOSE_INTERNO) -> WhatsAppProvider:
     from crm_app.services.whatsapp_config_service import get_active_whatsapp_provider_name
 
     provider_name = get_active_whatsapp_provider_name()
+    purpose_norm = (purpose or "").strip().lower()
     backend, role = resolve_backend_for_purpose(provider_name, purpose)
-    if (purpose or "").strip().lower() == PURPOSE_CLIENTE:
+    if purpose_norm == PURPOSE_FUNIL:
+        from crm_app.services.whatsapp_config_service import canal_funil_pronto
+
+        if not canal_funil_pronto():
+            backend, role = BACKEND_CLIENTE_BLOQUEADO, PURPOSE_FUNIL
+    elif purpose_norm == PURPOSE_CLIENTE:
         from crm_app.services.whatsapp_config_service import canal_cliente_pronto
 
         if (

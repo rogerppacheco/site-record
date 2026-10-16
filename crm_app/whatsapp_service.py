@@ -5,6 +5,7 @@ from datetime import datetime
 
 from crm_app.services.whatsapp.factory import (
     PURPOSE_CLIENTE,
+    PURPOSE_FUNIL,
     PURPOSE_INTERNO,
     get_whatsapp_provider,
 )
@@ -26,19 +27,27 @@ class WhatsAppService:
     def __init__(self, purpose: str = PURPOSE_INTERNO) -> None:
         """
         purpose=interno → Número A (bot/equipe).
-        purpose=cliente → Número B (oficial / cliente final).
+        purpose=cliente → Número B Qualidade (oficial / cliente final).
+        purpose=funil → conexão Funil (#247), independente do B.
         """
-        self.purpose = (
-            PURPOSE_CLIENTE
-            if (purpose or "").strip().lower() == PURPOSE_CLIENTE
-            else PURPOSE_INTERNO
-        )
+        p = (purpose or "").strip().lower()
+        if p == PURPOSE_FUNIL:
+            self.purpose = PURPOSE_FUNIL
+        elif p == PURPOSE_CLIENTE:
+            self.purpose = PURPOSE_CLIENTE
+        else:
+            self.purpose = PURPOSE_INTERNO
         self._provider = get_whatsapp_provider(purpose=self.purpose)
 
     @classmethod
     def para_cliente(cls) -> "WhatsAppService":
-        """Atalho para envios a cliente final (Número B)."""
+        """Atalho para envios a cliente final (Número B / Qualidade)."""
         return cls(purpose=PURPOSE_CLIENTE)
+
+    @classmethod
+    def para_funil(cls) -> "WhatsAppService":
+        """Atalho para templates do Funil de Vendas (conexão #247)."""
+        return cls(purpose=PURPOSE_FUNIL)
 
     @property
     def instance_id(self) -> str:

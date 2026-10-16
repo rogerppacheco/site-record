@@ -430,11 +430,31 @@ def enviar_template_cliente(
     *,
     language_code: str = LANGUAGE_PT_BR,
 ) -> Tuple[bool, Any]:
-    """Envia template pelo Número B. Retorna (ok, resposta)."""
+    """Envia template pelo Número B (Qualidade / #194). Retorna (ok, resposta)."""
     from crm_app.whatsapp_service import WhatsAppService
 
     params = [str(p) if p is not None and str(p).strip() != "" else "-" for p in body_params]
     svc = WhatsAppService.para_cliente()
+    return svc.enviar_template(
+        telefone,
+        template_name,
+        language_code=language_code,
+        body_params=params,
+    )
+
+
+def enviar_template_funil(
+    telefone: str,
+    template_name: str,
+    body_params: Sequence[str],
+    *,
+    language_code: str = LANGUAGE_PT_BR,
+) -> Tuple[bool, Any]:
+    """Envia template pela conexão Funil (#247). Retorna (ok, resposta)."""
+    from crm_app.whatsapp_service import WhatsAppService
+
+    params = [str(p) if p is not None and str(p).strip() != "" else "-" for p in body_params]
+    svc = WhatsAppService.para_funil()
     return svc.enviar_template(
         telefone,
         template_name,

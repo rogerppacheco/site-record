@@ -15,7 +15,7 @@ from crm_app.services.whatsapp.nio_templates import (
     TEMPLATE_CONSULTA_VIABILIDADE,
     TEMPLATE_REATIVACAO_CONTRATO,
     TEMPLATE_SELFIE_PENDENTE,
-    enviar_template_cliente,
+    enviar_template_funil,
     templates_habilitados,
 )
 
@@ -74,10 +74,13 @@ def _canal_pronto() -> tuple[bool, str]:
     if not templates_habilitados():
         return False, 'Templates Meta desabilitados na configuração WhatsApp.'
     from django.conf import settings
-    wid = str(getattr(settings, 'WHATSATENDE_WHATSAPP_ID_B', '') or '').strip()
-    token = str(getattr(settings, 'WHATSATENDE_TOKEN_B', '') or '').strip()
+    wid = str(getattr(settings, 'WHATSATENDE_WHATSAPP_ID_FUNIL', '') or '').strip()
+    token = str(getattr(settings, 'WHATSATENDE_TOKEN_FUNIL', '') or '').strip()
     if not wid or not token:
-        return False, 'Conexão WhatsAtende Número B (ID/token) não configurada.'
+        return False, (
+            'Conexão WhatsAtende Funil (#247) não configurada '
+            '(WHATSATENDE_WHATSAPP_ID_FUNIL / WHATSATENDE_TOKEN_FUNIL).'
+        )
     return True, ''
 
 
@@ -306,7 +309,7 @@ def enviar_contexto(ctx: dict, *, usuario=None, force: bool = False) -> dict:
             }
 
     # Sem fallback texto — só template oficial Meta
-    ok, resp = enviar_template_cliente(ctx['telefone'], ctx['template_nome'], ctx['body_params'])
+    ok, resp = enviar_template_funil(ctx['telefone'], ctx['template_nome'], ctx['body_params'])
     mid = _extrair_message_id(resp) if ok else ''
     envio = FunilTemplateEnvio.objects.create(
         aba=ctx['aba'],

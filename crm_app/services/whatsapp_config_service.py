@@ -109,10 +109,22 @@ def _credenciais_whatsatende_conexao_ok() -> bool:
 
 
 def _credenciais_whatsatende_cliente_ok() -> bool:
-    """Número B (oficial) — envios a cliente final."""
+    """Número B (oficial) — Qualidade / esteira cliente (#194)."""
     return bool((getattr(settings, "WHATSATENDE_TOKEN_B", "") or "").strip()) and bool(
         (getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", "") or "").strip()
     )
+
+
+def _credenciais_whatsatende_funil_ok() -> bool:
+    """Conexão Funil de Vendas (#247) — independente do Número B."""
+    return bool((getattr(settings, "WHATSATENDE_TOKEN_FUNIL", "") or "").strip()) and bool(
+        (getattr(settings, "WHATSATENDE_WHATSAPP_ID_FUNIL", "") or "").strip()
+    )
+
+
+def canal_funil_pronto() -> bool:
+    """Envios do Funil só saem com TOKEN/ID FUNIL configurados."""
+    return _credenciais_whatsatende_funil_ok()
 
 
 def _credenciais_n8n_ok() -> bool:
