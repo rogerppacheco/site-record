@@ -242,6 +242,7 @@ from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWpp
 from .funil_legado_api import FunilMontarLegadoConfigView, FunilMontarLegadoView
 from .osab_busca_api import BuscarPedidoOsabView
 from .historico_pap_api import (
+    FunilHistoricoPapAssertivaMatchLoteView,
     FunilHistoricoPapAssertivaMatchView,
     FunilHistoricoPapBuscarView,
     FunilHistoricoPapConfigView,
@@ -333,6 +334,11 @@ urlpatterns = [
         'funil-venda-wpp/historico-pap/pedidos/<int:pedido_id>/assertiva-match/',
         FunilHistoricoPapAssertivaMatchView.as_view(),
         name='funil-historico-pap-assertiva-match',
+    ),
+    path(
+        'funil-venda-wpp/historico-pap/assertiva-match-lote/',
+        FunilHistoricoPapAssertivaMatchLoteView.as_view(),
+        name='funil-historico-pap-assertiva-match-lote',
     ),
     path('funil-venda-wpp/historico-pap/exportar/', FunilHistoricoPapExportarView.as_view(), name='funil-historico-pap-exportar'),
     path('historico/importar-vendas/', FunilHistoricoPapImportarView.as_view(), name='historico-importar-vendas'),
