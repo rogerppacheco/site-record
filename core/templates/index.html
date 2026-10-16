@@ -10,7 +10,7 @@
         
         /* Hero Section */
         .hero-section {
-            padding-top: 120px;
+            padding-top: 72px;
             min-height: 80vh;
             display: flex;
             align-items: center;
@@ -88,6 +88,9 @@
         }
 </style>
 {% endblock %}
+
+{% block header_back_class %}d-none{% endblock %}
+{% block header_user_menu_class %}d-none{% endblock %}
 
 {% block header_nav %}
     <li><a href="#inicio" class="menu-link">Início</a></li>
