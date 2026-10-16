@@ -168,11 +168,19 @@ class Command(BaseCommand):
             cidade = (mapped.get("cidade") or "").strip()
             cep = _DOC_RE.sub("", mapped.get("cep") or "")
 
+            payload = ped.payload if isinstance(ped.payload, dict) else {}
+            etapa = str(
+                payload.get("etapaInteresse")
+                or mapped.get("status_secundario")
+                or payload.get("chaveStatusSecundario")
+                or ""
+            )
             resultado = {
                 "pedido_id": ped.id,
                 "protocolo": ped.numero_pedido,
                 "nome_pap": nome,
                 "telefone_pap": tel,
+                "etapa_interesse": etapa,
                 "uf": uf,
                 "cidade": cidade,
                 "cep": cep,
@@ -316,6 +324,7 @@ class Command(BaseCommand):
                     "protocolo",
                     "nome_pap",
                     "telefone_pap",
+                    "etapa_interesse",
                     "uf",
                     "cidade",
                     "cep",
