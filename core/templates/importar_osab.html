@@ -228,6 +228,26 @@
             </div>
         </div>
 
+        <!-- Importação automática via BI PAP -->
+        <div class="info-card card-modern mb-4" id="cardOsabBiPap">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <h5 class="fw-bold text-dark mb-1">
+                        <i class="bi bi-robot text-warning"></i> Importar do BI PAP (Dinâmica OSAB)
+                    </h5>
+                    <p class="text-muted mb-0 small">
+                        Abre o portal PAP com a conta de serviço, exporta a tabela
+                        <strong>Exportação - OSAB</strong> e importa neste módulo.
+                        Também roda sozinho às 07:30, 13:00 e 19:00.
+                    </p>
+                    <small class="text-muted d-block mt-2" id="osabBiPapStatus">Verificando conta de serviço…</small>
+                </div>
+                <button type="button" class="btn btn-outline-warning fw-bold" id="btnOsabBiPap" disabled>
+                    <i class="bi bi-cloud-download"></i> Buscar no BI e importar
+                </button>
+            </div>
+        </div>
+
         <!-- Zona de Upload -->
         <div class="upload-zone card-modern" id="uploadZone">
             <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsb" style="display: none;">
@@ -351,7 +371,86 @@
             // Carregar histórico e iniciar auto-refresh
             carregarHistoricoImportacoes();
             refreshIntervalId = setInterval(carregarHistoricoImportacoes, 3000);
+            carregarStatusOsabBiPap();
+            const btnBi = document.getElementById('btnOsabBiPap');
+            if (btnBi) btnBi.addEventListener('click', dispararOsabBiPapManual);
         });
+
+        async function carregarStatusOsabBiPap() {
+            const statusEl = document.getElementById('osabBiPapStatus');
+            const btn = document.getElementById('btnOsabBiPap');
+            if (!statusEl || !btn) return;
+            try {
+                const token = localStorage.getItem('accessToken');
+                const r = await fetch('/api/crm/import/osab/bi-pap/', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    statusEl.textContent = data.detail || 'Sem permissão para esta ação.';
+                    btn.disabled = true;
+                    return;
+                }
+                if (!data.disponivel) {
+                    statusEl.innerHTML = 'Nenhuma conta <strong>Importação OSAB (BI Dinâmica)</strong> ativa. Cadastre em Governança → Contas de Serviço PAP.';
+                    btn.disabled = true;
+                    return;
+                }
+                const mats = (data.contas || []).map(c => c.matricula).join(', ');
+                if (data.em_andamento) {
+                    statusEl.textContent = `Em andamento com: ${mats}. Aguarde o término.`;
+                    btn.disabled = true;
+                } else {
+                    statusEl.textContent = `Conta pronta: ${mats}`;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                statusEl.textContent = 'Não foi possível verificar a conta de serviço.';
+                btn.disabled = true;
+            }
+        }
+
+        async function dispararOsabBiPapManual() {
+            const btn = document.getElementById('btnOsabBiPap');
+            if (!btn || btn.disabled) return;
+            if (!confirm('Iniciar busca no BI PAP (Dinâmica OSAB) e importar automaticamente?\n\nO processo pode levar alguns minutos.')) {
+                return;
+            }
+            btn.disabled = true;
+            const statusEl = document.getElementById('osabBiPapStatus');
+            if (statusEl) statusEl.textContent = 'Iniciando… login no PAP e exportação do BI.';
+            try {
+                const token = localStorage.getItem('accessToken');
+                const r = await fetch('/api/crm/import/osab/bi-pap/', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ enviar_whatsapp: false }),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    alert(data.detail || 'Não foi possível iniciar a importação via BI.');
+                    carregarStatusOsabBiPap();
+                    return;
+                }
+                if (window.showAlert) {
+                    window.showAlert(data.detail || 'Importação via BI iniciada.', 'success');
+                } else {
+                    alert(data.detail || 'Importação via BI iniciada.');
+                }
+                if (statusEl) statusEl.textContent = data.detail || 'Em andamento…';
+                if (!refreshIntervalId) {
+                    refreshIntervalId = setInterval(carregarHistoricoImportacoes, 3000);
+                }
+                carregarHistoricoImportacoes();
+                setTimeout(carregarStatusOsabBiPap, 15000);
+            } catch (e) {
+                alert('Erro ao iniciar: ' + (e.message || e));
+                carregarStatusOsabBiPap();
+            }
+        }
 
         // Eventos de drag & drop
         uploadZone.addEventListener('click', () => fileInput.click());
