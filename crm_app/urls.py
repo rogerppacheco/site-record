@@ -242,6 +242,7 @@ from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWpp
 from .funil_legado_api import FunilMontarLegadoConfigView, FunilMontarLegadoView
 from .osab_busca_api import BuscarPedidoOsabView
 from .historico_pap_api import (
+    FunilHistoricoPapAssertivaMatchView,
     FunilHistoricoPapBuscarView,
     FunilHistoricoPapConfigView,
     FunilHistoricoPapDownloadView,
@@ -328,6 +329,11 @@ urlpatterns = [
     path('funil-venda-wpp/historico-pap/download/', FunilHistoricoPapDownloadView.as_view(), name='funil-historico-pap-download'),
     path('funil-venda-wpp/historico-pap/registrar/', FunilHistoricoPapRegistrarView.as_view(), name='funil-historico-pap-registrar'),
     path('funil-venda-wpp/historico-pap/pedidos/', FunilHistoricoPapPedidosView.as_view(), name='funil-historico-pap-pedidos'),
+    path(
+        'funil-venda-wpp/historico-pap/pedidos/<int:pedido_id>/assertiva-match/',
+        FunilHistoricoPapAssertivaMatchView.as_view(),
+        name='funil-historico-pap-assertiva-match',
+    ),
     path('funil-venda-wpp/historico-pap/exportar/', FunilHistoricoPapExportarView.as_view(), name='funil-historico-pap-exportar'),
     path('historico/importar-vendas/', FunilHistoricoPapImportarView.as_view(), name='historico-importar-vendas'),
     path('consultar-biometria-brpronto/', consultar_biometria_brpronto_view, name='consultar-biometria-brpronto'),

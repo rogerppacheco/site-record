@@ -146,10 +146,26 @@ class AssertivaLocalizeService:
         endpoint: str,
         documento: str,
     ) -> dict[str, Any]:
+        return self._get_localize(
+            endpoint,
+            {endpoint: documento, "idFinalidade": 2},
+            operacao="consulta cadastral",
+        )
+
+    def _get_localize(
+        self,
+        path: str,
+        params: dict[str, Any],
+        *,
+        operacao: str,
+    ) -> dict[str, Any]:
+        """GET autenticado em /localize/v3/{path} com retry em 401."""
+        self._validar_configuracao()
         token = self._obter_token()
+        url = f"{self.base_url}/localize/v3/{path.lstrip('/')}"
         response = self.http.get(
-            f"{self.base_url}/localize/v3/{endpoint}",
-            params={endpoint: documento, "idFinalidade": 2},
+            url,
+            params=params,
             headers={"Authorization": f"Bearer {token}"},
             timeout=self.timeout_seconds,
         )
@@ -157,12 +173,70 @@ class AssertivaLocalizeService:
             self._invalidar_token()
             token = self._obter_token()
             response = self.http.get(
-                f"{self.base_url}/localize/v3/{endpoint}",
-                params={endpoint: documento, "idFinalidade": 2},
+                url,
+                params=params,
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=self.timeout_seconds,
             )
-        return self._validar_resposta(response, "consulta cadastral")
+        try:
+            return self._validar_resposta(response, operacao)
+        except AssertivaError:
+            raise
+        except Exception as exc:
+            raise AssertivaError(f"Falha na {operacao}: {exc}") from exc
+
+    def consultar_por_telefone(
+        self,
+        telefone: str,
+        *,
+        id_finalidade: int = 1,
+    ) -> dict[str, Any]:
+        """Localiza pessoas pelo telefone (retorna payload bruto da Assertiva)."""
+        digitos = _DOCUMENTO_RE.sub("", telefone or "")
+        if digitos.startswith("55") and len(digitos) in (12, 13):
+            digitos = digitos[2:]
+        if len(digitos) not in (10, 11):
+            raise AssertivaError("Telefone inválido para consulta na Assertiva.")
+        return self._get_localize(
+            "telefone",
+            {"telefone": digitos, "idFinalidade": id_finalidade},
+            operacao="consulta telefone",
+        )
+
+    def consultar_por_nome(
+        self,
+        nome: str,
+        *,
+        id_finalidade: int = 1,
+        nome_exato: bool = True,
+        uf: str = "",
+        cidade: str = "",
+        cep: str = "",
+    ) -> dict[str, Any]:
+        """Localiza pessoas por nome (e filtros opcionais de endereço)."""
+        nome_limpo = (nome or "").strip()
+        if len(nome_limpo.split()) < 2:
+            raise AssertivaError("Informe nome e sobrenome para a consulta Assertiva.")
+        params: dict[str, Any] = {
+            "buscarPor": "pessoas",
+            "nomeOuRazaoSocial": nome_limpo,
+            "nomeOuRazaoSocialExata": "true" if nome_exato else "false",
+            "idFinalidade": id_finalidade,
+        }
+        uf_limpo = (uf or "").strip().upper()[:2]
+        cidade_limpa = (cidade or "").strip()
+        cep_limpo = _DOCUMENTO_RE.sub("", cep or "")
+        if uf_limpo:
+            params["uf"] = uf_limpo
+        if cidade_limpa and uf_limpo:
+            params["cidade"] = cidade_limpa
+        if len(cep_limpo) == 8:
+            params["cepOuNomeRua"] = cep_limpo
+        return self._get_localize(
+            "nome-endereco",
+            params,
+            operacao="consulta nome",
+        )
 
     def _obter_token(self) -> str:
         cache_key = self._token_cache_key()
