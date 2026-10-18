@@ -830,6 +830,10 @@
                             <!-- Filtros -->
                             <div class="d-flex align-items-center gap-1 border-end pe-2 border-secondary">
                                 <i class="bi bi-funnel text-muted ms-1" title="Filtros"></i>
+                                <select id="atuacao-metrica" class="form-select form-select-sm shadow-none" style="width: 200px;" onchange="carregarAtuacaoCampo()" title="VB: vendas pela data de abertura. Gross: instaladas pela data de instalação.">
+                                    <option value="VB" selected>VB</option>
+                                    <option value="GROSS">Gross (instalados)</option>
+                                </select>
                                 <select id="atuacao-vendedor" class="form-select form-select-sm shadow-none" style="width: 130px;" onchange="carregarAtuacaoCampo()" title="Filtrar por Vendedor">
                                     <option value="">Todos Vendedores</option>
                                 </select>
@@ -890,7 +894,7 @@
                         </div>
                         <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
                             <h6 class="text-primary fw-bold mb-0">
-                                <i class="bi bi-table"></i> Visão Mensal
+                                <i class="bi bi-table"></i> Visão Mensal · <span id="atuacao-rotulo-metrica">VB</span>
                             </h6>
                             <button class="btn btn-sm btn-outline-secondary" onclick="toggleFullScreenMensal()" title="Tela Cheia (Visão Mensal)">
                                 <i class="bi bi-arrows-fullscreen"></i>
@@ -2367,10 +2371,13 @@
         
         // --- ATUAÇÃO EM CAMPO ---
         async function carregarAtuacaoCampo() {
+            const metrica = document.getElementById('atuacao-metrica')?.value || 'VB';
             const vendedor = document.getElementById('atuacao-vendedor').value;
             const uf = document.getElementById('atuacao-uf').value;
             const cidade = document.getElementById('atuacao-cidade').value;
             const bairro = document.getElementById('atuacao-bairro').value;
+            const rotuloMetrica = document.getElementById('atuacao-rotulo-metrica');
+            if (rotuloMetrica) rotuloMetrica.textContent = metrica === 'GROSS' ? 'Gross (instalados)' : 'VB';
             
             const agrupamentos = Array.from(document.querySelectorAll('.atuacao-grupo'))
                 .map(s => s.value)
@@ -2396,6 +2403,7 @@
 
             try {
                 const params = new URLSearchParams();
+                params.set('metrica', metrica);
                 if (vendedor) params.set('vendedor', vendedor);
                 if (uf) params.set('uf', uf);
                 if (cidade) params.set('cidade', cidade);
@@ -2616,6 +2624,7 @@
         };
         
         window.exportarAtuacaoCampoExcel = async function() {
+            const metrica = document.getElementById('atuacao-metrica')?.value || 'VB';
             const vendedor = document.getElementById('atuacao-vendedor').value;
             const uf = document.getElementById('atuacao-uf').value;
             const cidade = document.getElementById('atuacao-cidade').value;
@@ -2625,6 +2634,7 @@
             const agrupamentosUnicos = [...new Set(agrupamentos)];
             
             const params = new URLSearchParams();
+            params.set('metrica', metrica);
             if (vendedor) params.set('vendedor', vendedor);
             if (uf) params.set('uf', uf);
             if (cidade) params.set('cidade', cidade);
@@ -2645,7 +2655,7 @@
                 const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
                 const link = document.createElement('a');
                 link.href = blobUrl;
-                link.setAttribute('download', 'Atuacao_em_Campo.xlsx');
+                link.setAttribute('download', metrica === 'GROSS' ? 'Atuacao_em_Campo_Gross.xlsx' : 'Atuacao_em_Campo_VB.xlsx');
                 document.body.appendChild(link);
                 link.click();
                 link.remove();

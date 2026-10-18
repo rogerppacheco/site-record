@@ -19270,6 +19270,52 @@ def baixar_screenshot_debug(request, nome_arquivo):
         }, status=500)
 
 
+def _atuacao_metrica_param(request):
+    """VB = venda bruta (data de abertura). GROSS = instalados (data efetiva de instalação)."""
+    metrica = (request.query_params.get('metrica') or 'VB').strip().upper()
+    return 'GROSS' if metrica == 'GROSS' else 'VB'
+
+
+def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica):
+    from .models import Venda
+
+    qs = Venda.objects.filter(
+        ativo=True,
+        status_tratamento__nome__iexact='CADASTRADA',
+    )
+    if metrica == 'GROSS':
+        qs = qs.filter(status_esteira__nome__iexact='INSTALADA')
+    if vendedor:
+        qs = qs.filter(vendedor__username__iexact=vendedor)
+    if uf:
+        qs = qs.filter(estado__iexact=uf)
+    if cidade:
+        qs = qs.filter(cidade__iexact=cidade)
+    if bairro:
+        qs = qs.filter(bairro__iexact=bairro)
+    return qs
+
+
+def _atuacao_q_no_periodo(metrica, d_ini=None, d_fim=None, dia=None):
+    """VB conta pela data de abertura. Gross conta pela data efetiva de instalação."""
+    from django.db.models import Q
+
+    if metrica == 'GROSS':
+        if dia is not None:
+            return _filtro_data_efetiva_instalacao_intervalo_venda(dia, dia)
+        if d_fim is None:
+            return (
+                (Q(data_instalacao_fisica__isnull=False) & Q(data_instalacao_fisica__gte=d_ini))
+                | (Q(data_instalacao_fisica__isnull=True) & Q(data_instalacao__gte=d_ini))
+            )
+        return _filtro_data_efetiva_instalacao_intervalo_venda(d_ini, d_fim)
+    if dia is not None:
+        return Q(data_abertura__date=dia)
+    if d_fim is None:
+        return Q(data_abertura__date__gte=d_ini)
+    return Q(data_abertura__date__gte=d_ini, data_abertura__date__lte=d_fim)
+
+
 class AtuacaoCampoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -19279,13 +19325,13 @@ class AtuacaoCampoView(APIView):
         cidade = request.query_params.get('cidade')
         bairro = request.query_params.get('bairro')
         agrupamento_str = request.query_params.get('agrupamento')
+        metrica = _atuacao_metrica_param(request)
         
         from dateutil.relativedelta import relativedelta
-        from django.db.models import Count, Q
+        from django.db.models import Count
         from django.utils import timezone
         import calendar
         from datetime import date
-        from .models import Venda
         
         hoje = timezone.localtime(timezone.now()).date()
         meses = []
@@ -19293,22 +19339,13 @@ class AtuacaoCampoView(APIView):
             m = hoje - relativedelta(months=i)
             meses.append(m)
         
-        qs = Venda.objects.filter(
-            ativo=True,
-            status_tratamento__nome__iexact='CADASTRADA'
-        )
-        if vendedor:
-            qs = qs.filter(vendedor__username__iexact=vendedor)
-            
-        if uf: qs = qs.filter(estado__iexact=uf)
-        if cidade: qs = qs.filter(cidade__iexact=cidade)
-        if bairro: qs = qs.filter(bairro__iexact=bairro)
+        qs = _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica)
             
         annotations = {}
         for idx, m in enumerate(meses):
             start = date(m.year, m.month, 1)
             end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
-            annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
+            annotations[f'mes_{idx}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, start, end))
         
         valid_fields = {
             'estado': 'estado',
@@ -19329,12 +19366,13 @@ class AtuacaoCampoView(APIView):
             group_fields = ['estado', 'cidade', 'bairro']
             
         dados = qs.values(*group_fields).annotate(
-            total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
+            total_6m=Count('id', filter=_atuacao_q_no_periodo(metrica, date(meses[-1].year, meses[-1].month, 1))),
             **annotations
         ).filter(total_6m__gt=0).order_by('-total_6m')
         
         return Response({
             'meses': [m.strftime('%m/%Y') for m in meses],
+            'metrica': metrica,
             'dados': list(dados)
         })
 
@@ -19347,13 +19385,13 @@ class ExportarAtuacaoCampoExcelView(APIView):
         cidade = request.query_params.get('cidade')
         bairro = request.query_params.get('bairro')
         agrupamento_str = request.query_params.get('agrupamento')
+        metrica = _atuacao_metrica_param(request)
         
         from dateutil.relativedelta import relativedelta
         from django.db.models import Count, Q
         from django.utils import timezone
         import calendar
         from datetime import date
-        from .models import Venda
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         from io import BytesIO
@@ -19365,20 +19403,13 @@ class ExportarAtuacaoCampoExcelView(APIView):
             m = hoje - relativedelta(months=i)
             meses.append(m)
         
-        qs = Venda.objects.filter(
-            ativo=True,
-            status_tratamento__nome__iexact='CADASTRADA'
-        )
-        if vendedor: qs = qs.filter(vendedor__username__iexact=vendedor)
-        if uf: qs = qs.filter(estado__iexact=uf)
-        if cidade: qs = qs.filter(cidade__iexact=cidade)
-        if bairro: qs = qs.filter(bairro__iexact=bairro)
+        qs = _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica)
             
         annotations = {}
         for idx, m in enumerate(meses):
             start = date(m.year, m.month, 1)
             end = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
-            annotations[f'mes_{idx}'] = Count('id', filter=Q(data_abertura__date__gte=start, data_abertura__date__lte=end))
+            annotations[f'mes_{idx}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, start, end))
         
         valid_fields = {
             'estado': 'estado',
@@ -19399,15 +19430,16 @@ class ExportarAtuacaoCampoExcelView(APIView):
             group_fields = ['estado', 'cidade', 'bairro']
             
         dados = qs.values(*group_fields).annotate(
-            total_6m=Count('id', filter=Q(data_abertura__date__gte=date(meses[-1].year, meses[-1].month, 1))),
+            total_6m=Count('id', filter=_atuacao_q_no_periodo(metrica, date(meses[-1].year, meses[-1].month, 1))),
             **annotations
         ).filter(total_6m__gt=0).order_by('-total_6m')
         
         wb = openpyxl.Workbook()
         ws = wb.active
+        rotulo_metrica = 'Gross (instalados)' if metrica == 'GROSS' else 'VB'
         ws.title = "Atuação em Campo"
         
-        headers = ["Local", "Evolução"] + [m.strftime('%m/%Y') for m in meses] + ["Total 6m"]
+        headers = [f"Local ({rotulo_metrica})", "Evolução"] + [m.strftime('%m/%Y') for m in meses] + ["Total 6m"]
         ws.append(headers)
         
         header_font = Font(bold=True, color="FFFFFF")
@@ -19509,13 +19541,13 @@ class ExportarAtuacaoCampoExcelView(APIView):
         
         start_m0 = date(hoje.year, hoje.month, 1)
         end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
-        qs_m0 = qs.filter(data_abertura__date__gte=start_m0, data_abertura__date__lte=end_m0)
+        qs_m0 = qs.filter(_atuacao_q_no_periodo(metrica, start_m0, end_m0))
         
         annotations_d = {}
         for d in range(1, 32):
             try:
                 dia_date = date(hoje.year, hoje.month, d)
-                annotations_d[f'dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date))
+                annotations_d[f'dia_{d}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, dia=dia_date))
             except ValueError:
                 annotations_d[f'dia_{d}'] = Count('id', filter=Q(id__isnull=True))
                 
@@ -19524,7 +19556,7 @@ class ExportarAtuacaoCampoExcelView(APIView):
             **annotations_d
         ).filter(total_mes__gt=0).order_by('-total_mes')
         
-        headers_d = ["Local"] + [str(i) for i in range(1, 32)] + ["Total Mês"]
+        headers_d = [f"Local ({rotulo_metrica})"] + [str(i) for i in range(1, 32)] + ["Total Mês"]
         ws2.append(headers_d)
         
         for col, h in enumerate(headers_d, 1):
@@ -19591,7 +19623,8 @@ class ExportarAtuacaoCampoExcelView(APIView):
         output.seek(0)
         
         response = HttpResponse(output.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response['Content-Disposition'] = 'attachment; filename="Atuacao_em_Campo.xlsx"'
+        sufixo = 'Gross' if metrica == 'GROSS' else 'VB'
+        response['Content-Disposition'] = f'attachment; filename="Atuacao_em_Campo_{sufixo}.xlsx"'
         return response
 
 
@@ -19604,23 +19637,16 @@ class AtuacaoCampoDiarioView(APIView):
         cidade = request.query_params.get('cidade')
         bairro = request.query_params.get('bairro')
         agrupamento_str = request.query_params.get('agrupamento')
+        metrica = _atuacao_metrica_param(request)
         
         from django.db.models import Count, Q
         from django.utils import timezone
         import calendar
         from datetime import date
-        from .models import Venda
         
         hoje = timezone.localtime(timezone.now()).date()
         
-        qs = Venda.objects.filter(
-            ativo=True,
-            status_tratamento__nome__iexact='CADASTRADA'
-        )
-        if vendedor: qs = qs.filter(vendedor__username__iexact=vendedor)
-        if uf: qs = qs.filter(estado__iexact=uf)
-        if cidade: qs = qs.filter(cidade__iexact=cidade)
-        if bairro: qs = qs.filter(bairro__iexact=bairro)
+        qs = _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica)
             
         start_m0 = date(hoje.year, hoje.month, 1)
         end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
@@ -19632,7 +19658,7 @@ class AtuacaoCampoDiarioView(APIView):
             start_m1 = date(hoje.year, hoje.month - 1, 1)
             end_m1 = date(hoje.year, hoje.month - 1, calendar.monthrange(hoje.year, hoje.month - 1)[1])
             
-        qs_combined = qs.filter(data_abertura__date__gte=start_m1, data_abertura__date__lte=end_m0)
+        qs_combined = qs.filter(_atuacao_q_no_periodo(metrica, start_m1, end_m0))
         
         valid_fields = {
             'estado': 'estado',
@@ -19656,24 +19682,25 @@ class AtuacaoCampoDiarioView(APIView):
         for d in range(1, 32):
             try:
                 dia_date_m0 = date(hoje.year, hoje.month, d)
-                annotations[f'm0_dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date_m0))
+                annotations[f'm0_dia_{d}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, dia=dia_date_m0))
             except ValueError:
                 annotations[f'm0_dia_{d}'] = Count('id', filter=Q(id__isnull=True))
                 
             try:
                 dia_date_m1 = date(start_m1.year, start_m1.month, d)
-                annotations[f'm1_dia_{d}'] = Count('id', filter=Q(data_abertura__date=dia_date_m1))
+                annotations[f'm1_dia_{d}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, dia=dia_date_m1))
             except ValueError:
                 annotations[f'm1_dia_{d}'] = Count('id', filter=Q(id__isnull=True))
                 
         dados = qs_combined.values(*group_fields).annotate(
-            total_mes_m0=Count('id', filter=Q(data_abertura__date__gte=start_m0)),
-            total_mes_m1=Count('id', filter=Q(data_abertura__date__lt=start_m0)),
+            total_mes_m0=Count('id', filter=_atuacao_q_no_periodo(metrica, start_m0, end_m0)),
+            total_mes_m1=Count('id', filter=_atuacao_q_no_periodo(metrica, start_m1, end_m1)),
             **annotations
         ).filter(Q(total_mes_m0__gt=0) | Q(total_mes_m1__gt=0)).order_by('-total_mes_m0')
         
         return Response({
             'mes_atual': start_m0.strftime('%m/%Y'),
+            'metrica': metrica,
             'dias': list(range(1, 32)),
             'dados': list(dados)
         })
