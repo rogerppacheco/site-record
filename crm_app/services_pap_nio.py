@@ -3378,10 +3378,40 @@ class PAPNioAutomation:
             pass
         return None
 
+    def _aviso_link_enviado_visivel(self):
+        """Devolve o aviso 'Link enviado' que está na tela, ignorando texto oculto."""
+        candidatos = (
+            self.page.get_by_text(re.compile(r"link enviado", re.I)),
+            self.page.get_by_text(re.compile(r"verifique com o cliente", re.I)),
+        )
+        for loc in candidatos:
+            try:
+                total = loc.count()
+            except Exception:
+                continue
+            for i in range(total):
+                item = loc.nth(i)
+                try:
+                    if item.is_visible():
+                        return item
+                except Exception:
+                    continue
+        return None
+
+    def _clicar_botao_link_pagamento(self, btn) -> None:
+        try:
+            btn.scroll_into_view_if_needed(timeout=4000)
+        except Exception:
+            pass
+        try:
+            btn.click(timeout=8000)
+        except Exception:
+            btn.click(force=True, timeout=8000)
+
     def _clicar_enviar_link_pagamento(self) -> Dict[str, Any]:
         """
-        Na tela detalhe-os, clica em "Enviar link de pagamento" e espera o aviso "Link enviado".
-        Não navega. O chamador continua na mesma página.
+        Na tela detalhe-os, clica em "Enviar link de pagamento" e só segue
+        quando o aviso "Link enviado" está visível. O print é dessa tela.
         """
         resultado: Dict[str, Any] = {
             "ok": False,
@@ -3401,9 +3431,27 @@ class PAPNioAutomation:
             if btn.count() == 0:
                 logger.info("[PAP] Botão de link de pagamento ausente em %s", self.page.url)
                 return resultado
-            btn.click(force=True, timeout=8000)
-            aviso = self.page.get_by_text(re.compile(r"link enviado", re.I)).first
-            aviso.wait_for(state="visible", timeout=15000)
+            self._clicar_botao_link_pagamento(btn)
+            aviso = None
+            prazo = time.time() + 45
+            reclicou = False
+            while time.time() < prazo:
+                aviso = self._aviso_link_enviado_visivel()
+                if aviso is not None:
+                    break
+                if not reclicou and time.time() > prazo - 35:
+                    reclicou = True
+                    logger.info("[PAP] Modal Link enviado ainda não apareceu; clicando de novo.")
+                    try:
+                        self._clicar_botao_link_pagamento(btn)
+                    except Exception as e_reclick:
+                        logger.debug("[PAP] Segundo clique do link: %s", e_reclick)
+                self.page.wait_for_timeout(500)
+            if aviso is None:
+                resultado["mensagem"] = "O aviso Link enviado não apareceu a tempo."
+                logger.warning("[PAP] Modal Link enviado não ficou visível em %s", self.page.url)
+                return resultado
+            self.page.wait_for_timeout(800)
             texto = ""
             try:
                 texto = (aviso.locator("xpath=ancestor::div[contains(., 'WhatsApp') or contains(., 'E-mail')][1]").inner_text() or "")
@@ -3422,11 +3470,10 @@ class PAPNioAutomation:
                 whatsapp = m_w.group(1).strip().split("\n")[0].strip()
             if m_e:
                 email = m_e.group(1).strip()
-            self.page.wait_for_timeout(500)
             screenshot_path = self._screenshot_consulta_os_return_path(full_page=False)
             try:
                 ok_btn = self.page.get_by_role("button", name=re.compile(r"^ok$", re.I)).last
-                if ok_btn.count() > 0:
+                if ok_btn.count() > 0 and ok_btn.is_visible():
                     ok_btn.click(timeout=4000)
                     self.page.wait_for_timeout(300)
             except Exception as e_ok:
@@ -3442,7 +3489,7 @@ class PAPNioAutomation:
             return resultado
         except Exception as e:
             logger.warning("[PAP] Falha ao enviar link de pagamento: %s", e)
-            resultado["mensagem"] = f"Não confirmei o reenvio do link: {e}"
+            resultado["mensagem"] = f"Não confirmei o reenvio do link: {self._mensagem_erro_playwright(e)}"
             return resultado
 
     def abrir_detalhe_os_e_extrair(
@@ -3567,8 +3614,9 @@ class PAPNioAutomation:
             if enviar_link_pagamento:
                 self._ultimo_link_pagamento = self._clicar_enviar_link_pagamento()
             self.page.wait_for_timeout(150 if rapido else 300)
-            detail_screenshot_path = (self._ultimo_link_pagamento or {}).get("screenshot_path") or None
-            if not detail_screenshot_path:
+            if enviar_link_pagamento:
+                detail_screenshot_path = (self._ultimo_link_pagamento or {}).get("screenshot_path") or None
+            else:
                 detail_screenshot_path = self._screenshot_consulta_os_return_path()
             self.page.go_back()
             if rapido:

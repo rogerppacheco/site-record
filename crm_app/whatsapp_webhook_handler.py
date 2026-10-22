@@ -2276,7 +2276,7 @@ def _executar_envio_link_pagamento_background(
             sem_print = []
             for pedido in detalhes:
                 link = pedido.get("link_pagamento") or {}
-                path = link.get("screenshot_path") or pedido.get("detail_screenshot_path")
+                path = link.get("screenshot_path")
                 if not path or not os.path.isfile(path):
                     sem_print.append(pedido)
                     continue
