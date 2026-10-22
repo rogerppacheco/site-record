@@ -308,7 +308,7 @@ def _notificar_proximo_da_fila() -> None:
     entrada.delete()
     logger.info(f"[POOL BO] Notificando próximo da fila: {telefone} (tipo={tipo})")
 
-    comando = {"vender": "VENDER", "pedido": "PEDIDO", "status": "STATUS", "credito": "CRÉDITO"}.get(
+    comando = {"vender": "VENDER", "pedido": "PEDIDO", "status": "STATUS", "credito": "CRÉDITO", "link": "LINK"}.get(
         tipo, "VENDER"
     )
     msg = (
@@ -332,7 +332,7 @@ def obter_mensagem_fila_ocupado(telefone: str, tipo_acao: str = "vender") -> str
     from django.core.cache import cache
 
     adicionar_a_fila_pap(telefone, tipo_acao=tipo_acao)
-    comando = {"vender": "VENDER", "pedido": "PEDIDO", "status": "STATUS", "credito": "CRÉDITO"}.get(
+    comando = {"vender": "VENDER", "pedido": "PEDIDO", "status": "STATUS", "credito": "CRÉDITO", "link": "LINK"}.get(
         tipo_acao, "VENDER"
     )
     chave = f"pap_fila_notificado:{telefone}"

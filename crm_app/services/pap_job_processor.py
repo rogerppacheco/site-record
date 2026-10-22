@@ -32,7 +32,7 @@ def _bloqueio_operadora(job: PapJobFila) -> str:
     payload = job.payload or {}
     if job.tipo == "analise_credito":
         return "" if pap_nio_habilitado() else MSG_PAP_DESATIVADO
-    if job.tipo in ("status_online", "consulta_pedido"):
+    if job.tipo in ("status_online", "consulta_pedido", "link_pagamento"):
         return bloqueio_por_documento(
             payload.get("cpf") or "", payload.get("os_filtro") or ""
         )
@@ -58,6 +58,10 @@ def _notificar_falha_definitiva(job: PapJobFila) -> None:
             "status_online": (
                 "❌ Não foi possível concluir a consulta de status agora. "
                 "Digite *STATUS* para tentar novamente."
+            ),
+            "link_pagamento": (
+                "❌ Não foi possível reenviar o link de pagamento agora. "
+                "Digite *LINK* para tentar novamente."
             ),
             "consulta_pedido": (
                 "❌ Não foi possível concluir a consulta do pedido agora. "
@@ -85,6 +89,7 @@ def _executar_handler(job: PapJobFila) -> None:
         _executar_analise_credito_background,
         _executar_consulta_pedido_background,
         _executar_consulta_status_online_background,
+        _executar_envio_link_pagamento_background,
     )
 
     bloqueio = _bloqueio_operadora(job)
@@ -101,6 +106,12 @@ def _executar_handler(job: PapJobFila) -> None:
 
     handlers = {
         "status_online": lambda p: _executar_consulta_status_online_background(
+            p["telefone"],
+            p["cpf"],
+            p.get("os_filtro"),
+            p.get("run_id"),
+        ),
+        "link_pagamento": lambda p: _executar_envio_link_pagamento_background(
             p["telefone"],
             p["cpf"],
             p.get("os_filtro"),

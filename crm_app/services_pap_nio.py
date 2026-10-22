@@ -3061,6 +3061,7 @@ class PAPNioAutomation:
         numero_os_filtro: Optional[str] = None,
         os_prioridade_crm: Optional[set] = None,
         data_inicio=None,
+        enviar_link_pagamento: bool = False,
     ) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str]]:
         """
         Fluxo completo: login, Consulta OS, Filtros, CPF, período 30 dias, Filtrar.
@@ -3079,6 +3080,7 @@ class PAPNioAutomation:
                 numero_os_filtro=numero_os_filtro,
                 os_prioridade_crm=os_prioridade_crm,
                 data_inicio=data_inicio,
+                enviar_link_pagamento=enviar_link_pagamento,
             )
         except Exception as e:
             # Nunca deixar Locator.click/Timeout vazar sem tratamento (sync esteira / STATUS).
@@ -3091,6 +3093,7 @@ class PAPNioAutomation:
         numero_os_filtro: Optional[str] = None,
         os_prioridade_crm: Optional[set] = None,
         data_inicio=None,
+        enviar_link_pagamento: bool = False,
     ) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str]]:
         from datetime import timedelta
         cpf_limpo = re.sub(r'\D', '', cpf) if cpf else ""
@@ -3286,8 +3289,12 @@ class PAPNioAutomation:
                 if not num_os:
                     continue
                 st_ag, ag_texto, pendencia, sa_ba_code, detail_screenshot_path = self.abrir_detalhe_os_e_extrair(
-                    num_os, detalhe_href=row.get("detalhe_href")
+                    num_os,
+                    detalhe_href=row.get("detalhe_href"),
+                    enviar_link_pagamento=enviar_link_pagamento,
                 )
+                if enviar_link_pagamento:
+                    row["link_pagamento"] = dict(getattr(self, "_ultimo_link_pagamento", None) or {})
                 if st_ag is not None:
                     row["status_agendamento"] = st_ag
                 if ag_texto is not None:
@@ -3371,8 +3378,75 @@ class PAPNioAutomation:
             pass
         return None
 
+    def _clicar_enviar_link_pagamento(self) -> Dict[str, Any]:
+        """
+        Na tela detalhe-os, clica em "Enviar link de pagamento" e espera o aviso "Link enviado".
+        Não navega. O chamador continua na mesma página.
+        """
+        resultado: Dict[str, Any] = {
+            "ok": False,
+            "mensagem": "Botão Enviar link de pagamento não apareceu nesta O.S.",
+            "whatsapp": "",
+            "email": "",
+        }
+        try:
+            btn = self.page.get_by_role(
+                "button",
+                name=re.compile(r"enviar\s+link\s+d[eoa]\s+pagamento", re.I),
+            ).first
+            if btn.count() == 0:
+                btn = self.page.locator("button").filter(
+                    has_text=re.compile(r"enviar\s+link\s+d[eoa]\s+pagamento", re.I)
+                ).first
+            if btn.count() == 0:
+                logger.info("[PAP] Botão de link de pagamento ausente em %s", self.page.url)
+                return resultado
+            btn.click(force=True, timeout=8000)
+            aviso = self.page.get_by_text(re.compile(r"link enviado", re.I)).first
+            aviso.wait_for(state="visible", timeout=15000)
+            texto = ""
+            try:
+                texto = (aviso.locator("xpath=ancestor::div[contains(., 'WhatsApp') or contains(., 'E-mail')][1]").inner_text() or "")
+            except Exception:
+                texto = ""
+            if not texto:
+                try:
+                    texto = aviso.inner_text() or ""
+                except Exception:
+                    texto = ""
+            whatsapp = ""
+            email = ""
+            m_w = re.search(r"WhatsApp:\s*(.+)", texto or "", re.I)
+            m_e = re.search(r"E-mail:\s*(\S+)", texto or "", re.I)
+            if m_w:
+                whatsapp = m_w.group(1).strip().split("\n")[0].strip()
+            if m_e:
+                email = m_e.group(1).strip()
+            try:
+                ok_btn = self.page.get_by_role("button", name=re.compile(r"^ok$", re.I)).last
+                if ok_btn.count() > 0:
+                    ok_btn.click(timeout=4000)
+                    self.page.wait_for_timeout(300)
+            except Exception as e_ok:
+                logger.debug("[PAP] Fechar modal Link enviado: %s", e_ok)
+            resultado.update({
+                "ok": True,
+                "mensagem": "Link de pagamento reenviado.",
+                "whatsapp": whatsapp,
+                "email": email,
+            })
+            logger.info("[PAP] Link de pagamento reenviado. WhatsApp=%s email=%s", whatsapp or "-", email or "-")
+            return resultado
+        except Exception as e:
+            logger.warning("[PAP] Falha ao enviar link de pagamento: %s", e)
+            resultado["mensagem"] = f"Não confirmei o reenvio do link: {e}"
+            return resultado
+
     def abrir_detalhe_os_e_extrair(
-        self, numero_os: str, detalhe_href: Optional[str] = None
+        self,
+        numero_os: str,
+        detalhe_href: Optional[str] = None,
+        enviar_link_pagamento: bool = False,
     ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
         Na tela de Consulta OS (após filtrar), abre o link Detalhar da OS e extrai na página de detalhe:
@@ -3386,6 +3460,7 @@ class PAPNioAutomation:
         """
         num = (numero_os or "").strip()
         num_sem_zero = num.lstrip("0") or num
+        self._ultimo_link_pagamento = None
         try:
             link = None
             href = (detalhe_href or "").strip()
@@ -3403,6 +3478,12 @@ class PAPNioAutomation:
                 link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{num_sem_zero}"]').first
             if link.count() == 0:
                 logger.warning("[PAP] Link Detalhar não encontrado para OS %s (href=%s)", num, href or "-")
+                self._ultimo_link_pagamento = {
+                    "ok": False,
+                    "mensagem": "Link Detalhar não encontrado para esta O.S.",
+                    "whatsapp": "",
+                    "email": "",
+                }
                 return None, None, None, None, None
             rapido = self.optimize_for_credit
             link.click(force=True, timeout=5000)
@@ -3479,6 +3560,9 @@ class PAPNioAutomation:
                 codigo_ok = self._buscar_pendencia_codigo_detalhe_pap()
                 if codigo_ok:
                     pendencia_texto = codigo_ok
+            self._ultimo_link_pagamento = None
+            if enviar_link_pagamento:
+                self._ultimo_link_pagamento = self._clicar_enviar_link_pagamento()
             self.page.wait_for_timeout(150 if rapido else 300)
             detail_screenshot_path = self._screenshot_consulta_os_return_path()
             self.page.go_back()
@@ -3513,6 +3597,13 @@ class PAPNioAutomation:
             )
         except Exception as e:
             logger.warning(f"[PAP] abrir_detalhe_os_e_extrair {numero_os}: {e}")
+            if enviar_link_pagamento and not getattr(self, "_ultimo_link_pagamento", None):
+                self._ultimo_link_pagamento = {
+                    "ok": False,
+                    "mensagem": f"Não foi possível abrir o detalhe da O.S.: {e}",
+                    "whatsapp": "",
+                    "email": "",
+                }
             try:
                 self.page.go_back()
             except Exception:

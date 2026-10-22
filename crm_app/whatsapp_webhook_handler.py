@@ -316,6 +316,7 @@ def _consultar_status_e_disparar_online(
     tipo: str,
     valor: str,
     etapa_retry: str = 'status_documento',
+    modo: str = 'status',
 ) -> str:
     """Consulta status no CRM e, se houver CPF válido, dispara consulta online no PAP."""
     from crm_app.utils import consultar_status_venda_com_decisao
@@ -332,7 +333,11 @@ def _consultar_status_e_disparar_online(
         sessao.save(update_fields=['etapa'])
         return '❌ Erro ao consultar status. Tente novamente em instantes.'
 
-    resposta = f'🔎 Buscando pedido por {label}...\n\n{resultado_status}'
+    enviar_link = modo == 'link'
+    if enviar_link:
+        resposta = f'🔎 Buscando pedido por {label} para reenviar o link de pagamento...\n\n{resultado_status}'
+    else:
+        resposta = f'🔎 Buscando pedido por {label}...\n\n{resultado_status}'
     os_filtro = valor if tipo == 'OS' else None
 
     from crm_app.services.pap_operadora_guard import bloqueio_por_documento
@@ -353,25 +358,41 @@ def _consultar_status_e_disparar_online(
         }
         if os_filtro:
             dados['os_filtro'] = os_filtro
-        sessao.etapa = 'status_aguardando_online'
+        sessao.etapa = 'link_aguardando' if enviar_link else 'status_aguardando_online'
         sessao.dados_temp = dados
         sessao.save()
         from crm_app.services.pap_dispatcher import despachar_pap
 
-        despachar_pap(
-            'status_online',
-            telefone_formatado,
-            {
-                'telefone': telefone_formatado,
-                'cpf': cpf_para_consulta,
-                'os_filtro': os_filtro,
-                'run_id': run_id,
-            },
-            _executar_consulta_status_online_background,
-            (telefone_formatado, cpf_para_consulta, os_filtro, run_id),
-            prioridade=1,
-        )
-        resposta += '\n\n⏳ Consultando também no PAP (status online)... Aguarde.'
+        if enviar_link:
+            despachar_pap(
+                'link_pagamento',
+                telefone_formatado,
+                {
+                    'telefone': telefone_formatado,
+                    'cpf': cpf_para_consulta,
+                    'os_filtro': os_filtro,
+                    'run_id': run_id,
+                },
+                _executar_envio_link_pagamento_background,
+                (telefone_formatado, cpf_para_consulta, os_filtro, run_id),
+                prioridade=1,
+            )
+            resposta += '\n\n⏳ Reenviando o link de pagamento no PAP... Aguarde.'
+        else:
+            despachar_pap(
+                'status_online',
+                telefone_formatado,
+                {
+                    'telefone': telefone_formatado,
+                    'cpf': cpf_para_consulta,
+                    'os_filtro': os_filtro,
+                    'run_id': run_id,
+                },
+                _executar_consulta_status_online_background,
+                (telefone_formatado, cpf_para_consulta, os_filtro, run_id),
+                prioridade=1,
+            )
+            resposta += '\n\n⏳ Consultando também no PAP (status online)... Aguarde.'
     else:
         sessao.etapa = 'inicial'
         sessao.dados_temp = {}
@@ -2099,6 +2120,179 @@ def _executar_consulta_status_online_background(
                 telefone,
                 f"❌ Erro na consulta online (PAP): {e}\n\nDigite *STATUS* para tentar novamente.\n\n⏱ _{tempo_decorrido}s_"
             )
+        _run_django_sync(_erro_cleanup)
+    finally:
+        if automacao:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
+
+
+def _executar_envio_link_pagamento_background(
+    telefone: str,
+    cpf: str,
+    os_filtro: str = None,
+    run_id: str = None,
+):
+    """Mesmo caminho do STATUS no PAP; no detalhe da O.S. clica em Enviar link de pagamento."""
+    from crm_app.models import SessaoWhatsapp
+    from crm_app.pap_link_pagamento import formatar_resultado_link_pagamento
+    from crm_app.pool_bo_pap import (
+        MSG_TODOS_ACESSOS_EM_USO,
+        atualizar_historico_consulta_pap_resultado,
+        liberar_bo,
+        obter_login_bo,
+        obter_mensagem_fila_ocupado,
+    )
+    from crm_app.services_pap_nio import PAPNioAutomation
+    from crm_app.utils import obter_os_prioridade_crm_por_cpf
+    from crm_app.whatsapp_service import WhatsAppService
+
+    cpf_limpo = re.sub(r'\D', '', cpf)
+    if len(cpf_limpo) not in (11, 14):
+        return
+    bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='link')
+    if not bo_usuario:
+        if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
+            WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'link'))
+        else:
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"{msg_erro}\n\nO link não foi reenviado. Digite *LINK* para tentar novamente.",
+            )
+        try:
+            s = SessaoWhatsapp.objects.get(telefone=telefone)
+            s.etapa = 'inicial'
+            s.dados_temp = {}
+            s.save()
+        except Exception:
+            pass
+        return
+
+    automacao = None
+    tempo_inicio = time.time()
+
+    def _marcar_hist(sucesso: bool, mensagem: str = ""):
+        try:
+            atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=telefone,
+                bo_usuario=bo_usuario,
+                tipo_automacao='link',
+                sucesso=sucesso,
+                mensagem_resultado=mensagem,
+            )
+        except Exception:
+            pass
+
+    try:
+        logger.info(
+            "[LINK PAGAMENTO] Iniciando PAP para %s (OS filtro=%s, CPF=%s***).",
+            telefone,
+            os_filtro or "-",
+            cpf_limpo[:3] if cpf_limpo else "",
+        )
+        headless = getattr(settings, 'PAP_HEADLESS', True)
+        automacao = PAPNioAutomation(
+            matricula_pap=bo_usuario.matricula_pap,
+            senha_pap=bo_usuario.senha_pap,
+            vendedor_nome="Link-Pagamento",
+            headless=headless,
+            capture_screenshots=False,
+            optimize_for_credit=getattr(settings, 'PAP_STATUS_FAST_MODE', True),
+        )
+        sucesso, msg = automacao.iniciar_sessao()
+        if not sucesso:
+            def _falha_login():
+                liberar_bo(bo_usuario.id, telefone)
+                _marcar_hist(False, msg)
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone,
+                    f"❌ Erro PAP: {msg}\n\nDigite *LINK* para tentar novamente.",
+                )
+                try:
+                    s = SessaoWhatsapp.objects.get(telefone=telefone)
+                    s.etapa = 'inicial'
+                    s.dados_temp = {}
+                    s.save()
+                except Exception:
+                    pass
+
+            _run_django_sync(_falha_login)
+            return
+
+        os_prioridade_crm = set()
+
+        def _carregar_os_prioridade():
+            nonlocal os_prioridade_crm
+            os_prioridade_crm = obter_os_prioridade_crm_por_cpf(cpf_limpo)
+
+        _run_django_sync(_carregar_os_prioridade)
+        sucesso, msg, detalhes, _lista = automacao.consulta_os_por_cpf_com_resultado(
+            cpf_limpo,
+            numero_os_filtro=os_filtro,
+            os_prioridade_crm=os_prioridade_crm,
+            enviar_link_pagamento=True,
+        )
+        tempo_decorrido = round(time.time() - tempo_inicio, 1)
+
+        def _finalizar():
+            import django.db
+            django.db.close_old_connections()
+            liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(sucesso, msg)
+            if run_id:
+                try:
+                    s = SessaoWhatsapp.objects.get(telefone=telefone)
+                    if s.etapa != 'link_aguardando' or (s.dados_temp or {}).get('status_online_run_id') != run_id:
+                        return
+                except Exception:
+                    return
+            try:
+                s = SessaoWhatsapp.objects.get(telefone=telefone)
+                if (not run_id) or ((s.dados_temp or {}).get('status_online_run_id') == run_id):
+                    s.etapa = 'inicial'
+                    s.dados_temp = {}
+                    s.save()
+            except Exception:
+                pass
+            whatsapp = WhatsAppService()
+            if not sucesso:
+                whatsapp.enviar_mensagem_texto(
+                    telefone,
+                    f"❌ Link de pagamento (PAP): {msg}\n\n⏱ _{tempo_decorrido}s_",
+                )
+                return
+            if msg == "no_results" or not detalhes:
+                texto = formatar_resultado_link_pagamento([], tempo_decorrido)
+            else:
+                texto = formatar_resultado_link_pagamento(detalhes, tempo_decorrido)
+            whatsapp.enviar_mensagem_texto(telefone, texto)
+
+        _run_django_sync(_finalizar)
+    except Exception as e:
+        logger.exception("[LINK PAGAMENTO] Erro: %s", e)
+        tempo_decorrido = round(time.time() - tempo_inicio, 1)
+
+        def _erro_cleanup():
+            try:
+                liberar_bo(bo_usuario.id, telefone)
+            except Exception:
+                pass
+            _marcar_hist(False, str(e))
+            try:
+                s = SessaoWhatsapp.objects.get(telefone=telefone)
+                s.etapa = 'inicial'
+                s.dados_temp = {}
+                s.save()
+            except Exception:
+                pass
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"❌ Erro ao reenviar o link de pagamento: {e}\n\n"
+                f"Digite *LINK* para tentar novamente.\n\n⏱ _{tempo_decorrido}s_",
+            )
+
         _run_django_sync(_erro_cleanup)
     finally:
         if automacao:
@@ -8917,6 +9111,43 @@ def processar_webhook_whatsapp(data, request=None):
             _registrar_estatistica(telefone_formatado, 'STATUS')
             resposta = _MSG_STATUS_PEDIR_IDENTIFICADOR
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        # Comando LINK — reenvia o link de pagamento no detalhe da O.S. no PAP
+        if mensagem_limpa in ['LINK', 'LINK PAGAMENTO', 'ENVIAR LINK']:
+            logger.info("[Webhook] Comando LINK reconhecido!")
+            try:
+                if sessao.etapa == 'link_aguardando':
+                    dados_online = sessao.dados_temp or {}
+                    started_at = float(dados_online.get('status_online_started_at') or 0)
+                    tempo_espera = time.time() - started_at if started_at else 0
+                    if started_at and tempo_espera > STATUS_ONLINE_MAX_WAIT_SECONDS:
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        resposta = (
+                            "❌ Não foi possível reenviar o link de pagamento a tempo.\n\n"
+                            "Digite *LINK* para tentar novamente."
+                        )
+                    else:
+                        resposta = "⏳ Reenviando o link de pagamento no PAP... Aguarde."
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+            except Exception:
+                pass
+            sessao.etapa = 'link_documento'
+            sessao.dados_temp = {}
+            sessao.save()
+            _registrar_estatistica(telefone_formatado, 'LINK')
+            resposta = (
+                "Para reenviar o *link de pagamento*, digite o *CPF* ou o número da *O.S* "
+                "do cliente:\n\n"
+                "• CPF: 11 dígitos (ex: 12345678901)\n"
+                "• O.S: 8 dígitos (ex: 08907507) ou formato X-12dígitos "
+                "(ex: 4-212051254235)\n\n"
+                "No detalhe da O.S. vou clicar em *Enviar link de pagamento*.\n"
+                "Ou digite *CANCELAR* para sair."
+            )
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         # FACHADA desativada: redireciona para DFV (sem registrar estatística nem abrir fluxo)
         if etapa_atual == 'inicial' and ('FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa):
             logger.info("[Webhook] Comando FACHADA reconhecido (desativado → DFV)")
@@ -9123,6 +9354,7 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Viabilidade* - Consultar viabilidade por CEP e número\n",
                 "• *Inclusão* - Solicitar viabilidade (formulário)\n",
                 "• *Status* - Consultar status de pedido\n",
+                "• *Link* - Reenviar o link de pagamento do pedido no PAP\n",
                 "• *Fatura* - Consultar fatura por CPF (Nio Negociar)\n",
                 "• *Conta* - 2ª via de conta por CPF (site Nio)\n",
                 "• *Material* - Buscar materiais/documentos\n",
@@ -10322,6 +10554,45 @@ def processar_webhook_whatsapp(data, request=None):
                 )
             else:
                 resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual in ('link_documento',):
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "❌ Cancelado. Digite *LINK* para reenviar o link novamente."
+                return _enviar_resposta_e_retornar(resposta)
+            tipo_id, valor_id, erro_id = classificar_identificador_status(mensagem_texto)
+            if not tipo_id:
+                sessao.etapa = 'link_documento'
+                sessao.save(update_fields=['etapa'])
+                resposta = erro_id
+                return _enviar_resposta_e_retornar(resposta)
+            resposta = _consultar_status_e_disparar_online(
+                sessao,
+                telefone_formatado,
+                tipo_id,
+                valor_id,
+                etapa_retry='link_documento',
+                modo='link',
+            )
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'link_aguardando':
+            dados_online = dados_temp or {}
+            started_at = float(dados_online.get('status_online_started_at') or 0)
+            tempo_espera = time.time() - started_at if started_at else 0
+            if started_at and tempo_espera > STATUS_ONLINE_MAX_WAIT_SECONDS:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = (
+                    "❌ Não foi possível reenviar o link de pagamento a tempo.\n\n"
+                    "Digite *LINK* para tentar novamente."
+                )
+            else:
+                resposta = "⏳ Reenviando o link de pagamento no PAP... Aguarde."
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'credito_aguardando':
