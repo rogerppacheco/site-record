@@ -2256,6 +2256,9 @@ def _executar_envio_link_pagamento_background(
                     s.save()
             except Exception:
                 pass
+            import base64
+            import os
+
             whatsapp = WhatsAppService()
             if not sucesso:
                 whatsapp.enviar_mensagem_texto(
@@ -2264,10 +2267,35 @@ def _executar_envio_link_pagamento_background(
                 )
                 return
             if msg == "no_results" or not detalhes:
-                texto = formatar_resultado_link_pagamento([], tempo_decorrido)
-            else:
-                texto = formatar_resultado_link_pagamento(detalhes, tempo_decorrido)
-            whatsapp.enviar_mensagem_texto(telefone, texto)
+                whatsapp.enviar_mensagem_texto(
+                    telefone,
+                    formatar_resultado_link_pagamento([], tempo_decorrido),
+                )
+                return
+            enviou_imagem = False
+            sem_print = []
+            for pedido in detalhes:
+                link = pedido.get("link_pagamento") or {}
+                path = link.get("screenshot_path") or pedido.get("detail_screenshot_path")
+                if not path or not os.path.isfile(path):
+                    sem_print.append(pedido)
+                    continue
+                legenda = formatar_resultado_link_pagamento([pedido], tempo_decorrido)
+                try:
+                    with open(path, "rb") as f:
+                        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+                    if whatsapp.enviar_imagem_b64(telefone, img_b64, caption=legenda):
+                        enviou_imagem = True
+                    else:
+                        sem_print.append(pedido)
+                except Exception as e_img:
+                    logger.warning("[LINK PAGAMENTO] Erro ao enviar print: %s", e_img)
+                    sem_print.append(pedido)
+            if sem_print or not enviou_imagem:
+                whatsapp.enviar_mensagem_texto(
+                    telefone,
+                    formatar_resultado_link_pagamento(sem_print or detalhes, tempo_decorrido),
+                )
 
         _run_django_sync(_finalizar)
     except Exception as e:

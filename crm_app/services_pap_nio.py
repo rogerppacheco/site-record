@@ -3422,6 +3422,8 @@ class PAPNioAutomation:
                 whatsapp = m_w.group(1).strip().split("\n")[0].strip()
             if m_e:
                 email = m_e.group(1).strip()
+            self.page.wait_for_timeout(500)
+            screenshot_path = self._screenshot_consulta_os_return_path(full_page=False)
             try:
                 ok_btn = self.page.get_by_role("button", name=re.compile(r"^ok$", re.I)).last
                 if ok_btn.count() > 0:
@@ -3434,6 +3436,7 @@ class PAPNioAutomation:
                 "mensagem": "Link de pagamento reenviado.",
                 "whatsapp": whatsapp,
                 "email": email,
+                "screenshot_path": screenshot_path or "",
             })
             logger.info("[PAP] Link de pagamento reenviado. WhatsApp=%s email=%s", whatsapp or "-", email or "-")
             return resultado
@@ -3564,7 +3567,9 @@ class PAPNioAutomation:
             if enviar_link_pagamento:
                 self._ultimo_link_pagamento = self._clicar_enviar_link_pagamento()
             self.page.wait_for_timeout(150 if rapido else 300)
-            detail_screenshot_path = self._screenshot_consulta_os_return_path()
+            detail_screenshot_path = (self._ultimo_link_pagamento or {}).get("screenshot_path") or None
+            if not detail_screenshot_path:
+                detail_screenshot_path = self._screenshot_consulta_os_return_path()
             self.page.go_back()
             if rapido:
                 self.page.wait_for_timeout(400)
