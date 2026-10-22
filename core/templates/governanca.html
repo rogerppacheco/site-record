@@ -1852,6 +1852,7 @@
     const ITEMS_PER_PAGE = 20;
     const SEARCH_PAGE_SIZE = 100; // Na busca, trazer mais resultados de uma vez (todos os que baterem)
     let todasPermissoes = [];
+    let permissoesSelecionadas = new Set();
     let debounceTimerBuscaUsuario = null;
 
     var isRegistrandoBonusPremiacao = false, isRegistrandoDesconto = false;
@@ -1964,6 +1965,11 @@
         document.getElementById('filtro-permissoes').value = '';
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = 'Carregando...';
+        permissoesSelecionadas = new Set(
+            (grupo && Array.isArray(grupo.permissions) ? grupo.permissions : [])
+                .map((id) => parseInt(id, 10))
+                .filter((id) => !Number.isNaN(id))
+        );
         perfilModal.show();
         if (todasPermissoes.length === 0) { 
             try { 
@@ -2007,10 +2013,10 @@
         // Adicionar listener para o filtro de busca
         const filtroInput = document.getElementById('filtro-permissoes');
         filtroInput.oninput = (e) => {
-            renderizarListaPermissoes(grupo ? grupo.permissions : [], e.target.value);
+            renderizarListaPermissoes(e.target.value);
         };
         
-        renderizarListaPermissoes(grupo ? grupo.permissions : [], '');
+        renderizarListaPermissoes('');
     }
     
     function obterTipoAcao(permissao) {
@@ -2050,7 +2056,7 @@
         return nomes[tipo] || tipo;
     }
     
-    function renderizarListaPermissoes(permsAtuais, filtro = '') {
+    function renderizarListaPermissoes(filtro = '') {
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = '';
         
@@ -2107,7 +2113,7 @@
             
             // Renderizar permissões desta seção
             permissoesDoTipo.forEach(p => {
-                const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
+                const isChecked = permissoesSelecionadas.has(parseInt(p.id, 10)) ? 'checked' : '';
                 const nomeFormatado = formatarNomePermissao(p.name || '');
                 container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input perm-checkbox" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}" style="cursor: pointer;">${nomeFormatado}</label></div>`;
             });
@@ -2128,6 +2134,10 @@
         const checkboxes = document.querySelectorAll('#lista-permissoes input.perm-checkbox');
         checkboxes.forEach(checkbox => {
             checkbox.checked = marcar;
+            const id = parseInt(checkbox.value, 10);
+            if (Number.isNaN(id)) return;
+            if (marcar) permissoesSelecionadas.add(id);
+            else permissoesSelecionadas.delete(id);
         });
         const total = checkboxes.length;
         atualizarContadorPermissoes(total);
@@ -2136,6 +2146,11 @@
     // Event listener para atualizar contador quando checkboxes mudarem
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('perm-checkbox')) {
+            const id = parseInt(e.target.value, 10);
+            if (!Number.isNaN(id)) {
+                if (e.target.checked) permissoesSelecionadas.add(id);
+                else permissoesSelecionadas.delete(id);
+            }
             const total = document.querySelectorAll('#lista-permissoes input.perm-checkbox').length;
             atualizarContadorPermissoes(total);
         }
@@ -2147,7 +2162,7 @@
     async function salvarPerfil() {
         const id = document.getElementById('modal_perfil_id').value;
         const nome = document.getElementById('modal_perfil_nome').value;
-        const perms = Array.from(document.querySelectorAll('#lista-permissoes input:checked')).map(el => parseInt(el.value));
+        const perms = Array.from(permissoesSelecionadas);
         if (!nome) return alert('Nome obrigatório.');
         try {
             const method = id ? 'PATCH' : 'POST';

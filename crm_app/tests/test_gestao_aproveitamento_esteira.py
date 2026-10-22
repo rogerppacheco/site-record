@@ -1,11 +1,28 @@
 from datetime import datetime, timedelta
 
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from crm_app.models import Cliente, StatusCRM, Venda
 from usuarios.models import Perfil, Usuario
+
+
+def _limpar_cache_perm(usuario):
+    for cache in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        if hasattr(usuario, cache):
+            delattr(usuario, cache)
+
+
+def _conceder_permissao(usuario, codename):
+    ct = ContentType.objects.get_for_model(Venda)
+    perm = Permission.objects.get(codename=codename, content_type=ct)
+    grupo, _ = Group.objects.get_or_create(name=f"perm-{usuario.username}")
+    grupo.permissions.add(perm)
+    usuario.groups.add(grupo)
+    _limpar_cache_perm(usuario)
 
 
 class GestaoAproveitamentoEsteiraTests(APITestCase):
@@ -134,14 +151,29 @@ class GestaoAproveitamentoEsteiraTests(APITestCase):
         self.assertGreaterEqual(resumo["instaladas"], 2)
         self.assertEqual(resumo["aproveitamento"], 100.0)
 
-    def test_gerente_contas_acessa_gestao(self):
+    def test_gerente_contas_sem_permissao_nao_acessa_gestao(self):
+        _limpar_cache_perm(self.gc)
+        self.client.force_authenticate(user=self.gc)
+        mes = timezone.localdate().strftime("%Y-%m")
+        r = self.client.get(f"/api/crm/esteira/gestao-aproveitamento/?mes_referencia={mes}")
+        self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_gerente_contas_com_permissao_acessa_gestao(self):
+        _conceder_permissao(self.gc, "can_view_gestao_esteira")
         self.client.force_authenticate(user=self.gc)
         mes = timezone.localdate().strftime("%Y-%m")
         r = self.client.get(f"/api/crm/esteira/gestao-aproveitamento/?mes_referencia={mes}")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertIn("resumo", r.data)
 
-    def test_gerente_contas_exporta_agendados_pendentes(self):
+    def test_gerente_contas_sem_permissao_nao_exporta_agendados_pendentes(self):
+        _limpar_cache_perm(self.gc)
+        self.client.force_authenticate(user=self.gc)
+        r = self.client.get("/api/crm/esteira/exportar-agendados-pendentes/")
+        self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_gerente_contas_com_permissao_exporta_agendados_pendentes(self):
+        _conceder_permissao(self.gc, "can_export_agendados_pendentes_esteira")
         self.client.force_authenticate(user=self.gc)
         r = self.client.get("/api/crm/esteira/exportar-agendados-pendentes/")
         self.assertEqual(r.status_code, status.HTTP_200_OK)

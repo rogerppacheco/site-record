@@ -755,10 +755,10 @@ from crm_app.utils import (
 )
 from crm_app.perfis_acesso import (
     GRUPOS_CDOI_EDICAO,
-    GRUPOS_EXPORT_AGENDADOS_PENDENTES,
     GRUPOS_VISUALIZACAO_GESTAO,
     PERFIL_GERENTE_CONTAS,
     is_somente_leitura,
+    pode_exportar_agendados_pendentes,
 )
 
 # Modelos do App
@@ -15918,8 +15918,11 @@ class ExportarAgendadosPendentesEsteiraView(APIView):
         )
         from crm_app.services.escopo_operadora import filtrar_vendas_por_operadora
 
-        if not is_member(request.user, ['Diretoria', 'BackOffice', 'Supervisor', 'Admin']):
-            return Response({'detail': 'Acesso negado.'}, status=status.HTTP_403_FORBIDDEN)
+        if not pode_exportar_agendados_pendentes(request.user):
+            return Response(
+                {'detail': 'Sem permissão para exportar Agendados e Pendentes da esteira.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         vendas = (
             Venda.objects.filter(

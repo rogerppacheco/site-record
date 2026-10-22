@@ -11,9 +11,8 @@ from rest_framework.views import APIView
 
 from crm_app.esteira_eventos_utils import TIPO_AGENDAMENTO, TIPO_MOTIVO_PENDENCIA, TIPO_STATUS_ESTEIRA
 from crm_app.models import LembreteInstalacaoEnviado, PendenciaIndevidaRegistro, Venda, VendaEsteiraEvento
+from crm_app.perfis_acesso import pode_ver_gestao_esteira
 from crm_app.utils import is_member
-
-GRUPOS_GESTAO_APROVEITAMENTO_ESTEIRA = ['Diretoria', 'BackOffice', 'Admin']
 
 
 def _montar_resumo_mes(vendas_qs, inicio_mes, fim_mes):
@@ -212,7 +211,7 @@ class GestaoAproveitamentoEsteiraView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, GRUPOS_GESTAO_APROVEITAMENTO_ESTEIRA):
+        if not pode_ver_gestao_esteira(request.user):
             return Response(
                 {'detail': 'Acesso restrito à gestão da esteira.'},
                 status=status.HTTP_403_FORBIDDEN,

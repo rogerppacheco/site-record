@@ -27,12 +27,16 @@ GRUPOS_FPD_DASHBOARD: list[str] = [
     PERFIL_GERENTE_CONTAS,
 ]
 
+# Perfis que já entram sem marcação extra. Os demais recebem o acesso
+# pela permissão correspondente em Gestão de Perfis de Acesso.
 GRUPOS_ESTEIRA_GESTAO_APROVEITAMENTO: list[str] = [
     'Diretoria',
     'Admin',
     'BackOffice',
-    PERFIL_GERENTE_CONTAS,
 ]
+
+PERM_VER_GESTAO_ESTEIRA = 'crm_app.can_view_gestao_esteira'
+PERM_EXPORTAR_AGENDADOS_PENDENTES_ESTEIRA = 'crm_app.can_export_agendados_pendentes_esteira'
 
 GRUPOS_CDOI_EDICAO: list[str] = [
     'Diretoria',
@@ -46,8 +50,31 @@ GRUPOS_EXPORT_AGENDADOS_PENDENTES: list[str] = [
     'Admin',
     'BackOffice',
     'Supervisor',
-    PERFIL_GERENTE_CONTAS,
 ]
+
+
+def _tem_permissao_django(user: Any, codename: str) -> bool:
+    """Permissão marcada no grupo (Gestão de Perfis de Acesso) ou no usuário."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    try:
+        return bool(user.has_perm(codename))
+    except Exception:
+        return False
+
+
+def pode_ver_gestao_esteira(user: Any) -> bool:
+    """Aba Gestão da esteira: perfis padrão ou permissão can_view_gestao_esteira."""
+    if is_member(user, GRUPOS_ESTEIRA_GESTAO_APROVEITAMENTO):
+        return True
+    return _tem_permissao_django(user, PERM_VER_GESTAO_ESTEIRA)
+
+
+def pode_exportar_agendados_pendentes(user: Any) -> bool:
+    """Excel Agendados e Pendentes: perfis padrão ou permissão do perfil."""
+    if is_member(user, GRUPOS_EXPORT_AGENDADOS_PENDENTES):
+        return True
+    return _tem_permissao_django(user, PERM_EXPORTAR_AGENDADOS_PENDENTES_ESTEIRA)
 
 
 def _pertence_grupo_ou_perfil(user: Any, grupos: list[str]) -> bool:
