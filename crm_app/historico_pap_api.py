@@ -429,6 +429,16 @@ class FunilHistoricoPapPedidosView(APIView):
             if not doc_val and match_info.get("assertiva_match"):
                 doc_val = match_info["assertiva_match"].get("cpf_formatado") or ""
 
+            tel = (
+                mapped.get("celular_principal")
+                or mapped.get("celular_2")
+                or payload.get("telefone")
+                or ""
+            )
+            if not tel and match_info.get("assertiva_match"):
+                tels = match_info["assertiva_match"].get("telefones") or []
+                tel = tels[0] if tels else ""
+
             res.append({
                 "id": p.id,
                 "protocolo": mapped.get("pedido") or p.numero_pedido,
@@ -441,9 +451,15 @@ class FunilHistoricoPapPedidosView(APIView):
                 "status_secundario": etapa_val,
                 "novo_nesta_busca": num_norm in novos_set,
                 "data_status": mapped.get("data_pedido") or "",
+                "telefone": tel,
                 **envio,
                 **match_info,
             })
+
+        from crm_app.services import funil_tratamento_service as trat
+        aba_pap = (f["tipo"] or "").strip().upper()
+        if aba_pap in trat.ABAS_PAP:
+            res = trat.anexar(aba_pap, res, "id")
 
         return Response({
             "results": res,

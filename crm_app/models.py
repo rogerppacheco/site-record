@@ -5946,6 +5946,7 @@ class MailingLote(models.Model):
     atualizado_em = models.DateTimeField(auto_now=True)
     disparo_iniciado_em = models.DateTimeField(null=True, blank=True)
     disparo_finalizado_em = models.DateTimeField(null=True, blank=True)
+    filtro_situacao = models.CharField(max_length=20, blank=True, default='')
 
     class Meta:
         db_table = 'crm_mailing_lote'
@@ -6076,6 +6077,62 @@ class MailingEnvio(models.Model):
 
     def __str__(self) -> str:
         return f'{self.template_nome} → {self.contato_id} ({self.status_entrega or "-"})'
+
+
+class FunilTratamento(models.Model):
+    """Marca de tratamento operacional em qualquer aba do Funil."""
+
+    ABA_INTERESSE = 'INTERESSE'
+    ABA_PRE_VENDA = 'PRE_VENDA'
+    ABA_VENDA = 'VENDA'
+    ABA_CHURN = 'CHURN'
+    ABA_BIO = 'BIO'
+    ABA_MAILING = 'MAILING'
+    ABA_CHOICES = (
+        (ABA_INTERESSE, 'Interesse'),
+        (ABA_PRE_VENDA, 'Pré-venda'),
+        (ABA_VENDA, 'Venda'),
+        (ABA_CHURN, 'Repescar Churn'),
+        (ABA_BIO, 'Repescagem Bio'),
+        (ABA_MAILING, 'Mailing'),
+    )
+
+    STATUS_ABERTO = 'ABERTO'
+    STATUS_TRATADO = 'TRATADO'
+    STATUS_CHOICES = (
+        (STATUS_ABERTO, 'Aberto'),
+        (STATUS_TRATADO, 'Tratado'),
+    )
+
+    aba = models.CharField(max_length=16, choices=ABA_CHOICES, db_index=True)
+    ref_id = models.CharField(max_length=64, db_index=True)
+    protocolo = models.CharField(max_length=80, blank=True, default='')
+    nome = models.CharField(max_length=200, blank=True, default='')
+    documento = models.CharField(max_length=14, blank=True, default='')
+    telefone = models.CharField(max_length=20, blank=True, default='')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_TRATADO, db_index=True)
+    observacao = models.TextField(blank=True, default='')
+    tratado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='funil_tratamentos',
+    )
+    tratado_em = models.DateTimeField(null=True, blank=True, db_index=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_funil_tratamento'
+        verbose_name = 'Tratamento do Funil'
+        verbose_name_plural = 'Tratamentos do Funil'
+        constraints = [
+            models.UniqueConstraint(fields=['aba', 'ref_id'], name='uniq_funil_tratamento_aba_ref'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.aba} {self.ref_id} ({self.status})'
 
 
 class GdpPrecoMunicipioManager(models.Manager):

@@ -1,9 +1,10 @@
-"""Importação de mailings comprados (layouts OPTIC e ATV ALG)."""
+"""Importação de mailings comprados (OPTIC, ATV ALG e variações de mercado)."""
 from __future__ import annotations
 
 import io
 import logging
 import re
+import unicodedata
 from collections import Counter
 from typing import Any, BinaryIO, Iterable
 
@@ -22,12 +23,54 @@ COLS_ATV = {
     'Cliente', 'Documento', 'Telefone', 'Status',
 }
 
+# Planilhas de mercado (Algar / TIM / Nio / Vero) usam aliases desses campos.
+ALIASES_NOME = ('cliente', 'nome', 'nome_razao', 'razao_social')
+ALIASES_DOC = ('documento', 'cpf', 'cpf/cnpj', 'cnpj', 'documento_representante')
+ALIASES_TEL = (
+    'telefone',
+    'telefone_completo',
+    'telefone1',
+    'tel',
+    'celular',
+    'whatsapp',
+)
+ALIASES_TEL2 = ('telefone2', 'telefne2', 'tel2', 'telefone_2')
+ALIASES_STATUS = (
+    'status',
+    'contrato_status',
+    'macro atividade',
+    'situacao',
+    'situação',
+)
+ALIASES_ENDERECO = ('endereco', 'endereço', 'logradouro')
+ALIASES_CIDADE = ('cidade',)
+ALIASES_UF = ('uf',)
+ALIASES_BAIRRO = ('bairro',)
+ALIASES_PRODUTO = ('produto', 'plano', 'contrato_produto', 'velocidade contratada', 'serviço', 'servico')
+
 SIT = MailingContato
 
 
+def _norm_header(valor: str) -> str:
+    txt = unicodedata.normalize('NFKD', str(valor or ''))
+    txt = ''.join(ch for ch in txt if not unicodedata.combining(ch))
+    return re.sub(r'\s+', ' ', txt).strip().lower()
+
+
+def _valor_col(d: dict, *aliases: str) -> Any:
+    """Busca coluna por nome exato ou alias normalizado (acento/caixa)."""
+    wanted = {_norm_header(a) for a in aliases}
+    for key, val in d.items():
+        if _norm_header(str(key)) in wanted:
+            return val
+    return None
+
+
 def normalizar_documento(valor: Any) -> str:
-    digitos = re.sub(r'\D', '', str(valor or ''))
-    return digitos
+    raw = str(valor or '').strip()
+    if raw.lower() in {'null', 'none', 'nan', '-'}:
+        return ''
+    return re.sub(r'\D', '', raw)
 
 
 def normalizar_telefone_e164(valor: Any) -> tuple[str, bool]:
@@ -60,17 +103,27 @@ def primeiro_nome(nome: str) -> str:
     return (partes[0] if partes and partes[0] else 'Cliente').title()
 
 
+def _headers_norm(headers: Iterable[str]) -> set[str]:
+    return {_norm_header(h) for h in headers if str(h or '').strip()}
+
+
+def _tem_alias(norm: set[str], aliases: Iterable[str]) -> bool:
+    return bool(norm & {_norm_header(a) for a in aliases})
+
+
 def detectar_layout(headers: Iterable[str]) -> str | None:
     cols = {str(h or '').strip() for h in headers}
     if COLS_OPTIC.issubset(cols):
         return MailingLote.LAYOUT_OPTIC
     if COLS_ATV.issubset(cols):
         return MailingLote.LAYOUT_ATV_ALG
-    # tolerância a variações
-    lower = {c.lower() for c in cols}
-    if {'nome', 'cpf', 'telefone_completo', 'macro atividade'} <= lower:
+    norm = _headers_norm(headers)
+    if {'nome', 'cpf', 'telefone_completo', 'macro atividade'} <= norm:
         return MailingLote.LAYOUT_OPTIC
-    if {'cliente', 'documento', 'telefone', 'status'} <= lower:
+    # Mercado: Nome/Cliente + qualquer coluna de telefone (Status opcional).
+    tem_nome = _tem_alias(norm, ALIASES_NOME)
+    tem_tel = _tem_alias(norm, ALIASES_TEL + ALIASES_TEL2)
+    if tem_nome and tem_tel:
         return MailingLote.LAYOUT_ATV_ALG
     return None
 
@@ -89,14 +142,26 @@ def classificar_optic(macro: str) -> str:
 
 
 def classificar_atv(status: str) -> str:
-    s = (status or '').strip().upper()
-    if s.startswith('CANCEL'):
+    """Classifica Status / CONTRATO_STATUS / nome do arquivo."""
+    s = _norm_header(status).upper()
+    if not s:
+        return SIT.SIT_GENERICO
+    if 'CANCEL' in s or 'DESIST' in s:
         return SIT.SIT_CANCELAMENTO
     if s == 'FECHADO':
         return SIT.SIT_FECHADO
-    if s in ('ABERTO', 'TECNICO', 'TÉCNICO'):
+    if 'SUSPEN' in s:
+        return SIT.SIT_GENERICO
+    if any(tok in s for tok in ('ABERTO', 'TECNICO', 'APROVISION', 'PENDENC')):
         return SIT.SIT_ABERTO
+    if 'CONCLUID' in s or 'INSTAL' in s:
+        return SIT.SIT_INSTALACAO
     return SIT.SIT_GENERICO
+
+
+def situacao_pelo_arquivo(arquivo_nome: str) -> str:
+    """Quando a planilha não tem Status, usa o nome do XLS (ex.: SUSPENSÃO VERO)."""
+    return classificar_atv(arquivo_nome or '')
 
 
 def _row_dict(headers: list, row: tuple) -> dict:
@@ -136,35 +201,52 @@ def _montar_endereco_optic(d: dict) -> tuple[str, str, str]:
     return endereco, bairro, uf
 
 
-def parse_linhas(headers: list[str], rows: list[tuple], layout: str) -> list[dict]:
+def _texto(valor: Any) -> str:
+    raw = '' if valor is None else str(valor).strip()
+    return '' if raw.lower() in {'null', 'none', 'nan'} else raw
+
+
+def parse_linhas(
+    headers: list[str],
+    rows: list[tuple],
+    layout: str,
+    arquivo_nome: str = '',
+) -> list[dict]:
     contatos: list[dict] = []
     vistos: set[str] = set()
+    dica_arquivo = situacao_pelo_arquivo(arquivo_nome)
     for row in rows:
         if not row or all(c is None or str(c).strip() == '' for c in row):
             continue
         d = _row_dict(headers, row)
         if layout == MailingLote.LAYOUT_OPTIC:
-            nome = str(d.get('NOME') or '').strip()[:200]
+            nome = _texto(d.get('NOME'))[:200]
             cpf = normalizar_documento(d.get('CPF'))[:14]
-            tel_raw = str(d.get('TELEFONE_COMPLETO') or '')
+            tel_raw = _texto(d.get('TELEFONE_COMPLETO'))
             e164, valido = normalizar_telefone_e164(tel_raw)
-            situacao = classificar_optic(str(d.get('Macro Atividade') or ''))
-            origem = str(d.get('Macro Atividade') or '')[:80]
+            situacao = classificar_optic(_texto(d.get('Macro Atividade')))
+            origem = _texto(d.get('Macro Atividade'))[:80]
             endereco, bairro, uf = _montar_endereco_optic(d)
             cidade = bairro  # OPTIC não tem cidade explícita; usa bairro como referência
-            produto = str(d.get('Velocidade Contratada') or d.get('Serviço') or '')[:160]
+            produto = _texto(d.get('Velocidade Contratada') or d.get('Serviço'))[:160]
         else:
-            nome = str(d.get('Cliente') or '').strip()[:200]
-            cpf = normalizar_documento(d.get('Documento'))[:14]
-            tel_raw = str(d.get('Telefone') or '')
+            nome = _texto(_valor_col(d, *ALIASES_NOME))[:200]
+            cpf = normalizar_documento(_valor_col(d, *ALIASES_DOC))[:14]
+            tel_raw = _texto(_valor_col(d, *ALIASES_TEL))
             e164, valido = normalizar_telefone_e164(tel_raw)
-            situacao = classificar_atv(str(d.get('Status') or ''))
-            origem = str(d.get('Status') or '')[:80]
-            endereco = str(d.get('Endereco') or d.get('Endereço') or '')[:255]
-            bairro = ''
-            cidade = str(d.get('Cidade') or '')[:120]
-            uf = ''
-            produto = str(d.get('Produto') or '')[:160]
+            if not valido:
+                tel2 = _texto(_valor_col(d, *ALIASES_TEL2))
+                e1642, ok2 = normalizar_telefone_e164(tel2)
+                if ok2:
+                    tel_raw, e164, valido = tel2, e1642, True
+            origem_status = _texto(_valor_col(d, *ALIASES_STATUS))
+            situacao = classificar_atv(origem_status) if origem_status else dica_arquivo
+            origem = (origem_status or arquivo_nome or '')[:80]
+            endereco = _texto(_valor_col(d, *ALIASES_ENDERECO))[:255]
+            bairro = _texto(_valor_col(d, *ALIASES_BAIRRO))[:120]
+            cidade = _texto(_valor_col(d, *ALIASES_CIDADE))[:120]
+            uf = _texto(_valor_col(d, *ALIASES_UF))[:2].upper()
+            produto = _texto(_valor_col(d, *ALIASES_PRODUTO))[:160]
 
         if e164 and e164 in vistos:
             continue
@@ -202,10 +284,11 @@ def importar_arquivo(
     layout = detectar_layout(headers)
     if not layout:
         raise ValueError(
-            'Layout não reconhecido. Esperado OPTIC (NOME/CPF/TELEFONE_COMPLETO/Macro Atividade) '
-            'ou ATV ALG (Cliente/Documento/Telefone/Status).'
+            'Layout não reconhecido. Use OPTIC (NOME/CPF/TELEFONE_COMPLETO/Macro Atividade) '
+            'ou planilha de mercado com Nome + Telefone '
+            '(Status, CPF/CNPJ, Cidade e Endereço são opcionais).'
         )
-    parsed = parse_linhas(headers, rows, layout)
+    parsed = parse_linhas(headers, rows, layout, arquivo_nome=arquivo_nome)
     contagens = Counter(c['situacao'] for c in parsed)
     validos = sum(1 for c in parsed if c['telefone_valido'])
 

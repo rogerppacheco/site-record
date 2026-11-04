@@ -131,7 +131,9 @@ class RepescagemBioListaView(APIView):
             page = 1
         lista = base[(page - 1) * page_size: page * page_size]
         from crm_app.services.funil_template_envio_service import enriquecer_linha_bio
+        from crm_app.services import funil_tratamento_service as trat
         lista = [enriquecer_linha_bio(item) for item in lista]
+        lista = trat.anexar(trat.ABA_BIO, lista, 'cpf')
 
         ultima = RepescagemBioImportacao.objects.filter(status=RepescagemBioImportacao.STATUS_CONCLUIDO).first()
         inicio_dt = svc._inicio_do_dia(inicio)

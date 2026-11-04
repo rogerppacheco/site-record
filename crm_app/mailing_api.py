@@ -1,15 +1,15 @@
 """API — Mailings de mercado (import XLS → disparo Meta → respostas no Funil)."""
 from __future__ import annotations
 
-from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from crm_app.models import MailingContato, MailingLote
+from crm_app.models import MailingContato, MailingEnvio, MailingLote
 from crm_app.services import mailing_dispatch_service as dispatch
 from crm_app.services import mailing_import_service as import_svc
+from crm_app.services.funil_tratamento_service import wa_me
 from crm_app.utils import is_member
 
 GRUPOS_MAILING = ['Diretoria', 'BackOffice', 'Admin']
@@ -39,6 +39,23 @@ def _serialize_lote(lote: MailingLote) -> dict:
         'criado_em': lote.criado_em.isoformat() if lote.criado_em else None,
         'disparo_iniciado_em': lote.disparo_iniciado_em.isoformat() if lote.disparo_iniciado_em else None,
         'disparo_finalizado_em': lote.disparo_finalizado_em.isoformat() if lote.disparo_finalizado_em else None,
+        'filtro_situacao': lote.filtro_situacao or '',
+    }
+
+
+def _ultimo_envio(c: MailingContato) -> dict:
+    envios = list(c.envios.all()[:1]) if hasattr(c, 'envios') else []
+    if not envios:
+        return {}
+    e = envios[0]
+    return {
+        'ultimo_envio_id': e.pk,
+        'ultimo_template': e.template_nome,
+        'ultimo_message_id': e.message_id,
+        'ultimo_status_entrega': e.status_entrega,
+        'ultimo_sucesso': e.sucesso,
+        'ultimo_erro': (e.erro or '')[:300],
+        'ultimo_enviado_em': e.enviado_em.isoformat() if e.enviado_em else None,
     }
 
 
@@ -50,6 +67,7 @@ def _serialize_contato(c: MailingContato) -> dict:
         'nome': c.nome,
         'cpf': c.cpf,
         'telefone': c.telefone_e164,
+        'wa_url': wa_me(c.telefone_e164),
         'cidade': c.cidade,
         'uf': c.uf,
         'endereco': c.endereco,
@@ -62,6 +80,8 @@ def _serialize_contato(c: MailingContato) -> dict:
         'resposta_texto': c.resposta_texto,
         'respondido_em': c.respondido_em.isoformat() if c.respondido_em else None,
         'tratado_em': c.tratado_em.isoformat() if c.tratado_em else None,
+        'tratado_por': (c.tratado_por.username if getattr(c, 'tratado_por_id', None) else '') or '',
+        **_ultimo_envio(c),
     }
 
 
@@ -124,16 +144,23 @@ class MailingLoteDisparoView(APIView):
         negado = _sem_permissao(request)
         if negado:
             return negado
+        situacao = str(request.data.get('situacao') or '').strip().upper()
+        incluir_falhas = str(request.data.get('incluir_falhas') or '').lower() in ('1', 'true', 'sim')
         try:
-            lote = dispatch.iniciar_disparo(pk, usuario=request.user)
+            lote = dispatch.iniciar_disparo(
+                pk, usuario=request.user, situacao=situacao, incluir_falhas=incluir_falhas,
+            )
         except MailingLote.DoesNotExist:
             return Response({'detail': 'Lote não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        # processa um ciclo imediato (resto no scheduler)
-        stats = dispatch.processar_ciclo(pk, limite=15, sleep=True)
+        stats = dispatch.processar_ciclo(pk, limite=15, sleep=False)
         lote.refresh_from_db()
-        return Response({'lote': _serialize_lote(lote), 'ciclo': stats})
+        return Response({
+            'lote': _serialize_lote(lote),
+            'ciclo': stats,
+            'elegiveis': dispatch.contar_elegiveis(pk, situacao),
+        })
 
     def delete(self, request, pk):
         negado = _sem_permissao(request)
@@ -162,7 +189,11 @@ class MailingFunilListaView(APIView):
         page = max(1, int(request.query_params.get('page') or 1))
         page_size = min(100, max(10, int(request.query_params.get('page_size') or 25)))
 
-        qs = MailingContato.objects.select_related('lote').all()
+        from django.db.models import Count, Prefetch
+
+        qs = MailingContato.objects.select_related('lote', 'tratado_por').prefetch_related(
+            Prefetch('envios', queryset=MailingEnvio.objects.order_by('-enviado_em'))
+        )
         if lote_id.isdigit():
             qs = qs.filter(lote_id=int(lote_id))
         if status_filtro == 'PENDENTES':
@@ -200,12 +231,24 @@ class MailingFunilListaView(APIView):
         if lote_id.isdigit():
             base_cont = base_cont.filter(lote_id=int(lote_id))
         contagens = {
-            'NOVO': base_cont.filter(status=MailingContato.STATUS_NOVO, telefone_valido=True).count(),
+            'NOVO': base_cont.filter(status=MailingContato.STATUS_NOVO, telefone_valido=True, opt_out=False).count(),
             'RESPONDEU': base_cont.filter(status=MailingContato.STATUS_RESPONDEU).count(),
             'TRATADO': base_cont.filter(status=MailingContato.STATUS_TRATADO).count(),
             'ENVIADO': base_cont.filter(status=MailingContato.STATUS_ENVIADO).count(),
+            'FALHOU': base_cont.filter(status=MailingContato.STATUS_FALHOU).count(),
             'TOTAL': base_cont.count(),
         }
+        sits = {
+            row['situacao']: row['n']
+            for row in base_cont.values('situacao').annotate(n=Count('id'))
+        }
+        sits_fila = {
+            row['situacao']: row['n']
+            for row in base_cont.filter(
+                status=MailingContato.STATUS_NOVO, telefone_valido=True, opt_out=False,
+            ).exclude(telefone_e164='').values('situacao').annotate(n=Count('id'))
+        }
+        lote_pk = int(lote_id) if lote_id.isdigit() else None
         return Response({
             'lista': lista,
             'paginacao': {
@@ -215,6 +258,9 @@ class MailingFunilListaView(APIView):
                 'total_pages': max(1, (total + page_size - 1) // page_size),
             },
             'contagens': contagens,
+            'contagens_situacao': sits,
+            'elegiveis_situacao': sits_fila,
+            'elegiveis': dispatch.contar_elegiveis(lote_pk, situacao),
             'lotes': [_serialize_lote(l) for l in MailingLote.objects.all()[:20]],
         })
 
@@ -228,12 +274,47 @@ class MailingContatoTratarView(APIView):
         negado = _sem_permissao(request)
         if negado:
             return negado
+        from crm_app.services import funil_tratamento_service as trat
         try:
-            c = MailingContato.objects.select_related('lote').get(pk=pk)
-        except MailingContato.DoesNotExist:
-            return Response({'detail': 'Contato não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
-        c.status = MailingContato.STATUS_TRATADO
-        c.tratado_em = timezone.now()
-        c.tratado_por = request.user
-        c.save(update_fields=['status', 'tratado_em', 'tratado_por'])
-        return Response(_serialize_contato(c))
+            result = trat.marcar_tratado('MAILING', pk, usuario=request.user, observacao=str(request.data.get('observacao') or ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        c = MailingContato.objects.select_related('lote', 'tratado_por').prefetch_related('envios').get(pk=pk)
+        return Response({**_serialize_contato(c), **result})
+
+
+class MailingDisparoElegiveisView(APIView):
+    """POST dispara todos os lotes com fila (opcionalmente uma situação)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        negado = _sem_permissao(request)
+        if negado:
+            return negado
+        situacao = str(request.data.get('situacao') or '').strip().upper()
+        incluir_falhas = str(request.data.get('incluir_falhas') or '').lower() in ('1', 'true', 'sim')
+        lote_id = request.data.get('lote_id')
+        qs = MailingLote.objects.all()
+        if lote_id not in (None, ''):
+            qs = qs.filter(pk=int(lote_id))
+        iniciados = []
+        ciclos = []
+        for lote in qs:
+            stats_pre = dispatch.contar_elegiveis(lote.pk, situacao)
+            if stats_pre['elegiveis'] <= 0 and not (incluir_falhas and stats_pre.get('falhas')):
+                continue
+            dispatch.iniciar_disparo(
+                lote.pk, usuario=request.user, situacao=situacao, incluir_falhas=incluir_falhas,
+            )
+            stats = dispatch.processar_ciclo(lote.pk, limite=15, sleep=False)
+            lote.refresh_from_db()
+            iniciados.append(_serialize_lote(lote))
+            ciclos.append({'lote_id': lote.pk, **stats})
+        if not iniciados:
+            return Response({'detail': 'Nenhum contato elegível para envio.', 'lotes': [], 'ciclos': []}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'lotes': iniciados,
+            'ciclos': ciclos,
+            'elegiveis': dispatch.contar_elegiveis(int(lote_id) if str(lote_id or '').isdigit() else None, situacao),
+        })

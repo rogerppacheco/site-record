@@ -5,7 +5,7 @@ from typing import Any, Sequence, Tuple
 
 from crm_app.models import MailingContato
 from crm_app.services.mailing_import_service import primeiro_nome
-from crm_app.services.whatsapp.nio_templates import enviar_template_cliente, tentar_enviar_ou_texto
+from crm_app.services.whatsapp.nio_templates import tentar_enviar_ou_texto_funil
 
 TEMPLATE_REPARO = 'mailing_reparo_v1'
 TEMPLATE_INSTALACAO = 'mailing_instalacao_v1'
@@ -203,7 +203,7 @@ def enviar_mailing_contato(contato: MailingContato) -> Tuple[bool, Any, str, str
     """Envia template (ou fallback texto). Retorna (ok, resp, canal, template_nome)."""
     template = template_para_situacao(contato.situacao)
     params = body_params_contato(contato)
-    ok, resp, canal = tentar_enviar_ou_texto(
+    ok, resp, canal = tentar_enviar_ou_texto_funil(
         contato.telefone_e164,
         template,
         params,

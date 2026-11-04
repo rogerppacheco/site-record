@@ -305,6 +305,8 @@ class EsteiraChurnTratamentoView(APIView):
             enriquecer_linha_churn(item, venda=vendas_map.get(item.get('venda_id')))
             for item in lista_pagina
         ]
+        from crm_app.services import funil_tratamento_service as trat
+        lista_pagina = trat.anexar(trat.ABA_CHURN, lista_pagina, 'churn_id')
 
         ranking = sorted(ranking_map.values(), key=lambda x: (-x['total_churn'], x['vendedor']))
         pos = 1

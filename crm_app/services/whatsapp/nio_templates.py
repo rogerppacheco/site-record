@@ -490,6 +490,32 @@ def tentar_enviar_ou_texto(
     return bool(ok), resp, "texto"
 
 
+def tentar_enviar_ou_texto_funil(
+    telefone: str,
+    template_name: str,
+    body_params: Sequence[str],
+    fallback_texto: str,
+) -> Tuple[bool, Any, str]:
+    """
+    Template Meta pela conexão Funil (#247). Fallback de texto só se o template falhar.
+    """
+    from crm_app.whatsapp_service import WhatsAppService
+
+    if templates_habilitados():
+        ok, resp = enviar_template_funil(telefone, template_name, body_params)
+        if ok:
+            return True, resp, "template"
+        logger.warning(
+            "[NioTemplates] Funil #247 fallback texto após falha template=%s resp=%s",
+            template_name,
+            resp,
+        )
+    ok, resp = WhatsAppService.para_funil().enviar_mensagem_texto(
+        telefone, fallback_texto, variar=False
+    )
+    return bool(ok), resp, "texto"
+
+
 def enviar_confirmacao_pedido_venda(venda: Any, telefone: str) -> Tuple[bool, Any, str]:
     from crm_app.utils import montar_resumo_plano_para_whatsapp
 

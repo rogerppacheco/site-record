@@ -21,6 +21,7 @@ class Command(BaseCommand):
         parser.add_argument('--tudo', action='store_true', help='Processa até esvaziar a fila do lote')
         parser.add_argument('--ciclos', action='store_true', help='Um ciclo em cada lote DISPARANDO')
         parser.add_argument('--limite', type=int, default=40, help='Contatos por ciclo')
+        parser.add_argument('--situacao', default='', help='Filtra a fila por situação (REPARO, INSTALACAO...)')
 
     def handle(self, *args, **options):
         if options['ciclos']:
@@ -33,7 +34,7 @@ class Command(BaseCommand):
             raise CommandError('Informe --lote ID ou --ciclos.')
 
         try:
-            lote = dispatch.iniciar_disparo(lote_id)
+            lote = dispatch.iniciar_disparo(lote_id, situacao=options.get('situacao') or '')
         except MailingLote.DoesNotExist as exc:
             raise CommandError(str(exc)) from exc
         except ValueError as exc:

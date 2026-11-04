@@ -7,7 +7,20 @@ Importa listas compradas (XLS), dispara templates Meta (tom informativo, **sem o
 | Layout | Colunas mínimas | Situações |
 |--------|-----------------|-----------|
 | **OPTIC** | NOME, CPF, TELEFONE_COMPLETO, Macro Atividade | REP→reparo, INST→instalação, MUD→mudança, SRV/RET→serviço |
-| **ATV ALG** | Cliente, Documento, Telefone, Status | CANCEL*→cancelamento, FECHADO, ABERTO/TECNICO |
+| **ATV ALG / mercado** | Nome (ou Cliente) + Telefone | Status opcional. Também aceita CPF/CNPJ, DOCUMENTO, CONTRATO_STATUS, Telefone1/Telefne2, Cidade, UF, Endereço, Plano |
+
+### Situações (coluna Status / CONTRATO_STATUS / nome do arquivo)
+
+| Origem | Situação no funil | Template |
+|--------|-------------------|----------|
+| Aberto, Técnico, EM APROVISIONAMENTO, PENDÊNCIA* | ABERTO | `mailing_aberto_v1` |
+| Cancelamento, CANCELADO, DESISTÊNCIA* | CANCELAMENTO | `mailing_cancelamento_v1` |
+| CONCLUÍDO | INSTALACAO | `mailing_instalacao_v1` |
+| FECHADO | FECHADO | `mailing_fechado_v1` |
+| Suspensão (ou arquivo SUSPENSÃO*) | GENERICO | `mailing_generico_v1` |
+| Sem status (ex.: MASTER TIM) | GENERICO | `mailing_generico_v1` |
+
+Planilhas de 03/11/2026 em `docs/mailings/` (Algar, TIM, Nio, Vero) sobem pela aba **MAILING** após este mapeamento. CPF `Null` é ignorado; o telefone é obrigatório.
 
 ## Fluxo
 
@@ -20,7 +33,8 @@ Importa listas compradas (XLS), dispara templates Meta (tom informativo, **sem o
 ## Templates Meta (MARKETING / pt_BR)
 
 Arquivo para colar no gerenciador: `docs/WhatsApp_Templates_Mailing_Mercado.docx`  
-Gerar: `python docs/gerar_docx_templates_mailing.py`
+Gerar: `python docs/gerar_docx_templates_mailing.py`  
+Pedido de aprovação (funil + mailing): `docs/SOLICITACAO_APROVACAO_TEMPLATES_FUNIL.md`
 
 | Nome | Uso |
 |------|-----|
