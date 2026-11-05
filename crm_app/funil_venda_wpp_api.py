@@ -1,19 +1,19 @@
 # crm_app/funil_venda_wpp_api.py
-"""API do Funil de Vendas (WhatsApp VENDER). Acesso: Diretoria e Admin."""
+"""API do Funil de Vendas (WhatsApp VENDER). Acesso: Diretoria, Admin ou permissão do Funil."""
 from django.core.paginator import Paginator
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from crm_app.models import FunilVendaWppTentativa
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 
 class FunilVendaWppTentativaListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         qs = FunilVendaWppTentativa.objects.select_related("usuario", "sessao_whatsapp").order_by(
             "-iniciado_em"
@@ -63,7 +63,7 @@ class FunilVendaWppTentativaDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         try:
             t = FunilVendaWppTentativa.objects.select_related("usuario").get(pk=pk)

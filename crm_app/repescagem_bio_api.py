@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from crm_app.models import RepescagemBioImportacao
 from crm_app.services import repescagem_bio_service as svc
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 GRUPOS_REPESCAGEM_BIO = ['Diretoria', 'BackOffice', 'Admin']
 DIAS_PADRAO = 7
@@ -36,7 +36,7 @@ def _periodo(params) -> tuple[date, date] | str:
 
 
 def _sem_permissao(request) -> Response | None:
-    if is_member(request.user, GRUPOS_REPESCAGEM_BIO):
+    if pode_acessar_recurso_funil(request.user, GRUPOS_REPESCAGEM_BIO):
         return None
     return Response({'detail': 'Sem permissão para a Repescagem Bio.'}, status=status.HTTP_403_FORBIDDEN)
 

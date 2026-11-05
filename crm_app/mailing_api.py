@@ -10,13 +10,13 @@ from crm_app.models import MailingContato, MailingEnvio, MailingLote
 from crm_app.services import mailing_dispatch_service as dispatch
 from crm_app.services import mailing_import_service as import_svc
 from crm_app.services.funil_tratamento_service import wa_me
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 GRUPOS_MAILING = ['Diretoria', 'BackOffice', 'Admin']
 
 
 def _sem_permissao(request) -> Response | None:
-    if is_member(request.user, GRUPOS_MAILING):
+    if pode_acessar_recurso_funil(request.user, GRUPOS_MAILING):
         return None
     return Response({'detail': 'Sem permissão para Mailings.'}, status=status.HTTP_403_FORBIDDEN)
 

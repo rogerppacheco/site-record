@@ -37,6 +37,17 @@ GRUPOS_ESTEIRA_GESTAO_APROVEITAMENTO: list[str] = [
 
 PERM_VER_GESTAO_ESTEIRA = 'crm_app.can_view_gestao_esteira'
 PERM_EXPORTAR_AGENDADOS_PENDENTES_ESTEIRA = 'crm_app.can_export_agendados_pendentes_esteira'
+PERM_VER_FUNIL_VENDAS = 'crm_app.can_view_funil_vendas'
+
+PERFIL_VENDEDOR = 'Vendedor'
+PERFIL_VENDEDOR_INTERNO = 'Vendedor Interno'
+
+# Quem já vê o card do Funil na Área Interna, sem precisar da permissão extra.
+GRUPOS_FUNIL_VENDAS_PADRAO: list[str] = [
+    'Diretoria',
+    'Admin',
+    'BackOffice',
+]
 
 GRUPOS_CDOI_EDICAO: list[str] = [
     'Diretoria',
@@ -112,3 +123,43 @@ def is_somente_leitura(user: Any) -> bool:
 def pode_acessar_fpd_dashboard(user: Any) -> bool:
     """Acesso ao Dashboard FPD (inclui Gerente de Contas)."""
     return is_member(user, GRUPOS_FPD_DASHBOARD)
+
+
+def usuario_e_perfil_vendedor(user: Any) -> bool:
+    """Perfil Vendedor de campo. Vendedor Interno e a gestão não entram aqui."""
+    if not user or getattr(user, 'is_superuser', False):
+        return False
+    if _pertence_grupo_ou_perfil(
+        user,
+        [*GRUPOS_FUNIL_VENDAS_PADRAO, PERFIL_VENDEDOR_INTERNO],
+    ):
+        return False
+    return _pertence_grupo_ou_perfil(user, [PERFIL_VENDEDOR])
+
+
+def pode_ver_funil_vendas(user: Any) -> bool:
+    """Card do Funil: gestão que já via, ou permissão marcada no perfil.
+
+    O perfil Vendedor nunca vê o módulo, mesmo que a permissão seja marcada nele.
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if usuario_e_perfil_vendedor(user):
+        return False
+    if is_member(user, GRUPOS_FUNIL_VENDAS_PADRAO):
+        return True
+    return _tem_permissao_django(user, PERM_VER_FUNIL_VENDAS)
+
+
+def pode_acessar_recurso_funil(user: Any, grupos: list[str]) -> bool:
+    """Endpoint do Funil: grupos que já acessavam, ou a permissão explícita.
+
+    O perfil Vendedor continua bloqueado.
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if usuario_e_perfil_vendedor(user):
+        return False
+    if is_member(user, grupos):
+        return True
+    return _tem_permissao_django(user, PERM_VER_FUNIL_VENDAS)

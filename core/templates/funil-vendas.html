@@ -801,6 +801,16 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 {% load static %}
 <script src="{% static 'js/auth.js' %}?v=8.1"></script>
 <script>
+    (function guardarAcessoFunil() {
+        const token = localStorage.getItem('accessToken');
+        if (!token || typeof jwt_decode !== 'function') return;
+        let payload = null;
+        try { payload = jwt_decode(token); } catch (e) { return; }
+        const role = (payload && (payload.user_role || payload.perfil)) || '';
+        const jaVia = ['Diretoria', 'Admin', 'BackOffice'].indexOf(role) !== -1;
+        const liberado = payload.pode_ver_funil_vendas === true || jaVia;
+        if (role === 'Vendedor' || !liberado) window.location.href = '/area-interna/';
+    })();
     const API_BASE = '/api/crm/funil-venda-wpp/tentativas/';
     const API_HIST = '/api/crm/funil-venda-wpp/historico-pap/';
     

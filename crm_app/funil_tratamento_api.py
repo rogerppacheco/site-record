@@ -6,13 +6,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from crm_app.services import funil_tratamento_service as svc
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 GRUPOS = ['Diretoria', 'BackOffice', 'Admin']
 
 
 def _sem_permissao(request) -> Response | None:
-    if is_member(request.user, GRUPOS):
+    if pode_acessar_recurso_funil(request.user, GRUPOS):
         return None
     return Response({'detail': 'Sem permissão para tratar no Funil.'}, status=status.HTTP_403_FORBIDDEN)
 

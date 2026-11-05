@@ -821,6 +821,7 @@ class Venda(models.Model):
             ("can_view_comissao_dashboard", "Pode visualizar card de comissão"),
             ("can_view_gestao_esteira", "Pode visualizar gestão da esteira"),
             ("can_export_agendados_pendentes_esteira", "Pode exportar Agendados e Pendentes da esteira"),
+            ("can_view_funil_vendas", "Pode visualizar módulo Funil de vendas"),
         ]
 
 

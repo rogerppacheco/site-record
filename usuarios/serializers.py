@@ -468,6 +468,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['pode_gestao_acessos'] = getattr(user, 'pode_gestao_acessos', False)
         token['pode_importar_nio_terceiros'] = getattr(user, 'pode_importar_nio_terceiros', False)
         token['vendedor_solo'] = getattr(user, 'vendedor_solo', False)
+        from crm_app.perfis_acesso import pode_ver_funil_vendas
+        token['pode_ver_funil_vendas'] = pode_ver_funil_vendas(user)
         return token
 
     def validate(self, attrs):

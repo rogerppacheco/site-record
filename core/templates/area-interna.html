@@ -329,11 +329,18 @@
                 // Acesso Supervisor (sem Qualidade)
                 'Supervisor': ['card-antecipar', 'card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia'],
 
-                // Acesso Vendedor (sem Qualidade)
-                'Vendedor': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia']
+                // Acesso Vendedor (sem Qualidade e sem Funil de vendas)
+                'Vendedor': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia'],
+
+                // Vendedor interno: mesmas ferramentas do vendedor. O Funil entra só pela permissão.
+                'Vendedor Interno': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia']
             };
 
             let cardsPermitidos = regras[userProfile] || regras['Vendedor'];
+            const podeFunil = !!(payload && payload.pode_ver_funil_vendas === true);
+            if (userProfile !== 'Vendedor' && cardsPermitidos !== 'all' && podeFunil && !cardsPermitidos.includes('card-funil-vendas')) {
+                cardsPermitidos = [...cardsPermitidos, 'card-funil-vendas'];
+            }
             if (userProfile === 'Vendedor' && vendedorSolo && cardsPermitidos !== 'all' && !cardsPermitidos.includes('card-presenca')) {
                 cardsPermitidos = [...cardsPermitidos, 'card-presenca'];
             }

@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from crm_app.churn_os_utils import anomes_filtro_variantes, build_venda_lookup_por_os, encontrar_venda_por_churn
 from crm_app.models import ChurnConsultaDebitoNio, ImportacaoChurn, Venda
 from crm_app.services.churn_debito_nio_service import normalizar_documento
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 GRUPOS_CHURN_TRATAMENTO_ESTEIRA = ['Diretoria', 'BackOffice', 'Admin']
 NAO_CONSULTADO = 'NAO_CONSULTADO'
@@ -114,7 +114,7 @@ class EsteiraChurnTratamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+        if not pode_acessar_recurso_funil(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
             return Response(
                 {'detail': 'Acesso restrito à gestão da esteira.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -377,7 +377,7 @@ class ChurnDebitoNioLoteView(APIView):
         from crm_app.models import ChurnConsultaDebitoLote
         from crm_app.services.churn_debito_nio_service import lote_em_andamento, serializar_lote
 
-        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+        if not pode_acessar_recurso_funil(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
             return Response({'detail': 'Acesso restrito à gestão.'}, status=status.HTTP_403_FORBIDDEN)
         lote = lote_em_andamento() or ChurnConsultaDebitoLote.objects.select_related('iniciado_por').first()
         return Response({'lote': serializar_lote(lote)})
@@ -385,7 +385,7 @@ class ChurnDebitoNioLoteView(APIView):
     def post(self, request):
         from crm_app.services.churn_debito_nio_service import iniciar_lote, serializar_lote
 
-        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+        if not pode_acessar_recurso_funil(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
             return Response({'detail': 'Acesso restrito à gestão.'}, status=status.HTTP_403_FORBIDDEN)
         forcar = str(request.data.get('forcar', '')).strip().lower() in ('1', 'true', 'sim', 'yes')
         lote, criado = iniciar_lote(request.user, forcar=forcar)
@@ -402,7 +402,7 @@ class ChurnDebitoNioLoteCancelarView(APIView):
         from crm_app.models import ChurnConsultaDebitoLote as L
         from crm_app.services.churn_debito_nio_service import serializar_lote
 
-        if not is_member(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
+        if not pode_acessar_recurso_funil(request.user, GRUPOS_CHURN_TRATAMENTO_ESTEIRA):
             return Response({'detail': 'Acesso restrito à gestão.'}, status=status.HTTP_403_FORBIDDEN)
         L.objects.filter(pk=pk, status=L.STATUS_EM_ANDAMENTO).update(
             status=L.STATUS_CANCELADO, atualizado_em=timezone.now(), mensagem='Cancelando…',

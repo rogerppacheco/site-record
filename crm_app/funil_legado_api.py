@@ -20,7 +20,7 @@ from crm_app.legado_pap_osab import (
     pick_sheet,
     validar_upload,
 )
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class FunilMontarLegadoConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         parceiro, pdv = _defaults()
         return Response(
@@ -65,7 +65,7 @@ class FunilMontarLegadoView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
 
         pap_file = request.FILES.get("pap") or request.FILES.get("pap_file")

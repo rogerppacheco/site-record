@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from crm_app.historico_pap import MAX_DIAS_BUSCA, tipos_solicitados
 from crm_app.legado_pap_osab import validar_upload
-from crm_app.utils import is_member
+from crm_app.perfis_acesso import pode_acessar_recurso_funil
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class FunilHistoricoPapConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         from crm_app.historico_pap_service import (
             busca_em_andamento,
@@ -93,7 +93,7 @@ class FunilHistoricoPapRegistrarView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         arq = request.FILES.get("arquivo") or request.FILES.get("pap") or request.FILES.get("exportacao")
         if not arq:
@@ -121,7 +121,7 @@ class FunilHistoricoPapBuscarView(APIView):
     parser_classes = [JSONParser, FormParser, MultiPartParser]
 
     def post(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         hoje = date.today()
         data = request.data if isinstance(request.data, dict) else {}
@@ -169,7 +169,7 @@ class FunilHistoricoPapStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         from crm_app.historico_pap_service import busca_em_andamento, serializar_busca
         from crm_app.models import HistoricoPapBusca
@@ -198,7 +198,7 @@ class FunilHistoricoPapDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         from crm_app.historico_pap_service import xlsx_novos_da_busca, xlsx_periodo_da_busca
         from crm_app.models import HistoricoPapBusca
@@ -353,7 +353,7 @@ class FunilHistoricoPapPedidosView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
 
         from django.db.models import Count, F
@@ -480,7 +480,7 @@ class FunilHistoricoPapExportarView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
 
         from django.db.models import F
@@ -519,7 +519,7 @@ class FunilHistoricoPapImportarView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"error": "Sem permissão."}, status=403)
 
         from datetime import timedelta
@@ -658,7 +658,7 @@ class FunilHistoricoPapAssertivaMatchView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pedido_id: int):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         if not _assertiva_disponivel():
             return Response(
@@ -682,7 +682,7 @@ class FunilHistoricoPapAssertivaMatchLoteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if not is_member(request.user, ["Diretoria", "Admin"]):
+        if not pode_acessar_recurso_funil(request.user, ["Diretoria", "Admin"]):
             return Response({"detail": "Sem permissão."}, status=403)
         if not _assertiva_disponivel():
             return Response(
