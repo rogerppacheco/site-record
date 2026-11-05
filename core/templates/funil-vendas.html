@@ -825,7 +825,9 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             if (!t) return false;
             const p = jwt_decode(t);
             const role = (p.user_role || p.perfil || '').toString();
-            return role === 'Diretoria' || role === 'Admin' || p.is_staff === true;
+            if (role === 'Vendedor') return false;
+            if (p.pode_ver_funil_vendas === true) return true;
+            return role === 'Diretoria' || role === 'Admin' || role === 'BackOffice' || p.is_staff === true;
         } catch (e) { return false; }
     }
 
