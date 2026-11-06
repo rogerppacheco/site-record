@@ -248,6 +248,26 @@ def limite_peso_mes(mes_inicio: date, mes_fim: date, hoje_ref: date) -> date:
     return mes_fim
 
 
+def normalizar_filtro_supervisor(valor: str | None) -> int | str | None:
+    """
+    Interpreta o filtro de supervisor do painel.
+
+    None = todos. 'sem' = vendedores sem supervisor. int = id do supervisor.
+    """
+    raw = str(valor or '').strip().lower()
+    if not raw or raw in ('todos', 'none', 'null'):
+        return None
+    if raw == 'sem':
+        return 'sem'
+    try:
+        supervisor_id = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if supervisor_id <= 0:
+        return None
+    return supervisor_id
+
+
 def ordenar_lista_performance(lista, key_cluster='cluster', key_nome='nome'):
     """Ordena por cluster (1→2→3) e, dentro do cluster, por nome."""
     return sorted(

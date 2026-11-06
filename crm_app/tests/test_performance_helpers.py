@@ -11,6 +11,7 @@ from crm_app.performance_helpers import (
     indice_faixa_comissao,
     limite_peso_mes,
     media_diaria_semana_referencia,
+    normalizar_filtro_supervisor,
     ordenar_lista_performance,
     ordem_cluster_performance,
     tipo_peso_gestao,
@@ -44,6 +45,14 @@ class PerformanceHelpersTests(SimpleTestCase):
         self.assertEqual(cores_linha_performance(2)[0], (255, 243, 205))
         self.assertEqual(cores_linha_performance(5)[0], (207, 226, 255))
         self.assertEqual(cores_linha_performance(6)[0], (20, 108, 67))
+
+    def test_filtro_supervisor(self):
+        self.assertIsNone(normalizar_filtro_supervisor(''))
+        self.assertIsNone(normalizar_filtro_supervisor('todos'))
+        self.assertEqual(normalizar_filtro_supervisor('sem'), 'sem')
+        self.assertEqual(normalizar_filtro_supervisor('42'), 42)
+        self.assertIsNone(normalizar_filtro_supervisor('abc'))
+        self.assertIsNone(normalizar_filtro_supervisor('0'))
 
     def test_ordenacao_cluster_nome(self):
         lista = [

@@ -8618,6 +8618,35 @@ def _perf_grupos_gestao():
     return ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
 
 
+def _perf_opcoes_supervisor(users_qs) -> list[dict]:
+    """Supervisores da equipe já filtrada por canal/cluster, antes do filtro de supervisor."""
+    User = get_user_model()
+    ids = list(
+        users_qs.exclude(supervisor_id__isnull=True)
+        .values_list('supervisor_id', flat=True)
+        .distinct()
+    )
+    opcoes: list[dict] = []
+    if ids:
+        for sup in User.objects.filter(id__in=ids).order_by('username'):
+            opcoes.append({'id': sup.id, 'nome': (sup.username or '').upper()})
+    if users_qs.filter(supervisor_id__isnull=True).exists():
+        opcoes.append({'id': 'sem', 'nome': 'Sem supervisor'})
+    return opcoes
+
+
+def _perf_aplicar_filtro_supervisor(users_qs, supervisor_raw: str | None):
+    """Restringe a lista à equipe de um supervisor. Vazio mantém todos."""
+    from crm_app.performance_helpers import normalizar_filtro_supervisor
+
+    alvo = normalizar_filtro_supervisor(supervisor_raw)
+    if alvo is None:
+        return users_qs
+    if alvo == 'sem':
+        return users_qs.filter(supervisor_id__isnull=True)
+    return users_qs.filter(supervisor_id=alvo)
+
+
 def _aplicar_filtro_vendedor_ativo_perf(users_qs, user, vendedor_ativo_raw):
     """
     Gestão: query param vendedor_ativo=ativos|inativos|todos (default todos = inclui inativos).
@@ -9144,6 +9173,8 @@ class PainelPerformanceView(APIView):
             users = users.filter(cluster=filtro_cluster)
 
         users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.query_params.get('vendedor_ativo'))
+        opcoes_supervisor = _perf_opcoes_supervisor(users)
+        users = _perf_aplicar_filtro_supervisor(users, request.query_params.get('supervisor'))
         users_perf = users.select_related('perfil')
         users_by_id = {u.id: u for u in users_perf}
         from crm_app.performance_helpers import (
@@ -9423,6 +9454,7 @@ class PainelPerformanceView(APIView):
                 'mes_m1': inicio_m1.strftime('%Y-%m'),
             },
             'pode_exportar_excel': is_member(user, _perf_grupos_export_excel()),
+            'supervisores': opcoes_supervisor,
         }
         if periodo.get('aviso'):
             payload['aviso'] = periodo['aviso']
@@ -9473,6 +9505,7 @@ class ExportarPerformanceExcelView(APIView):
             users_export = users_export.filter(cluster=filtro_cluster)
 
         users_export = _aplicar_filtro_vendedor_ativo_perf(users_export, user, request.query_params.get('vendedor_ativo'))
+        users_export = _perf_aplicar_filtro_supervisor(users_export, request.query_params.get('supervisor'))
 
         vendas = filtrar_vendas_por_operadora(
             Venda.objects.filter(vendedor_id__in=users_export.values_list('id', flat=True)),
@@ -9750,6 +9783,7 @@ class EnviarImagemPerformanceView(APIView):
             users = users.filter(cluster__iexact=cluster.strip())
 
         users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.data.get('vendedor_ativo'))
+        users = _perf_aplicar_filtro_supervisor(users, request.data.get('supervisor'))
         users_perf = users.select_related('perfil')
         users_by_id = {u.id: u for u in users_perf}
         from crm_app.performance_helpers import (
@@ -19279,7 +19313,13 @@ def _atuacao_metrica_param(request):
     return 'GROSS' if metrica == 'GROSS' else 'VB'
 
 
-def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica):
+def _atuacao_supervisor_param(request):
+    from crm_app.performance_helpers import normalizar_filtro_supervisor
+
+    return normalizar_filtro_supervisor(request.query_params.get('supervisor'))
+
+
+def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica, supervisor_id=None):
     from .models import Venda
 
     qs = Venda.objects.filter(
@@ -19296,6 +19336,10 @@ def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica):
         qs = qs.filter(cidade__iexact=cidade)
     if bairro:
         qs = qs.filter(bairro__iexact=bairro)
+    if supervisor_id == 'sem':
+        qs = qs.filter(vendedor__supervisor_id__isnull=True)
+    elif supervisor_id:
+        qs = qs.filter(vendedor__supervisor_id=supervisor_id)
     return qs
 
 
@@ -19342,7 +19386,9 @@ class AtuacaoCampoView(APIView):
             m = hoje - relativedelta(months=i)
             meses.append(m)
         
-        qs = _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica)
+        qs = _atuacao_campo_queryset(
+            vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
+        )
             
         annotations = {}
         for idx, m in enumerate(meses):
@@ -19406,7 +19452,9 @@ class ExportarAtuacaoCampoExcelView(APIView):
             m = hoje - relativedelta(months=i)
             meses.append(m)
         
-        qs = _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica)
+        qs = _atuacao_campo_queryset(
+            vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
+        )
             
         annotations = {}
         for idx, m in enumerate(meses):
@@ -19649,7 +19697,9 @@ class AtuacaoCampoDiarioView(APIView):
         
         hoje = timezone.localtime(timezone.now()).date()
         
-        qs = _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica)
+        qs = _atuacao_campo_queryset(
+            vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
+        )
             
         start_m0 = date(hoje.year, hoje.month, 1)
         end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])

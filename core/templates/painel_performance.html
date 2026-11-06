@@ -51,7 +51,7 @@
         }
         .painel-performance-page .perf-toolbar {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             align-items: center;
             gap: 4px 6px;
             padding: 4px 6px;
@@ -59,6 +59,9 @@
             border-radius: 6px;
             background: var(--bg-card);
             border: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
         }
         .painel-performance-page .perf-toolbar .perf-title {
             font-size: 0.78rem;
@@ -666,6 +669,11 @@
                     <option value="CLUSTER_3">CLUSTER 3</option>
                 </select>
 
+                <label class="form-label-inline" title="Equipe do supervisor">Sup.:</label>
+                <select id="filtro-supervisor" class="form-select" style="width: 118px;" onchange="carregarDados()" title="Filtrar pela equipe do supervisor">
+                    <option value="">Todos</option>
+                </select>
+
                 <div id="filtro-vendedor-ativo-wrap" class="d-none align-items-center gap-1">
                     <label class="form-label-inline">Vendedor:</label>
                     <select id="filtro-vendedor-ativo" class="form-select" style="width: 140px;" onchange="carregarDados()" title="Conta de usuário ativo/inativo">
@@ -1190,12 +1198,12 @@
             return `${Number(pct || 0).toFixed(2)}%`;
         }
 
-        /** Estado de sort/filtro por aba (persistente entre re-renders). */
+        /** Estado de sort/filtro por aba. Padrão numérico: maior → menor. */
         window.__perfUi = window.__perfUi || {
-            hoje: { sortKey: null, sortDir: 'asc', filters: {} },
-            semana: { sortKey: null, sortDir: 'asc', filters: {} },
-            mes: { sortKey: null, sortDir: 'asc', filters: {} },
-            gestao: { sortKey: null, sortDir: 'asc', filters: {} },
+            hoje: { sortKey: 'total', sortDir: 'desc', filters: {} },
+            semana: { sortKey: 'total', sortDir: 'desc', filters: {} },
+            mes: { sortKey: 'total', sortDir: 'desc', filters: {} },
+            gestao: { sortKey: null, sortDir: 'desc', filters: {} },
         };
 
         function perfEsc(s) {
@@ -1208,7 +1216,12 @@
 
         function perfGetState(tableId) {
             if (!window.__perfUi[tableId]) {
-                window.__perfUi[tableId] = { sortKey: null, sortDir: 'asc', filters: {} };
+                const padrao = {
+                    hoje: { sortKey: 'total', sortDir: 'desc' },
+                    semana: { sortKey: 'total', sortDir: 'desc' },
+                    mes: { sortKey: 'total', sortDir: 'desc' },
+                }[tableId] || { sortKey: null, sortDir: 'desc' };
+                window.__perfUi[tableId] = { ...padrao, filters: {} };
             }
             return window.__perfUi[tableId];
         }
@@ -1268,7 +1281,9 @@
                     const cmp = String(va ?? '').localeCompare(String(vb ?? ''), 'pt-BR', { numeric: true, sensitivity: 'base' });
                     if (cmp !== 0) return cmp * dir;
                 }
-                return 0;
+                const nomeA = String(a.vendedor || a.grupo || '');
+                const nomeB = String(b.vendedor || b.grupo || '');
+                return nomeA.localeCompare(nomeB, 'pt-BR', { sensitivity: 'base' });
             });
         }
 
@@ -1309,13 +1324,14 @@
             document.querySelectorAll('.perf-col-filter-pop').forEach(el => el.remove());
         }
 
-        function perfToggleSort(tableId, colKey) {
+        function perfToggleSort(tableId, colKey, colType) {
             const st = perfGetState(tableId);
             if (st.sortKey === colKey) {
                 st.sortDir = st.sortDir === 'asc' ? 'desc' : 'asc';
             } else {
                 st.sortKey = colKey;
-                st.sortDir = 'asc';
+                // Número abre do maior para o menor; texto, de A a Z.
+                st.sortDir = colType === 'num' ? 'desc' : 'asc';
             }
             reRenderPainelPerformance();
         }
@@ -1407,7 +1423,7 @@
                 const filterActive = !!(st.filters[col.key] && st.filters[col.key].length);
                 const extra = (extraClassByKey && extraClassByKey[col.key]) || '';
                 const align = col.align === 'start' ? 'text-start ps-3' : '';
-                html += `<th class="perf-th ${align} ${extra} ${isSorted ? 'is-sorted' : ''}" data-col="${perfEsc(col.key)}">
+                html += `<th class="perf-th ${align} ${extra} ${isSorted ? 'is-sorted' : ''}" data-col="${perfEsc(col.key)}" data-type="${perfEsc(col.type || 'text')}">
                     <span class="perf-th-inner">
                         <span class="perf-th-label" data-action="sort" title="Ordenar">${perfEsc(col.label)} <i class="bi ${sortIcon} perf-sort-icon"></i></span>
                         ${canFilter ? `<button type="button" class="perf-filter-btn ${filterActive ? 'is-active' : ''}" data-action="filter" title="Filtrar"><i class="bi ${filterActive ? 'bi-funnel-fill' : 'bi-funnel'}"></i></button>` : ''}
@@ -1419,7 +1435,7 @@
             theadEl.querySelectorAll('.perf-th-label[data-action="sort"]').forEach(el => {
                 el.addEventListener('click', () => {
                     const th = el.closest('th');
-                    perfToggleSort(tableId, th?.dataset?.col);
+                    perfToggleSort(tableId, th?.dataset?.col, th?.dataset?.type);
                 });
             });
             theadEl.querySelectorAll('.perf-filter-btn[data-action="filter"]').forEach(btn => {
@@ -1450,6 +1466,24 @@
             return { rows, totalGeral, totalFiltrado: rows.reduce((s, r) => s + Number(r[campoVolume] || 0), 0) };
         }
 
+        function syncOpcoesSupervisor(lista) {
+            const sel = document.getElementById('filtro-supervisor');
+            if (!sel) return;
+            const atual = sel.value;
+            const itens = Array.isArray(lista) ? lista : [];
+            const assinatura = itens.map(s => `${s.id}:${s.nome}`).join('|');
+            if (sel.dataset.assinatura === assinatura) return;
+            sel.dataset.assinatura = assinatura;
+            sel.innerHTML = '<option value="">Todos</option>';
+            itens.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = String(s.id);
+                opt.textContent = s.nome || String(s.id);
+                sel.appendChild(opt);
+            });
+            if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
+        }
+
         async function carregarDados() {
             const canal = document.getElementById('filtro-canal').value;
             const cluster = document.getElementById('filtro-cluster').value;
@@ -1471,6 +1505,8 @@
             if (gt) params.set('gestao_tipo', gt);
             if (gr !== undefined && gr !== null) params.set('gestao_ref_offset', gr);
             if (gmc) params.set('gestao_modo_comp', gmc);
+            const supervisor = document.getElementById('filtro-supervisor')?.value || '';
+            if (supervisor) params.set('supervisor', supervisor);
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
                 if (response.data.aviso) {
@@ -1479,7 +1515,11 @@
                 window.__gestaoPayload = response.data.gestao || null;
                 periodoPerformance = response.data.periodo || {};
                 window.__painelPayload = response.data;
+                syncOpcoesSupervisor(response.data.supervisores);
                 reRenderPainelPerformance();
+                if (document.getElementById('content-atuacao')?.classList.contains('active')) {
+                    carregarAtuacaoCampo();
+                }
             } catch (e) { console.error(e); }
         }
 
@@ -1517,6 +1557,8 @@
             params.set('canal', canal);
             params.set('cluster', cluster);
             params.set('vendedor_ativo', (vaEl ? vaEl.value : 'todos') || 'todos');
+            const supervisor = document.getElementById('filtro-supervisor')?.value || '';
+            if (supervisor) params.set('supervisor', supervisor);
             const gm = document.getElementById('gestao-meses')?.value;
             const gc = document.getElementById('gestao-comp-mes')?.value;
             const gv = document.getElementById('gestao-visao')?.value;
@@ -2333,7 +2375,8 @@
                     cluster: cluster,
                     tipo: tipo,
                     titulo: titulo,
-                    vendedor_ativo: vendedorAtivo || 'todos'
+                    vendedor_ativo: vendedorAtivo || 'todos',
+                    supervisor: document.getElementById('filtro-supervisor')?.value || '',
             };
             const pp = paramsPeriodoPerformance();
             if (pp.get('mes_referencia')) body.mes_referencia = pp.get('mes_referencia');
@@ -2389,25 +2432,31 @@
             
             tbody.innerHTML = '<tr><td colspan="10" class="text-center">Carregando...</td></tr>';
             
-            // Popula os vendedores se estiver vazio
             const selectVendedor = document.getElementById('atuacao-vendedor');
-            if (selectVendedor.options.length <= 1 && window.__painelPayload && window.__painelPayload.hoje) {
-                const vendedores = [...new Set(window.__painelPayload.hoje.map(x => x.vendedor).filter(v => v))].sort();
+            if (selectVendedor && window.__painelPayload && window.__painelPayload.hoje) {
+                const atualVend = selectVendedor.value;
+                const vendedores = [...new Set(window.__painelPayload.hoje.map(x => x.vendedor).filter(v => v))]
+                    .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+                selectVendedor.innerHTML = '<option value="">Todos Vendedores</option>';
                 vendedores.forEach(v => {
                     const opt = document.createElement('option');
                     opt.value = v;
                     opt.textContent = v;
                     selectVendedor.appendChild(opt);
                 });
+                if ([...selectVendedor.options].some(o => o.value === atualVend)) selectVendedor.value = atualVend;
             }
+            const vendedorSelecionado = selectVendedor ? selectVendedor.value : vendedor;
 
             try {
                 const params = new URLSearchParams();
                 params.set('metrica', metrica);
-                if (vendedor) params.set('vendedor', vendedor);
+                if (vendedorSelecionado) params.set('vendedor', vendedorSelecionado);
                 if (uf) params.set('uf', uf);
                 if (cidade) params.set('cidade', cidade);
                 if (bairro) params.set('bairro', bairro);
+                const supervisor = document.getElementById('filtro-supervisor')?.value || '';
+                if (supervisor) params.set('supervisor', supervisor);
                 if (agrupamentosUnicos.length > 0) params.set('agrupamento', agrupamentosUnicos.join(','));
                 
                 const res = await axios.get(`/api/crm/atuacao-campo/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -2496,7 +2545,13 @@
                     tbodyHtml += `<td class="fw-bold bg-total-column">${node.total_6m}</td></tr>`;
                     
                     if (hasChildren) {
-                        const sortedChildren = Object.values(node.children).sort((a,b) => b.total_6m - a.total_6m);
+                        const sortedChildren = Object.values(node.children).sort((a, b) => {
+                            const mesAtual = (b.totais[0] || 0) - (a.totais[0] || 0);
+                            if (mesAtual !== 0) return mesAtual;
+                            const total = (b.total_6m || 0) - (a.total_6m || 0);
+                            if (total !== 0) return total;
+                            return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' });
+                        });
                         sortedChildren.forEach(child => renderNode(child, level + 1, node.id));
                     }
                 }
@@ -2594,7 +2649,11 @@
                         tbodyHtmlD += `<td class="text-center fw-bold bg-total-column">${node.total_mes}</td></tr>`;
                         
                         if (hasChildren) {
-                            const sortedChildren = Object.values(node.children).sort((a,b) => b.total_mes - a.total_mes);
+                            const sortedChildren = Object.values(node.children).sort((a, b) => {
+                                const diff = (b.total_mes || 0) - (a.total_mes || 0);
+                                if (diff !== 0) return diff;
+                                return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' });
+                            });
                             sortedChildren.forEach(child => renderNodeD(child, level + 1, node.id));
                         }
                     }
@@ -2639,6 +2698,8 @@
             if (uf) params.set('uf', uf);
             if (cidade) params.set('cidade', cidade);
             if (bairro) params.set('bairro', bairro);
+            const supervisor = document.getElementById('filtro-supervisor')?.value || '';
+            if (supervisor) params.set('supervisor', supervisor);
             if (agrupamentosUnicos.length > 0) params.set('agrupamento', agrupamentosUnicos.join(','));
             
             const url = `/api/crm/atuacao-campo/exportar/?${params.toString()}`;
