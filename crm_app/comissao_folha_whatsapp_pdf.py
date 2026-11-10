@@ -262,10 +262,18 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
     ])
 
     if r.get("desconta_boleto_pap") is False:
-        parts.append(
-            '<div class="aviso">Regras por vendedor: <b>boleto não desconta no líquido</b>. '
-            "A linha de boleto abaixo mostra o valor cheio (informativo); o total de descontos já está sem esse valor.</div>"
-        )
+        if r.get("isencao_boleto_por_volume"):
+            limiar = r.get("isencao_boleto_min_vendas") or 30
+            aviso = (
+                f"Isenção por volume (≥ {limiar} instaladas): <b>boleto não desconta no líquido</b>. "
+                "A linha de boleto abaixo mostra o valor cheio (informativo); o total de descontos já está sem esse valor."
+            )
+        else:
+            aviso = (
+                "Regras por vendedor: <b>boleto não desconta no líquido</b>. "
+                "A linha de boleto abaixo mostra o valor cheio (informativo); o total de descontos já está sem esse valor."
+            )
+        parts.append('<div class="aviso">' + aviso + "</div>")
 
     detalhes = list(r.get("detalhes_descontos") or [])
     if detalhes:

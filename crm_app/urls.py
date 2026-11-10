@@ -89,6 +89,7 @@ from .views import (
     ConfigComissaoVendedorListView, ConfigComissaoVendedorDetailView,
     ConfigComissaoVendedorSalvarMesView,
     ConfigComissaoVendedorExportarView, ConfigComissaoVendedorImportarView,
+    ConfigIsencaoBoletoVolumeView,
     CampanhaListCreateView, CampanhaDetailView,
     
     # Dashboards e Importações
@@ -400,6 +401,7 @@ urlpatterns = [
     path('config-comissao-vendedor/exportar/', ConfigComissaoVendedorExportarView.as_view(), name='config-comissao-vendedor-exportar'),
     path('config-comissao-vendedor/importar/', ConfigComissaoVendedorImportarView.as_view(), name='config-comissao-vendedor-importar'),
     path('config-comissao-vendedor/<int:user_id>/', ConfigComissaoVendedorDetailView.as_view(), name='config-comissao-vendedor-detail'),
+    path('config-isencao-boleto-volume/', ConfigIsencaoBoletoVolumeView.as_view(), name='config-isencao-boleto-volume'),
 
     # --- Dashboards e Utilitários ---
     path('dashboard-resumo/', DashboardResumoView.as_view(), name='dashboard-resumo'),

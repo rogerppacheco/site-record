@@ -1630,6 +1630,82 @@ class ConfigComissaoVendedorImportarView(APIView):
         return Response({'importados': importados, 'erros': erros})
 
 
+class ConfigIsencaoBoletoVolumeView(APIView):
+    """
+    GET/PATCH config-isencao-boleto-volume/
+    Regra global: isentar desconto de boleto quando instaladas do mês >= limiar.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _pode_ver(self, user) -> bool:
+        return bool(user and (user.is_superuser or is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Supervisor'])))
+
+    def _pode_editar(self, user) -> bool:
+        return bool(user and (user.is_superuser or is_member(user, ['Diretoria', 'Admin'])))
+
+    def _payload(self, config) -> dict:
+        from crm_app.services.isencao_boleto_volume_service import (
+            serializar_config_isencao_boleto_volume,
+        )
+        data = serializar_config_isencao_boleto_volume(config)
+        data['pode_editar'] = False
+        return data
+
+    def get(self, request):
+        if not self._pode_ver(request.user):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        from crm_app.services.isencao_boleto_volume_service import get_config_isencao_boleto_volume
+        config = get_config_isencao_boleto_volume()
+        payload = self._payload(config)
+        payload['pode_editar'] = self._pode_editar(request.user)
+        return Response(payload)
+
+    def patch(self, request):
+        if not self._pode_editar(request.user):
+            return Response(
+                {'detail': 'Sem permissão para alterar a configuração.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        from datetime import date
+        from crm_app.services.folha_comissionamento_cache import invalidar_folha_mes
+        from crm_app.services.isencao_boleto_volume_service import get_config_isencao_boleto_volume
+
+        config = get_config_isencao_boleto_volume()
+        if 'ativo' in request.data:
+            raw = request.data.get('ativo')
+            if isinstance(raw, str):
+                config.ativo = raw.strip().upper() in ('1', 'TRUE', 'SIM', 'S', 'YES', 'ON')
+            else:
+                config.ativo = bool(raw)
+        if 'min_vendas_instaladas' in request.data:
+            try:
+                limiar = int(request.data.get('min_vendas_instaladas'))
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'min_vendas_instaladas deve ser um número inteiro.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if limiar < 1:
+                return Response(
+                    {'error': 'min_vendas_instaladas deve ser ≥ 1.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config.min_vendas_instaladas = limiar
+        config.atualizado_por = request.user
+        config.save()
+
+        hoje = date.today()
+        invalidar_folha_mes(hoje.year, hoje.month)
+        mes_ant = 12 if hoje.month == 1 else hoje.month - 1
+        ano_ant = hoje.year - 1 if hoje.month == 1 else hoje.year
+        invalidar_folha_mes(ano_ant, mes_ant)
+
+        payload = self._payload(config)
+        payload['pode_editar'] = True
+        payload['detail'] = 'Configuração salva.'
+        return Response(payload)
+
+
 class ComunicadoViewSet(viewsets.ModelViewSet):
     queryset = Comunicado.objects.select_related('criado_por', 'vendedor').all().order_by('-id')
     serializer_class = ComunicadoSerializer
@@ -10376,6 +10452,7 @@ class PendenciasDescontoView(APIView):
 
         ano = request.query_params.get('ano')
         mes = request.query_params.get('mes')
+        filtro_mes_aplicado = False
         if ano and mes:
             try:
                 ano, mes = int(ano), int(mes)
@@ -10389,10 +10466,23 @@ class PendenciasDescontoView(APIView):
                         data_instalacao__gte=data_inicio,
                         data_instalacao__lt=data_fim,
                     )
+                    filtro_mes_aplicado = True
             except (TypeError, ValueError):
                 pass
 
         pendencias = []
+        vendedores_isentos_boleto = set()
+        if filtro_mes_aplicado:
+            from collections import Counter
+            from crm_app.services.isencao_boleto_volume_service import (
+                deve_isentar_desconto_boleto_por_volume,
+                get_config_isencao_boleto_volume,
+            )
+            cfg_isencao = get_config_isencao_boleto_volume()
+            contagem = Counter(v.vendedor_id for v in vendas if v.vendedor_id)
+            for vid, qtd in contagem.items():
+                if deve_isentar_desconto_boleto_por_volume(qtd, config=cfg_isencao):
+                    vendedores_isentos_boleto.add(vid)
 
         for v in vendas:
             consultor = v.vendedor
@@ -10407,9 +10497,14 @@ class PendenciasDescontoView(APIView):
                 val = float(consultor.adiantamento_cnpj or 0)
                 if val > 0: pendencias.append(self._montar_obj(v, 'CNPJ', val, 'Adiantamento CNPJ'))
 
-            if elegivel_desconto_boleto_folha(v) and not v.flag_desc_boleto:
+            if (
+                elegivel_desconto_boleto_folha(v)
+                and not v.flag_desc_boleto
+                and consultor.id not in vendedores_isentos_boleto
+            ):
                 val = float(consultor.desconto_boleto or 0)
-                if val > 0: pendencias.append(self._montar_obj(v, 'BOLETO', val, 'Desconto Boleto'))
+                if val > 0:
+                    pendencias.append(self._montar_obj(v, 'BOLETO', val, 'Desconto Boleto'))
 
             if v.inclusao and not v.flag_desc_viabilidade:
                 val = float(consultor.desconto_inclusao_viabilidade or 0)

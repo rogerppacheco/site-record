@@ -197,6 +197,11 @@ def gerar_relatorio_comissionamento(
         stats_descontos: dict[str, float] = defaultdict(float)
         stats_bonus: dict[str, float] = defaultdict(float)
 
+        from crm_app.services.isencao_boleto_volume_service import (
+            deve_isentar_desconto_boleto_por_volume,
+        )
+        isento_boleto_volume = deve_isentar_desconto_boleto_por_volume(qtd_instaladas)
+
         for v in vendas:
             tipo_cliente, canal_vendedor = _tipo_cliente_e_canal(v, consultor)
             regra = _encontrar_regra_comissao(
@@ -223,7 +228,7 @@ def gerar_relatorio_comissionamento(
                 elegivel_desconto_boleto_folha,
             )
 
-            if elegivel_desconto_boleto_folha(v):
+            if elegivel_desconto_boleto_folha(v) and not isento_boleto_volume:
                 if not v.flag_desc_boleto:
                     val = float(consultor.desconto_boleto or 0)
                     if val > 0:

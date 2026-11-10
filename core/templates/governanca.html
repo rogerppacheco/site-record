@@ -385,6 +385,33 @@
             
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
+                <div class="card border-info mb-3" id="card-isencao-boleto-volume">
+                    <div class="card-body py-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                            <div>
+                                <h6 class="mb-1 text-primary"><i class="bi bi-sliders"></i> Isenção de boleto por volume</h6>
+                                <p class="small text-muted mb-0">Regra global: vendedor com instaladas do mês ≥ limiar não sofre o desconto de boleto no líquido da folha. O toggle individual &quot;Desconta Boleto PAP?&quot; continua valendo abaixo do limiar.</p>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-primary" id="btn-salvar-isencao-boleto-volume" onclick="salvarConfigIsencaoBoletoVolume()"><i class="bi bi-check-lg"></i> Salvar</button>
+                        </div>
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small mb-1">Isentar boleto por volume?</label>
+                                <select id="cfg_isencao_boleto_ativo" class="form-select form-select-sm">
+                                    <option value="SIM">SIM</option>
+                                    <option value="NÃO">NÃO</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small mb-1">A partir de quantas vendas</label>
+                                <input type="number" id="cfg_isencao_boleto_min" class="form-control form-control-sm" min="1" step="1" value="30">
+                            </div>
+                            <div class="col-md-6">
+                                <span class="small text-muted" id="cfg_isencao_boleto_hint">Padrão: ≥ 30 vendas instaladas no mês.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="card">
                     <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'cidades_oferta_tab'); carregarCidadesOfertaEspecial();">Cidades Oferta Especial</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar');">Bônus e Descontos</button></li></ul></div>
                     <div class="card-body">
@@ -3844,7 +3871,56 @@
             const tbody = document.getElementById('tbody-matriz-comissao');
             if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || e}</td></tr>`;
         }
+        carregarConfigIsencaoBoletoVolume();
     }
+
+    async function carregarConfigIsencaoBoletoVolume() {
+        const elAtivo = document.getElementById('cfg_isencao_boleto_ativo');
+        const elMin = document.getElementById('cfg_isencao_boleto_min');
+        const elHint = document.getElementById('cfg_isencao_boleto_hint');
+        const btn = document.getElementById('btn-salvar-isencao-boleto-volume');
+        if (!elAtivo || !elMin) return;
+        try {
+            const c = await apiFetch('/crm/config-isencao-boleto-volume/');
+            elAtivo.value = c.ativo !== false ? 'SIM' : 'NÃO';
+            elMin.value = c.min_vendas_instaladas != null ? c.min_vendas_instaladas : 30;
+            const podeEditar = c.pode_editar !== false;
+            elAtivo.disabled = !podeEditar;
+            elMin.disabled = !podeEditar;
+            if (btn) btn.disabled = !podeEditar;
+            if (elHint) {
+                elHint.textContent = c.ativo !== false
+                    ? `Ativa: com ≥ ${elMin.value} vendas instaladas no mês, o desconto de boleto não entra no líquido.`
+                    : 'Regra desligada: desconto de boleto segue apenas as regras por vendedor.';
+            }
+        } catch (e) {
+            if (elHint) elHint.textContent = 'Não foi possível carregar a config: ' + (e.message || e);
+        }
+    }
+
+    window.salvarConfigIsencaoBoletoVolume = async function() {
+        const elAtivo = document.getElementById('cfg_isencao_boleto_ativo');
+        const elMin = document.getElementById('cfg_isencao_boleto_min');
+        if (!elAtivo || !elMin) return;
+        const minVal = parseInt(elMin.value, 10);
+        if (!Number.isFinite(minVal) || minVal < 1) {
+            alert('Informe um limiar válido (≥ 1).');
+            return;
+        }
+        try {
+            const c = await apiFetch('/crm/config-isencao-boleto-volume/', {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    ativo: elAtivo.value === 'SIM',
+                    min_vendas_instaladas: minVal,
+                }),
+            });
+            alert(c.detail || 'Configuração salva.');
+            await carregarConfigIsencaoBoletoVolume();
+        } catch (e) {
+            alert('Erro ao salvar: ' + (e.message || e));
+        }
+    };
     async function exportarRegrasFaixa() {
         const token = localStorage.getItem('accessToken');
         const url = (typeof apiUrl !== 'undefined' ? apiUrl : '') + '/api/crm/regras-comissao-faixa/exportar/?formato=xlsx';

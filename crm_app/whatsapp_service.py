@@ -441,9 +441,20 @@ class WhatsAppService:
             if r.get('desconta_boleto_pap') is False:
                 d.line([(20, y), (W - 20, y)], fill=cor_borda)
                 y += 10
+                if r.get('isencao_boleto_por_volume'):
+                    limiar = r.get('isencao_boleto_min_vendas') or 30
+                    msg_boleto = (
+                        f'Atenção: boleto não entra no líquido (isenção por volume ≥ {limiar}); '
+                        'linha de boleto = valor cheio.'
+                    )
+                else:
+                    msg_boleto = (
+                        'Atenção: boleto não entra no líquido (Regras vendedor); '
+                        'linha de boleto = valor cheio.'
+                    )
                 d.text(
                     (20, y),
-                    'Atenção: boleto não entra no líquido (Regras vendedor); linha de boleto = valor cheio.',
+                    msg_boleto,
                     fill=(200, 120, 0),
                     font=font_sm,
                 )

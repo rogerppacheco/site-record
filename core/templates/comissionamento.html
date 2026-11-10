@@ -606,7 +606,7 @@
                         <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
                         <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
                     </div>
-                    ${r.desconta_boleto_pap === false ? '<div class="px-3 pb-2"><div class="alert alert-warning py-1 px-2 small mb-0">Regras por vendedor: <strong>boleto não desconta no líquido</strong>. A linha de boleto abaixo mostra o valor cheio (informativo); o total de descontos já está sem esse valor.</div></div>' : ''}
+                    ${r.desconta_boleto_pap === false ? `<div class="px-3 pb-2"><div class="alert alert-warning py-1 px-2 small mb-0">${r.isencao_boleto_por_volume ? `Isenção por volume (≥ ${r.isencao_boleto_min_vendas || 30} instaladas): <strong>boleto não desconta no líquido</strong>.` : 'Regras por vendedor: <strong>boleto não desconta no líquido</strong>.'} A linha de boleto abaixo mostra o valor cheio (informativo); o total de descontos já está sem esse valor.</div></div>` : ''}
                     ${(r.detalhes_descontos && r.detalhes_descontos.length) ? (function(){
                         const list = r.detalhes_descontos;
                         const folhaBoleto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'folha_boleto_vendas');

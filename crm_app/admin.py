@@ -3,7 +3,7 @@ from .models import (
     SafraM10, ContratoM10, FaturaM10, HistoricoBuscaFatura,
     ImportacaoAgendamento, ImportacaoRecompra, ImportacaoFPD, LogImportacaoFPD,
     ImportacaoChurn, LogImportacaoChurn, PapBoEmUso, FilaEsperaPAP,
-    RegraComissaoFaixa, ConfigComissaoVendedor,
+    RegraComissaoFaixa, ConfigComissaoVendedor, ConfigIsencaoBoletoVolume,
     ImportacaoEstabelecimentoCNPJ, LogImportacaoEstabelecimentoCNPJ,
     CepLocalidade,
     FunilVendaWppTentativa, FunilVendaWppEvento,
@@ -296,6 +296,13 @@ class ConfigComissaoVendedorAdmin(admin.ModelAdmin):
     list_filter = ('perfil_comissao', 'usar_valor_manual')
     search_fields = ('usuario__username',)
     raw_id_fields = ('usuario',)
+
+
+@admin.register(ConfigIsencaoBoletoVolume)
+class ConfigIsencaoBoletoVolumeAdmin(admin.ModelAdmin):
+    list_display = ('ativo', 'min_vendas_instaladas', 'atualizado_em', 'atualizado_por')
+    list_filter = ('ativo',)
+    readonly_fields = ('atualizado_em',)
 
 
 @admin.register(CidadeOfertaEspecial)

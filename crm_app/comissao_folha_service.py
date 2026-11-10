@@ -1153,6 +1153,12 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         ):
             vendas_outros_bulk[v_out.vendedor_id].append(v_out)
 
+    from crm_app.services.isencao_boleto_volume_service import (
+        deve_isentar_desconto_boleto_por_volume,
+        get_config_isencao_boleto_volume,
+    )
+    cfg_isencao_boleto = get_config_isencao_boleto_volume()
+
     resultado = []
     for consultor in consultores:
         vendas = vendas_bulk_m0.get(consultor.id, [])
@@ -1557,9 +1563,15 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         # Boleto: CPF e CNPJ MEI instalados no mês (inclui sábado quitado; exclui comissão antecipada na esteira). NMEI isento.
         # "Desconta Boleto PAP?" vem da Config. Comissão do mês em Regras por vendedor (vale também com comissão manual).
+        # Isenção global por volume (≥ N instaladas) zera o desconto no líquido (Governança).
         from crm_app.services.cnpj_mei_service import elegivel_desconto_boleto_folha
 
         desconta_boleto_pap = bool(getattr(config, 'desconta_boleto_pap', True)) if config else True
+        isencao_boleto_por_volume = deve_isentar_desconto_boleto_por_volume(
+            qtd_total_instalada, config=cfg_isencao_boleto
+        )
+        if isencao_boleto_por_volume:
+            desconta_boleto_pap = False
         qtd_vendas_boleto_mes = sum(1 for v in vendas if elegivel_desconto_boleto_folha(v))
         qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
         unit_bo = float(getattr(consultor, 'desconto_boleto', None) or 0)
@@ -1919,6 +1931,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'detalhes_bonus': detalhes_bonus,
                 'detalhes_descontos': detalhes_descontos,
                 'desconta_boleto_pap': desconta_boleto_pap,
+                'isencao_boleto_por_volume': isencao_boleto_por_volume,
+                'isencao_boleto_min_vendas': int(
+                    getattr(cfg_isencao_boleto, 'min_vendas_instaladas', 30) or 30
+                ),
                 'qtd_a_descontar': qtd_a_descontar,
                 'qtd_a_descontar_boleto': qtd_a_descontar_boleto,
                 'qtd_a_descontar_antecip': qtd_a_descontar_antecip,

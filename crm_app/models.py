@@ -1772,6 +1772,38 @@ class ConfigComissaoVendedor(models.Model):
         return f"Config comissão: {self.usuario.username}{ref}"
 
 
+class ConfigIsencaoBoletoVolume(models.Model):
+    """
+    Configuração global: isenta o desconto de boleto na folha quando o vendedor
+    atinge um mínimo de vendas instaladas no mês (ex.: ≥ 30).
+    Singleton (uma linha). Toggle e limiar editáveis na Governança.
+    """
+    ativo = models.BooleanField(
+        default=True,
+        verbose_name='Isentar boleto por volume?',
+        help_text='Se ativo, vendedores com instaladas do mês ≥ limiar não sofrem desconto de boleto no líquido.',
+    )
+    min_vendas_instaladas = models.PositiveIntegerField(
+        default=30,
+        verbose_name='A partir de quantas vendas instaladas',
+        help_text='Quantidade mínima de vendas instaladas no mês para zerar o desconto de boleto (≥).',
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+
+    class Meta:
+        db_table = 'crm_config_isencao_boleto_volume'
+        verbose_name = 'Config. Isenção Boleto por Volume'
+        verbose_name_plural = 'Config. Isenção Boleto por Volume'
+
+    def __str__(self):
+        estado = 'ativa' if self.ativo else 'inativa'
+        return f'Isenção boleto por volume ({estado}, ≥{self.min_vendas_instaladas})'
+
+
 class PlanoValoresComissaoVendedor(models.Model):
     """Override de comissão por plano na config do vendedor (além das colunas fixas por banda)."""
     config = models.ForeignKey(
