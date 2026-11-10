@@ -2061,6 +2061,12 @@ class VendaViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super(VendaViewSet, self).get_serializer_context()
         context.update({"request": self.request})
+        # Cache único por request — evita N+1 ao marcar região BTU 50% na esteira.
+        if self.action in ('list', 'pendentes_auditoria', 'retrieve'):
+            from crm_app.services.comissao_cidade_especial_service import (
+                carregar_cidades_oferta_especial,
+            )
+            context['cidades_oferta_especial_cache'] = carregar_cidades_oferta_especial()
         return context
 
     def get_serializer_class(self):

@@ -711,7 +711,9 @@ def resolver_valor_comissao_venda(
         return None
 
     if usar_manual:
-        return get_valor_manual(config, chave, plano, matriz_cache=matriz_cache)
+        return get_valor_manual(
+            config, chave, plano, matriz_cache=matriz_cache, tipo_cliente=tipo_cliente,
+        )
     if faixa_regra and plano:
         v = get_valor_faixa_plano(faixa_regra, plano, tipo_cliente, matriz_cache=matriz_cache)
         if v is not None:
@@ -733,20 +735,21 @@ def get_valor_manual(config, chave, plano=None, matriz_cache=None, tipo_cliente:
         else:
             tipo = 'CPF'
         v_plano = get_valor_manual_vendedor_plano(config, plano, tipo, matriz_cache=matriz_cache)
-        if v_plano is not None:
+        if v_plano is not None and v_plano > 0:
             return v_plano
     if not config or not chave:
         return None
+    chave_lookup = chave_legado_lookup(chave) or chave
     m = {
-        '500MB_PAP': config.valor_500mb_pap_manual,
-        '700MB_PAP': config.valor_700mb_pap_manual,
-        '1GB_PAP': config.valor_1gb_pap_manual,
-        '500MB_CNPJ': config.valor_500mb_cnpj_manual,
-        '700MB_CNPJ': config.valor_700mb_cnpj_manual,
-        '1GB_CNPJ': config.valor_1gb_cnpj_manual,
+        '500MB_PAP': getattr(config, 'valor_500mb_pap_manual', None),
+        '700MB_PAP': getattr(config, 'valor_700mb_pap_manual', None),
+        '1GB_PAP': getattr(config, 'valor_1gb_pap_manual', None),
+        '500MB_CNPJ': getattr(config, 'valor_500mb_cnpj_manual', None),
+        '700MB_CNPJ': getattr(config, 'valor_700mb_cnpj_manual', None),
+        '1GB_CNPJ': getattr(config, 'valor_1gb_cnpj_manual', None),
     }
-    v = m.get(chave)
-    return float(v) if v is not None else None
+    v = m.get(chave_lookup)
+    return float(v) if v is not None and float(v) > 0 else None
 
 
 def origem_adiantamento_comissao_venda(venda) -> str | None:

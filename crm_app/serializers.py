@@ -472,6 +472,8 @@ class VendaSerializer(serializers.ModelSerializer):
     status_comissionamento_nome = serializers.CharField(source='status_comissionamento.nome', read_only=True)
     
     plano_nome = serializers.CharField(source='plano.nome', read_only=True)
+    # Município da venda está na lista de oferta especial (ex.: 50% BTU).
+    cidade_oferta_especial = serializers.SerializerMethodField()
     forma_pagamento_nome = serializers.CharField(source='forma_pagamento.nome', read_only=True)
     motivo_pendencia_nome = serializers.CharField(source='motivo_pendencia.nome', read_only=True, allow_null=True)
     motivo_pendencia_tipo = serializers.CharField(
@@ -508,7 +510,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'id', 'pedido_pap', 'vendedor', 'vendedor_nome', 'vendedor_matricula_pap', 'vendedor_recebe_adiantamento_sabado', 'cliente_id',
             'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
             'classificacao_mei', 'classificacao_mei_descricao',
-            'plano_nome', 'valor_plano_pap', 'forma_pagamento_nome',
+            'plano_nome', 'cidade_oferta_especial', 'valor_plano_pap', 'forma_pagamento_nome',
             'status_tratamento', 'status_tratamento_nome',
             'status_esteira', 'status_esteira_nome',
             'status_comissionamento', 'status_comissionamento_nome',
@@ -567,6 +569,14 @@ class VendaSerializer(serializers.ModelSerializer):
         from crm_app.services.cnpj_mei_service import classificacao_mei_venda, rotulo_classificacao_mei
         doc = obj.cliente.cpf_cnpj if obj.cliente_id else ''
         return rotulo_classificacao_mei(classificacao_mei_venda(obj), documento=doc)
+
+    def get_cidade_oferta_especial(self, obj) -> bool:
+        """True quando cidade/UF da venda está na lista de oferta especial (BTU 50%)."""
+        from crm_app.services.comissao_cidade_especial_service import (
+            venda_em_cidade_oferta_especial,
+        )
+        cache = self.context.get('cidades_oferta_especial_cache')
+        return venda_em_cidade_oferta_especial(obj, cache=cache)
 
 
 class VendaListSerializer(VendaSerializer):

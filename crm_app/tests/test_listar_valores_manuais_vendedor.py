@@ -79,3 +79,42 @@ class ListarValoresManuaisVendedorTest(SimpleTestCase):
 
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]['plano_id'], 1)
+
+    def test_preenche_ativos_sem_celula_a_partir_das_colunas_legadas_ou_equivalente(self) -> None:
+        plano_600 = SimpleNamespace(
+            id=24, nome='NIO FIBRA 600MB', ativo=True, operadora_id=1,
+            operadora=SimpleNamespace(nome='NIO'),
+        )
+        plano_700 = SimpleNamespace(
+            id=25, nome='NIO ESSENCIAL 700MB', ativo=True, operadora_id=1,
+            operadora=SimpleNamespace(nome='NIO'),
+        )
+        config = SimpleNamespace(
+            id=51,
+            valor_500mb_pap_manual=Decimal('200.00'),
+            valor_500mb_cnpj_manual=Decimal('250.00'),
+            valor_700mb_pap_manual=Decimal('220.00'),
+            valor_700mb_cnpj_manual=Decimal('280.00'),
+        )
+
+        qs_planos = MagicMock()
+        qs_planos.select_related.return_value.order_by.return_value = [plano_600, plano_700]
+        qs_existentes = MagicMock()
+        qs_existentes.select_related.return_value = []
+
+        with (
+            patch('crm_app.services.comissao_matriz_service.Plano') as PlanoMock,
+            patch(
+                'crm_app.services.comissao_matriz_service.PlanoValoresComissaoVendedor'
+            ) as PvcMock,
+        ):
+            PlanoMock.objects.filter.return_value = qs_planos
+            PvcMock.objects.filter.return_value = qs_existentes
+            out = listar_valores_manuais_vendedor(config)
+
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]['valor_pap'], 200.0)
+        self.assertEqual(out[0]['valor_cnpj'], 250.0)
+        self.assertEqual(out[1]['valor_pap'], 220.0)
+        self.assertEqual(out[1]['valor_cnpj'], 280.0)
+

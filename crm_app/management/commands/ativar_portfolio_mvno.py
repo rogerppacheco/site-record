@@ -165,7 +165,8 @@ class Command(BaseCommand):
             raise CommandError(f'Não foi possível identificar a operadora Nio. Informe --operadora-id ({nomes}).')
         return candidatas[0]
 
-    def _escolher_referencia(self, banda: str | None, referencias: list[Plano]) -> Plano | None:
+    def _escolher_referencias(self, banda: str | None, referencias: list[Plano]) -> list[Plano]:
+        ordenadas: list[Plano] = []
         for banda_ref in BANDAS_REFERENCIA.get(banda or '', []):
             candidatos = [p for p in referencias if _plano_nome_to_banda(p) == banda_ref]
             if not candidatos:
@@ -176,8 +177,12 @@ class Command(BaseCommand):
                 personalizado = bool(vc and vc.banda_comissao == 'PERSONALIZADO')
                 return (not p.ativo, personalizado, 'SEM MESH' in (p.nome or '').upper(), p.id)
 
-            return sorted(candidatos, key=prioridade)[0]
-        return None
+            ordenadas.extend(sorted(candidatos, key=prioridade))
+        return ordenadas
+
+    def _escolher_referencia(self, banda: str | None, referencias: list[Plano]) -> Plano | None:
+        refs = self._escolher_referencias(banda, referencias)
+        return refs[0] if refs else None
 
     def _criar_ou_atualizar_novos(self, operadora: Operadora, referencias: list[Plano]) -> None:
         from crm_app.services.comissao_matriz_service import sincronizar_plano_em_todas_faixas
@@ -205,7 +210,8 @@ class Command(BaseCommand):
                     setattr(plano, attr, val)
 
             banda = _plano_nome_to_banda(plano)
-            ref = self._escolher_referencia(banda, referencias)
+            refs = self._escolher_referencias(banda, referencias)
+            ref = refs[0] if refs else None
             if criado and ref is not None:
                 plano.comissao_base = ref.comissao_base
             plano.save()
@@ -219,24 +225,33 @@ class Command(BaseCommand):
             if plano.valor_cartao is None:
                 self.stdout.write(self.style.WARNING('      Valor no cartão não informado na apresentação.'))
 
-            if ref is not None:
-                self._copiar_comissao(ref, plano)
+            if refs:
+                self._copiar_comissao(refs, plano)
             sincronizar_plano_em_todas_faixas(plano)
             if not ComissaoOperadora.objects.filter(plano=plano).exists():
                 ComissaoOperadora.objects.create(plano=plano, valor_base=Decimal('0'))
 
-    def _copiar_comissao(self, ref: Plano, plano: Plano) -> None:
-        for row in RegraComissaoFaixaPlano.objects.filter(plano=ref):
-            RegraComissaoFaixaPlano.objects.get_or_create(
-                faixa_id=row.faixa_id, plano=plano,
-                defaults={'valor_pap': row.valor_pap, 'valor_cnpj': row.valor_cnpj},
-            )
-        for row in PlanoValoresComissaoVendedor.objects.filter(plano=ref):
-            PlanoValoresComissaoVendedor.objects.get_or_create(
-                config_id=row.config_id, plano=plano,
-                defaults={'valor_pap': row.valor_pap, 'valor_cnpj': row.valor_cnpj},
-            )
-        vc_ref = PlanoValoresComissao.objects.filter(plano=ref).first()
+    def _copiar_comissao(self, refs: list[Plano] | Plano, plano: Plano) -> None:
+        lista_refs = [refs] if isinstance(refs, Plano) else list(refs)
+        if not lista_refs:
+            return
+        ref_principal = lista_refs[0]
+        for cand in lista_refs:
+            for row in RegraComissaoFaixaPlano.objects.filter(plano=cand):
+                RegraComissaoFaixaPlano.objects.get_or_create(
+                    faixa_id=row.faixa_id, plano=plano,
+                    defaults={'valor_pap': row.valor_pap, 'valor_cnpj': row.valor_cnpj},
+                )
+            for row in PlanoValoresComissaoVendedor.objects.filter(plano=cand):
+                PlanoValoresComissaoVendedor.objects.get_or_create(
+                    config_id=row.config_id, plano=plano,
+                    defaults={'valor_pap': row.valor_pap, 'valor_cnpj': row.valor_cnpj},
+                )
+        vc_ref = None
+        for cand in lista_refs:
+            vc_ref = PlanoValoresComissao.objects.filter(plano=cand).first()
+            if vc_ref:
+                break
         if vc_ref and not PlanoValoresComissao.objects.filter(plano=plano).exists():
             PlanoValoresComissao.objects.create(
                 plano=plano,
@@ -249,7 +264,7 @@ class Command(BaseCommand):
                 propagar_faixas=False,
                 propagar_vendedores=vc_ref.propagar_vendedores,
             )
-        co_ref = ComissaoOperadora.objects.filter(plano=ref).first()
+        co_ref = ComissaoOperadora.objects.filter(plano=ref_principal).first()
         if co_ref and not ComissaoOperadora.objects.filter(plano=plano).exists():
             ComissaoOperadora.objects.create(plano=plano, valor_base=co_ref.valor_base)
 

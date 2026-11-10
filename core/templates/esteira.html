@@ -4678,9 +4678,12 @@ min-width: 100%;
                     // Vendedor
                     let nomeVendedor = v.vendedor_nome || getNomeUsuario(v.vendedor) || 'N/A';
                     
-                    // Plano
+                    // Plano (+ badge região BTU 50% / oferta especial)
                     let nomePlano = v.plano_nome || '-';
                     if (nomePlano === '-' && v.plano && v.plano.nome) nomePlano = v.plano.nome;
+                    const badgeBtu50 = v.cidade_oferta_especial
+                        ? ' <span class="badge bg-warning text-dark" title="Região com 50% de desconto (BTU)">BTU 50%</span>'
+                        : '';
                     let statusAdiantCnpj = '-';
                     let statusAdiantComissao = '-';
                     let seletorComissao = '';
@@ -4984,7 +4987,7 @@ min-width: 100%;
                             <td data-esteira-col="adiant_cnpj" data-label="Adiant. CNPJ">${celulaAdiantCnpj}</td>
                             <td data-esteira-col="adiant_comissao" data-label="Adiant. comissão">${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
                             <td data-esteira-col="adiant_sabado" data-label="Adiant. sábado">${celulaAdiantSabado}</td>
-                            <td data-esteira-col="plano" data-label="Plano"><span class="d-inline-block text-break">${nomePlano}</span></td>
+                            <td data-esteira-col="plano" data-label="Plano"><span class="d-inline-block text-break">${nomePlano}${badgeBtu50}</span></td>
                             <td data-esteira-col="conf" class="esteira-col-conf small" data-label="Conf. cliente">${confCliente}</td>
                             <td data-esteira-col="posso_antecip" class="esteira-col-posso-antecip small" data-label="Posso antecipar?">${possoAntecip}</td>
                             <td data-esteira-col="posso_reagendar" class="esteira-col-posso-reagendar small" data-label="Posso reagendar?">${possoReagendar}</td>

@@ -7,9 +7,11 @@ from django.test import SimpleTestCase
 
 from crm_app.comissao_folha_service import (
     _banda_legado_comissao,
+    chave_agrupamento_folha,
     chave_linha_folha,
     estimar_comissao_instaladas_vendedor,
     label_linha_folha,
+    label_plano_folha,
     plano_tipo_to_chave,
     resolver_valor_comissao_venda,
 )
@@ -386,11 +388,11 @@ class AgrupamentoPlanoCadastradoTest(SimpleTestCase):
     def test_plano_fora_da_grade_excel_ainda_agrupa(self) -> None:
         plano = MagicMock()
         plano.id = 18
-        plano.nome = 'BLINK 800MB'
+        plano.nome = 'BLINK 300MB'
         venda = MagicMock(plano=plano, plano_id=18)
-        self.assertIsNone(plano_tipo_to_chave('BLINK 800MB', 'CPF'))
+        self.assertIsNone(plano_tipo_to_chave('BLINK 300MB', 'CPF'))
         self.assertEqual(chave_agrupamento_folha(venda, 'CPF'), 'plano_18_PAP')
-        self.assertEqual(label_plano_folha(venda, 'CPF'), 'BLINK 800MB PAP')
+        self.assertEqual(label_plano_folha(venda, 'CPF'), 'BLINK 300MB PAP')
 
     def test_venda_sem_plano_aparece_como_sem_plano(self) -> None:
         venda = MagicMock(plano=None, plano_id=None)
@@ -411,3 +413,74 @@ class AgrupamentoPlanoCadastradoTest(SimpleTestCase):
                 chave=None,
             )
         self.assertEqual(valor, 45.0)
+
+    def test_outubro_manual_600mb_cai_na_coluna_500mb_quando_sem_celula(self) -> None:
+        plano = MagicMock(id=24, nome='NIO FIBRA 600MB')
+        venda = SimpleNamespace(
+            data_instalacao=date(2026, 10, 15),
+            data_instalacao_fisica=None,
+            data_folha_comissao=None,
+            data_pedido=None,
+            data_criacao=None,
+            cidade='SAO PAULO',
+            estado='SP',
+        )
+        config = SimpleNamespace(
+            id=51,
+            valor_500mb_pap_manual=Decimal('200.00'),
+            valor_700mb_pap_manual=Decimal('220.00'),
+            valor_1gb_pap_manual=Decimal('240.00'),
+            valor_500mb_cnpj_manual=Decimal('250.00'),
+            valor_700mb_cnpj_manual=Decimal('280.00'),
+            valor_1gb_cnpj_manual=Decimal('300.00'),
+        )
+        with (
+            patch(
+                'crm_app.services.comissao_cidade_especial_service.resolver_valor_cidade_especial',
+                return_value=None,
+            ),
+            patch(
+                'crm_app.services.comissao_matriz_service.get_valor_manual_vendedor_plano',
+                return_value=None,
+            ),
+        ):
+            valor = resolver_valor_comissao_venda(
+                plano,
+                'CPF',
+                faixa_regra=None,
+                config=config,
+                usar_manual=True,
+                chave='600MB_PAP',
+                venda=venda,
+            )
+        self.assertEqual(valor, 200.0)
+
+    def test_manual_700mb_herda_de_plano_800mb_equivalente_na_mesma_config(self) -> None:
+        from crm_app.services.comissao_matriz_service import (
+            MatrizComissaoCache,
+            get_valor_manual_vendedor_plano,
+        )
+
+        plano_700 = SimpleNamespace(id=25, nome='NIO ESSENCIAL 700MB', gdp_velocidade_mbps=700)
+        plano_800 = SimpleNamespace(id=26, nome='NIO SUPER 800MB', gdp_velocidade_mbps=800)
+        row_800 = SimpleNamespace(
+            config_id=13,
+            plano_id=26,
+            plano=plano_800,
+            valor_pap=Decimal('220.00'),
+            valor_cnpj=Decimal('280.00'),
+        )
+        cache = MatrizComissaoCache()
+        cache._manual_config[(13, 26)] = row_800
+        cache._manual_por_config[13] = [row_800]
+        config = SimpleNamespace(id=13)
+
+        self.assertEqual(
+            get_valor_manual_vendedor_plano(config, plano_700, 'CPF', matriz_cache=cache),
+            220.0,
+        )
+        self.assertEqual(
+            get_valor_manual_vendedor_plano(config, plano_700, 'CNPJ', matriz_cache=cache),
+            280.0,
+        )
+

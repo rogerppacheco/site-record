@@ -28,6 +28,7 @@ class MatrizComissaoCache:
     def __init__(self) -> None:
         self._faixa_plano: dict[tuple[int, int], RegraComissaoFaixaPlano] = {}
         self._manual_config: dict[tuple[int, int], PlanoValoresComissaoVendedor] = {}
+        self._manual_por_config: dict[int, list[PlanoValoresComissaoVendedor]] = {}
 
     @classmethod
     def carregar(cls, config_ids: list[int] | None = None) -> 'MatrizComissaoCache':
@@ -41,11 +42,12 @@ class MatrizComissaoCache:
                 exc,
             )
         try:
-            qs_manual = PlanoValoresComissaoVendedor.objects.all()
+            qs_manual = PlanoValoresComissaoVendedor.objects.select_related('plano').all()
             if config_ids:
                 qs_manual = qs_manual.filter(config_id__in=config_ids)
             for row in qs_manual:
                 inst._manual_config[(row.config_id, row.plano_id)] = row
+                inst._manual_por_config.setdefault(row.config_id, []).append(row)
         except DatabaseError as exc:
             logger.warning(
                 "[MATRIZ_CACHE] Valores manuais por plano indisponíveis (%s) — fallback legado",
@@ -57,7 +59,8 @@ class MatrizComissaoCache:
 def _decimal_or_none(val: Any) -> Decimal | None:
     if val is None or val == '':
         return None
-    return Decimal(str(val))
+    dec = Decimal(str(val))
+    return dec if dec > 0 else None
 
 
 def _legacy_valores_faixa_banda(faixa: RegraComissaoFaixa, banda: str) -> tuple[Decimal | None, Decimal | None]:
@@ -71,6 +74,91 @@ def _legacy_valores_faixa_banda(faixa: RegraComissaoFaixa, banda: str) -> tuple[
     if banda_ref == '1GB':
         return faixa.valor_1gb_pap, faixa.valor_1gb_cnpj
     return None, None
+
+
+def _legacy_valores_manual_banda(
+    config: ConfigComissaoVendedor | Any,
+    banda: str,
+) -> tuple[Decimal | None, Decimal | None]:
+    from crm_app.comissao_folha_service import _banda_legado_comissao
+
+    banda_ref = _banda_legado_comissao(banda)
+    if banda_ref == '500MB':
+        return (
+            getattr(config, 'valor_500mb_pap_manual', None),
+            getattr(config, 'valor_500mb_cnpj_manual', None),
+        )
+    if banda_ref == '700MB':
+        return (
+            getattr(config, 'valor_700mb_pap_manual', None),
+            getattr(config, 'valor_700mb_cnpj_manual', None),
+        )
+    if banda_ref == '1GB':
+        return (
+            getattr(config, 'valor_1gb_pap_manual', None),
+            getattr(config, 'valor_1gb_cnpj_manual', None),
+        )
+    return None, None
+
+
+def _eh_sem_mesh(plano: Any) -> bool:
+    nome = (getattr(plano, 'nome', None) or '').upper()
+    return 'SEM MESH' in nome
+
+
+def _buscar_valor_manual_plano_equivalente(
+    plano: Any,
+    tipo_cliente: str,
+    rows_config: list[PlanoValoresComissaoVendedor],
+) -> float | None:
+    """
+    Quando um plano (ex.: 700MB novo ou 600MB legado inativo) não tem célula própria
+    ou está zerada na config do vendedor, busca em outro plano equivalente da mesma
+    config (mesma banda exata primeiro; depois mesma banda legada 500/700/1GB).
+    """
+    from crm_app.comissao_folha_service import _banda_legado_comissao
+
+    banda_alvo = _plano_nome_to_banda(plano)
+    if not banda_alvo or not rows_config:
+        return None
+    banda_legado_alvo = _banda_legado_comissao(banda_alvo)
+    sem_mesh_alvo = _eh_sem_mesh(plano)
+
+    def _extrair(row: PlanoValoresComissaoVendedor) -> float | None:
+        val = row.valor_pap if tipo_cliente == 'CPF' else row.valor_cnpj
+        if val is not None and val > 0:
+            return float(val)
+        return None
+
+    # 1ª passagem: mesma banda exata (ex.: 600MB <-> 600MB, 700MB <-> 700MB)
+    for row in rows_config:
+        p_cand = getattr(row, 'plano', None)
+        if not p_cand:
+            continue
+        if _plano_nome_to_banda(p_cand) != banda_alvo:
+            continue
+        if banda_alvo == '1GB' and _eh_sem_mesh(p_cand) != sem_mesh_alvo:
+            continue
+        v = _extrair(row)
+        if v is not None:
+            return v
+
+    # 2ª passagem: mesma banda legada (ex.: 700MB <-> 800MB, 600MB <-> 500MB)
+    if not banda_legado_alvo:
+        return None
+    for row in rows_config:
+        p_cand = getattr(row, 'plano', None)
+        if not p_cand:
+            continue
+        banda_cand = _plano_nome_to_banda(p_cand)
+        if _banda_legado_comissao(banda_cand) != banda_legado_alvo:
+            continue
+        if banda_legado_alvo == '1GB' and _eh_sem_mesh(p_cand) != sem_mesh_alvo:
+            continue
+        v = _extrair(row)
+        if v is not None:
+            return v
+    return None
 
 
 def get_valor_faixa_plano(
@@ -94,9 +182,9 @@ def get_valor_faixa_plano(
         except RegraComissaoFaixaPlano.DoesNotExist:
             row = None
     if row is not None:
-        if tipo_cliente == 'CPF' and row.valor_pap is not None:
+        if tipo_cliente == 'CPF' and row.valor_pap is not None and row.valor_pap > 0:
             return float(row.valor_pap)
-        if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None:
+        if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None and row.valor_cnpj > 0:
             return float(row.valor_cnpj)
     banda = _plano_nome_to_banda(plano)
     if not banda:
@@ -120,21 +208,30 @@ def get_valor_manual_vendedor_plano(
     config_id = getattr(config, 'id', None)
     plano_id = getattr(plano, 'id', None)
     row: PlanoValoresComissaoVendedor | None = None
+    rows_config: list[PlanoValoresComissaoVendedor] = []
     if matriz_cache is not None:
         if isinstance(config_id, int) and isinstance(plano_id, int):
             row = matriz_cache._manual_config.get((config_id, plano_id))
+        if isinstance(config_id, int):
+            rows_config = matriz_cache._manual_por_config.get(config_id, [])
     elif isinstance(config_id, int) and isinstance(plano_id, int):
         try:
             row = PlanoValoresComissaoVendedor.objects.get(config_id=config_id, plano_id=plano_id)
         except PlanoValoresComissaoVendedor.DoesNotExist:
             row = None
-    if row is None:
-        return None
-    if tipo_cliente == 'CPF' and row.valor_pap is not None:
-        return float(row.valor_pap)
-    if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None:
-        return float(row.valor_cnpj)
-    return None
+    if row is not None:
+        if tipo_cliente == 'CPF' and row.valor_pap is not None and row.valor_pap > 0:
+            return float(row.valor_pap)
+        if tipo_cliente == 'CNPJ' and row.valor_cnpj is not None and row.valor_cnpj > 0:
+            return float(row.valor_cnpj)
+    if matriz_cache is None and isinstance(config_id, int):
+        try:
+            rows_config = list(
+                PlanoValoresComissaoVendedor.objects.filter(config_id=config_id).select_related('plano')
+            )
+        except DatabaseError:
+            rows_config = []
+    return _buscar_valor_manual_plano_equivalente(plano, tipo_cliente, rows_config)
 
 
 @transaction.atomic
@@ -277,16 +374,40 @@ def listar_valores_manuais_vendedor(config: ConfigComissaoVendedor) -> list[dict
     )
     ids_ativos = {p.id for p in planos_ativos}
 
+    rows_existentes = list(existentes.values())
     out: list[dict[str, Any]] = []
     for plano in planos_ativos:
         row = existentes.get(plano.id)
+        banda = _plano_nome_to_banda(plano) or ''
+        leg_pap, leg_cnpj = _legacy_valores_manual_banda(config, banda)
+
+        val_pap: float | None = (
+            float(row.valor_pap)
+            if row and row.valor_pap is not None and row.valor_pap > 0
+            else None
+        )
+        if val_pap is None:
+            val_pap = _buscar_valor_manual_plano_equivalente(plano, 'CPF', rows_existentes)
+        if val_pap is None and leg_pap is not None and leg_pap > 0:
+            val_pap = float(leg_pap)
+
+        val_cnpj: float | None = (
+            float(row.valor_cnpj)
+            if row and row.valor_cnpj is not None and row.valor_cnpj > 0
+            else None
+        )
+        if val_cnpj is None:
+            val_cnpj = _buscar_valor_manual_plano_equivalente(plano, 'CNPJ', rows_existentes)
+        if val_cnpj is None and leg_cnpj is not None and leg_cnpj > 0:
+            val_cnpj = float(leg_cnpj)
+
         out.append({
             'plano_id': plano.id,
             'plano_nome': plano.nome,
             'plano_ativo': True,
             'operadora_nome': plano.operadora.nome if plano.operadora_id else None,
-            'valor_pap': float(row.valor_pap) if row and row.valor_pap is not None else None,
-            'valor_cnpj': float(row.valor_cnpj) if row and row.valor_cnpj is not None else None,
+            'valor_pap': val_pap,
+            'valor_cnpj': val_cnpj,
         })
 
     inativos_com_valor: list[tuple[Plano, PlanoValoresComissaoVendedor]] = []
