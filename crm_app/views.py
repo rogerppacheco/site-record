@@ -7206,6 +7206,7 @@ class ImportacaoChurnView(APIView):
             criar_por_pedido = {}
             criar_sem_pedido = []
             atualizar = {}
+            agora_carga = timezone.now()
             for data in linhas:
                 pedido = data.get('numero_pedido')
                 nr_ordem_val = data.get('nr_ordem')
@@ -7219,9 +7220,9 @@ class ImportacaoChurnView(APIView):
                         setattr(obj_existente, chave, valor)
                     atualizar[obj_existente.pk] = obj_existente
                 elif pedido:
-                    criar_por_pedido[pedido] = ImportacaoChurn(**data)
+                    criar_por_pedido[pedido] = ImportacaoChurn(**{**data, 'data_importacao': agora_carga})
                 else:
-                    criar_sem_pedido.append(ImportacaoChurn(**data))
+                    criar_sem_pedido.append(ImportacaoChurn(**{**data, 'data_importacao': agora_carga}))
 
             to_create = list(criar_por_pedido.values()) + criar_sem_pedido
             to_update = list(atualizar.values())
@@ -15650,6 +15651,9 @@ class ImportarChurnView(APIView):
                                 defaults=defaults_churn,
                             )
                             if created:
+                                if not obj.data_importacao:
+                                    obj.data_importacao = timezone.now()
+                                    obj.save(update_fields=['data_importacao'])
                                 criados_churn += 1
                             else:
                                 atualizados_churn += 1
@@ -15667,6 +15671,7 @@ class ImportarChurnView(APIView):
                                 defaults_create = self._defaults_importacao_churn_row(row)
                                 defaults_create['numero_pedido'] = None
                                 defaults_create['nr_ordem'] = nr_ordem
+                                defaults_create['data_importacao'] = timezone.now()
                                 ImportacaoChurn.objects.create(**defaults_create)
                                 criados_churn += 1
                     except Exception as e:

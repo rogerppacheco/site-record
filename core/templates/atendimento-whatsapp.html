@@ -211,7 +211,9 @@
 
     async function carregarLista() {
         const q = document.getElementById('busca').value.trim();
-        const r = await api('/conversas/' + (q ? ('?q=' + encodeURIComponent(q)) : ''));
+        const params = new URLSearchParams({ limit: '40' });
+        if (q) params.set('q', q);
+        const r = await api('/conversas/?' + params.toString());
         renderLista(r.items || []);
     }
 
@@ -221,12 +223,15 @@
             node.classList.toggle('ativo', node.dataset.tel === telefone);
         });
         try {
-            const data = await api('/conversas/' + encodeURIComponent(telefone) + '/');
+            const data = await api('/conversas/' + encodeURIComponent(telefone) + '/?limit=80');
             renderChat(data);
         } catch (e) {
             if (!silencioso) alert(e.message || e);
         }
     }
+
+    // Deep-link ?tel=5511...
+    const telUrl = new URLSearchParams(location.search).get('tel');
 
     document.getElementById('btn-enviar').onclick = async () => {
         if (!telefoneAberto) return;
@@ -270,12 +275,15 @@
         buscaTimer = setTimeout(() => carregarLista().catch((e) => alert(e.message || e)), 300);
     });
 
-    carregarLista().catch((e) => {
+    carregarLista().then(() => {
+        if (telUrl) abrir(telUrl.replace(/\D/g, ''), false).catch(() => {});
+    }).catch((e) => {
         document.getElementById('lista-conversas').innerHTML = '<div class="wa-vazio">' + esc(e.message || e) + '</div>';
     });
     timer = setInterval(() => {
+        // Lista já é barata (sem N+1); detalhe só recarrega a conversa aberta
         carregarLista().catch(() => {});
         if (telefoneAberto) abrir(telefoneAberto, true);
-    }, 12000);
+    }, 15000);
 </script>
 {% endblock %}

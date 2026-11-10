@@ -387,13 +387,22 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         </button>
                     </li>
                 </ul>
-                <div class="pb-1 d-flex gap-1 flex-shrink-0" id="acoes-pap">
+                <div class="pb-1 d-flex gap-1 flex-wrap flex-shrink-0" id="acoes-pap">
                     <button class="btn btn-outline-primary fw-semibold shadow-sm" type="button" data-bs-toggle="modal" data-bs-target="#modalBusca">
                         <i class="bi bi-search me-1"></i>Nova Busca
                     </button>
                     <button type="button" class="btn btn-outline-warning fw-semibold shadow-sm d-none" id="btn-assertiva-match-lote"
                         title="Consulta CPF e telefones na Assertiva para N interesses sem documento">
                         <i class="bi bi-person-vcard me-1"></i>Match Assertiva
+                    </button>
+                    <button type="button" class="btn btn-outline-success fw-semibold shadow-sm btn-funil-massa" data-modo="IDS" title="Envia template só para as linhas marcadas">
+                        <i class="bi bi-send-check me-1"></i>Enviar selecionados <span class="badge bg-light text-success ms-1 sel-qtd">0</span>
+                    </button>
+                    <button type="button" class="btn btn-success fw-semibold shadow-sm btn-funil-massa" data-modo="FILTROS" title="Envia template para todos os elegíveis do filtro atual">
+                        <i class="bi bi-send me-1"></i>Enviar filtrados
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary fw-semibold shadow-sm" id="btn-config-disparo" title="Horário e cota diária do autoenvio">
+                        <i class="bi bi-clock-history me-1"></i>Config. disparo
                     </button>
                     <div class="btn-group shadow-sm">
                         <button type="button" class="btn btn-success fw-semibold" id="btn-exportar-filtro" title="Exporta para Excel todos os pedidos da aba com os filtros aplicados (todas as páginas)">
@@ -407,7 +416,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         </ul>
                     </div>
                 </div>
-                <div class="pb-1 d-flex gap-1 flex-shrink-0 d-none" id="acoes-churn">
+                <div class="pb-1 d-flex gap-1 flex-wrap flex-shrink-0 d-none" id="acoes-churn">
                     <div class="btn-group shadow-sm">
                         <button type="button" class="btn btn-primary fw-semibold" id="btn-nio-consultar" title="Consulta débitos na Nio para os CPFs da aba (pula quem foi consultado nas últimas 24 horas)">
                             <i class="bi bi-shield-check me-1"></i>Consultar Nio
@@ -417,10 +426,22 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                             <li><button type="button" class="dropdown-item" id="btn-nio-forcar"><i class="bi bi-arrow-repeat me-2"></i>Reconsultar todos (ignora as últimas 24 horas)</button></li>
                         </ul>
                     </div>
+                    <button type="button" class="btn btn-outline-success fw-semibold shadow-sm btn-funil-massa" data-modo="IDS" title="Envia template só para as linhas marcadas">
+                        <i class="bi bi-send-check me-1"></i>Enviar selecionados <span class="badge bg-light text-success ms-1 sel-qtd">0</span>
+                    </button>
+                    <button type="button" class="btn btn-success fw-semibold shadow-sm btn-funil-massa" data-modo="FILTROS" title="Envia template para todos os elegíveis do filtro atual">
+                        <i class="bi bi-send me-1"></i>Enviar filtrados
+                    </button>
                 </div>
-                <div class="pb-1 d-flex gap-1 flex-shrink-0 d-none" id="acoes-bio">
+                <div class="pb-1 d-flex gap-1 flex-wrap flex-shrink-0 d-none" id="acoes-bio">
                     <button type="button" class="btn btn-primary fw-semibold shadow-sm" id="btn-bio-buscar" title="Baixa do GED360 o relatório detalhado de digitalizações pela Data de Envio do período selecionado. Rotina automática: todo dia às 07:00 (últimos 6 meses).">
                         <i class="bi bi-cloud-download me-1"></i>Buscar no GED
+                    </button>
+                    <button type="button" class="btn btn-outline-success fw-semibold shadow-sm btn-funil-massa" data-modo="IDS" title="Envia template só para as linhas marcadas">
+                        <i class="bi bi-send-check me-1"></i>Enviar selecionados <span class="badge bg-light text-success ms-1 sel-qtd">0</span>
+                    </button>
+                    <button type="button" class="btn btn-success fw-semibold shadow-sm btn-funil-massa" data-modo="FILTROS" title="Envia template para todos os elegíveis do filtro atual">
+                        <i class="bi bi-send me-1"></i>Enviar filtrados
                     </button>
                 </div>
                 <div class="pb-1 d-flex gap-1 flex-wrap flex-shrink-0 d-none" id="acoes-mailing">
@@ -557,7 +578,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                         <table class="table table-modern table-hover mb-0 align-middle">
                             <thead class="table-light sticky-top shadow-sm">
                                 <tr id="thead-pap">
-                                    <th class="ps-3 py-2">Protocolo / Pedido</th>
+                                    <th class="ps-3 py-2" style="width:2.2rem"><input type="checkbox" class="form-check-input" id="chk-all-pap" title="Selecionar página"></th>
+                                    <th class="py-2">Protocolo / Pedido</th>
                                     <th class="py-2">Cliente</th>
                                     <th class="py-2">Documento</th>
                                     <th class="py-2">Status PAP</th>
@@ -567,35 +589,42 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                                             Data do pedido <i class="bi bi-sort-down" id="ic-ordem-data"></i>
                                         </button>
                                     </th>
+                                    <th class="py-2">Data Carga</th>
                                     <th class="py-2">Situação CRM</th>
                                     <th class="text-end pe-3 py-2">Ação</th>
                                 </tr>
                                 <tr id="thead-churn" class="d-none">
-                                    <th class="ps-3 py-2">O.S. / Pedido</th>
+                                    <th class="ps-3 py-2" style="width:2.2rem"><input type="checkbox" class="form-check-input" id="chk-all-churn" title="Selecionar página"></th>
+                                    <th class="py-2">O.S. / Pedido</th>
                                     <th class="py-2">Cliente</th>
                                     <th class="py-2">CPF</th>
                                     <th class="py-2">Motivo</th>
                                     <th class="py-2">Data da retirada</th>
+                                    <th class="py-2">Data Carga</th>
                                     <th class="py-2">Consultor</th>
                                     <th class="py-2">Situação Nio</th>
                                     <th class="text-end pe-3 py-2">Ação</th>
                                 </tr>
                                 <tr id="thead-bio" class="d-none">
-                                    <th class="ps-3 py-2">Cliente</th>
+                                    <th class="ps-3 py-2" style="width:2.2rem"><input type="checkbox" class="form-check-input" id="chk-all-bio" title="Selecionar página"></th>
+                                    <th class="py-2">Cliente</th>
                                     <th class="py-2">CPF</th>
                                     <th class="py-2">Venda no CRM</th>
                                     <th class="py-2">Vendedor</th>
                                     <th class="py-2">Biometria</th>
                                     <th class="py-2">Último envio no GED</th>
+                                    <th class="py-2">Data Carga</th>
                                     <th class="py-2">Telefone</th>
                                     <th class="text-end pe-3 py-2">Repescável?</th>
                                 </tr>
                                 <tr id="thead-mailing" class="d-none">
-                                    <th class="ps-3 py-2">Cliente</th>
+                                    <th class="ps-3 py-2" style="width:2.2rem"><input type="checkbox" class="form-check-input" id="chk-all-mailing" title="Selecionar página"></th>
+                                    <th class="py-2">Cliente</th>
                                     <th class="py-2">CPF</th>
                                     <th class="py-2">Telefone</th>
                                     <th class="py-2">Cidade</th>
                                     <th class="py-2">Situação</th>
+                                    <th class="py-2">Data Carga</th>
                                     <th class="py-2">Envio</th>
                                     <th class="py-2">Retorno</th>
                                     <th class="text-end pe-3 py-2">Ação</th>
@@ -790,11 +819,34 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         <i class="bi bi-search" aria-hidden="true"></i>
         <input type="search" id="funil-sheet-busca" placeholder="Buscar… aplica na hora (atalhos: apto, link, repescar)" aria-label="Busca" autocomplete="off">
     </div>
+    <div class="funil-filtros-busca mt-2">
+        <i class="bi bi-person-vcard" aria-hidden="true"></i>
+        <input type="search" id="funil-sheet-cpf" placeholder="Filtrar por CPF…" aria-label="CPF" autocomplete="off" inputmode="numeric">
+    </div>
     <div class="funil-filtros-body" id="funil-filtros-body"></div>
     <div class="funil-filtros-foot">
         <button type="button" class="btn btn-outline-secondary btn-sm" id="funil-sheet-limpar">Limpar filtros</button>
     </div>
 </aside>
+
+<div class="modal fade" id="modalConfigDisparo" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold"><i class="bi bi-clock-history me-2"></i>Config. disparo automático</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted">Define janela de horário e quantidade máxima de envios por dia por esteira (Interesse, Churn, Bio).</p>
+                <div id="config-disparo-lista" class="d-flex flex-column gap-3"></div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" class="btn btn-primary" id="btn-salvar-config-disparo">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -957,12 +1009,14 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     const TAMANHOS_PAGINA = [25, 50, 100, 200];
     const LS_FUNIL_PAGE_SIZE = 'funil_hist_page_size';
     // Chaves curtas na URL: o estado sobrevive a F5 e pode ser compartilhado por link.
-    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio', bio: 'bio', rep: 'rep', mailingSit: 'msit' };
+    const URL_CHAVES = { tipo: 'aba', page: 'pg', pageSize: 'pp', q: 'q', cpf: 'cpf', status: 'st', situacao: 'sit', de: 'de', ate: 'ate', ordem: 'ord', nio: 'nio', bio: 'bio', rep: 'rep', mailingSit: 'msit' };
 
     const histState = {
         tipo: 'INTERESSE', page: 1, pageSize: 25,
-        q: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '', bio: '', rep: '', mailingSit: '',
+        q: '', cpf: '', status: '', situacao: '', de: '', ate: '', ordem: 'recentes', nio: '', bio: '', rep: '', mailingSit: '',
     };
+    const selecaoFunil = new Set();
+    let disparoPoll = null;
     let histMeta = { page: 1, totalPages: 1, count: 0 };
     let assertivaDisponivel = false;
     let histAbort = null;
@@ -1108,6 +1162,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     function chipsAtivos() {
         const chips = [];
         if (histState.q) chips.push({ id: 'q', label: `Busca: ${histState.q}`, clear: { q: '' } });
+        if (histState.cpf) chips.push({ id: 'cpf', label: `CPF: ${histState.cpf}`, clear: { cpf: '' } });
         const g = grupoFiltrosAba();
         if (g === 'PAP') {
             if (histState.status) chips.push({ id: 'status', label: `Status: ${labelSelectOpt('f-status', histState.status)}`, clear: { status: '' } });
@@ -1238,6 +1293,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const sheetBusca = document.getElementById('funil-sheet-busca');
         if (sheetBusca && document.activeElement !== sheetBusca) sheetBusca.value = histState.q || '';
         sheetBusca.placeholder = document.getElementById('f-busca').placeholder || 'Buscar…';
+        const sheetCpf = document.getElementById('funil-sheet-cpf');
+        if (sheetCpf && document.activeElement !== sheetCpf) sheetCpf.value = histState.cpf || '';
     }
 
     function fecharPainelFiltros() {
@@ -1308,6 +1365,12 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 
     // Busca independente: aplica enquanto digita (não precisa de botão).
     let sheetBuscaDebounce = null;
+    document.getElementById('funil-sheet-cpf').addEventListener('input', (e) => {
+        const digitos = String(e.target.value || '').replace(/\D/g, '').slice(0, 14);
+        e.target.value = digitos;
+        clearTimeout(buscaDebounce);
+        buscaDebounce = setTimeout(() => aplicarFiltros({ cpf: digitos }), 350);
+    });
     document.getElementById('funil-sheet-busca').addEventListener('input', (e) => {
         const valor = e.target.value;
         document.getElementById('f-busca').value = valor;
@@ -1510,6 +1573,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                 periodoPap = null;
             }
             funilAccOpen.clear();
+            limparSelecaoFunil();
             aplicarFiltros(mudancas);
         });
     });
@@ -1536,8 +1600,8 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     document.getElementById('f-de').addEventListener('change', (e) => aplicarFiltros({ de: e.target.value }));
     document.getElementById('f-ate').addEventListener('change', (e) => aplicarFiltros({ ate: e.target.value }));
     document.getElementById('f-limpar').addEventListener('click', () => {
-        if (histState.tipo === 'BIO') { aplicarFiltros({ q: '', bio: '', rep: '', de: '', ate: '' }); return; }
-        if (histState.tipo === 'CHURN') { aplicarFiltros({ q: '', nio: '', de: '', ate: '' }); return; }
+        if (histState.tipo === 'BIO') { aplicarFiltros({ q: '', cpf: '', bio: '', rep: '', de: '', ate: '' }); return; }
+        if (histState.tipo === 'CHURN') { aplicarFiltros({ q: '', cpf: '', nio: '', de: '', ate: '' }); return; }
         if (histState.tipo === 'MAILING') {
             document.getElementById('f-mailing-lote').value = '';
             document.getElementById('f-mailing-status').value = 'NOVO';
@@ -1549,7 +1613,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             carregarMailing({ rolarTopo: true });
             return;
         }
-        aplicarFiltros({ q: '', status: '', situacao: '', de: '', ate: '', nio: '' });
+        aplicarFiltros({ q: '', cpf: '', status: '', situacao: '', de: '', ate: '', nio: '', bio: '', rep: '', mailingSit: '' });
     });
     document.getElementById('th-ordem-data').addEventListener('click', () => {
         aplicarFiltros({ ordem: histState.ordem === 'antigos' ? 'recentes' : 'antigos' });
@@ -1765,6 +1829,23 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const p = String(iso).slice(0, 10).split('-');
         return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(iso);
     }
+    function fmtDataHora(iso) {
+        return iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    }
+    function btnAbrirAtendimento(tel) {
+        const digitos = String(tel || '').replace(/\D/g, '');
+        if (digitos.length < 10) return '';
+        return `<a class="btn btn-sm btn-outline-info rounded-pill" href="/atendimento-whatsapp/?tel=${encodeURIComponent(digitos)}" title="Abrir conversa no Atendimento WhatsApp" target="_blank" rel="noopener"><i class="bi bi-chat-dots"></i></a>`;
+    }
+    function atualizarContagemSelecao() {
+        const n = selecaoFunil.size;
+        document.querySelectorAll('.sel-qtd').forEach(el => { el.textContent = String(n); });
+    }
+    function limparSelecaoFunil() {
+        selecaoFunil.clear();
+        document.querySelectorAll('.funil-chk, #chk-all-pap, #chk-all-churn, #chk-all-bio, #chk-all-mailing').forEach(el => { el.checked = false; });
+        atualizarContagemSelecao();
+    }
 
     const NIO_SITUACAO = {
         ADIMPLENTE: { rotulo: 'Adimplente', cls: 'bg-success-subtle text-success border border-success-subtle', icone: 'bi-check-circle-fill' },
@@ -1919,16 +2000,21 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
 
     function linhaChurn(r) {
         const motivo = r.DS_MOTIVO_RETIRADA || r.TP_RETIRADA || '—';
+        const id = String(r.churn_id || '');
+        const checked = selecaoFunil.has(`CHURN:${id}`) ? 'checked' : '';
+        const telAtend = (r.telefone || '').replace(/\D/g, '');
         return `
             <tr class="funil-row-anim">
-                <td class="ps-4 fw-bold font-monospace text-primary">${destacar(r.pedido || '-')}</td>
+                <td class="ps-3"><input type="checkbox" class="form-check-input funil-chk" data-aba="CHURN" data-id="${esc(id)}" ${checked}></td>
+                <td class="fw-bold font-monospace text-primary">${destacar(r.pedido || '-')}</td>
                 <td class="fw-medium text-dark">${destacar(r.nome_cliente || '—')}</td>
                 <td class="text-muted small text-nowrap">${destacar(r.cpf_cliente || '—')}</td>
                 <td><span class="badge bg-secondary badge-status">${esc(motivo)}</span></td>
                 <td class="text-muted small text-nowrap">${esc(fmtDataIso(r.dt_retirada))}</td>
+                <td class="text-muted small text-nowrap">${esc(fmtDataHora(r.data_carga) || '—')}</td>
                 <td class="small">${esc(r.vendedor || '—')}</td>
                 <td class="text-nowrap">${badgeNio(r)}</td>
-                <td class="text-end pe-4"><div class="d-flex flex-column align-items-end gap-1">${btnEnviarTemplate('CHURN', r.churn_id, r)}${btnTratar('CHURN', r.churn_id, r)}</div></td>
+                <td class="text-end pe-4"><div class="d-flex flex-column align-items-end gap-1">${btnEnviarTemplate('CHURN', r.churn_id, r)}${btnTratar('CHURN', r.churn_id, r)}${telAtend ? btnAbrirAtendimento(telAtend) : ''}</div></td>
             </tr>`;
     }
 
@@ -1953,6 +2039,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         else if (mes === 'custom' && histState.de) params.set('mes_referencia', histState.de.slice(0, 7));
         else params.set('mes_referencia', 'todos');
         if (histState.q) params.set('busca', histState.q);
+        if (histState.cpf) params.set('cpf', histState.cpf);
         if (histState.nio) params.set('situacao_nio', histState.nio);
 
         try {
@@ -2100,8 +2187,6 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         SEM_BIOMETRIA: { rotulo: 'Sem biometria', cls: 'bg-secondary-subtle text-secondary border', icone: 'bi-dash-circle' },
         NAO_VERIFICADO: { rotulo: 'Aguardando GED', cls: 'bg-light text-muted border', icone: 'bi-cloud-slash' },
     };
-    const fmtDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-
     function linhaBio(r) {
         const s = BIO_SITUACAO[r.situacao] || BIO_SITUACAO.SEM_BIOMETRIA;
         const dica = r.situacao === 'NAO_VERIFICADO'
@@ -2128,16 +2213,21 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
                <div class="small text-muted">${esc(r.ultima_origem || '')}${r.login_ged ? ` · ${esc(r.login_ged)}` : ''}</div>
                ${r.protocolo ? `<div class="small text-muted font-monospace">Prot. ${destacar(r.protocolo)}</div>` : ''}`
             : '<span class="small text-muted">—</span>';
+        const id = String(r.cpf || '');
+        const checked = selecaoFunil.has(`BIO:${id}`) ? 'checked' : '';
+        const telAtend = String(r.telefone || '').replace(/\D/g, '');
         return `
             <tr class="funil-row-anim">
-                <td class="ps-4 fw-medium text-dark">${destacar(r.nome_cliente || '—')}</td>
+                <td class="ps-3"><input type="checkbox" class="form-check-input funil-chk" data-aba="BIO" data-id="${esc(id)}" ${checked}></td>
+                <td class="fw-medium text-dark">${destacar(r.nome_cliente || '—')}</td>
                 <td class="text-muted small text-nowrap">${destacar(r.cpf || '—')}</td>
                 <td>${venda}</td>
                 <td class="small">${destacar(r.vendedor || '—')}</td>
                 <td class="text-nowrap"><span class="badge badge-nio ${s.cls}" title="${esc(dica)}"><i class="bi ${s.icone} me-1"></i>${s.rotulo}</span>
                     ${r.ultimo_resultado ? `<div class="small text-muted mt-1">${esc(r.ultimo_resultado)}</div>` : ''}${vinculo}</td>
                 <td>${envio}</td>
-                <td class="small text-nowrap">${destacar(r.telefone || '—')}</td>
+                <td class="text-muted small text-nowrap">${esc(fmtDataHora(r.data_carga) || '—')}</td>
+                <td class="small text-nowrap">${destacar(r.telefone || '—')}${telAtend ? `<div class="mt-1">${btnAbrirAtendimento(telAtend)}</div>` : ''}</td>
                 <td class="text-end pe-4" style="max-width: 200px;">${repescar}</td>
             </tr>`;
     }
@@ -2158,6 +2248,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (histState.de) params.set('de', histState.de);
         if (histState.ate) params.set('ate', histState.ate);
         if (histState.q) params.set('busca', histState.q);
+        if (histState.cpf) params.set('cpf', histState.cpf);
         if (histState.bio) params.set('situacao', histState.bio);
         // `rep` alinha com a URL do funil; `repescavel` mantém compatibilidade com a API.
         if (histState.rep) {
@@ -2255,16 +2346,21 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         const erro = r.status === 'FALHOU' && r.ultimo_erro
             ? `<div class="small text-danger" title="${esc(r.ultimo_erro)}">${esc(String(r.ultimo_erro).slice(0, 80))}</div>`
             : '';
+        const id = String(r.id || '');
+        const checked = selecaoFunil.has(`MAILING:${id}`) ? 'checked' : '';
+        const telAtend = String(r.telefone || '').replace(/\D/g, '');
         return `<tr class="funil-row-anim">
-            <td class="ps-4">${esc(r.nome || '—')}<div class="small text-muted">${esc(r.lote_nome || '')}</div></td>
+            <td class="ps-3"><input type="checkbox" class="form-check-input funil-chk" data-aba="MAILING" data-id="${esc(id)}" ${checked}></td>
+            <td>${esc(r.nome || '—')}<div class="small text-muted">${esc(r.lote_nome || '')}</div></td>
             <td>${esc(r.cpf || '—')}</td>
             <td>${esc(r.telefone || '—')}</td>
             <td>${esc(r.cidade || r.bairro || '—')}</td>
             <td><span class="badge bg-info text-dark">${esc(r.situacao)}</span><div class="small text-muted">${esc(r.situacao_origem || '')}</div></td>
+            <td class="text-muted small text-nowrap">${esc(fmtDataHora(r.data_carga) || '—')}</td>
             <td><span class="badge badge-mail ${st.cls}">${esc(st.rotulo)}</span>
                 <div class="small text-muted">${esc(envioBits.join(' · '))}</div>${erro}</td>
             <td class="small">${esc(r.resposta_texto || '—')}<div class="text-muted">${esc(r.respondido_em ? fmtDataHora(r.respondido_em) : '')}</div></td>
-            <td class="text-end pe-4"><div class="d-flex justify-content-end gap-1">${wa}${btnTratar('MAILING', r.id, r)}</div></td>
+            <td class="text-end pe-4"><div class="d-flex justify-content-end gap-1">${wa}${btnTratar('MAILING', r.id, r)}${telAtend ? btnAbrirAtendimento(telAtend) : ''}</div></td>
         </tr>`;
     }
 
@@ -2287,6 +2383,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         if (loteSel) params.set('lote_id', loteSel);
         if (histState.mailingSit) params.set('situacao', histState.mailingSit);
         if (histState.q) params.set('q', histState.q);
+        if (histState.cpf) params.set('cpf', histState.cpf);
 
         try {
             const r = await fetch(API_MAILING + 'funil/?' + params.toString(), {
@@ -2761,15 +2858,20 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             : '';
         const docCell = `${destacar(p.documento || '-')}${telsMatch}`;
         const abaPap = String(p.tipo_venda || histState.tipo || 'VENDA').toUpperCase();
-        const acao = `<div class="d-flex flex-column align-items-end gap-1">${abaPap === 'INTERESSE' ? btnAssertivaMatch(p) : ''}${abaPap === 'INTERESSE' ? btnEnviarTemplate('INTERESSE', p.id, p) : ''}${btnTratar(abaPap, p.id, p)}</div>`;
+        const id = String(p.id || '');
+        const checked = selecaoFunil.has(`${abaPap}:${id}`) ? 'checked' : '';
+        const telAtend = String(p.telefone || '').replace(/\D/g, '');
+        const acao = `<div class="d-flex flex-column align-items-end gap-1">${abaPap === 'INTERESSE' ? btnAssertivaMatch(p) : ''}${abaPap === 'INTERESSE' ? btnEnviarTemplate('INTERESSE', p.id, p) : ''}${btnTratar(abaPap, p.id, p)}${telAtend ? btnAbrirAtendimento(telAtend) : ''}</div>`;
         return `
             <tr class="funil-row-anim">
-                <td class="ps-4 fw-bold font-monospace text-primary">${destacar(p.protocolo || '-')}${p.os_instalacao ? `<div class="small fw-normal text-muted">O.S. ${destacar(p.os_instalacao)}</div>` : ''}</td>
+                <td class="ps-3"><input type="checkbox" class="form-check-input funil-chk" data-aba="${esc(abaPap)}" data-id="${esc(id)}" ${checked}></td>
+                <td class="fw-bold font-monospace text-primary">${destacar(p.protocolo || '-')}${p.os_instalacao ? `<div class="small fw-normal text-muted">O.S. ${destacar(p.os_instalacao)}</div>` : ''}</td>
                 <td class="fw-medium text-dark">${destacar(p.cliente || 'Desconhecido')}</td>
                 <td class="text-muted small text-nowrap">${docCell}</td>
                 <td><span class="badge bg-secondary badge-status">${esc((p.status_primario || 'Desconhecido').replace(/_/g, ' '))}</span></td>
                 <td class="small text-nowrap">${etapa ? `<span class="badge bg-info-subtle text-info border border-info-subtle badge-status">${esc(etapa)}</span>` : '<span class="text-muted">—</span>'}</td>
                 <td class="text-muted small text-nowrap">${dia ? `${esc(dia)}${hora ? `<br><span class="opacity-75">${esc(hora)}</span>` : ''}` : '-'}</td>
+                <td class="text-muted small text-nowrap">${esc(fmtDataHora(p.data_carga) || '—')}</td>
                 <td>
                     ${p.novo_nesta_busca
                         ? '<span class="badge bg-success-subtle text-success border border-success-subtle badge-status"><i class="bi bi-stars"></i> Novo</span>'
@@ -2803,7 +2905,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             ordem: histState.ordem,
         });
         if (currentBuscaId) params.set('busca_id', currentBuscaId);
-        ['q', 'status', 'situacao', 'de', 'ate'].forEach(k => { if (histState[k]) params.set(k, histState[k]); });
+        ['q', 'cpf', 'status', 'situacao', 'de', 'ate'].forEach(k => { if (histState[k]) params.set(k, histState[k]); });
 
         try {
             const r = await fetch(API_HIST + 'pedidos/?' + params.toString(), {
@@ -3031,6 +3133,165 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
         a.download = data.nome_arquivo || 'Historico_PAP.xlsx';
         a.click();
         URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('tbody-resultados').addEventListener('change', (e) => {
+        const chk = e.target.closest('.funil-chk');
+        if (!chk) return;
+        const key = `${chk.dataset.aba}:${chk.dataset.id}`;
+        if (chk.checked) selecaoFunil.add(key); else selecaoFunil.delete(key);
+        atualizarContagemSelecao();
+    });
+    ['chk-all-pap', 'chk-all-churn', 'chk-all-bio', 'chk-all-mailing'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            document.querySelectorAll('#tbody-resultados .funil-chk').forEach(chk => {
+                chk.checked = el.checked;
+                const key = `${chk.dataset.aba}:${chk.dataset.id}`;
+                if (el.checked) selecaoFunil.add(key); else selecaoFunil.delete(key);
+            });
+            atualizarContagemSelecao();
+        });
+    });
+
+    function abaDisparoAtual() {
+        const t = histState.tipo;
+        if (t === 'INTERESSE' || t === 'CHURN' || t === 'BIO') return t;
+        return '';
+    }
+    function filtrosDisparoAtual() {
+        return {
+            q: histState.q || '',
+            cpf: histState.cpf || '',
+            busca: histState.q || '',
+            status: histState.status || '',
+            situacao: histState.situacao || histState.bio || '',
+            de: histState.de || '',
+            ate: histState.ate || '',
+            nio: histState.nio || '',
+            bio: histState.bio || '',
+            rep: histState.rep || '',
+            mes_referencia: (histState.de || '').slice(0, 7) || 'todos',
+        };
+    }
+    async function dispararMassa(modo) {
+        const aba = abaDisparoAtual();
+        if (!aba) {
+            alert('Envio em massa de template está disponível em Interesse, Churn e Bio.');
+            return;
+        }
+        const body = { aba, modo, filtros: filtrosDisparoAtual() };
+        if (modo === 'IDS') {
+            const ids = [...selecaoFunil].filter(k => k.startsWith(aba + ':')).map(k => k.split(':').slice(1).join(':'));
+            if (!ids.length) {
+                alert('Marque ao menos uma linha desta aba.');
+                return;
+            }
+            body.ids = ids;
+        }
+        if (!confirm(modo === 'IDS'
+            ? `Enviar template para ${body.ids.length} selecionado(s) em ${aba}?`
+            : `Enviar template para os filtrados da aba ${aba}?`)) return;
+        try {
+            const r = await fetch(API_FUNIL_TMPL + 'disparo-massa/', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data.ok) {
+                alert(data.detail || 'Falha ao iniciar disparo.');
+                return;
+            }
+            const lote = data.lote || {};
+            alert(`Disparo #${lote.id || '—'} iniciado: ${lote.mensagem || ''}`);
+            if (modo === 'IDS') limparSelecaoFunil();
+            iniciarPollDisparo(aba);
+        } catch (err) {
+            alert('Erro: ' + err.message);
+        }
+    }
+    function iniciarPollDisparo(aba) {
+        if (disparoPoll) clearInterval(disparoPoll);
+        disparoPoll = setInterval(async () => {
+            try {
+                const r = await fetch(API_FUNIL_TMPL + 'disparo-massa/?aba=' + encodeURIComponent(aba), {
+                    headers: { 'Authorization': 'Bearer ' + getToken() },
+                });
+                const data = await r.json().catch(() => ({}));
+                const lote = data.lote;
+                if (!lote || ['CONCLUIDO', 'CANCELADO', 'PAUSADO'].includes(lote.status)) {
+                    clearInterval(disparoPoll);
+                    disparoPoll = null;
+                    if (lote && lote.status === 'CONCLUIDO') carregarPedidos({});
+                }
+            } catch (_) { /* ignore */ }
+        }, 5000);
+    }
+    document.querySelectorAll('.btn-funil-massa').forEach(btn => {
+        btn.addEventListener('click', () => dispararMassa(btn.dataset.modo || 'IDS'));
+    });
+
+    async function abrirConfigDisparo() {
+        const box = document.getElementById('config-disparo-lista');
+        box.innerHTML = '<div class="text-muted small">Carregando…</div>';
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfigDisparo'));
+        modal.show();
+        try {
+            const r = await fetch(API_FUNIL_TMPL + 'config-disparo/', {
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                box.innerHTML = `<div class="text-danger">${esc(data.detail || 'Erro ao carregar')}</div>`;
+                return;
+            }
+            box.innerHTML = (data.configs || []).map(c => `
+                <div class="border rounded-3 p-3" data-cfg-aba="${esc(c.aba)}">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>${esc(c.aba)}</strong>
+                        <div class="form-check form-switch m-0">
+                            <input class="form-check-input cfg-ativo" type="checkbox" ${c.ativo ? 'checked' : ''}>
+                            <label class="form-check-label small">Autoenvio</label>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4"><label class="form-label small mb-0">Início</label><input type="time" class="form-control form-control-sm cfg-ini" value="${esc(c.hora_inicio)}"></div>
+                        <div class="col-4"><label class="form-label small mb-0">Fim</label><input type="time" class="form-control form-control-sm cfg-fim" value="${esc(c.hora_fim)}"></div>
+                        <div class="col-4"><label class="form-label small mb-0">Qtd/dia</label><input type="number" min="0" class="form-control form-control-sm cfg-qtd" value="${esc(c.qtd_diaria)}"></div>
+                    </div>
+                    <div class="small text-muted mt-2">Enviados hoje: ${esc(c.enviados_hoje)} · ciclo: ${esc(c.limite_por_ciclo)}</div>
+                </div>`).join('') || '<div class="text-muted">Sem esteiras.</div>';
+        } catch (err) {
+            box.innerHTML = `<div class="text-danger">${esc(err.message)}</div>`;
+        }
+    }
+    document.getElementById('btn-config-disparo')?.addEventListener('click', abrirConfigDisparo);
+    document.getElementById('btn-salvar-config-disparo')?.addEventListener('click', async () => {
+        const cards = [...document.querySelectorAll('#config-disparo-lista [data-cfg-aba]')];
+        try {
+            for (const card of cards) {
+                const body = {
+                    aba: card.dataset.cfgAba,
+                    ativo: !!card.querySelector('.cfg-ativo')?.checked,
+                    hora_inicio: card.querySelector('.cfg-ini')?.value,
+                    hora_fim: card.querySelector('.cfg-fim')?.value,
+                    qtd_diaria: Number(card.querySelector('.cfg-qtd')?.value || 0),
+                };
+                const r = await fetch(API_FUNIL_TMPL + 'config-disparo/', {
+                    method: 'PATCH',
+                    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || data.ok === false) throw new Error(data.detail || `Falha em ${body.aba}`);
+            }
+            bootstrap.Modal.getInstance(document.getElementById('modalConfigDisparo'))?.hide();
+            alert('Configurações salvas.');
+        } catch (err) {
+            alert(err.message);
+        }
     });
 
     // Iniciar

@@ -81,6 +81,7 @@ def _serialize_contato(c: MailingContato) -> dict:
         'respondido_em': c.respondido_em.isoformat() if c.respondido_em else None,
         'tratado_em': c.tratado_em.isoformat() if c.tratado_em else None,
         'tratado_por': (c.tratado_por.username if getattr(c, 'tratado_por_id', None) else '') or '',
+        'data_carga': c.criado_em.isoformat() if c.criado_em else None,
         **_ultimo_envio(c),
     }
 
@@ -221,6 +222,10 @@ class MailingFunilListaView(APIView):
             if digitos:
                 filt |= Q(cpf__icontains=digitos) | Q(telefone_e164__icontains=digitos)
             qs = qs.filter(filt)
+
+        cpf_filtro = ''.join(c for c in str(request.query_params.get('cpf') or '') if c.isdigit())
+        if len(cpf_filtro) >= 3:
+            qs = qs.filter(cpf__icontains=cpf_filtro)
 
         qs = qs.order_by('-respondido_em', '-id')
         total = qs.count()

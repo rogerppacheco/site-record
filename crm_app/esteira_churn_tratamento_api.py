@@ -92,6 +92,7 @@ def _churn_display_fields(churn) -> dict:
     tp = churn.tipo_retirada or ''
     motivo = churn.motivo_retirada or ''
     cd_vdd = getattr(churn, 'cd_tr_vdd_original', None) or churn.matricula_vendedor or ''
+    data_carga = getattr(churn, 'data_importacao', None)
     return {
         'TP_RETIRADA': tp,
         'DS_MOTIVO_RETIRADA': motivo,
@@ -102,6 +103,7 @@ def _churn_display_fields(churn) -> dict:
         'anomes_retirada': churn.anomes_retirada or '',
         'dt_retirada': _fmt_data(churn.dt_retirada),
         'dt_gross': _fmt_data(churn.dt_gross),
+        'data_carga': data_carga.isoformat() if data_carga else None,
     }
 
 
@@ -187,6 +189,7 @@ class EsteiraChurnTratamentoView(APIView):
         lookup = build_venda_lookup_por_os(vendas_qs)
 
         busca = (request.query_params.get('busca') or '').strip().upper()
+        cpf_filtro = ''.join(c for c in str(request.query_params.get('cpf') or '') if c.isdigit())
         somente_com_venda = request.query_params.get('somente_com_venda', '1').strip().lower() not in (
             '0', 'false', 'nao', 'não',
         )
@@ -243,6 +246,11 @@ class EsteiraChurnTratamentoView(APIView):
                     churn.tipo_retirada or '',
                 ]).upper()
                 if busca not in blob:
+                    continue
+
+            if cpf_filtro:
+                cpf_norm = normalizar_documento(cpf)
+                if cpf_filtro not in cpf_norm and cpf_filtro not in ''.join(c for c in cpf if c.isdigit()):
                     continue
 
             debito = debitos.get(normalizar_documento(cpf)) if cpf else None

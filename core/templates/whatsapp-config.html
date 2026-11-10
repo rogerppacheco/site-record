@@ -122,24 +122,52 @@
 
         <div class="card card-modern shadow-sm mb-4 d-none" id="panel-whatsatende">
             <div class="card-header text-white d-flex justify-content-between align-items-center" style="background:#0f766e;">
-                <span class="fw-bold">WhatsAtende — conexão</span>
-                <button type="button" class="btn btn-sm btn-light" onclick="carregarWhatsAppConexao('whatsatende')"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                <span class="fw-bold">WhatsAtende — conexões A / B / Funil</span>
+                <button type="button" class="btn btn-sm btn-light" onclick="atualizarTodasConexoesWa()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
             </div>
             <div class="card-body">
                 <p class="mb-2" id="whatsatende-cred-status"></p>
-                <p class="text-muted small mb-2">API <code id="wa-atende-api-url">—</code> · conexão <code id="wa-atende-id">—</code></p>
-                <div class="mb-3">
-                    <span id="wa-atende-status-badge" class="badge bg-secondary">—</span>
-                </div>
-                <div id="wa-atende-connected-msg" class="alert alert-success py-2 small d-none">Conexão WhatsAtende ativa.</div>
-                <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-success btn-sm" id="btn-wa-atende-qrcode" onclick="gerarWhatsAppQrCode('whatsatende')"><i class="bi bi-qr-code"></i> Gerar QR Code</button>
-                    <button type="button" class="btn btn-outline-danger btn-sm d-none" id="btn-wa-atende-disconnect" onclick="desconectarWhatsApp('whatsatende')"><i class="bi bi-box-arrow-right"></i> Desconectar</button>
+                <p class="text-muted small mb-3">API <code id="wa-atende-api-url">—</code>. Cada papel usa TOKEN + WHATSAPP_ID próprios no servidor.</p>
+                <div class="row g-3" id="wa-conexoes-grid">
+                    <div class="col-md-4" data-wa-role="a">
+                        <div class="border rounded-3 p-3 h-100">
+                            <div class="fw-bold mb-1">A — Interno</div>
+                            <div class="small text-muted mb-2">ID <code class="wa-role-id">—</code></div>
+                            <span class="badge bg-secondary wa-role-badge mb-2">—</span>
+                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                <button type="button" class="btn btn-success btn-sm wa-role-qr" onclick="gerarWhatsAppQrCode('whatsatende','a')"><i class="bi bi-qr-code"></i> QR</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm d-none wa-role-disc" onclick="desconectarWhatsApp('whatsatende','a')">Desconectar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4" data-wa-role="b">
+                        <div class="border rounded-3 p-3 h-100">
+                            <div class="fw-bold mb-1">B — Cliente</div>
+                            <div class="small text-muted mb-2">ID <code class="wa-role-id">—</code></div>
+                            <span class="badge bg-secondary wa-role-badge mb-2">—</span>
+                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                <button type="button" class="btn btn-success btn-sm wa-role-qr" onclick="gerarWhatsAppQrCode('whatsatende','b')"><i class="bi bi-qr-code"></i> QR</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm d-none wa-role-disc" onclick="desconectarWhatsApp('whatsatende','b')">Desconectar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4" data-wa-role="funil">
+                        <div class="border rounded-3 p-3 h-100">
+                            <div class="fw-bold mb-1">Funil — #247</div>
+                            <div class="small text-muted mb-2">ID <code class="wa-role-id">—</code></div>
+                            <span class="badge bg-secondary wa-role-badge mb-2">—</span>
+                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                <button type="button" class="btn btn-success btn-sm wa-role-qr" onclick="gerarWhatsAppQrCode('whatsatende','funil')"><i class="bi bi-qr-code"></i> QR</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm d-none wa-role-disc" onclick="desconectarWhatsApp('whatsatende','funil')">Desconectar</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div id="wa-atende-qrcode-wrap" class="text-center mt-3 d-none">
+                    <div class="small text-muted mb-1" id="wa-atende-qr-role-label"></div>
                     <img id="wa-atende-qrcode-img" alt="QR Code WhatsAtende" class="border rounded p-2 bg-white" width="260" height="260">
                 </div>
-                <p class="small text-muted mt-3 mb-0">Configure <code>WHATSATENDE_TOKEN</code> (token da conexão) e <code>WHATSATENDE_WHATSAPP_ID</code> no servidor. Webhook inbound → <code>/api/crm/webhook-whatsapp/</code>.</p>
+                <p class="small text-muted mt-3 mb-0">Env vars: <code>WHATSATENDE_TOKEN[_B|_FUNIL]</code> e <code>WHATSATENDE_WHATSAPP_ID[_B|_FUNIL]</code>. Funil não altera A/B.</p>
             </div>
         </div>
 
@@ -233,6 +261,7 @@
                 `Evolution: ${cfgAtual.evolutionConfigured ? 'OK' : 'ausente'}`,
                 `WhatsAtende A (legado bot): ${cfgAtual.whatsatendeConfigured ? 'OK' : 'ausente'}${cfgAtual.whatsatendeConnectionConfigured ? ' (conexão completa)' : cfgAtual.whatsatendeConfigured ? ' (falta WHATSATENDE_WHATSAPP_ID)' : ''}`,
                 `WhatsAtende B (cliente): ${cfgAtual.whatsatendeClienteConfigured ? 'OK id=' + (cfgAtual.whatsatendeWhatsappIdB || '') : 'ausente'}`,
+                `WhatsAtende Funil (#247): ${cfgAtual.whatsatendeFunilConfigured ? 'OK id=' + (cfgAtual.whatsatendeWhatsappIdFunil || '') : 'ausente'}`,
                 `Híbrido pronto: ${cfgAtual.hybridReady ? 'sim (Z-API + TOKEN_B)' : 'não'}`,
                 `n8n outbound: ${cfgAtual.n8nConfigured ? 'OK' : 'ausente (só afeta envios no modo Evolution)'}`,
             ];
@@ -252,17 +281,15 @@
             if (hybridWh && cfgAtual.whatsatendeWebhookUrl) {
                 hybridWh.textContent = cfgAtual.whatsatendeWebhookUrl;
             }
-            document.getElementById('whatsatende-cred-status').innerHTML = cfgAtual.whatsatendeConfigured
-                ? (cfgAtual.whatsatendeConnectionConfigured
-                    ? `<span class="text-success"><i class="bi bi-check-circle"></i> Número A (bot) OK.${cfgAtual.whatsatendeClienteConfigured ? ' Número B (cliente) OK.' : ' <strong>Falta TOKEN_B / WHATSAPP_ID_B</strong>.'}</span>`
-                    : '<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Token A OK — falta WHATSATENDE_WHATSAPP_ID para QR/status.</span>')
-                : '<span class="text-danger"><i class="bi bi-x-circle"></i> WHATSATENDE_TOKEN ausente no servidor.</span>';
+            const bits = [];
+            bits.push(cfgAtual.whatsatendeConnectionConfigured ? 'A OK' : 'A incompleto');
+            bits.push(cfgAtual.whatsatendeClienteConfigured ? 'B OK' : 'B incompleto');
+            bits.push(cfgAtual.whatsatendeFunilConfigured ? 'Funil OK' : 'Funil incompleto');
+            document.getElementById('whatsatende-cred-status').innerHTML =
+                `<span class="${cfgAtual.whatsatendeFunilConfigured && cfgAtual.whatsatendeClienteConfigured ? 'text-success' : 'text-warning'}"><i class="bi bi-info-circle"></i> ${bits.join(' · ')}</span>`;
             if (cfgAtual.whatsatendeApiUrl) document.getElementById('wa-atende-api-url').textContent = cfgAtual.whatsatendeApiUrl;
-            if (cfgAtual.whatsatendeWhatsappId) document.getElementById('wa-atende-id').textContent = cfgAtual.whatsatendeWhatsappId;
             if (cfgAtual.evolutionConfigured && cfgAtual.provider === 'evolution') carregarWhatsAppConexao('evolution', true);
-            if (cfgAtual.whatsatendeConnectionConfigured && cfgAtual.provider === 'whatsatende') {
-                carregarWhatsAppConexao('whatsatende', true);
-            }
+            atualizarTodasConexoesWa();
             if (cfgAtual.provider === 'hybrid') {
                 document.getElementById('cfg-save-msg').innerHTML =
                     '<span class="text-success">Modo híbrido ativo: equipe/grupos na Z-API; cliente no Número B WhatsAtende.</span>';
@@ -296,17 +323,22 @@
             }
         }
 
-        function waAtualizarUi(status, backend) {
+        function waAtualizarRoleCard(role, status) {
+            const card = document.querySelector(`[data-wa-role="${role}"]`);
+            if (!card || !status) return;
+            const map = { open: 'Conectado', close: 'Desconectado', connecting: 'Aguardando QR', unconfigured: 'Não configurado' };
+            const badge = card.querySelector('.wa-role-badge');
+            badge.textContent = map[status.state] || status.state || '—';
+            badge.className = 'badge wa-role-badge mb-2 ' + (status.connected ? 'bg-success' : 'bg-secondary');
+            if (status.instanceName) card.querySelector('.wa-role-id').textContent = status.instanceName;
+            card.querySelector('.wa-role-disc').classList.toggle('d-none', !(status.connected || status.state === 'connecting'));
+            card.querySelector('.wa-role-qr').classList.toggle('d-none', !!status.connected);
+        }
+
+        function waAtualizarUi(status, backend, role) {
             if (!status) return;
             if (backend === 'whatsatende') {
-                const badge = document.getElementById('wa-atende-status-badge');
-                const map = { open: 'Conectado', close: 'Desconectado', connecting: 'Aguardando QR', unconfigured: 'Não configurado' };
-                badge.textContent = map[status.state] || status.state || '—';
-                badge.className = 'badge ' + (status.connected ? 'bg-success' : 'bg-secondary');
-                if (status.instanceName) document.getElementById('wa-atende-id').textContent = status.instanceName;
-                document.getElementById('wa-atende-connected-msg').classList.toggle('d-none', !status.connected);
-                document.getElementById('btn-wa-atende-disconnect').classList.toggle('d-none', !(status.connected || status.state === 'connecting'));
-                document.getElementById('btn-wa-atende-qrcode').classList.toggle('d-none', !!status.connected);
+                waAtualizarRoleCard(role || status.role || 'a', status);
                 return;
             }
             const badge = document.getElementById('wa-status-badge');
@@ -324,26 +356,43 @@
             document.getElementById('btn-wa-qrcode').classList.toggle('d-none', !!status.connected);
         }
 
-        async function carregarWhatsAppConexao(backend, silent) {
+        async function carregarWhatsAppConexao(backend, silent, role) {
             waSetError('');
             const b = backend || (cfgAtual?.provider === 'whatsatende' ? 'whatsatende' : 'evolution');
+            const roleQ = role ? `&role=${encodeURIComponent(role)}` : '';
             try {
-                const data = await apiFetch(`/whatsapp/status/?backend=${b}`);
-                waAtualizarUi(data, b);
+                const data = await apiFetch(`/whatsapp/status/?backend=${b}${roleQ}`);
+                waAtualizarUi(data, b, role || data.role || 'a');
                 if (data.connected && waPollInterval) { clearInterval(waPollInterval); waPollInterval = null; }
             } catch (e) {
                 if (!silent) waSetError(e.message || 'Erro ao consultar status.');
+                if (b === 'whatsatende' && role) {
+                    waAtualizarRoleCard(role, { state: 'unconfigured', connected: false, instanceName: '—' });
+                }
             }
         }
 
-        async function gerarWhatsAppQrCode(backend) {
+        async function atualizarTodasConexoesWa() {
+            const conexoes = cfgAtual?.whatsatendeConexoes || {};
+            ['a', 'b', 'funil'].forEach((role) => {
+                const meta = conexoes[role];
+                const card = document.querySelector(`[data-wa-role="${role}"]`);
+                if (card && meta?.whatsappId) card.querySelector('.wa-role-id').textContent = meta.whatsappId;
+                if (meta?.configured) carregarWhatsAppConexao('whatsatende', true, role);
+                else waAtualizarRoleCard(role, { state: 'unconfigured', connected: false, instanceName: meta?.whatsappId || '—' });
+            });
+        }
+
+        async function gerarWhatsAppQrCode(backend, role) {
             waSetError('');
             const b = backend || 'evolution';
+            const roleQ = (b === 'whatsatende' && role) ? `&role=${encodeURIComponent(role)}` : '';
             try {
-                const data = await apiFetch(`/whatsapp/qrcode/?backend=${b}`);
+                const data = await apiFetch(`/whatsapp/qrcode/?backend=${b}${roleQ}`);
                 const src = data.base64 || data.qrcode || '';
                 if (!src) throw new Error('QR Code não retornado pela API.');
                 if (b === 'whatsatende') {
+                    document.getElementById('wa-atende-qr-role-label').textContent = `QR — conexão ${role || 'a'}`;
                     document.getElementById('wa-atende-qrcode-img').src = src;
                     document.getElementById('wa-atende-qrcode-wrap').classList.remove('d-none');
                 } else {
@@ -355,19 +404,21 @@
             }
         }
 
-        async function desconectarWhatsApp(backend) {
+        async function desconectarWhatsApp(backend, role) {
             const b = backend || 'evolution';
-            const label = b === 'whatsatende' ? 'WhatsAtende' : 'Evolution';
+            const label = b === 'whatsatende' ? `WhatsAtende (${role || 'a'})` : 'Evolution';
             if (!confirm(`Desconectar e resetar sessão ${label}?`)) return;
+            const roleQ = (b === 'whatsatende' && role) ? `&role=${encodeURIComponent(role)}` : '';
             try {
-                const res = await apiFetch(`/whatsapp/disconnect/?backend=${b}`, { method: 'DELETE' });
-                waAtualizarUi(res.status || res, b);
+                const res = await apiFetch(`/whatsapp/disconnect/?backend=${b}${roleQ}`, { method: 'DELETE' });
+                waAtualizarUi(res.status || res, b, role);
                 if (b === 'whatsatende') {
                     document.getElementById('wa-atende-qrcode-wrap').classList.add('d-none');
+                    await carregarWhatsAppConexao(b, false, role);
                 } else {
                     document.getElementById('wa-qrcode-wrap').classList.add('d-none');
+                    await carregarWhatsAppConexao(b);
                 }
-                await carregarWhatsAppConexao(b);
             } catch (e) {
                 waSetError(e.message);
             }

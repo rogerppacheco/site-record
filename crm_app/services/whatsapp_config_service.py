@@ -204,6 +204,7 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         "instanceName": getattr(settings, "EVOLUTION_INSTANCE_NAME", "site_record_zap"),
         "whatsatendeWhatsappId": getattr(settings, "WHATSATENDE_WHATSAPP_ID", "") or "",
         "whatsatendeWhatsappIdB": getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", "") or "",
+        "whatsatendeWhatsappIdFunil": getattr(settings, "WHATSATENDE_WHATSAPP_ID_FUNIL", "") or "",
         "whatsatendeApiUrl": getattr(
             settings, "WHATSATENDE_API_URL", "https://api.app14.whatsatende.com.br"
         ),
@@ -212,6 +213,24 @@ def build_whatsapp_config_payload() -> Dict[str, Any]:
         "whatsatendeConfigured": _credenciais_whatsatende_ok(),
         "whatsatendeConnectionConfigured": _credenciais_whatsatende_conexao_ok(),
         "whatsatendeClienteConfigured": _credenciais_whatsatende_cliente_ok(),
+        "whatsatendeFunilConfigured": _credenciais_whatsatende_funil_ok(),
+        "whatsatendeConexoes": {
+            "a": {
+                "label": "A — Interno/equipe",
+                "configured": _credenciais_whatsatende_conexao_ok(),
+                "whatsappId": getattr(settings, "WHATSATENDE_WHATSAPP_ID", "") or "",
+            },
+            "b": {
+                "label": "B — Cliente/Qualidade",
+                "configured": _credenciais_whatsatende_cliente_ok(),
+                "whatsappId": getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", "") or "",
+            },
+            "funil": {
+                "label": "Funil — #247",
+                "configured": _credenciais_whatsatende_funil_ok(),
+                "whatsappId": getattr(settings, "WHATSATENDE_WHATSAPP_ID_FUNIL", "") or "",
+            },
+        },
         "whatsatendeWebhookTokenConfigured": bool(
             (getattr(settings, "WHATSATENDE_WEBHOOK_TOKEN", "") or "").strip()
         ),

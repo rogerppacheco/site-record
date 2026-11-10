@@ -119,6 +119,10 @@ class RepescagemBioListaView(APIView):
                                  or digitos in (b['protocolo'] or '') or digitos in (b['telefone'] or '')))
             ]
 
+        cpf_filtro = ''.join(c for c in str(request.query_params.get('cpf') or '') if c.isdigit())
+        if len(cpf_filtro) >= 3:
+            base = [b for b in base if cpf_filtro in (b.get('cpf') or '')]
+
         try:
             page_size = min(max(int(request.query_params.get('page_size') or 25), 1), 200)
         except ValueError:

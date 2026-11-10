@@ -35,12 +35,23 @@ def _evolution_disponivel() -> bool:
     return _credenciais_evolution_ok()
 
 
-def _whatsatende_conexao_disponivel() -> bool:
+def _whatsatende_conexao_disponivel(role: str = "a") -> bool:
     from crm_app.services.whatsapp_config_service import (
+        _credenciais_whatsatende_cliente_ok,
         _credenciais_whatsatende_conexao_ok,
+        _credenciais_whatsatende_funil_ok,
     )
 
+    r = (role or "a").strip().lower()
+    if r in ("b", "cliente", "qualidade"):
+        return _credenciais_whatsatende_cliente_ok()
+    if r in ("funil", "f", "247"):
+        return _credenciais_whatsatende_funil_ok()
     return _credenciais_whatsatende_conexao_ok()
+
+
+def _whatsatende_role(request) -> str:
+    return (request.query_params.get("role") or request.query_params.get("conexao") or "a").strip().lower()
 
 
 def _backend_conexao(request) -> str:
@@ -176,28 +187,35 @@ def whatsapp_status_api(request):
         )
 
     if backend == "whatsatende":
-        if not _whatsatende_conexao_disponivel():
+        role = _whatsatende_role(request)
+        if not _whatsatende_conexao_disponivel(role):
             return Response(
                 {
                     "provider": config["provider"],
                     "connected": False,
                     "state": "unconfigured",
-                    "instanceName": config.get("whatsatendeWhatsappId") or "",
+                    "role": role,
+                    "instanceName": (
+                        config.get("whatsatendeWhatsappIdFunil") if role in ("funil", "f", "247")
+                        else config.get("whatsatendeWhatsappIdB") if role in ("b", "cliente")
+                        else config.get("whatsatendeWhatsappId")
+                    ) or "",
                     "message": (
-                        "Credenciais WhatsAtende incompletas "
-                        "(WHATSATENDE_TOKEN e WHATSATENDE_WHATSAPP_ID)."
+                        f"Credenciais WhatsAtende ({role}) incompletas. "
+                        "Confira TOKEN e WHATSAPP_ID da conexão no servidor."
                     ),
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         try:
-            data = WhatsAtendeConnectionService().get_status()
+            data = WhatsAtendeConnectionService(role=role).get_status()
             data["provider"] = config["provider"]
             data["activeProvider"] = config["provider"]
+            data["role"] = role
             data["setupMode"] = (
                 config["provider"] != WhatsAppIntegracaoConfig.PROVIDER_WHATSATENDE
             )
-            if data.get("setupMode"):
+            if data.get("setupMode") and role in ("a", "interno", ""):
                 data["message"] = (
                     "Aparelho WhatsAtende (setup). Provedor ativo ainda não é "
                     "WhatsAtende — escaneie o QR e só então salve WhatsAtende."
@@ -246,18 +264,19 @@ def whatsapp_qrcode_api(request):
 
     backend = _backend_conexao(request)
     if backend == "whatsatende":
-        if not _whatsatende_conexao_disponivel():
+        role = _whatsatende_role(request)
+        if not _whatsatende_conexao_disponivel(role):
             return Response(
                 {
                     "detail": (
-                        "Credenciais WhatsAtende incompletas "
-                        "(WHATSATENDE_TOKEN / WHATSATENDE_WHATSAPP_ID)."
+                        f"Credenciais WhatsAtende ({role}) incompletas "
+                        "(TOKEN / WHATSAPP_ID da conexão)."
                     )
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         try:
-            return Response(WhatsAtendeConnectionService().get_qrcode())
+            return Response(WhatsAtendeConnectionService(role=role).get_qrcode())
         except WhatsAtendeConnectionError as exc:
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
@@ -288,13 +307,14 @@ def whatsapp_disconnect_api(request):
 
     backend = _backend_conexao(request)
     if backend == "whatsatende":
-        if not _whatsatende_conexao_disponivel():
+        role = _whatsatende_role(request)
+        if not _whatsatende_conexao_disponivel(role):
             return Response(
-                {"detail": "Credenciais WhatsAtende não configuradas no servidor."},
+                {"detail": f"Credenciais WhatsAtende ({role}) não configuradas no servidor."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         try:
-            return Response(WhatsAtendeConnectionService().disconnect())
+            return Response(WhatsAtendeConnectionService(role=role).disconnect())
         except WhatsAtendeConnectionError as exc:
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Iterator, Optional
 
 from django.db import IntegrityError, transaction
@@ -510,13 +510,40 @@ def serializar_mensagem(msg) -> dict:
     }
 
 
-def _serializar_conversa_base(telefone: str, ultima=None, usuario=None) -> dict:
-    venda = None
-    if ultima is not None and ultima.venda_id:
-        venda = ultima.venda
+def _serializar_conversa_base(
+    telefone: str,
+    ultima=None,
+    usuario=None,
+    *,
+    ultima_entrada_msg=None,
+    venda=None,
+    bot_pausado_flag: Optional[bool] = None,
+) -> dict:
     if venda is None:
-        venda = _venda_cabecalho(telefone, usuario)
-    janela = estado_janela(telefone)
+        if ultima is not None and ultima.venda_id:
+            venda = ultima.venda
+        else:
+            venda = _venda_cabecalho(telefone, usuario) if ultima is not None else None
+    agora = timezone.now()
+    if ultima_entrada_msg is None and telefone:
+        # Fallback pontual (detalhe); listagem passa em lote.
+        ultima_entrada_msg = ultima_entrada(telefone)
+    if ultima_entrada_msg is None:
+        janela = {
+            "aberta": False,
+            "ate": None,
+            "ultima_entrada_em": None,
+            "aviso": AVISO_SEM_MENSAGEM_CLIENTE,
+        }
+    else:
+        limite = ultima_entrada_msg.data_hora + JANELA_ATENDIMENTO
+        aberta = (agora - ultima_entrada_msg.data_hora) < JANELA_ATENDIMENTO
+        janela = {
+            "aberta": aberta,
+            "ate": limite if aberta else None,
+            "ultima_entrada_em": ultima_entrada_msg.data_hora,
+            "aviso": "" if aberta else AVISO_JANELA_FECHADA,
+        }
     preview = ""
     if ultima is not None:
         preview = (ultima.texto or "").replace("\n", " ").strip()
@@ -534,57 +561,148 @@ def _serializar_conversa_base(telefone: str, ultima=None, usuario=None) -> dict:
         "janela_aberta": janela["aberta"],
         "janela_ate": janela["ate"].isoformat() if janela["ate"] else None,
         "aviso_janela": janela["aviso"],
-        "bot_pausado": bot_pausado(telefone),
+        "bot_pausado": bot_pausado(telefone) if bot_pausado_flag is None else bool(bot_pausado_flag),
     }
 
 
-def listar_conversas(usuario, busca: str = "", limite: int = 80) -> list[dict]:
+def listar_conversas(
+    usuario,
+    busca: str = "",
+    limite: int = 40,
+    *,
+    since: Optional[str] = None,
+) -> list[dict]:
+    """Lista conversas sem N+1: últimas msgs em lote + janela em lote."""
+    from crm_app.models import MensagemWhatsAppAtendimento, WhatsAppTelefoneSemIa
+
+    limite = max(1, min(int(limite or 40), 80))
     qs = _qs_visivel(usuario).select_related("venda__cliente", "venda__plano", "enviado_por")
     termo = (busca or "").strip()
     if termo:
         digitos = "".join(ch for ch in termo if ch.isdigit())
-        filtro = Q(venda__cliente__nome_razao_social__icontains=termo) | Q(texto__icontains=termo)
+        # Busca só em telefone/nome — evita LIKE em texto de toda a tabela.
+        filtro = Q(venda__cliente__nome_razao_social__icontains=termo)
         if digitos:
             filtro |= Q(telefone__icontains=digitos)
         qs = qs.filter(filtro)
 
-    telefones = list(
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(str(since).replace("Z", "+00:00"))
+            if timezone.is_naive(since_dt):
+                since_dt = timezone.make_aware(since_dt)
+            qs = qs.filter(data_hora__gte=since_dt)
+        except Exception:
+            pass
+
+    telefones_rows = list(
         qs.values("telefone").annotate(ultima=Max("data_hora")).order_by("-ultima")[:limite]
     )
-    itens = []
-    for row in telefones:
-        tel = row["telefone"]
-        ultima = (
-            qs.filter(telefone=tel).order_by("-data_hora", "-id").first()
+    if not telefones_rows:
+        return []
+
+    tels = [row["telefone"] for row in telefones_rows]
+    # Última mensagem por telefone (1 query + map)
+    ids_ultimas = (
+        MensagemWhatsAppAtendimento.objects.filter(telefone__in=tels)
+        .values("telefone")
+        .annotate(mid=Max("id"))
+    )
+    id_por_tel = {r["telefone"]: r["mid"] for r in ids_ultimas}
+    ultimas = {
+        m.telefone: m
+        for m in MensagemWhatsAppAtendimento.objects.filter(id__in=list(id_por_tel.values()))
+        .select_related("venda__cliente", "venda__plano", "enviado_por")
+    }
+
+    # Última entrada por telefone (janela 24h) em lote
+    ids_entradas = (
+        MensagemWhatsAppAtendimento.objects.filter(
+            telefone__in=tels,
+            direcao=MensagemWhatsAppAtendimento.DIRECAO_ENTRADA,
         )
+        .values("telefone")
+        .annotate(mid=Max("id"))
+    )
+    entradas = {
+        m.telefone: m
+        for m in MensagemWhatsAppAtendimento.objects.filter(
+            id__in=[r["mid"] for r in ids_entradas]
+        )
+    }
+
+    bots = set(
+        WhatsAppTelefoneSemIa.objects.filter(telefone__in=tels, ativo=True)
+        .values_list("telefone", flat=True)
+    )
+
+    itens = []
+    for row in telefones_rows:
+        tel = row["telefone"]
+        ultima = ultimas.get(tel)
         if ultima is None:
             continue
-        itens.append(_serializar_conversa_base(tel, ultima, usuario))
+        venda = ultima.venda if ultima.venda_id else None
+        # Não chama resolver_venda na listagem (caro); só usa venda já gravada.
+        itens.append(
+            _serializar_conversa_base(
+                tel,
+                ultima,
+                usuario,
+                ultima_entrada_msg=entradas.get(tel),
+                venda=venda,
+                bot_pausado_flag=(tel in bots),
+            )
+        )
     return itens
 
 
-def detalhe_conversa(usuario, telefone: str) -> Optional[dict]:
+def detalhe_conversa(
+    usuario,
+    telefone: str,
+    *,
+    limit_msgs: int = 80,
+    before_id: Optional[int] = None,
+) -> Optional[dict]:
     tel = canonicalizar_telefone(telefone)
     if len(tel) < 8:
         return None
     if not conversa_visivel(usuario, tel):
         return None
     chaves = telefones_equivalentes(tel)
-    mensagens = list(
+    limit_msgs = max(10, min(int(limit_msgs or 80), 200))
+    qs = (
         _qs_visivel(usuario)
         .filter(telefone__in=chaves)
         .select_related("venda__cliente", "enviado_por")
-        .order_by("data_hora", "id")
+        .order_by("-data_hora", "-id")
     )
-    if not mensagens:
+    if before_id:
+        try:
+            qs = qs.filter(id__lt=int(before_id))
+        except (TypeError, ValueError):
+            pass
+    mensagens_desc = list(qs[:limit_msgs])
+    if not mensagens_desc and not before_id:
         return None
-    ultima = mensagens[-1]
+    mensagens = list(reversed(mensagens_desc))
+    ultima = mensagens[-1] if mensagens else None
+    if ultima is None:
+        # carregar mais no passado sem msgs
+        return {
+            "telefone": tel,
+            "telefone_exibicao": exibir_telefone(tel),
+            "mensagens": [],
+            "has_more": False,
+        }
     base = _serializar_conversa_base(tel, ultima, usuario)
     canal_pronto = canal_oficial_pronto()
     base["canal_oficial_pronto"] = canal_pronto
     base["aviso_canal"] = "" if canal_pronto else AVISO_CANAL_INDISPONIVEL
     base["pode_texto_livre"] = base["janela_aberta"] and canal_pronto
     base["mensagens"] = [serializar_mensagem(m) for m in mensagens]
+    base["has_more"] = len(mensagens_desc) >= limit_msgs
+    base["oldest_id"] = mensagens[0].id if mensagens else None
     return base
 
 

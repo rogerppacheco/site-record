@@ -51,7 +51,9 @@ PRAZO_CONSTA_PEDIDO = timedelta(days=30)
 JANELA_CONSULTA_CONSTA_PAP = timedelta(days=180)
 # Não reconsultar o PAP de novo antes disso se a última busca não achou pedido.
 TTL_SEM_PEDIDO_PAP = timedelta(hours=6)
-ORIGEM_CACHE_CONSTA = 'repescagem_bio_consta'
+# max_length=20 em HistoricoPapPedido.origem (legado 'repescagem_bio_consta' excedia)
+ORIGEM_CACHE_CONSTA = 'bio_consta_pap'
+ORIGENS_CONSTA_LEGADO = (ORIGEM_CACHE_CONSTA, 'repescagem_bio_consta')
 
 # A biometria costuma ser feita minutos antes da venda; envios mais antigos que isso são de outra tentativa.
 JANELA_BIO_ANTES_VENDA = timedelta(days=7)
@@ -573,7 +575,7 @@ def infos_pedido_pap_por_cpf(cpfs: Iterable[str], agora: Optional[datetime] = No
         )
         .filter(
             Q(numero_pedido__in=numeros_sem)
-            | Q(origem=ORIGEM_CACHE_CONSTA)
+            | Q(origem__in=ORIGENS_CONSTA_LEGADO)
             | Q(cpf_digits__in=list(faltando))
         )
         .values_list('numero_pedido', 'data_criacao_pap', 'payload', 'capturado_em')
@@ -660,6 +662,7 @@ def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
     # Pedido mais antigo costuma ser o que bloqueou a venda (CONSTA PEDIDO).
     melhor: Optional[dict] = None
     melhor_data: Optional[datetime] = None
+    itens_normalizados: list[tuple[str, Optional[datetime], str, bool, dict]] = []
     for item in detalhes:
         data_criacao = _parse_data_hora_pap(item.get('data_hora') or item.get('dataCriacao'))
         numero_os = re.sub(r'\D', '', str(item.get('numero_os') or item.get('numeroOs') or ''))
@@ -678,17 +681,7 @@ def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
             'nao_pertence_pdv': outro,
             ORIGEM_CACHE_CONSTA: True,
         }
-        HistoricoPapPedido.objects.update_or_create(
-            numero_pedido=numero_pedido,
-            defaults={
-                'tipo_venda': HistoricoPapPedido.TIPO_VENDA,
-                'pdv': 'OUTRO' if outro else '',
-                'status': str(item.get('status') or '')[:80],
-                'data_criacao_pap': data_criacao,
-                'origem': ORIGEM_CACHE_CONSTA,
-                'payload': payload,
-            },
-        )
+        itens_normalizados.append((numero_pedido, data_criacao, numero_os, outro, payload))
         if data_criacao and (melhor_data is None or data_criacao < melhor_data):
             melhor_data = data_criacao
             melhor = {
@@ -698,18 +691,12 @@ def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
                 'de_outro_pdv': outro,
             }
 
-    HistoricoPapPedido.objects.filter(numero_pedido=_numero_cache_sem_pedido(cpf)).delete()
     if melhor:
         RepescagemBioPedidoPap.objects.update_or_create(
             cpf=cpf,
-            defaults={
-                **melhor,
-                'sem_pedido': False,
-                'fonte': 'consulta_os_pap',
-            },
+            defaults={**melhor, 'sem_pedido': False, 'fonte': 'consulta_os_pap'},
         )
     else:
-        # Consulta retornou linhas sem data parseável — marca sem pedido para não loop infinito.
         RepescagemBioPedidoPap.objects.update_or_create(
             cpf=cpf,
             defaults={
@@ -721,6 +708,20 @@ def _gravar_cache_pedido_pap(cpf: str, detalhes: list[dict]) -> None:
                 'fonte': 'consulta_os_pap',
             },
         )
+
+    for numero_pedido, data_criacao, _numero_os, outro, payload in itens_normalizados:
+        HistoricoPapPedido.objects.update_or_create(
+            numero_pedido=numero_pedido,
+            defaults={
+                'tipo_venda': HistoricoPapPedido.TIPO_VENDA,
+                'pdv': 'OUTRO' if outro else '',
+                'status': str(payload.get('status') or '')[:80],
+                'data_criacao_pap': data_criacao,
+                'origem': ORIGEM_CACHE_CONSTA,
+                'payload': payload,
+            },
+        )
+    HistoricoPapPedido.objects.filter(numero_pedido=_numero_cache_sem_pedido(cpf)).delete()
 
 
 def _consultar_consta_no_pap(cpf: str) -> None:
@@ -868,8 +869,9 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
         return []
 
     etapas_por_cpf: dict[str, list[dict]] = {}
-    for etapa in R.objects.filter(cpf__in=cpfs).values(
-        'cpf', 'protocolo', 'data_envio', 'resultado_analise', 'origem_digitalizacao', 'login_digitalizacao', 'msisdn',
+    for etapa in R.objects.filter(cpf__in=cpfs).select_related('importacao').values(
+        'cpf', 'protocolo', 'data_envio', 'resultado_analise', 'origem_digitalizacao',
+        'login_digitalizacao', 'msisdn', 'importacao__iniciado_em',
     ):
         etapas_por_cpf.setdefault(etapa['cpf'], []).append(etapa)
 
@@ -927,6 +929,11 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
             venda = None
         etapas = cruzamento['etapas']
         ultima = max(etapas, key=lambda e: e['data_envio']) if etapas else None
+        data_carga_dt = None
+        for etapa in etapas:
+            ini = etapa.get('importacao__iniciado_em')
+            if ini and (data_carga_dt is None or ini > data_carga_dt):
+                data_carga_dt = ini
         vendedor = ''
         if venda:
             vendedor = venda['vendedor__first_name'] or venda['vendedor__username'] or ''
@@ -955,6 +962,7 @@ def montar_base(data_inicial: date, data_final: date) -> list[dict]:
             'telefone': (venda['telefone1'] if venda and venda['telefone1'] else (ultima['msisdn'] if ultima else '')) or '',
             'ultimo_resultado': ultima['resultado_analise'] if ultima else '',
             'ultimo_envio': ultima['data_envio'].isoformat() if ultima else None,
+            'data_carga': data_carga_dt.isoformat() if data_carga_dt else None,
             'ultima_origem': ultima['origem_digitalizacao'] if ultima else '',
             'protocolo': ultima['protocolo'] if ultima else '',
             'login_ged': ultima['login_digitalizacao'] if ultima else '',

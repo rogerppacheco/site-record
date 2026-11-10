@@ -124,3 +124,103 @@ class FunilTemplatePreflightView(APIView):
                 return Response({'ok': False, 'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({'detail': f'Aba não suportada: {aba}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FunilTemplateDisparoMassaView(APIView):
+    """POST { aba, modo: IDS|FILTROS, ids?, filtros? } — enfileira envio em massa."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        negado = _sem_permissao(request)
+        if negado:
+            return negado
+        from crm_app.services import funil_dispatch_service as disp
+
+        aba = str(request.data.get('aba') or '').strip().upper()
+        modo = str(request.data.get('modo') or 'IDS').strip().upper()
+        ids = request.data.get('ids') or []
+        filtros = request.data.get('filtros') or {}
+        try:
+            lote = disp.iniciar_lote(
+                aba=aba,
+                modo=modo,
+                ids=ids if isinstance(ids, list) else [],
+                filtros=filtros if isinstance(filtros, dict) else {},
+                usuario=request.user,
+            )
+            lote = disp.processar_lote(lote, limite=15)
+            return Response({'ok': True, 'lote': disp._serializar_lote(lote)}, status=status.HTTP_201_CREATED)
+        except ValueError as exc:
+            return Response({'ok': False, 'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'ok': False, 'detail': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get(self, request):
+        negado = _sem_permissao(request)
+        if negado:
+            return negado
+        from crm_app.models import FunilDisparoLote
+        from crm_app.services import funil_dispatch_service as disp
+
+        aba = str(request.query_params.get('aba') or '').strip().upper()
+        qs = FunilDisparoLote.objects.all().order_by('-id')
+        if aba:
+            qs = qs.filter(aba=aba)
+        lote = qs.first()
+        return Response({'lote': disp._serializar_lote(lote) if lote else None})
+
+
+class FunilTemplateDisparoLoteAcaoView(APIView):
+    """POST { acao: pausar|retomar|processar }."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk: int):
+        negado = _sem_permissao(request)
+        if negado:
+            return negado
+        from crm_app.services import funil_dispatch_service as disp
+
+        acao = str(request.data.get('acao') or '').strip().lower()
+        try:
+            if acao == 'pausar':
+                lote = disp.pausar_lote(pk)
+            elif acao == 'retomar':
+                lote = disp.retomar_lote(pk)
+                lote = disp.processar_lote(lote, limite=15)
+            elif acao == 'processar':
+                from crm_app.models import FunilDisparoLote
+                lote = FunilDisparoLote.objects.get(pk=pk)
+                lote = disp.processar_lote(lote, limite=40)
+            else:
+                return Response({'detail': 'Ação inválida.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'ok': True, 'lote': disp._serializar_lote(lote)})
+        except Exception as exc:
+            return Response({'ok': False, 'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FunilDisparoConfigView(APIView):
+    """GET lista configs | PATCH { aba, ativo, hora_inicio, hora_fim, qtd_diaria, limite_por_ciclo }."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        negado = _sem_permissao(request)
+        if negado:
+            return negado
+        from crm_app.services import funil_dispatch_service as disp
+        return Response({'configs': disp.listar_configs()})
+
+    def patch(self, request):
+        negado = _sem_permissao(request)
+        if negado:
+            return negado
+        from crm_app.services import funil_dispatch_service as disp
+
+        aba = str(request.data.get('aba') or '').strip().upper()
+        try:
+            cfg = disp.atualizar_config(aba, request.data, usuario=request.user)
+            return Response({'ok': True, 'config': disp.serializar_config(cfg)})
+        except ValueError as exc:
+            return Response({'ok': False, 'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

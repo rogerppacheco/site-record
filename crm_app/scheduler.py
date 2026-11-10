@@ -87,6 +87,17 @@ def processar_disparo_mailing():
         logger.error("Erro no disparo de mailing: %s", e)
 
 
+def processar_disparo_funil():
+    """Continua lotes de template do Funil e autoenvio por janela/cota."""
+    try:
+        from crm_app.services.funil_dispatch_service import processar_lotes_em_disparo
+        n = processar_lotes_em_disparo()
+        if n:
+            logger.info("Funil disparo: %s lote(s) processado(s) neste ciclo.", n)
+    except Exception as e:
+        logger.error("Erro no disparo do Funil: %s", e)
+
+
 def buscar_faturas_automatico():
     try:
         logger.info("🤖 Iniciando busca automática de faturas no Nio...")
@@ -344,6 +355,14 @@ def _registrar_jobs(scheduler):
         trigger=IntervalTrigger(minutes=2),
         id='processar_disparo_mailing',
         name='Disparo mailings de mercado (a cada 2 min)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(processar_disparo_funil),
+        trigger=IntervalTrigger(minutes=2),
+        id='processar_disparo_funil',
+        name='Disparo templates Funil (a cada 2 min)',
         replace_existing=True,
         max_instances=1,
     )

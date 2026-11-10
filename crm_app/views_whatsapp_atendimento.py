@@ -40,17 +40,34 @@ class AtendimentoWhatsAppConversasView(_AtendimentoAutenticado):
         if negado:
             return negado
         busca = request.query_params.get("q") or ""
-        return Response({"items": listar_conversas(request.user, busca)})
+        try:
+            limite = int(request.query_params.get("limit") or 40)
+        except (TypeError, ValueError):
+            limite = 40
+        since = request.query_params.get("since") or ""
+        return Response({
+            "items": listar_conversas(request.user, busca, limite=limite, since=since or None),
+        })
 
 
 class AtendimentoWhatsAppDetalheView(_AtendimentoAutenticado):
-    """GET: histórico completo de um telefone."""
+    """GET: histórico paginado de um telefone (últimas N; before_id para carregar mais)."""
 
     def get(self, request, telefone):
         negado = self._negar_se_sem_perfil(request)
         if negado:
             return negado
-        detalhe = detalhe_conversa(request.user, telefone)
+        try:
+            limit_msgs = int(request.query_params.get("limit") or 80)
+        except (TypeError, ValueError):
+            limit_msgs = 80
+        before_id = request.query_params.get("before_id") or request.query_params.get("before")
+        detalhe = detalhe_conversa(
+            request.user,
+            telefone,
+            limit_msgs=limit_msgs,
+            before_id=int(before_id) if before_id and str(before_id).isdigit() else None,
+        )
         if detalhe is None:
             return Response({"detail": "Conversa não encontrada."}, status=status.HTTP_404_NOT_FOUND)
         return Response(detalhe)

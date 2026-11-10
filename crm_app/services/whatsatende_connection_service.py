@@ -17,23 +17,69 @@ class WhatsAtendeConnectionError(Exception):
 
 
 class WhatsAtendeConnectionService:
-    def __init__(self) -> None:
+    """Gerencia status/QR/disconnect de uma conexão WhatsAtende.
+
+    Roles:
+      - a / interno: WHATSATENDE_TOKEN + WHATSATENDE_WHATSAPP_ID
+      - b / cliente: WHATSATENDE_TOKEN_B + WHATSATENDE_WHATSAPP_ID_B
+      - funil: WHATSATENDE_TOKEN_FUNIL + WHATSATENDE_WHATSAPP_ID_FUNIL
+    """
+
+    ROLE_A = "a"
+    ROLE_B = "b"
+    ROLE_FUNIL = "funil"
+
+    def __init__(self, role: str = "a") -> None:
+        self.role = self._normalizar_role(role)
         self.base_url = (
             getattr(settings, "WHATSATENDE_API_URL", None) or DEFAULT_API_URL
         ).rstrip("/")
-        self.token = (getattr(settings, "WHATSATENDE_TOKEN", None) or "").strip()
-        self.whatsapp_id = str(
-            getattr(settings, "WHATSATENDE_WHATSAPP_ID", None) or ""
-        ).strip()
+        self.token, self.whatsapp_id, self.env_token, self.env_id = self._creds_para_role(
+            self.role
+        )
+
+    @classmethod
+    def _normalizar_role(cls, role: str) -> str:
+        r = (role or "a").strip().lower()
+        if r in ("a", "interno", "equipe", "default", ""):
+            return cls.ROLE_A
+        if r in ("b", "cliente", "qualidade"):
+            return cls.ROLE_B
+        if r in ("funil", "f", "247"):
+            return cls.ROLE_FUNIL
+        return cls.ROLE_A
+
+    @classmethod
+    def _creds_para_role(cls, role: str) -> tuple[str, str, str, str]:
+        if role == cls.ROLE_B:
+            return (
+                (getattr(settings, "WHATSATENDE_TOKEN_B", None) or "").strip(),
+                str(getattr(settings, "WHATSATENDE_WHATSAPP_ID_B", None) or "").strip(),
+                "WHATSATENDE_TOKEN_B",
+                "WHATSATENDE_WHATSAPP_ID_B",
+            )
+        if role == cls.ROLE_FUNIL:
+            return (
+                (getattr(settings, "WHATSATENDE_TOKEN_FUNIL", None) or "").strip(),
+                str(getattr(settings, "WHATSATENDE_WHATSAPP_ID_FUNIL", None) or "").strip(),
+                "WHATSATENDE_TOKEN_FUNIL",
+                "WHATSATENDE_WHATSAPP_ID_FUNIL",
+            )
+        return (
+            (getattr(settings, "WHATSATENDE_TOKEN", None) or "").strip(),
+            str(getattr(settings, "WHATSATENDE_WHATSAPP_ID", None) or "").strip(),
+            "WHATSATENDE_TOKEN",
+            "WHATSATENDE_WHATSAPP_ID",
+        )
 
     def ensure_configured(self) -> None:
         if not self.token:
             raise WhatsAtendeConnectionError(
-                "WhatsAtende não configurada (WHATSATENDE_TOKEN)"
+                f"WhatsAtende ({self.role}) não configurada ({self.env_token})"
             )
         if not self.whatsapp_id:
             raise WhatsAtendeConnectionError(
-                "WhatsAtende sem WHATSATENDE_WHATSAPP_ID "
+                f"WhatsAtende ({self.role}) sem {self.env_id} "
                 "(ID da conexão no painel Conexões)"
             )
 
@@ -117,6 +163,7 @@ class WhatsAtendeConnectionService:
             "state": mapped,
             "rawState": state_raw,
             "instanceName": self.whatsapp_id,
+            "role": self.role,
             "provider": "whatsatende",
             "data": data,
         }

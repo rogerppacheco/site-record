@@ -4331,6 +4331,13 @@ class ImportacaoChurn(models.Model):
     anomes_gross = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Gross")
     dt_retirada = models.DateField(null=True, blank=True, verbose_name="Data Retirada")
     anomes_retirada = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Retirada")
+    data_importacao = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Data Carga",
+        help_text="Quando o registro entrou/foi importado nesta esteira do Funil.",
+    )
     
     # Outros
     grupo_unidade = models.CharField(max_length=255, null=True, blank=True)
@@ -6166,6 +6173,96 @@ class FunilTratamento(models.Model):
 
     def __str__(self) -> str:
         return f'{self.aba} {self.ref_id} ({self.status})'
+
+
+class ConfigDisparoFunil(models.Model):
+    """Janela e cota diária de autoenvio de templates por esteira do Funil."""
+
+    ABA_CHOICES = FunilTemplateEnvio.ABA_CHOICES
+
+    aba = models.CharField(max_length=16, choices=ABA_CHOICES, unique=True, db_index=True)
+    ativo = models.BooleanField(default=False)
+    hora_inicio = models.TimeField(default='09:00')
+    hora_fim = models.TimeField(default='18:00')
+    qtd_diaria = models.PositiveIntegerField(default=200, help_text='Máximo de envios bem-sucedidos por dia nesta aba.')
+    limite_por_ciclo = models.PositiveIntegerField(default=40, help_text='Máximo processado por ciclo do scheduler.')
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='configs_disparo_funil',
+    )
+
+    class Meta:
+        db_table = 'crm_config_disparo_funil'
+        verbose_name = 'Config. disparo Funil'
+        verbose_name_plural = 'Configs. disparo Funil'
+
+    def __str__(self) -> str:
+        return f'Disparo {self.aba} ({"ativo" if self.ativo else "off"})'
+
+
+class FunilDisparoLote(models.Model):
+    """Fila de envio em massa de templates do Funil (selecionados ou filtrados)."""
+
+    ABA_CHOICES = FunilTemplateEnvio.ABA_CHOICES
+    MODO_IDS = 'IDS'
+    MODO_FILTROS = 'FILTROS'
+    MODO_AUTO = 'AUTO'
+    MODO_CHOICES = (
+        (MODO_IDS, 'Selecionados'),
+        (MODO_FILTROS, 'Filtrados'),
+        (MODO_AUTO, 'Automático'),
+    )
+    STATUS_PENDENTE = 'PENDENTE'
+    STATUS_DISPARANDO = 'DISPARANDO'
+    STATUS_PAUSADO = 'PAUSADO'
+    STATUS_CONCLUIDO = 'CONCLUIDO'
+    STATUS_CANCELADO = 'CANCELADO'
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, 'Pendente'),
+        (STATUS_DISPARANDO, 'Disparando'),
+        (STATUS_PAUSADO, 'Pausado'),
+        (STATUS_CONCLUIDO, 'Concluído'),
+        (STATUS_CANCELADO, 'Cancelado'),
+    )
+
+    aba = models.CharField(max_length=16, choices=ABA_CHOICES, db_index=True)
+    modo = models.CharField(max_length=16, choices=MODO_CHOICES, default=MODO_IDS)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDENTE, db_index=True)
+    ref_ids = models.JSONField(default=list, blank=True, help_text='IDs/refs selecionados (modo IDS).')
+    filtros = models.JSONField(default=dict, blank=True, help_text='Snapshot dos filtros da aba (modo FILTROS/AUTO).')
+    total = models.PositiveIntegerField(default=0)
+    enviados = models.PositiveIntegerField(default=0)
+    falhas = models.PositiveIntegerField(default=0)
+    pulados = models.PositiveIntegerField(default=0)
+    cursor = models.PositiveIntegerField(default=0, help_text='Índice já processado na fila de refs.')
+    mensagem = models.CharField(max_length=255, blank=True, default='')
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='funil_disparo_lotes',
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    iniciado_em = models.DateTimeField(null=True, blank=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_funil_disparo_lote'
+        verbose_name = 'Lote de disparo Funil'
+        verbose_name_plural = 'Lotes de disparo Funil'
+        ordering = ['-criado_em']
+        indexes = [
+            models.Index(fields=['status', 'aba']),
+        ]
+
+    def __str__(self) -> str:
+        return f'Lote #{self.pk} {self.aba} {self.modo} ({self.status})'
 
 
 class GdpPrecoMunicipioManager(models.Manager):

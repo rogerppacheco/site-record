@@ -13,7 +13,13 @@ from .esteira_churn_tratamento_api import (
     EsteiraChurnTratamentoView,
 )
 from .repescagem_bio_api import RepescagemBioImportacaoView, RepescagemBioListaView
-from .funil_template_api import FunilTemplateEnviarView, FunilTemplatePreflightView
+from .funil_template_api import (
+    FunilDisparoConfigView,
+    FunilTemplateDisparoLoteAcaoView,
+    FunilTemplateDisparoMassaView,
+    FunilTemplateEnviarView,
+    FunilTemplatePreflightView,
+)
 from .funil_tratamento_api import FunilTratarView
 from .mailing_api import (
     MailingContatoTratarView,
@@ -503,6 +509,9 @@ urlpatterns = [
     path('repescagem-bio/importacoes/', RepescagemBioImportacaoView.as_view(), name='repescagem-bio-importacao'),
     path('funil-templates/enviar/', FunilTemplateEnviarView.as_view(), name='funil-template-enviar'),
     path('funil-templates/preflight/', FunilTemplatePreflightView.as_view(), name='funil-template-preflight'),
+    path('funil-templates/disparo-massa/', FunilTemplateDisparoMassaView.as_view(), name='funil-template-disparo-massa'),
+    path('funil-templates/disparo-massa/<int:pk>/', FunilTemplateDisparoLoteAcaoView.as_view(), name='funil-template-disparo-lote'),
+    path('funil-templates/config-disparo/', FunilDisparoConfigView.as_view(), name='funil-config-disparo'),
     path('funil-tratar/', FunilTratarView.as_view(), name='funil-tratar'),
     path('mailings/', MailingLoteListCreateView.as_view(), name='mailing-lotes'),
     path('mailings/funil/', MailingFunilListaView.as_view(), name='mailing-funil'),

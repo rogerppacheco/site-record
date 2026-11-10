@@ -290,6 +290,14 @@ def filtrar_pedidos_funil(qp) -> dict:
             )
         base = base.filter(filtro)
 
+    cpf_filtro = "".join(c for c in str(qp.get("cpf") or "") if c.isdigit())
+    if len(cpf_filtro) >= 3:
+        base = base.filter(
+            Q(payload__cpf__icontains=cpf_filtro)
+            | Q(payload__dadosCliente__cpf__icontains=cpf_filtro)
+            | Q(payload__documento__icontains=cpf_filtro)
+        )
+
     situacao = (qp.get("situacao") or "").strip().lower()
     if situacao == "novos":
         base = base.filter(numero_pedido__in=novos_lookup)
@@ -451,6 +459,7 @@ class FunilHistoricoPapPedidosView(APIView):
                 "status_secundario": etapa_val,
                 "novo_nesta_busca": num_norm in novos_set,
                 "data_status": mapped.get("data_pedido") or "",
+                "data_carga": p.capturado_em.isoformat() if p.capturado_em else None,
                 "telefone": tel,
                 **envio,
                 **match_info,
