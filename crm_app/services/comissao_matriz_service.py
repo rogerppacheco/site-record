@@ -71,6 +71,9 @@ def _legacy_valores_faixa_banda(faixa: RegraComissaoFaixa, banda: str) -> tuple[
         return faixa.valor_500mb_pap, faixa.valor_500mb_cnpj
     if banda_ref == '700MB':
         return faixa.valor_700mb_pap, faixa.valor_700mb_cnpj
+    # Sem coluna legada 800MB: usa 700MB só como fallback de compatibilidade.
+    if banda_ref == '800MB':
+        return faixa.valor_700mb_pap, faixa.valor_700mb_cnpj
     if banda_ref == '1GB':
         return faixa.valor_1gb_pap, faixa.valor_1gb_cnpj
     return None, None
@@ -143,8 +146,8 @@ def _buscar_valor_manual_plano_equivalente(
         if v is not None:
             return v
 
-    # 2ª passagem: mesma banda legada (ex.: 700MB <-> 800MB, 600MB <-> 500MB)
-    if not banda_legado_alvo:
+    # 2ª passagem: mesma banda legada só para 400/500/600 (700 e 800 têm tarifas distintas na grade GDP).
+    if not banda_legado_alvo or banda_alvo in ('700MB', '800MB', '900MB', '1GB'):
         return None
     for row in rows_config:
         p_cand = getattr(row, 'plano', None)
@@ -152,8 +155,6 @@ def _buscar_valor_manual_plano_equivalente(
             continue
         banda_cand = _plano_nome_to_banda(p_cand)
         if _banda_legado_comissao(banda_cand) != banda_legado_alvo:
-            continue
-        if banda_legado_alvo == '1GB' and _eh_sem_mesh(p_cand) != sem_mesh_alvo:
             continue
         v = _extrair(row)
         if v is not None:

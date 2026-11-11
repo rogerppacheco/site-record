@@ -13,11 +13,13 @@ CHAVES_PLANO = [
     '600MB_PAP',
     '600MB_ESP_PAP',
     '700MB_PAP',
+    '800MB_PAP',
     '1GB_PAP',
     '500MB_CNPJ',
     '600MB_CNPJ',
     '600MB_ESP_CNPJ',
     '700MB_CNPJ',
+    '800MB_CNPJ',
     '1GB_CNPJ',
 ]
 
@@ -26,11 +28,13 @@ LABELS_CHAVE_PLANO = {
     '600MB_PAP': '600MB PAP',
     '600MB_ESP_PAP': '600MB Cidade Especial PAP',
     '700MB_PAP': '700MB PAP',
+    '800MB_PAP': '800MB PAP',
     '1GB_PAP': '1GB PAP',
     '500MB_CNPJ': '500MB CNPJ',
     '600MB_CNPJ': '600MB CNPJ',
     '600MB_ESP_CNPJ': '600MB Cidade Especial CNPJ',
     '700MB_CNPJ': '700MB CNPJ',
+    '800MB_CNPJ': '800MB CNPJ',
     '1GB_CNPJ': '1GB CNPJ',
 }
 
@@ -40,7 +44,9 @@ _CHAVE_PARA_LEGADO = {
     '600MB_ESP_PAP': '500MB_PAP',
     '600MB_CNPJ': '500MB_CNPJ',
     '600MB_ESP_CNPJ': '500MB_CNPJ',
-    # 800MB continua agregado em 700MB (sem linha própria neste momento).
+    # Sem coluna manual 800MB: fallback temporário na coluna 700MB.
+    '800MB_PAP': '700MB_PAP',
+    '800MB_CNPJ': '700MB_CNPJ',
 }
 
 
@@ -97,15 +103,19 @@ def _plano_nome_to_banda(plano_ou_nome):
 def _banda_legado_comissao(banda: str | None) -> str | None:
     """
     Normaliza banda para colunas legadas das faixas (500/700/1GB).
-    400MB, 600MB, 800MB e 900MB não têm coluna própria: herdam a tabela do
-    degrau equivalente (400/600 → 500, 800/900 → 700).
+
+    Grade GDP atual: 600/700/800/1GB têm linha própria na folha.
+    Apenas bandas sem coluna (400→500, 900→800) ainda herdam degrau vizinho.
     """
     if not banda:
         return None
-    if banda in ('400MB', '600MB'):
+    if banda == '400MB':
         return '500MB'
-    if banda in ('800MB', '900MB'):
-        return '700MB'
+    if banda == '600MB':
+        # Colunas legadas manuais ainda usam 500MB; a folha já tem linha 600MB.
+        return '500MB'
+    if banda == '900MB':
+        return '800MB'
     return banda
 
 
@@ -214,13 +224,11 @@ def plano_tipo_to_chave(
     cidades_especiais_cache=None,
 ):
     """
-    Retorna a chave de exibição na folha (ex.: 600MB_ESP_PAP, 500MB_PAP).
+    Retorna a chave de exibição na folha (ex.: 600MB_ESP_PAP, 800MB_PAP).
 
     - 600MB em cidade de oferta especial → 600MB_ESP_*
-    - 600MB demais cidades → linha própria 600MB_*
-    - Até 30/09/2026 o valor dessa linha vem da coluna 500MB
-    - 400MB agrega em 500MB_*; 800MB e 900MB agregam em 700MB_* (legado)
-    - Demais bandas → chave própria
+    - 600/700/800/1GB → linha própria (grade GDP)
+    - 400MB agrega em 500MB_*; 900MB agrega em 800MB_*
     """
     banda_real = _plano_nome_to_banda(plano_ou_nome)
     if not banda_real:
@@ -237,6 +245,14 @@ def plano_tipo_to_chave(
             chave = f'600MB_ESP_{sufixo}'
         else:
             chave = f'600MB_{sufixo}'
+        return chave if chave in CHAVES_PLANO else None
+
+    if banda_real == '900MB':
+        chave = f'800MB_{sufixo}'
+        return chave if chave in CHAVES_PLANO else None
+
+    if banda_real in ('500MB', '700MB', '800MB', '1GB'):
+        chave = f'{banda_real}_{sufixo}'
         return chave if chave in CHAVES_PLANO else None
 
     banda = _banda_legado_comissao(banda_real)
@@ -256,7 +272,7 @@ def chave_linha_folha(
     """
     Linha da tabela da folha.
 
-    A partir de 01/10/2026 segue a grade 500/600/700/1GB.
+    A partir de 01/10/2026 segue a grade GDP 500/600/700/800/1GB.
     Antes disso, cada plano cadastrado fica na própria linha, para o valor
     unitário não misturar produtos da mesma velocidade (ex.: 1GB e 1GB SEM MESH).
     """

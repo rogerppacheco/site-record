@@ -52,12 +52,14 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
 
     def test_banda_transicao_600_800(self) -> None:
         self.assertEqual(_banda_legado_comissao('600MB'), '500MB')
-        self.assertEqual(_banda_legado_comissao('800MB'), '700MB')
+        self.assertEqual(_banda_legado_comissao('800MB'), '800MB')
+        self.assertEqual(_banda_legado_comissao('900MB'), '800MB')
         self.assertEqual(_banda_legado_comissao('500MB'), '500MB')
 
     def test_chave_excel_planos_transicao(self) -> None:
         self.assertEqual(plano_tipo_to_chave('NIO FIBRA ESSENCIAL 600MB', 'CPF'), '600MB_PAP')
-        self.assertEqual(plano_tipo_to_chave('NIO FIBRA SUPER 800MB', 'CNPJ'), '700MB_CNPJ')
+        self.assertEqual(plano_tipo_to_chave('NIO FIBRA SUPER 800MB', 'CNPJ'), '800MB_CNPJ')
+        self.assertEqual(plano_tipo_to_chave('NIO SUPER 800MB', 'CPF'), '800MB_PAP')
         self.assertEqual(plano_tipo_to_chave('NIO FIBRA 500MB', 'CPF'), '500MB_PAP')
 
     def test_chave_600_cidade_especial(self) -> None:
@@ -260,6 +262,7 @@ class ComissaoMatrizPlanoTest(SimpleTestCase):
             _legacy_valores_faixa_banda(faixa, '600MB'),
             (Decimal('150'), Decimal('250')),
         )
+        # 800MB sem coluna própria ainda faz fallback na coluna 700MB.
         self.assertEqual(
             _legacy_valores_faixa_banda(faixa, '800MB'),
             (Decimal('190'), Decimal('280')),
@@ -455,7 +458,7 @@ class AgrupamentoPlanoCadastradoTest(SimpleTestCase):
             )
         self.assertEqual(valor, 200.0)
 
-    def test_manual_700mb_herda_de_plano_800mb_equivalente_na_mesma_config(self) -> None:
+    def test_manual_700mb_nao_herda_de_plano_800mb_na_grade_gdp(self) -> None:
         from crm_app.services.comissao_matriz_service import (
             MatrizComissaoCache,
             get_valor_manual_vendedor_plano,
@@ -475,12 +478,10 @@ class AgrupamentoPlanoCadastradoTest(SimpleTestCase):
         cache._manual_por_config[13] = [row_800]
         config = SimpleNamespace(id=13)
 
-        self.assertEqual(
+        self.assertIsNone(
             get_valor_manual_vendedor_plano(config, plano_700, 'CPF', matriz_cache=cache),
-            220.0,
         )
-        self.assertEqual(
+        self.assertIsNone(
             get_valor_manual_vendedor_plano(config, plano_700, 'CNPJ', matriz_cache=cache),
-            280.0,
         )
 
