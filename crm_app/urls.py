@@ -52,6 +52,8 @@ from .views_whatsapp_atendimento import (
     AtendimentoWhatsAppAssumirView,
     AtendimentoWhatsAppConversasView,
     AtendimentoWhatsAppDetalheView,
+    AtendimentoWhatsAppEventsView,
+    AtendimentoWhatsAppIniciarView,
     AtendimentoWhatsAppResponderView,
 )
 from .pedido_ajuda_gc_api import (
@@ -305,6 +307,8 @@ urlpatterns = [
     path('atendimento-whatsapp/conversas/<str:telefone>/', AtendimentoWhatsAppDetalheView.as_view(), name='atendimento-whatsapp-detalhe'),
     path('atendimento-whatsapp/conversas/<str:telefone>/responder/', AtendimentoWhatsAppResponderView.as_view(), name='atendimento-whatsapp-responder'),
     path('atendimento-whatsapp/conversas/<str:telefone>/assumir/', AtendimentoWhatsAppAssumirView.as_view(), name='atendimento-whatsapp-assumir'),
+    path('atendimento-whatsapp/iniciar/', AtendimentoWhatsAppIniciarView.as_view(), name='atendimento-whatsapp-iniciar'),
+    path('atendimento-whatsapp/events/', AtendimentoWhatsAppEventsView.as_view(), name='atendimento-whatsapp-events'),
     # Boas-Vindas Gestão (ferramenta dedicada)
     path('boas-vindas/instalacoes/', BoasVindasInstalacoesView.as_view(), name='boas-vindas-instalacoes'),
     path('boas-vindas/retornos/', BoasVindasRetornosView.as_view(), name='boas-vindas-retornos'),

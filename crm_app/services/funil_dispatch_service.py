@@ -219,6 +219,7 @@ def iniciar_lote(
     ids: list | None = None,
     filtros: dict | None = None,
     usuario=None,
+    enqueue_celery: bool = True,
 ) -> FunilDisparoLote:
     aba = (aba or '').strip().upper()
     modo = (modo or '').strip().upper()
@@ -242,7 +243,34 @@ def iniciar_lote(
         criado_por=usuario if getattr(usuario, 'is_authenticated', False) else None,
         iniciado_em=timezone.now(),
     )
+    if enqueue_celery:
+        enfileirar_processamento_lote(lote.pk)
     return lote
+
+
+def enfileirar_processamento_lote(lote_id: int) -> bool:
+    """Despacha Celery após commit; retorna False se Redis/Celery falhar (APScheduler cobre)."""
+    from django.db import transaction
+
+    def _delay():
+        try:
+            from crm_app.tasks_celery import processar_lote_funil_whatsapp
+
+            processar_lote_funil_whatsapp.delay(int(lote_id))
+            return True
+        except Exception:
+            logger.warning(
+                '[FunilDisparo] Celery indisponível para lote=%s — scheduler processará',
+                lote_id,
+                exc_info=True,
+            )
+            return False
+
+    try:
+        transaction.on_commit(_delay)
+        return True
+    except Exception:
+        return _delay()
 
 
 def pausar_lote(lote_id: int) -> FunilDisparoLote:

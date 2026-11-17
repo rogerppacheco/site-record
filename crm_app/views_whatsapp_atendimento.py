@@ -1,6 +1,10 @@
 """Página e API do inbox de atendimento WhatsApp (número do cliente)."""
 from __future__ import annotations
 
+import json
+import time
+
+from django.http import StreamingHttpResponse
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -10,6 +14,7 @@ from rest_framework.views import APIView
 from crm_app.services.whatsapp.atendimento_service import (
     assumir_conversa,
     detalhe_conversa,
+    iniciar_conversa_por_telefone,
     listar_conversas,
     responder_texto,
 )
@@ -106,3 +111,67 @@ class AtendimentoWhatsAppAssumirView(_AtendimentoAutenticado):
         if detalhe is None:
             return Response({"detail": "Conversa não encontrada."}, status=status.HTTP_404_NOT_FOUND)
         return Response({"ok": True, "bot_pausado": True, "conversa": detalhe})
+
+
+class AtendimentoWhatsAppIniciarView(_AtendimentoAutenticado):
+    """POST: cria/abre Conversation a partir do Funil (Iniciar Conversa)."""
+
+    def post(self, request):
+        negado = self._negar_se_sem_perfil(request)
+        if negado:
+            return negado
+        data = request.data if isinstance(request.data, dict) else {}
+        telefone = data.get("telefone") or ""
+        contact_name = (data.get("contact_name") or data.get("nome") or "")[:255]
+        venda_id = data.get("venda_id")
+        venda = None
+        if venda_id:
+            from crm_app.models import Venda
+
+            venda = Venda.objects.filter(pk=venda_id).first()
+        detalhe = iniciar_conversa_por_telefone(
+            request.user,
+            telefone,
+            venda=venda,
+            contact_name=contact_name,
+        )
+        if detalhe is None:
+            return Response(
+                {"detail": "Telefone inválido para iniciar conversa."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"ok": True, "conversa": detalhe})
+
+
+class AtendimentoWhatsAppEventsView(_AtendimentoAutenticado):
+    """GET: Server-Sent Events (Redis pub/sub) para alertas em tempo real."""
+
+    def get(self, request):
+        negado = self._negar_se_sem_perfil(request)
+        if negado:
+            return negado
+
+        def event_stream():
+            from crm_app.services.whatsapp.inbox_events import iter_inbox_events
+
+            yield ": connected\n\n"
+            started = time.time()
+            # Limita conexão SSE a ~25 min (proxies); cliente reconecta.
+            max_seconds = 25 * 60
+            for event in iter_inbox_events(timeout=15.0):
+                if time.time() - started > max_seconds:
+                    yield "event: reconnect\ndata: {}\n\n"
+                    break
+                if event is None:
+                    yield ": heartbeat\n\n"
+                    continue
+                payload = json.dumps(event, ensure_ascii=False, default=str)
+                yield f"event: message\ndata: {payload}\n\n"
+
+        response = StreamingHttpResponse(
+            event_stream(),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response

@@ -365,7 +365,13 @@ class Venda(models.Model):
     
     telefone1 = models.CharField(max_length=20, blank=True, null=True)
     telefone2 = models.CharField(max_length=20, blank=True, null=True)
-    
+    nao_perturbe = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Não perturbe (WhatsApp)",
+        help_text="Se marcado, a venda não é elegível para disparos/conversas WhatsApp proativos.",
+    )
+
     cep = models.CharField(max_length=9, blank=True, null=True)
     logradouro = models.CharField(max_length=255, blank=True, null=True)
     numero_residencia = models.CharField(max_length=20, blank=True, null=True)
@@ -810,6 +816,17 @@ class Venda(models.Model):
     # ------------------------------------------
 
     def __str__(self): return f"Venda #{self.id}"
+
+    @property
+    def whatsapp_eligibility(self) -> dict:
+        from crm_app.services.whatsapp.eligibility import elegibilidade_venda
+
+        return elegibilidade_venda(self)
+
+    @property
+    def is_whatsapp_eligible(self) -> bool:
+        return bool(self.whatsapp_eligibility.get("ok"))
+
     class Meta:
         db_table = 'crm_venda'
         verbose_name = "Venda"
@@ -5377,6 +5394,130 @@ class WhatsAppTelefoneSemIa(models.Model):
         super().save(*args, **kwargs)
 
 
+class WhatsAppChannel(models.Model):
+    """Instância operacional WhatsAtende (A/B/Funil)."""
+
+    ROLE_INTERNO = "interno"
+    ROLE_CLIENTE = "cliente"
+    ROLE_FUNIL = "funil"
+    ROLE_CHOICES = (
+        (ROLE_INTERNO, "Interno / Equipe (A)"),
+        (ROLE_CLIENTE, "Cliente / Oficial (B)"),
+        (ROLE_FUNIL, "Funil (#247)"),
+    )
+
+    PROVIDER_WHATSATENDE = "whatsatende"
+    PROVIDER_CHOICES = (
+        (PROVIDER_WHATSATENDE, "WhatsAtende"),
+        ("meta", "Meta Cloud"),
+        ("zapi", "Z-API"),
+        ("evolution", "Evolution"),
+    )
+
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, db_index=True)
+    provider = models.CharField(
+        max_length=20, choices=PROVIDER_CHOICES, default=PROVIDER_WHATSATENDE
+    )
+    whatsapp_id = models.CharField(max_length=64, blank=True, default="")
+    label = models.CharField(max_length=120, blank=True, default="")
+    ativo = models.BooleanField(default=True)
+    ultimo_status = models.CharField(max_length=64, blank=True, default="")
+    ultimo_check_em = models.DateTimeField(null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_channel"
+        verbose_name = "Canal WhatsApp"
+        verbose_name_plural = "Canais WhatsApp"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "role"],
+                name="uniq_wa_channel_provider_role",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_role_display()} ({self.whatsapp_id or 'sem id'})"
+
+
+class WhatsAppConversation(models.Model):
+    """Conversa de inbox (1 telefone + 1 canal). Denormaliza preview para listagem."""
+
+    STATUS_ABERTA = "ABERTA"
+    STATUS_EM_ATENDIMENTO = "EM_ATENDIMENTO"
+    STATUS_BOT = "BOT"
+    STATUS_ENCERRADA = "ENCERRADA"
+    STATUS_CHOICES = (
+        (STATUS_ABERTA, "Aberta"),
+        (STATUS_EM_ATENDIMENTO, "Em atendimento"),
+        (STATUS_BOT, "Bot"),
+        (STATUS_ENCERRADA, "Encerrada"),
+    )
+
+    channel = models.ForeignKey(
+        WhatsAppChannel,
+        on_delete=models.PROTECT,
+        related_name="conversas",
+    )
+    telefone = models.CharField(max_length=20, db_index=True)
+    contact_name = models.CharField(max_length=255, blank=True, default="")
+    venda = models.ForeignKey(
+        "Venda",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="conversas_whatsapp",
+    )
+    funil_tratamento = models.ForeignKey(
+        "FunilTratamento",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="conversas_whatsapp",
+    )
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="conversas_whatsapp_assignee",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_ABERTA, db_index=True
+    )
+    bot_pausado = models.BooleanField(default=False)
+    unread_count = models.PositiveIntegerField(default=0)
+    last_message_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_message_preview = models.CharField(max_length=240, blank=True, default="")
+    last_direction = models.CharField(max_length=10, blank=True, default="")
+    janela_aberta_ate = models.DateTimeField(null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_conversation"
+        verbose_name = "Conversa WhatsApp"
+        verbose_name_plural = "Conversas WhatsApp"
+        ordering = ["-last_message_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["channel", "-last_message_at"],
+                name="crm_wa_conv_ch_last_idx",
+            ),
+            models.Index(fields=["telefone", "-last_message_at"], name="crm_wa_conv_tel_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel", "telefone"],
+                name="uniq_wa_conv_channel_tel",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.telefone} ({self.status})"
+
+
 class MensagemWhatsAppAtendimento(models.Model):
     """Histórico do atendimento WhatsApp no número do cliente (Cloud API).
 
@@ -5408,6 +5549,13 @@ class MensagemWhatsAppAtendimento(models.Model):
         db_index=True,
         help_text="Telefone normalizado, somente dígitos, sem DDI 55.",
     )
+    conversa = models.ForeignKey(
+        "WhatsAppConversation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="mensagens",
+    )
     venda = models.ForeignKey(
         "Venda",
         on_delete=models.SET_NULL,
@@ -5423,6 +5571,9 @@ class MensagemWhatsAppAtendimento(models.Model):
     origem = models.CharField(max_length=20, blank=True, default=ORIGEM_CRM)
     sucesso = models.BooleanField(default=True)
     erro = models.TextField(blank=True, default="")
+    status_entrega = models.CharField(max_length=32, blank=True, default="")
+    media_url = models.URLField(max_length=500, blank=True, default="")
+    media_tipo = models.CharField(max_length=40, blank=True, default="")
     enviado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -5443,6 +5594,7 @@ class MensagemWhatsAppAtendimento(models.Model):
                 fields=["telefone", "direcao", "-data_hora"],
                 name="crm_wa_atend_tel_dir_idx",
             ),
+            models.Index(fields=["conversa", "-data_hora"], name="crm_wa_atend_conv_dt_idx"),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -5454,6 +5606,43 @@ class MensagemWhatsAppAtendimento(models.Model):
 
     def __str__(self) -> str:
         return f"{self.telefone} {self.direcao} {self.data_hora:%d/%m/%Y %H:%M}"
+
+
+class MensagemWhatsAppAtendimentoArquivo(models.Model):
+    """Arquivo frio de mensagens antigas (retenção > 180 dias)."""
+
+    telefone = models.CharField(max_length=20, db_index=True)
+    conversa_id = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    venda_id = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    direcao = models.CharField(max_length=10, db_index=True)
+    tipo = models.CharField(max_length=10, default="SESSAO")
+    texto = models.TextField(blank=True, default="")
+    template_name = models.CharField(max_length=120, blank=True, default="")
+    message_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    origem = models.CharField(max_length=20, blank=True, default="")
+    sucesso = models.BooleanField(default=True)
+    erro = models.TextField(blank=True, default="")
+    status_entrega = models.CharField(max_length=32, blank=True, default="")
+    media_url = models.URLField(max_length=500, blank=True, default="")
+    media_tipo = models.CharField(max_length=40, blank=True, default="")
+    enviado_por_id = models.PositiveIntegerField(null=True, blank=True)
+    data_hora = models.DateTimeField(db_index=True)
+    arquivado_em = models.DateTimeField(auto_now_add=True)
+    origem_pk = models.PositiveIntegerField(
+        null=True, blank=True, db_index=True, help_text="PK original em MensagemWhatsAppAtendimento"
+    )
+
+    class Meta:
+        db_table = "crm_mensagem_whatsapp_atendimento_arquivo"
+        verbose_name = "Mensagem WhatsApp arquivada"
+        verbose_name_plural = "Mensagens WhatsApp arquivadas"
+        ordering = ["-data_hora"]
+        indexes = [
+            models.Index(fields=["telefone", "-data_hora"], name="crm_wa_arq_tel_dt_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Arquivo {self.telefone} {self.data_hora}"
 
 
 class SessaoTratamento(models.Model):
@@ -6258,7 +6447,7 @@ class FunilDisparoLote(models.Model):
         verbose_name_plural = 'Lotes de disparo Funil'
         ordering = ['-criado_em']
         indexes = [
-            models.Index(fields=['status', 'aba']),
+            models.Index(fields=['status', 'aba'], name='crm_funil_d_status_aba_idx'),
         ]
 
     def __str__(self) -> str:

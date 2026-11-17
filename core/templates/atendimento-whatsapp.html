@@ -13,16 +13,38 @@
 
 {% block extra_css %}
 <style>
-    .wa-inbox { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    .wa-layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; min-height: 70vh; }
-    .wa-lista, .wa-chat { border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); display: flex; flex-direction: column; min-height: 560px; }
-    .wa-lista-head, .wa-chat-head { padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
+    .wa-inbox { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+    .wa-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr) 300px;
+        gap: 14px;
+        min-height: 72vh;
+    }
+    .wa-lista, .wa-chat, .wa-lead {
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--bg-card);
+        display: flex;
+        flex-direction: column;
+        min-height: 560px;
+    }
+    .wa-lista-head, .wa-chat-head, .wa-lead-head {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border-color);
+    }
     .wa-busca { width: 100%; }
     .wa-conversas { overflow-y: auto; flex: 1; }
-    .wa-item { padding: 12px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+    .wa-item { padding: 12px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; position: relative; }
     .wa-item:hover, .wa-item.ativo { background: var(--bg-secondary); }
     .wa-item .nome { font-weight: 600; }
     .wa-item .preview { color: var(--text-muted, #6c757d); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wa-badge-unread {
+        position: absolute; top: 10px; right: 10px;
+        min-width: 1.25rem; height: 1.25rem; border-radius: 999px;
+        background: var(--color-danger, #dc3545); color: #fff;
+        font-size: 0.7rem; display: inline-flex; align-items: center; justify-content: center;
+        padding: 0 5px;
+    }
     .wa-msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; background: var(--bg-secondary); }
     .wa-bubble { max-width: 80%; border-radius: 10px; padding: 8px 12px; }
     .wa-bubble.entrada { align-self: flex-start; background: color-mix(in srgb, var(--color-info, #0d6efd) 16%, var(--bg-card)); }
@@ -32,15 +54,32 @@
     .wa-composer { padding: 12px 16px; border-top: 1px solid var(--border-color); }
     .wa-vazio { padding: 24px; color: var(--text-muted, #6c757d); }
     .wa-falha { font-size: 0.75rem; color: var(--color-danger, #dc3545); }
+    .wa-lead-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+    .wa-lead-row { margin-bottom: 12px; }
+    .wa-lead-row .lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted, #6c757d); }
+    .wa-lead-row .val { font-size: 0.95rem; word-break: break-word; }
+    .wa-sse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #adb5bd; }
+    .wa-sse-dot.on { background: #198754; }
+    .wa-sse-dot.off { background: #dc3545; }
+    @media (max-width: 1100px) {
+        .wa-layout { grid-template-columns: 260px 1fr; }
+        .wa-lead { grid-column: 1 / -1; min-height: 220px; max-height: 280px; }
+    }
     @media (max-width: 860px) {
         .wa-layout { grid-template-columns: 1fr; }
-        .wa-lista { min-height: 280px; max-height: 360px; }
+        .wa-lista { min-height: 240px; max-height: 320px; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="wa-inbox">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small text-muted">
+            <span class="wa-sse-dot" id="sse-dot"></span>
+            <span id="sse-label">Conectando alertas…</span>
+        </div>
+    </div>
     <div class="wa-layout">
         <section class="wa-lista">
             <div class="wa-lista-head">
@@ -53,7 +92,7 @@
         <section class="wa-chat">
             <div class="wa-chat-head" id="chat-head">
                 <strong>Selecione uma conversa</strong>
-                <div class="small text-muted">Direção, horário e se a mensagem foi modelo ou sessão aparecem no histórico.</div>
+                <div class="small text-muted">Lista à esquerda · chat no centro · lead à direita.</div>
             </div>
             <div id="chat-msgs" class="wa-msgs">
                 <div class="wa-vazio">Nenhuma conversa aberta.</div>
@@ -72,6 +111,15 @@
                 </div>
             </div>
         </section>
+        <aside class="wa-lead">
+            <div class="wa-lead-head">
+                <strong>Lead / Pedido</strong>
+                <div class="small text-muted">Status, endereço e plano</div>
+            </div>
+            <div class="wa-lead-body" id="lead-panel">
+                <div class="wa-vazio">Selecione uma conversa para ver o painel do lead.</div>
+            </div>
+        </aside>
     </div>
 </div>
 {% endblock %}
@@ -83,6 +131,9 @@
     const API = '/api/crm/atendimento-whatsapp';
     let telefoneAberto = null;
     let timer = null;
+    let sseAtivo = false;
+    let tituloBase = document.title;
+    let unreadBadge = 0;
 
     function api(path, opts = {}) {
         const token = localStorage.getItem('accessToken');
@@ -114,6 +165,55 @@
         return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
 
+    function setSseStatus(on, label) {
+        const dot = document.getElementById('sse-dot');
+        const lbl = document.getElementById('sse-label');
+        dot.classList.toggle('on', !!on);
+        dot.classList.toggle('off', !on);
+        lbl.textContent = label || (on ? 'Alertas em tempo real' : 'Alertas offline (polling)');
+        sseAtivo = !!on;
+    }
+
+    function bumpTitleBadge(n) {
+        unreadBadge = Math.max(0, (unreadBadge || 0) + (n || 0));
+        document.title = unreadBadge > 0 ? `(${unreadBadge}) ${tituloBase}` : tituloBase;
+    }
+
+    function notifyDesktop(title, body) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            try { new Notification(title, { body: body || '', tag: 'wa-inbox' }); } catch (_) {}
+        }
+    }
+
+    function renderLead(lead) {
+        const el = document.getElementById('lead-panel');
+        if (!lead) {
+            el.innerHTML = '<div class="wa-vazio">Sem pedido vinculado a este telefone.</div>';
+            return;
+        }
+        const elig = lead.is_whatsapp_eligible
+            ? '<span class="badge bg-success">Elegível WhatsApp</span>'
+            : `<span class="badge bg-secondary">Inelegível</span>`;
+        const motivos = (lead.whatsapp_eligibility && lead.whatsapp_eligibility.motivos || [])
+            .map((m) => `<li>${esc(m)}</li>`).join('');
+        el.innerHTML = `
+            <div class="wa-lead-row"><div class="lbl">Cliente</div><div class="val">${esc(lead.cliente || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Pedido</div><div class="val">#${esc(lead.venda_id || '—')} ${lead.ordem_servico ? '· OS ' + esc(lead.ordem_servico) : ''}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Plano</div><div class="val">${esc(lead.plano || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Status tratamento</div><div class="val">${esc(lead.status_tratamento || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Status esteira</div><div class="val">${esc(lead.status_esteira || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Endereço</div><div class="val">${esc(lead.endereco || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Telefones</div><div class="val">${esc(lead.telefone1 || '—')}${lead.telefone2 ? ' · ' + esc(lead.telefone2) : ''}</div></div>
+            <div class="wa-lead-row"><div class="lbl">WhatsApp</div><div class="val">${elig}${lead.nao_perturbe ? ' · <span class="badge bg-warning text-dark">Não perturbe</span>' : ''}</div>
+                ${motivos ? `<ul class="small text-muted mt-1 mb-0">${motivos}</ul>` : ''}
+            </div>
+            <div class="d-grid gap-2 mt-3">
+                ${lead.venda_id ? `<a class="btn btn-outline-primary btn-sm" href="/funil-vendas/" target="_blank" rel="noopener">Abrir Funil</a>` : ''}
+            </div>
+        `;
+    }
+
     function renderLista(items) {
         const el = document.getElementById('lista-conversas');
         if (!items.length) {
@@ -122,12 +222,13 @@
         }
         el.innerHTML = items.map((item) => `
             <div class="wa-item ${item.telefone === telefoneAberto ? 'ativo' : ''}" data-tel="${esc(item.telefone)}">
-                <div class="d-flex justify-content-between gap-2">
+                ${item.unread_count > 0 ? `<span class="wa-badge-unread">${esc(item.unread_count)}</span>` : ''}
+                <div class="d-flex justify-content-between gap-2 pe-3">
                     <span class="nome">${esc(item.cliente || item.telefone_exibicao)}</span>
                     <span class="small text-muted">${hora(item.ultima_em)}</span>
                 </div>
                 <div class="small text-muted">${esc(item.telefone_exibicao)}${item.venda_id ? ' · Pedido #' + item.venda_id : ''}</div>
-                <div class="preview">${item.ultima_tipo === 'MODELO' ? 'Modelo' : 'Sessão'} · ${esc(item.ultima_mensagem || '')}</div>
+                <div class="preview">${esc(item.ultima_mensagem || '')}</div>
                 <div class="mt-1">${item.janela_aberta ? '<span class="badge bg-success">Janela 24h aberta</span>' : '<span class="badge bg-secondary">Janela 24h fechada</span>'}</div>
             </div>
         `).join('');
@@ -153,7 +254,7 @@
         head.innerHTML = `<strong>${esc(titulo)}</strong>
             <div class="small text-muted">${esc(data.telefone_exibicao)} · ${esc(pedido)}</div>`;
 
-        if (!data.mensagens.length) {
+        if (!data.mensagens || !data.mensagens.length) {
             msgs.innerHTML = '<div class="wa-vazio">Esta conversa ainda não tem mensagens.</div>';
         } else {
             msgs.innerHTML = data.mensagens.map((m) => `
@@ -207,6 +308,10 @@
             btnAssumir.disabled = false;
             btnAssumir.textContent = 'Assumir conversa';
         }
+
+        renderLead(data.lead || null);
+        unreadBadge = 0;
+        document.title = tituloBase;
     }
 
     async function carregarLista() {
@@ -230,7 +335,67 @@
         }
     }
 
-    // Deep-link ?tel=5511...
+    function conectarSSE() {
+        const token = localStorage.getItem('accessToken');
+        if (!token || !window.EventSource) {
+            setSseStatus(false, 'SSE indisponível — usando polling');
+            return;
+        }
+        // EventSource não envia Authorization; usamos query token se o backend aceitar via header
+        // em fetch stream. Aqui usamos fetch+ReadableStream polyfill via native EventSource
+        // com cookie/sessão quando houver; fallback: polling.
+        // DRF JWT: abrimos via fetch stream manual.
+        const ctrl = new AbortController();
+        (async () => {
+            try {
+                const r = await fetch(API + '/events/', {
+                    headers: { Authorization: 'Bearer ' + token, Accept: 'text/event-stream' },
+                    signal: ctrl.signal,
+                });
+                if (!r.ok || !r.body) throw new Error('SSE HTTP ' + r.status);
+                setSseStatus(true, 'Alertas em tempo real');
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop() || '';
+                    for (const chunk of parts) {
+                        const lines = chunk.split('\n');
+                        let eventName = 'message';
+                        let dataLine = '';
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                            if (line.startsWith('data:')) dataLine += line.slice(5).trim();
+                        }
+                        if (eventName === 'reconnect') break;
+                        if (!dataLine || dataLine === '{}') continue;
+                        let payload = null;
+                        try { payload = JSON.parse(dataLine); } catch (_) { continue; }
+                        if (payload && payload.type === 'message.new') {
+                            if (payload.direcao === 'ENTRADA') {
+                                bumpTitleBadge(1);
+                                notifyDesktop('Nova mensagem WhatsApp', payload.preview || payload.telefone || '');
+                            }
+                            carregarLista().catch(() => {});
+                            if (telefoneAberto && payload.telefone === telefoneAberto) {
+                                abrir(telefoneAberto, true).catch(() => {});
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                setSseStatus(false, 'Alertas offline (polling)');
+            } finally {
+                setTimeout(conectarSSE, 5000);
+            }
+        })();
+        window.addEventListener('beforeunload', () => ctrl.abort(), { once: true });
+    }
+
     const telUrl = new URLSearchParams(location.search).get('tel');
 
     document.getElementById('btn-enviar').onclick = async () => {
@@ -275,15 +440,22 @@
         buscaTimer = setTimeout(() => carregarLista().catch((e) => alert(e.message || e)), 300);
     });
 
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+    }
+
     carregarLista().then(() => {
         if (telUrl) abrir(telUrl.replace(/\D/g, ''), false).catch(() => {});
     }).catch((e) => {
         document.getElementById('lista-conversas').innerHTML = '<div class="wa-vazio">' + esc(e.message || e) + '</div>';
     });
+
+    conectarSSE();
     timer = setInterval(() => {
-        // Lista já é barata (sem N+1); detalhe só recarrega a conversa aberta
+        const intervalOk = sseAtivo ? 30000 : 15000;
+        // reusa o mesmo timer; se SSE ativo, lista a cada tick ainda é leve
         carregarLista().catch(() => {});
-        if (telefoneAberto) abrir(telefoneAberto, true);
+        if (telefoneAberto && !sseAtivo) abrir(telefoneAberto, true);
     }, 15000);
 </script>
 {% endblock %}

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any, Iterator, Optional
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Q, QuerySet
+from django.db.models import Q, QuerySet
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,126 @@ def _venda_do_contexto_ou_telefone(telefone: str):
     return resolver_venda(telefone)
 
 
+def get_or_create_channel(role: str = "cliente"):
+    """Garante canal WhatsAtende para o papel (interno|cliente|funil)."""
+    from crm_app.models import WhatsAppChannel
+
+    role_norm = (role or WhatsAppChannel.ROLE_CLIENTE).strip().lower()
+    if role_norm in ("b", "oficial"):
+        role_norm = WhatsAppChannel.ROLE_CLIENTE
+    elif role_norm in ("a", "equipe", "bot"):
+        role_norm = WhatsAppChannel.ROLE_INTERNO
+    elif role_norm in ("f", "247"):
+        role_norm = WhatsAppChannel.ROLE_FUNIL
+    if role_norm not in {
+        WhatsAppChannel.ROLE_INTERNO,
+        WhatsAppChannel.ROLE_CLIENTE,
+        WhatsAppChannel.ROLE_FUNIL,
+    }:
+        role_norm = WhatsAppChannel.ROLE_CLIENTE
+
+    labels = {
+        WhatsAppChannel.ROLE_INTERNO: "WhatsAtende A (equipe)",
+        WhatsAppChannel.ROLE_CLIENTE: "WhatsAtende B (cliente)",
+        WhatsAppChannel.ROLE_FUNIL: "WhatsAtende Funil",
+    }
+    channel, _ = WhatsAppChannel.objects.get_or_create(
+        provider=WhatsAppChannel.PROVIDER_WHATSATENDE,
+        role=role_norm,
+        defaults={"label": labels.get(role_norm, role_norm), "ativo": True},
+    )
+    return channel
+
+
+def get_or_create_conversation(
+    telefone: str,
+    *,
+    role: str = "cliente",
+    venda=None,
+    contact_name: str = "",
+):
+    from crm_app.models import WhatsAppConversation
+
+    tel = canonicalizar_telefone(telefone)
+    if len(tel) < 8:
+        return None
+    channel = get_or_create_channel(role)
+    defaults = {
+        "status": WhatsAppConversation.STATUS_ABERTA,
+        "bot_pausado": bot_pausado(tel),
+    }
+    if venda is not None:
+        defaults["venda"] = venda
+    if contact_name:
+        defaults["contact_name"] = (contact_name or "")[:255]
+    conv, created = WhatsAppConversation.objects.get_or_create(
+        channel=channel,
+        telefone=tel,
+        defaults=defaults,
+    )
+    dirty = []
+    if venda is not None and conv.venda_id != getattr(venda, "pk", None):
+        conv.venda = venda
+        dirty.append("venda")
+    if contact_name and not conv.contact_name:
+        conv.contact_name = contact_name[:255]
+        dirty.append("contact_name")
+    if dirty:
+        conv.save(update_fields=dirty + ["atualizado_em"])
+    return conv
+
+
+def _atualizar_conversa_apos_mensagem(msg, *, incrementar_unread: bool = False) -> None:
+    from crm_app.models import MensagemWhatsAppAtendimento, WhatsAppConversation
+
+    if msg is None:
+        return
+    conv = getattr(msg, "conversa", None)
+    if conv is None and msg.conversa_id:
+        conv = WhatsAppConversation.objects.filter(pk=msg.conversa_id).first()
+    if conv is None:
+        conv = get_or_create_conversation(msg.telefone, venda=msg.venda)
+        if conv is None:
+            return
+        if msg.conversa_id != conv.id:
+            MensagemWhatsAppAtendimento.objects.filter(pk=msg.pk).update(conversa_id=conv.id)
+            msg.conversa_id = conv.id
+
+    preview = (msg.texto or "").replace("\n", " ").strip()[:240]
+    conv.last_message_at = msg.data_hora
+    conv.last_message_preview = preview
+    conv.last_direction = msg.direcao or ""
+    if msg.venda_id and not conv.venda_id:
+        conv.venda_id = msg.venda_id
+    if msg.direcao == MensagemWhatsAppAtendimento.DIRECAO_ENTRADA and msg.data_hora:
+        conv.janela_aberta_ate = msg.data_hora + JANELA_ATENDIMENTO
+        if incrementar_unread:
+            conv.unread_count = int(conv.unread_count or 0) + 1
+    fields = [
+        "last_message_at",
+        "last_message_preview",
+        "last_direction",
+        "janela_aberta_ate",
+        "unread_count",
+        "venda",
+        "atualizado_em",
+    ]
+    conv.save(update_fields=fields)
+
+    try:
+        from crm_app.services.whatsapp.inbox_events import publish_nova_mensagem
+
+        publish_nova_mensagem(
+            telefone=msg.telefone,
+            direcao=msg.direcao,
+            preview=preview,
+            conversation_id=conv.id,
+            message_id=msg.message_id or "",
+        )
+    except Exception:
+        logger.debug("[Atendimento WA] publish inbox falhou", exc_info=True)
+
+
 def gravar_mensagem(
     *,
     telefone: str,
@@ -153,6 +273,9 @@ def gravar_mensagem(
     venda=None,
     enviado_por=None,
     data_hora=None,
+    media_url: str = "",
+    media_tipo: str = "",
+    role_canal: str = "cliente",
 ):
     """Cria o registro. Mensagens com o mesmo id e direção não duplicam."""
     from crm_app.models import MensagemWhatsAppAtendimento
@@ -165,8 +288,11 @@ def gravar_mensagem(
     if venda is None:
         venda = _venda_do_contexto_ou_telefone(tel)
 
+    conversa = get_or_create_conversation(tel, role=role_canal, venda=venda)
+
     campos = dict(
         telefone=tel,
+        conversa=conversa,
         venda=venda,
         direcao=direcao,
         tipo=tipo or MensagemWhatsAppAtendimento.TIPO_SESSAO,
@@ -177,6 +303,8 @@ def gravar_mensagem(
         sucesso=bool(sucesso),
         erro=(erro or "")[:2000],
         enviado_por=enviado_por,
+        media_url=(media_url or "")[:500],
+        media_tipo=(media_tipo or "")[:40],
     )
     if data_hora is not None:
         campos["data_hora"] = data_hora
@@ -187,11 +315,14 @@ def gravar_mensagem(
             direcao=direcao,
         ).first()
         if existente:
+            if conversa and not existente.conversa_id:
+                existente.conversa = conversa
+                existente.save(update_fields=["conversa"])
             return existente
 
     try:
         with transaction.atomic():
-            return MensagemWhatsAppAtendimento.objects.create(**campos)
+            msg = MensagemWhatsAppAtendimento.objects.create(**campos)
     except IntegrityError:
         if mid:
             return MensagemWhatsAppAtendimento.objects.filter(
@@ -199,6 +330,14 @@ def gravar_mensagem(
                 direcao=direcao,
             ).first()
         raise
+
+    from crm_app.models import MensagemWhatsAppAtendimento as M
+
+    _atualizar_conversa_apos_mensagem(
+        msg,
+        incrementar_unread=(direcao == M.DIRECAO_ENTRADA),
+    )
+    return msg
 
 
 def _texto_entrada(data: dict) -> str:
@@ -507,6 +646,44 @@ def serializar_mensagem(msg) -> dict:
         "origem": msg.origem or "",
         "enviado_por": msg.enviado_por.username if getattr(msg, "enviado_por_id", None) else None,
         "venda_id": msg.venda_id,
+        "status_entrega": getattr(msg, "status_entrega", "") or "",
+        "media_url": getattr(msg, "media_url", "") or "",
+        "media_tipo": getattr(msg, "media_tipo", "") or "",
+        "conversation_id": getattr(msg, "conversa_id", None),
+    }
+
+
+def _painel_lead(venda) -> Optional[dict]:
+    if venda is None:
+        return None
+    plano = getattr(venda, "plano", None)
+    status_t = getattr(venda, "status_tratamento", None)
+    status_e = getattr(venda, "status_esteira", None)
+    endereco_bits = [
+        getattr(venda, "logradouro", None) or "",
+        getattr(venda, "numero_residencia", None) or "",
+        getattr(venda, "bairro", None) or "",
+        getattr(venda, "cidade", None) or "",
+        getattr(venda, "estado", None) or "",
+        getattr(venda, "cep", None) or "",
+    ]
+    endereco = ", ".join(p for p in endereco_bits if p and str(p).strip())
+    elig = getattr(venda, "whatsapp_eligibility", None) or {}
+    return {
+        "venda_id": venda.id,
+        "cliente": _nome_cliente(venda),
+        "cpf_cnpj": getattr(getattr(venda, "cliente", None), "cpf_cnpj", None),
+        "telefone1": venda.telefone1 or "",
+        "telefone2": venda.telefone2 or "",
+        "plano": getattr(plano, "nome", None) if plano else None,
+        "status_tratamento": getattr(status_t, "nome", None) if status_t else None,
+        "status_esteira": getattr(status_e, "nome", None) if status_e else None,
+        "endereco": endereco,
+        "ordem_servico": venda.ordem_servico or "",
+        "pedido_pap": venda.pedido_pap or "",
+        "nao_perturbe": bool(getattr(venda, "nao_perturbe", False)),
+        "is_whatsapp_eligible": bool(getattr(venda, "is_whatsapp_eligible", False)),
+        "whatsapp_eligibility": elig if isinstance(elig, dict) else {},
     }
 
 
@@ -565,6 +742,60 @@ def _serializar_conversa_base(
     }
 
 
+def _qs_conversas_visiveis(usuario):
+    from crm_app.models import WhatsAppChannel, WhatsAppConversation
+    from crm_app.services.escopo_operadora import (
+        operadora_ids_permitidas,
+        usuario_tem_bypass_operadora,
+    )
+
+    channel = get_or_create_channel("cliente")
+    qs = WhatsAppConversation.objects.filter(channel=channel).select_related(
+        "venda__cliente",
+        "venda__plano",
+        "venda__status_tratamento",
+        "venda__status_esteira",
+        "assignee",
+        "channel",
+    )
+    if usuario_tem_bypass_operadora(usuario):
+        return qs
+    permitidas = operadora_ids_permitidas(usuario)
+    if permitidas is None:
+        return qs
+    return qs.filter(Q(venda__isnull=True) | Q(venda__plano__operadora_id__in=permitidas))
+
+
+def _serializar_conversation_row(conv, *, agora=None) -> dict:
+    agora = agora or timezone.now()
+    venda = conv.venda if conv.venda_id else None
+    janela_ate = conv.janela_aberta_ate
+    janela_aberta = bool(janela_ate and janela_ate > agora)
+    preview = (conv.last_message_preview or "").strip()
+    if len(preview) > 90:
+        preview = preview[:90] + "…"
+    nome = conv.contact_name or _nome_cliente(venda)
+    return {
+        "id": conv.id,
+        "conversation_id": conv.id,
+        "telefone": conv.telefone,
+        "telefone_exibicao": exibir_telefone(conv.telefone),
+        "cliente": nome,
+        "venda_id": conv.venda_id,
+        "ultima_mensagem": preview,
+        "ultima_direcao": conv.last_direction or None,
+        "ultima_tipo": None,
+        "ultima_em": conv.last_message_at.isoformat() if conv.last_message_at else None,
+        "janela_aberta": janela_aberta,
+        "janela_ate": janela_ate.isoformat() if janela_ate else None,
+        "aviso_janela": "" if janela_aberta else AVISO_JANELA_FECHADA,
+        "bot_pausado": bool(conv.bot_pausado) or bot_pausado(conv.telefone),
+        "unread_count": int(conv.unread_count or 0),
+        "status": conv.status,
+        "assignee": conv.assignee.username if conv.assignee_id else None,
+    }
+
+
 def listar_conversas(
     usuario,
     busca: str = "",
@@ -572,16 +803,15 @@ def listar_conversas(
     *,
     since: Optional[str] = None,
 ) -> list[dict]:
-    """Lista conversas sem N+1: últimas msgs em lote + janela em lote."""
-    from crm_app.models import MensagemWhatsAppAtendimento, WhatsAppTelefoneSemIa
-
+    """Lista conversas a partir de WhatsAppConversation (denormalizado)."""
     limite = max(1, min(int(limite or 40), 80))
-    qs = _qs_visivel(usuario).select_related("venda__cliente", "venda__plano", "enviado_por")
+    qs = _qs_conversas_visiveis(usuario)
     termo = (busca or "").strip()
     if termo:
         digitos = "".join(ch for ch in termo if ch.isdigit())
-        # Busca só em telefone/nome — evita LIKE em texto de toda a tabela.
-        filtro = Q(venda__cliente__nome_razao_social__icontains=termo)
+        filtro = Q(contact_name__icontains=termo) | Q(
+            venda__cliente__nome_razao_social__icontains=termo
+        )
         if digitos:
             filtro |= Q(telefone__icontains=digitos)
         qs = qs.filter(filtro)
@@ -591,70 +821,13 @@ def listar_conversas(
             since_dt = datetime.fromisoformat(str(since).replace("Z", "+00:00"))
             if timezone.is_naive(since_dt):
                 since_dt = timezone.make_aware(since_dt)
-            qs = qs.filter(data_hora__gte=since_dt)
+            qs = qs.filter(last_message_at__gte=since_dt)
         except Exception:
             pass
 
-    telefones_rows = list(
-        qs.values("telefone").annotate(ultima=Max("data_hora")).order_by("-ultima")[:limite]
-    )
-    if not telefones_rows:
-        return []
-
-    tels = [row["telefone"] for row in telefones_rows]
-    # Última mensagem por telefone (1 query + map)
-    ids_ultimas = (
-        MensagemWhatsAppAtendimento.objects.filter(telefone__in=tels)
-        .values("telefone")
-        .annotate(mid=Max("id"))
-    )
-    id_por_tel = {r["telefone"]: r["mid"] for r in ids_ultimas}
-    ultimas = {
-        m.telefone: m
-        for m in MensagemWhatsAppAtendimento.objects.filter(id__in=list(id_por_tel.values()))
-        .select_related("venda__cliente", "venda__plano", "enviado_por")
-    }
-
-    # Última entrada por telefone (janela 24h) em lote
-    ids_entradas = (
-        MensagemWhatsAppAtendimento.objects.filter(
-            telefone__in=tels,
-            direcao=MensagemWhatsAppAtendimento.DIRECAO_ENTRADA,
-        )
-        .values("telefone")
-        .annotate(mid=Max("id"))
-    )
-    entradas = {
-        m.telefone: m
-        for m in MensagemWhatsAppAtendimento.objects.filter(
-            id__in=[r["mid"] for r in ids_entradas]
-        )
-    }
-
-    bots = set(
-        WhatsAppTelefoneSemIa.objects.filter(telefone__in=tels, ativo=True)
-        .values_list("telefone", flat=True)
-    )
-
-    itens = []
-    for row in telefones_rows:
-        tel = row["telefone"]
-        ultima = ultimas.get(tel)
-        if ultima is None:
-            continue
-        venda = ultima.venda if ultima.venda_id else None
-        # Não chama resolver_venda na listagem (caro); só usa venda já gravada.
-        itens.append(
-            _serializar_conversa_base(
-                tel,
-                ultima,
-                usuario,
-                ultima_entrada_msg=entradas.get(tel),
-                venda=venda,
-                bot_pausado_flag=(tel in bots),
-            )
-        )
-    return itens
+    qs = qs.order_by("-last_message_at", "-id")[:limite]
+    agora = timezone.now()
+    return [_serializar_conversation_row(c, agora=agora) for c in qs]
 
 
 def detalhe_conversa(
@@ -664,13 +837,29 @@ def detalhe_conversa(
     limit_msgs: int = 80,
     before_id: Optional[int] = None,
 ) -> Optional[dict]:
+    from crm_app.models import WhatsAppConversation
+
     tel = canonicalizar_telefone(telefone)
     if len(tel) < 8:
         return None
     if not conversa_visivel(usuario, tel):
-        return None
+        # Permite abrir conversa nova iniciada pelo funil (ainda sem mensagens).
+        conv_existente = WhatsAppConversation.objects.filter(
+            telefone__in=telefones_equivalentes(tel)
+        ).exists()
+        if not conv_existente:
+            return None
     chaves = telefones_equivalentes(tel)
     limit_msgs = max(10, min(int(limit_msgs or 80), 200))
+    conv = (
+        _qs_conversas_visiveis(usuario)
+        .filter(telefone__in=chaves)
+        .order_by("-last_message_at")
+        .first()
+    )
+    if conv is None:
+        conv = get_or_create_conversation(tel, venda=_venda_cabecalho(tel, usuario))
+
     qs = (
         _qs_visivel(usuario)
         .filter(telefone__in=chaves)
@@ -683,34 +872,85 @@ def detalhe_conversa(
         except (TypeError, ValueError):
             pass
     mensagens_desc = list(qs[:limit_msgs])
-    if not mensagens_desc and not before_id:
+    if not mensagens_desc and not before_id and conv is None:
         return None
     mensagens = list(reversed(mensagens_desc))
     ultima = mensagens[-1] if mensagens else None
     if ultima is None:
-        # carregar mais no passado sem msgs
-        return {
+        base = _serializar_conversation_row(conv) if conv else {
             "telefone": tel,
             "telefone_exibicao": exibir_telefone(tel),
-            "mensagens": [],
-            "has_more": False,
         }
-    base = _serializar_conversa_base(tel, ultima, usuario)
+        base["mensagens"] = []
+        base["has_more"] = False
+    else:
+        base = _serializar_conversa_base(tel, ultima, usuario, venda=conv.venda if conv else None)
+        if conv:
+            base["conversation_id"] = conv.id
+            base["unread_count"] = int(conv.unread_count or 0)
+            base["status"] = conv.status
+        base["mensagens"] = [serializar_mensagem(m) for m in mensagens]
+        base["has_more"] = len(mensagens_desc) >= limit_msgs
+        base["oldest_id"] = mensagens[0].id if mensagens else None
+
     canal_pronto = canal_oficial_pronto()
     base["canal_oficial_pronto"] = canal_pronto
     base["aviso_canal"] = "" if canal_pronto else AVISO_CANAL_INDISPONIVEL
-    base["pode_texto_livre"] = base["janela_aberta"] and canal_pronto
-    base["mensagens"] = [serializar_mensagem(m) for m in mensagens]
-    base["has_more"] = len(mensagens_desc) >= limit_msgs
-    base["oldest_id"] = mensagens[0].id if mensagens else None
+    base["pode_texto_livre"] = bool(base.get("janela_aberta")) and canal_pronto
+    venda = conv.venda if conv and conv.venda_id else _venda_cabecalho(tel, usuario)
+    if venda is not None:
+        try:
+            venda = type(venda).objects.select_related(
+                "cliente", "plano", "status_tratamento", "status_esteira"
+            ).filter(pk=venda.pk).first() or venda
+        except Exception:
+            pass
+    base["lead"] = _painel_lead(venda)
+
+    if conv and int(conv.unread_count or 0) > 0 and not before_id:
+        WhatsAppConversation.objects.filter(pk=conv.pk).update(unread_count=0)
+        base["unread_count"] = 0
     return base
 
 
 def assumir_conversa(usuario, telefone: str) -> Optional[dict]:
+    from crm_app.models import WhatsAppConversation
+
     tel = canonicalizar_telefone(telefone)
-    if len(tel) < 10 or not conversa_visivel(usuario, tel):
+    if len(tel) < 10:
         return None
+    if not conversa_visivel(usuario, tel):
+        conv = get_or_create_conversation(tel)
+        if conv is None:
+            return None
     pausar_bot(tel, usuario, "Conversa assumida no atendimento WhatsApp")
+    conv = get_or_create_conversation(tel)
+    if conv is not None:
+        conv.bot_pausado = True
+        conv.assignee = usuario if getattr(usuario, "pk", None) else None
+        conv.status = WhatsAppConversation.STATUS_EM_ATENDIMENTO
+        conv.save(update_fields=["bot_pausado", "assignee", "status", "atualizado_em"])
+    return detalhe_conversa(usuario, tel)
+
+
+def iniciar_conversa_por_telefone(
+    usuario,
+    telefone: str,
+    *,
+    venda=None,
+    contact_name: str = "",
+) -> Optional[dict]:
+    """Cria/abre Conversation e retorna detalhe (uso Funil → Iniciar Conversa)."""
+    tel = canonicalizar_telefone(telefone)
+    if len(tel) < 10:
+        return None
+    if venda is None:
+        venda = resolver_venda(tel)
+    conv = get_or_create_conversation(
+        tel, venda=venda, contact_name=contact_name or (_nome_cliente(venda) or "")
+    )
+    if conv is None:
+        return None
     return detalhe_conversa(usuario, tel)
 
 

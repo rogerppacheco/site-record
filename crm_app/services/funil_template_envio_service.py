@@ -39,8 +39,19 @@ def _endereco_resumo(*partes: Any) -> str:
 
 
 def _telefone_ok(valor: Any) -> tuple[str, bool]:
-    e164, ok = normalizar_telefone_e164(valor)
-    return (e164 if ok else ''), bool(ok and e164)
+    """Exige celular BR (DDD + 9 dígitos); alinha com is_whatsapp_eligible."""
+    from crm_app.services.whatsapp.eligibility import validar_celular_br
+
+    e164, ok = validar_celular_br(valor)
+    if ok:
+        return e164, True
+    # Fallback legado (fixo 10 dígitos) — marca inválido para template Meta
+    e164_legado, ok_legado = normalizar_telefone_e164(valor)
+    if ok_legado and e164_legado:
+        local = e164_legado[2:] if e164_legado.startswith('55') else e164_legado
+        if len(local) == 11 and local[2] == '9':
+            return e164_legado, True
+    return (e164 or e164_legado or ''), False
 
 
 def _cpf_tem_venda_crm(cpf: str) -> bool:

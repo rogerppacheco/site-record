@@ -70,3 +70,41 @@ def varrer_jobs_pendentes_pap(self):
     
     if count:
         logger.info(f"[VARREDURA] {count} job(s) pendente(s) re-despachado(s).")
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+def processar_lote_funil_whatsapp(self, lote_id: int, limite: int = 40):
+    """Processa um FunilDisparoLote em background (templates WhatsAtende Funil)."""
+    from crm_app.models import FunilDisparoLote
+    from crm_app.services import funil_dispatch_service as disp
+
+    try:
+        lote = FunilDisparoLote.objects.get(pk=lote_id)
+    except FunilDisparoLote.DoesNotExist:
+        logger.error("[FunilCelery] Lote %s não encontrado", lote_id)
+        return {"ok": False, "detail": "lote_nao_encontrado"}
+
+    if lote.status != FunilDisparoLote.STATUS_DISPARANDO:
+        logger.info(
+            "[FunilCelery] Lote %s status=%s — ignorando", lote_id, lote.status
+        )
+        return {"ok": True, "status": lote.status}
+
+    try:
+        lote = disp.processar_lote(lote, limite=limite)
+        # Continua até concluir (chunks com rate limit interno).
+        if lote.status == FunilDisparoLote.STATUS_DISPARANDO:
+            processar_lote_funil_whatsapp.apply_async(
+                args=[lote_id],
+                kwargs={"limite": limite},
+                countdown=3,
+            )
+        return {
+            "ok": True,
+            "status": lote.status,
+            "cursor": lote.cursor,
+            "enviados": lote.enviados,
+        }
+    except Exception as exc:
+        logger.exception("[FunilCelery] Falha no lote %s", lote_id)
+        raise self.retry(exc=exc)

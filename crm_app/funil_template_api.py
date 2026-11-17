@@ -142,15 +142,25 @@ class FunilTemplateDisparoMassaView(APIView):
         ids = request.data.get('ids') or []
         filtros = request.data.get('filtros') or {}
         try:
+            # Cria o lote e enfileira no Celery (não bloqueia a request).
+            # APScheduler continua como safety-net para lotes órfãos.
             lote = disp.iniciar_lote(
                 aba=aba,
                 modo=modo,
                 ids=ids if isinstance(ids, list) else [],
                 filtros=filtros if isinstance(filtros, dict) else {},
                 usuario=request.user,
+                enqueue_celery=True,
             )
-            lote = disp.processar_lote(lote, limite=15)
-            return Response({'ok': True, 'lote': disp._serializar_lote(lote)}, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    'ok': True,
+                    'async': True,
+                    'lote': disp._serializar_lote(lote),
+                    'detail': 'Disparo enfileirado. Acompanhe o progresso do lote.',
+                },
+                status=status.HTTP_201_CREATED,
+            )
         except ValueError as exc:
             return Response({'ok': False, 'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -188,11 +198,11 @@ class FunilTemplateDisparoLoteAcaoView(APIView):
                 lote = disp.pausar_lote(pk)
             elif acao == 'retomar':
                 lote = disp.retomar_lote(pk)
-                lote = disp.processar_lote(lote, limite=15)
+                disp.enfileirar_processamento_lote(lote.pk)
             elif acao == 'processar':
                 from crm_app.models import FunilDisparoLote
                 lote = FunilDisparoLote.objects.get(pk=pk)
-                lote = disp.processar_lote(lote, limite=40)
+                disp.enfileirar_processamento_lote(lote.pk)
             else:
                 return Response({'detail': 'Ação inválida.'}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'ok': True, 'lote': disp._serializar_lote(lote)})
