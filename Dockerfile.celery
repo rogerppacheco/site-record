@@ -1,0 +1,10 @@
+# Worker Celery do site-record (disparos Funil WhatsApp + tasks shared).
+# Sem Playwright — mais leve que pap/scheduler.
+FROM python:3.11-bookworm
+
+WORKDIR /app
+COPY . /app/
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+CMD ["celery", "-A", "core_config", "worker", "--concurrency=1", "--max-tasks-per-child=15", "--loglevel=info"]

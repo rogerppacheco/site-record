@@ -1,0 +1,10 @@
+# Serviço Railway dedicado Celery (disparos Funil / tasks async).
+# No painel: Settings → Config-as-code → /railway.celery.toml
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.celery"
+
+[deploy]
+startCommand = "celery -A core_config worker --concurrency=1 --max-tasks-per-child=15 --loglevel=info"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
