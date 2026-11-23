@@ -734,7 +734,18 @@ TEMPLATE_BODY_PREVIEW: Dict[str, str] = {
         "Precisamos do seu retorno para programar a regularização.\n"
         f"SAC: 0800 001 1000 | WhatsApp: {NIO_WHATSAPP_OFICIAL_EXIBICAO}"
     ),
-    TEMPLATE_BOAS_VINDAS: "Olá, {{1}} {{2}}! Bem-vindo(a) à Nio Fibra.",
+    # Meta aprovado: {{1}}=saudação (ex. Bom Dia), {{2}}=nome — não repetir "Olá" em {{1}}.
+    TEMPLATE_BOAS_VINDAS: (
+        "Olá, {{1}}!\n\n"
+        "{{2}},\n\n"
+        "Sua instalação Nio Fibra foi concluída.\n"
+        "Seja bem-vindo(a)!\n\n"
+        "Guarde este WhatsApp para suporte e\n"
+        "dúvidas sobre sua conexão.\n\n"
+        "SAC: 0800 001 1000 | WhatsApp: 21 3605-1000\n\n"
+        "Toque em um dos botões abaixo se precisar\n"
+        "de ajuda agora."
+    ),
     TEMPLATE_CONFIRMACAO_PEDIDO: (
         "Olá! Confirme os dados do pedido:\n\n{{1}}\n{{2}}\n{{3}}"
     ),

@@ -584,14 +584,33 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
             # fallback: caption de mídia desconhecida
             canonico["document"] = {"documentUrl": media_url}
 
-    # Resposta de botão/template chega como texto normal no webhook (confirmado suporte).
-    # Mantém parsing legado se vier estruturado no futuro.
+    # Resposta de botão/template: texto simples ou payload estruturado.
     btn = (
         message_obj.get("buttonsResponseMessage")
         or payload.get("buttonsResponseMessage")
         or msg_bruto.get("buttonsResponseMessage")
         or msg_bruto.get("templateButtonReplyMessage")
+        or msg_bruto.get("interactiveResponseMessage")
     )
+    if not isinstance(btn, dict) and msg_type in (
+        "button",
+        "buttons_response",
+        "interactive",
+        "button_reply",
+        "templatebuttonreply",
+    ):
+        # Alguns webhooks mandam só type=button + selectedButtonText/title.
+        btn = {
+            "buttonId": payload.get("selectedButtonId")
+            or payload.get("buttonId")
+            or message_obj.get("selectedButtonId")
+            or "",
+            "message": payload.get("selectedButtonText")
+            or payload.get("buttonText")
+            or message_obj.get("selectedButtonText")
+            or texto
+            or "",
+        }
     if isinstance(btn, dict):
         bid = (
             btn.get("buttonId")
@@ -605,6 +624,7 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
             or btn.get("selectedDisplayText")
             or btn.get("selectedButtonText")
             or btn.get("text")
+            or btn.get("title")
             or ""
         )
         canonico["buttonsResponseMessage"] = {
@@ -614,8 +634,9 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
             "selectedButtonText": str(btxt),
         }
         if btxt and not texto:
-            canonico["message"] = {"text": str(btxt), "body": str(btxt)}
-            canonico["text"] = {"message": str(btxt), "text": str(btxt)}
+            texto = str(btxt).strip()
+            canonico["message"] = {"text": texto, "body": texto}
+            canonico["text"] = {"message": texto, "text": texto}
 
     return canonico
 

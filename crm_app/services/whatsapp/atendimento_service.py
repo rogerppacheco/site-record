@@ -29,7 +29,7 @@ AVISO_SEM_MENSAGEM_CLIENTE = (
 
 # Catálogo fallback (quando o provedor não lista templates).
 _TEMPLATES_INBOX_CURADOS = (
-    {"name": "nio_boas_vindas_v1", "label": "Boas-vindas", "body_params": 1, "hint": "{{1}} saudação"},
+    {"name": "nio_boas_vindas_v1", "label": "Boas-vindas", "body_params": 2, "hint": "{{1}} saudação (Bom Dia) / {{2}} nome"},
     {"name": "nio_confirmacao_pedido_v1", "label": "Confirmação de pedido", "body_params": 3, "hint": "nome / endereço / data"},
     {"name": "nio_consulta_viabilidade_v1", "label": "Consulta viabilidade", "body_params": 2, "hint": "saudação / nome"},
     {"name": "nio_reativacao_contrato_v1", "label": "Reativação contrato", "body_params": 2, "hint": "saudação / nome"},
@@ -384,10 +384,29 @@ def _texto_entrada(data: dict) -> str:
         elif isinstance(msg, str):
             texto = msg
     texto = str(texto or "").strip()
+
+    # Clique em botão de template (Meta interactive / WhatsAtende).
+    if not texto:
+        btn = data.get("buttonsResponseMessage")
+        if isinstance(btn, dict):
+            texto = str(
+                btn.get("message")
+                or btn.get("selectedButtonText")
+                or btn.get("selectedDisplayText")
+                or btn.get("text")
+                or ""
+            ).strip()
+    if not texto:
+        inter = data.get("interactive") if isinstance(data.get("interactive"), dict) else {}
+        for key in ("button_reply", "list_reply"):
+            br = inter.get(key) if isinstance(inter.get(key), dict) else {}
+            texto = str(br.get("title") or br.get("id") or "").strip()
+            if texto:
+                break
     if texto:
         return texto[:5000]
 
-    tipo = str(data.get("whatsatendeMessageType") or "").lower()
+    tipo = str(data.get("whatsatendeMessageType") or data.get("type") or "").lower()
     if isinstance(data.get("image"), dict) or tipo in ("image", "img", "sticker"):
         return "[imagem]"
     if isinstance(data.get("audio"), dict) or tipo in ("audio", "ptt"):
@@ -396,6 +415,8 @@ def _texto_entrada(data: dict) -> str:
         return "[vídeo]"
     if isinstance(data.get("document"), dict) or tipo in ("document", "pdf", "file"):
         return "[documento]"
+    if tipo in ("button", "interactive", "button_reply", "buttons_response"):
+        return "[botão]"
     return ""
 
 
