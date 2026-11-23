@@ -35,7 +35,7 @@ TEMPLATE_REATIVACAO_CONTRATO = "nio_reativacao_contrato_v1"
 # Editar/reaprovar este nome na WABA #247: {{1}}=primeiro nome, {{2}}=Prot. {protocolo}
 TEMPLATE_SELFIE_PENDENTE = "nio_selfie_pendente_v1"
 
-# Mailings de mercado (MARKETING — listas frias; copy sem oferta)
+# Mailings de mercado (UTILITY — copy sem oferta)
 TEMPLATE_MAILING_REPARO = "mailing_reparo_v1"
 TEMPLATE_MAILING_INSTALACAO = "mailing_instalacao_v1"
 TEMPLATE_MAILING_MUDANCA = "mailing_mudanca_v1"
@@ -443,24 +443,98 @@ def enviar_template_cliente(
     )
 
 
+def _message_id_resposta(resp: Any) -> str:
+    if not isinstance(resp, dict):
+        return ""
+    for key in ("messageId", "message_id", "id", "wamid", "keyId"):
+        val = resp.get(key)
+        if val:
+            return str(val)[:128]
+    msgs = resp.get("messages")
+    if isinstance(msgs, list) and msgs and isinstance(msgs[0], dict):
+        mid = msgs[0].get("id")
+        if mid:
+            return str(mid)[:128]
+    data = resp.get("data")
+    if isinstance(data, dict):
+        return _message_id_resposta(data)
+    return ""
+
+
+def _espelhar_funil_no_inbox(
+    *,
+    telefone: str,
+    template_name: str = "",
+    texto: str = "",
+    resp: Any = None,
+    sucesso: bool = True,
+    usuario=None,
+    venda=None,
+    aba: str = "",
+    ref_id: str = "",
+) -> None:
+    """Espelho CRM: saída #247 → timeline do inbox (não propaga erro)."""
+    try:
+        from crm_app.services.whatsapp.atendimento_crm import espelhar_envio_funil_no_inbox
+
+        mid = _message_id_resposta(resp) if sucesso else ""
+        erro = "" if sucesso else str(resp)[:2000]
+        espelhar_envio_funil_no_inbox(
+            telefone=telefone,
+            template_nome=template_name or "",
+            texto=texto or "",
+            message_id=mid,
+            sucesso=bool(sucesso),
+            erro=erro,
+            usuario=usuario,
+            venda=venda,
+            aba=aba or "",
+            ref_id=ref_id or "",
+        )
+    except Exception:
+        logger.debug("[NioTemplates] espelho Funil→inbox falhou", exc_info=True)
+
+
 def enviar_template_funil(
     telefone: str,
     template_name: str,
     body_params: Sequence[str],
     *,
     language_code: str = LANGUAGE_PT_BR,
+    espelhar: bool = True,
+    espelho_texto: str = "",
+    usuario=None,
+    venda=None,
+    aba: str = "",
+    ref_id: str = "",
 ) -> Tuple[bool, Any]:
     """Envia template pela conexão Funil (#247). Retorna (ok, resposta)."""
     from crm_app.whatsapp_service import WhatsAppService
 
     params = [str(p) if p is not None and str(p).strip() != "" else "-" for p in body_params]
     svc = WhatsAppService.para_funil()
-    return svc.enviar_template(
+    ok, resp = svc.enviar_template(
         telefone,
         template_name,
         language_code=language_code,
         body_params=params,
     )
+    if espelhar:
+        preview = (espelho_texto or "").strip()
+        if not preview:
+            preview = render_template_preview(template_name, params)
+        _espelhar_funil_no_inbox(
+            telefone=telefone,
+            template_name=template_name,
+            texto=preview[:500],
+            resp=resp,
+            sucesso=bool(ok),
+            usuario=usuario,
+            venda=venda,
+            aba=aba,
+            ref_id=ref_id,
+        )
+    return bool(ok), resp
 
 
 def tentar_enviar_ou_texto(
@@ -498,6 +572,7 @@ def tentar_enviar_ou_texto_funil(
 ) -> Tuple[bool, Any, str]:
     """
     Template Meta pela conexão Funil (#247). Fallback de texto só se o template falhar.
+    Espelha no inbox (mailing e demais callers).
     """
     from crm_app.whatsapp_service import WhatsAppService
 
@@ -512,6 +587,13 @@ def tentar_enviar_ou_texto_funil(
         )
     ok, resp = WhatsAppService.para_funil().enviar_mensagem_texto(
         telefone, fallback_texto, variar=False
+    )
+    _espelhar_funil_no_inbox(
+        telefone=telefone,
+        template_name="" if ok else (template_name or ""),
+        texto=(fallback_texto or "")[:500],
+        resp=resp,
+        sucesso=bool(ok),
     )
     return bool(ok), resp, "texto"
 
@@ -612,3 +694,290 @@ def enviar_boas_vindas(
     return tentar_enviar_ou_texto(
         telefone, TEMPLATE_BOAS_VINDAS, params, fallback_texto
     )
+
+
+# Corpos aproximados para preview no inbox (não substituem o texto oficial da Meta).
+# Placeholders {{1}}…{{n}} batem com body_params_* / envio Cloud API.
+TEMPLATE_BODY_PREVIEW: Dict[str, str] = {
+    TEMPLATE_FATURA_RECORRENTE: (
+        "Olá, {{1}}!\n\n"
+        "{{2}}, identificamos uma fatura em aberto.\n\n"
+        "Referência: *{{3}}*\n"
+        "Valor: *{{4}}*\n"
+        "Vencimento: *{{5}}*\n"
+        "Dias em atraso: *{{6}}*\n\n"
+        "Regularize para evitar interrupção do serviço.\n"
+        f"WhatsApp: {NIO_WHATSAPP_OFICIAL_EXIBICAO}"
+    ),
+    TEMPLATE_FATURA_LEMBRETE_5D: (
+        "Olá, {{1}}!\n\n"
+        "{{2}}, lembrete da sua fatura.\n\n"
+        "Referência: *{{3}}*\n"
+        "Valor: *{{4}}*\n"
+        "Vencimento: *{{5}}*"
+    ),
+    TEMPLATE_FATURA_VENCIDA_5D: (
+        "Olá, {{1}}!\n\n"
+        "{{2}}, sua fatura está vencida.\n\n"
+        "Referência: *{{3}}*\n"
+        "Valor: *{{4}}*\n"
+        "Vencimento: *{{5}}*"
+    ),
+    TEMPLATE_FATURA_REDUCAO_SINAL: (
+        "Olá, {{1}}!\n\n"
+        "{{2}},\n\n"
+        "Parceiro oficial da Nio Fibra.\n"
+        "Sua internet está com a velocidade reduzida devido a uma pendência de pagamento.\n\n"
+        "Referência: *{{3}}*\n"
+        "Valor: *{{4}}*\n"
+        "Vencimento: *{{5}}*\n\n"
+        "Precisamos do seu retorno para programar a regularização.\n"
+        f"SAC: 0800 001 1000 | WhatsApp: {NIO_WHATSAPP_OFICIAL_EXIBICAO}"
+    ),
+    TEMPLATE_BOAS_VINDAS: "Olá, {{1}} {{2}}! Bem-vindo(a) à Nio Fibra.",
+    TEMPLATE_CONFIRMACAO_PEDIDO: (
+        "Olá! Confirme os dados do pedido:\n\n{{1}}\n{{2}}\n{{3}}"
+    ),
+    TEMPLATE_LEMBRETE_INSTALACAO: (
+        "Olá, {{1}} {{2}}! Lembrete da sua instalação."
+    ),
+    TEMPLATE_INSTALACAO_CONFIRMADA: (
+        "Instalação confirmada para {{1}} no período {{2}}."
+    ),
+    TEMPLATE_PENDENCIA_REAGENDAMENTO: (
+        "Olá, {{1}} {{2}}! Há uma pendência de reagendamento. "
+        f"Fale conosco: {{{{3}}}}"
+    ),
+    TEMPLATE_REAGENDAMENTO_CLIENTE: (
+        "Olá, {{1}} {{2}}! Reagendamento com {{3}}."
+    ),
+    TEMPLATE_CONSULTA_VIABILIDADE: "Olá, {{1}} {{2}}! Sobre a consulta de viabilidade.",
+    TEMPLATE_REATIVACAO_CONTRATO: "Olá, {{1}} {{2}}! Sobre a reativação do contrato.",
+    TEMPLATE_SELFIE_PENDENTE: (
+        "Olá, {{1}}! Ainda precisamos da sua selfie/documentos. {{2}}"
+    ),
+    TEMPLATE_MAILING_GENERICO: "Olá, {{1}}! Podemos te ajudar com informações sobre internet no seu endereço.",
+}
+
+
+def _spec_mailing(nome: str) -> Optional[dict]:
+    if not (nome or "").startswith("mailing_"):
+        return None
+    try:
+        from crm_app.services.mailing_templates import TEMPLATE_SPECS
+
+        for spec in TEMPLATE_SPECS:
+            if (spec.get("nome") or "") == nome:
+                return spec
+    except Exception:
+        return None
+    return None
+
+
+def _corpo_catalogo_template(nome: str) -> str:
+    """Corpo legível: catálogo NIO + specs de mailing (mailing_*_v1)."""
+    corpo = TEMPLATE_BODY_PREVIEW.get(nome) or ""
+    if corpo:
+        return corpo
+    spec = _spec_mailing(nome)
+    if spec:
+        return (spec.get("corpo") or "").strip()
+    return ""
+
+
+def botoes_template_catalogo(template_name: str) -> List[str]:
+    """Rótulos dos botões quick-reply do template (quando existirem no catálogo)."""
+    nome = (template_name or "").strip()
+    spec = _spec_mailing(nome)
+    if not spec:
+        return []
+    raw = spec.get("botoes") or []
+    return [str(b).strip() for b in raw if str(b).strip()]
+
+
+def _chaves_telefone_simples(telefone: str) -> List[str]:
+    digitos = "".join(ch for ch in (telefone or "") if ch.isdigit())
+    if len(digitos) < 8:
+        return []
+    chaves = {digitos}
+    if digitos.startswith("55") and len(digitos) >= 12:
+        chaves.add(digitos[2:])
+    elif len(digitos) in (10, 11):
+        chaves.add("55" + digitos)
+    # Variante com/sem 9º dígito (celular BR)
+    local = digitos[2:] if digitos.startswith("55") and len(digitos) >= 12 else digitos
+    if len(local) == 11 and local[2] == "9":
+        chaves.add(("55" if digitos.startswith("55") else "") + local[:2] + local[3:])
+        chaves.add(local[:2] + local[3:])
+    elif len(local) == 10:
+        chaves.add(("55" if digitos.startswith("55") else "") + local[:2] + "9" + local[2:])
+        chaves.add(local[:2] + "9" + local[2:])
+    return [c for c in chaves if c]
+
+
+def params_mailing_por_telefone(
+    telefone: str,
+    template_name: str = "",
+) -> List[str]:
+    """Resolve {{1}}/{{2}} a partir do MailingContato (ou nome da conversa)."""
+    from crm_app.models import MailingContato, WhatsAppConversation
+    from crm_app.services.mailing_templates import body_params_contato
+
+    chaves = _chaves_telefone_simples(telefone)
+    contato = None
+    if chaves:
+        contato = (
+            MailingContato.objects.filter(telefone_e164__in=chaves)
+            .order_by("-id")
+            .first()
+        )
+        if contato is None:
+            # Match por sufixo (últimos 11/10 dígitos) se e164 divergir
+            sufixo = max(chaves, key=len)[-11:]
+            contato = (
+                MailingContato.objects.filter(telefone_e164__endswith=sufixo)
+                .order_by("-id")
+                .first()
+            )
+    if contato is not None:
+        return body_params_contato(contato)
+
+    nome_contato = ""
+    if chaves:
+        conv = (
+            WhatsAppConversation.objects.filter(telefone__in=chaves)
+            .order_by("-id")
+            .first()
+        )
+        if conv is not None:
+            nome_contato = (conv.contact_name or "").strip()
+    if not nome_contato:
+        return []
+    primeiro = nome_contato.split()[0]
+    nome_tmpl = (template_name or "").strip()
+    if nome_tmpl in (
+        "mailing_cancelamento_v1",
+        "mailing_fechado_v1",
+        "mailing_aberto_v1",
+    ):
+        return [primeiro, "seu município"]
+    return [primeiro]
+
+
+def render_template_preview(template_name: str, body_params: Optional[Sequence[Any]] = None) -> str:
+    """Monta texto legível do template para o histórico do inbox."""
+    nome = (template_name or "").strip()
+    params = [
+        "" if p is None else str(p)
+        for p in (body_params or [])
+    ]
+    corpo = _corpo_catalogo_template(nome)
+    if corpo:
+        texto = corpo
+        for i, val in enumerate(params, start=1):
+            texto = texto.replace("{{" + str(i) + "}}", val)
+        # Remove placeholders sem valor
+        texto = re.sub(r"\{\{\d+\}\}", "—", texto)
+        return texto.strip()
+    # Fallback legível (sem {{n}} cru)
+    linhas = [f"Template: {nome or 'sem nome'}"]
+    rotulos = {
+        1: "Saudação",
+        2: "Nome",
+        3: "Referência",
+        4: "Valor",
+        5: "Vencimento",
+        6: "Dias em atraso",
+    }
+    for i, val in enumerate(params, start=1):
+        label = rotulos.get(i, f"Campo {i}")
+        linhas.append(f"{label}: {val}")
+    return "\n".join(linhas)
+
+
+def parse_params_do_texto_modelo(texto: str) -> Tuple[str, List[str]]:
+    """Extrai (template_name, params) do formato legado 'Modelo: x\\n{{1}} v'."""
+    raw = (texto or "").strip()
+    if not raw:
+        return "", []
+    linhas = raw.splitlines()
+    nome = ""
+    params: List[str] = []
+    if linhas and linhas[0].lower().startswith("modelo:"):
+        nome = linhas[0].split(":", 1)[1].strip()
+        resto = linhas[1:]
+    elif linhas and linhas[0].lower().startswith("template:"):
+        nome = linhas[0].split(":", 1)[1].strip()
+        resto = linhas[1:]
+    else:
+        resto = linhas
+    for line in resto:
+        m = re.match(r"^\{\{(\d+)\}\}\s*(.*)$", line.strip())
+        if m:
+            idx = int(m.group(1))
+            while len(params) < idx:
+                params.append("")
+            params[idx - 1] = m.group(2)
+            continue
+        m2 = re.match(
+            r"^(Saudação|Nome|Referência|Valor|Vencimento|Dias em atraso|Campo \d+):\s*(.*)$",
+            line.strip(),
+            re.I,
+        )
+        if m2:
+            params.append(m2.group(2))
+    return nome, params
+
+
+def formatar_texto_template_exibicao(
+    texto: str,
+    template_name: str = "",
+    *,
+    telefone: str = "",
+    body_params: Optional[Sequence[Any]] = None,
+) -> str:
+    """Reescreve dump legado {{n}} / [Mailing] nome para preview legível."""
+    raw = (texto or "").strip()
+    if not raw:
+        return raw
+    nome_hint = (template_name or "").strip()
+    m_mail = re.match(r"^\[Mailing\]\s*(\S+)\s*$", raw, re.I)
+    if m_mail:
+        nome_hint = nome_hint or m_mail.group(1)
+
+    params_in = list(body_params) if body_params is not None else None
+    precisa_mailing = bool(
+        nome_hint.startswith("mailing_")
+        or m_mail
+        or raw.startswith("[Mailing]")
+    )
+    if precisa_mailing and nome_hint:
+        # Corpo já legível (com nome) — não consulta MailingContato de novo.
+        precisa_resolver = bool(
+            m_mail
+            or raw.startswith("[Mailing]")
+            or "—" in raw
+            or "{{" in raw
+            or len(raw) < 40
+        )
+        if not precisa_resolver and params_in is None:
+            return raw
+        params = params_in
+        if params is None and telefone and precisa_resolver:
+            params = params_mailing_por_telefone(telefone, nome_hint)
+        params = list(params or [])
+        if params or precisa_resolver:
+            return render_template_preview(nome_hint, params)
+        return raw
+
+    # Já parece preview legível
+    if "{{" not in raw and not raw.lower().startswith("modelo:") and not raw.lower().startswith("template:"):
+        return raw
+
+    nome, params = parse_params_do_texto_modelo(raw)
+    nome = nome or nome_hint
+    if params_in is not None:
+        params = list(params_in)
+    if not nome and not params:
+        return raw
+    return render_template_preview(nome, params)

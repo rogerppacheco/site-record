@@ -19,7 +19,15 @@ def _redis_client():
         url = getattr(settings, "CELERY_BROKER_URL", None) or getattr(
             settings, "REDIS_URL", "redis://localhost:6379/0"
         )
-        return redis.from_url(url, socket_connect_timeout=REDIS_TIMEOUT, socket_timeout=REDIS_TIMEOUT)
+        client = redis.from_url(
+            url,
+            socket_connect_timeout=REDIS_TIMEOUT,
+            socket_timeout=REDIS_TIMEOUT,
+            socket_keepalive=True,
+        )
+        # Falha rápido se o broker estiver inacessível (não trava o SSE).
+        client.ping()
+        return client
     except Exception:
         logger.debug("[WA inbox] Redis indisponível", exc_info=True)
         return None

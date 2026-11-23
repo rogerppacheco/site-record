@@ -300,6 +300,10 @@ class MailingDisparoElegiveisView(APIView):
         situacao = str(request.data.get('situacao') or '').strip().upper()
         incluir_falhas = str(request.data.get('incluir_falhas') or '').lower() in ('1', 'true', 'sim')
         lote_id = request.data.get('lote_id')
+        try:
+            dispatch.assert_pode_disparar_mailing()
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         qs = MailingLote.objects.all()
         if lote_id not in (None, ''):
             qs = qs.filter(pk=int(lote_id))
@@ -309,9 +313,12 @@ class MailingDisparoElegiveisView(APIView):
             stats_pre = dispatch.contar_elegiveis(lote.pk, situacao)
             if stats_pre['elegiveis'] <= 0 and not (incluir_falhas and stats_pre.get('falhas')):
                 continue
-            dispatch.iniciar_disparo(
-                lote.pk, usuario=request.user, situacao=situacao, incluir_falhas=incluir_falhas,
-            )
+            try:
+                dispatch.iniciar_disparo(
+                    lote.pk, usuario=request.user, situacao=situacao, incluir_falhas=incluir_falhas,
+                )
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             stats = dispatch.processar_ciclo(lote.pk, limite=15, sleep=False)
             lote.refresh_from_db()
             iniciados.append(_serialize_lote(lote))

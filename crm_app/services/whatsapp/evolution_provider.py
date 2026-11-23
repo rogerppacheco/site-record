@@ -239,6 +239,34 @@ class EvolutionProvider(WhatsAppProvider):
         logger.error("[Evolution] Falha ao enviar imagem. Resposta nao indica sucesso: %s", resp)
         return None
 
+
+    def enviar_audio_b64(
+        self,
+        telefone: str,
+        audio_b64: str,
+        *,
+        mime: str = "audio/ogg",
+        filename: str = "audio.ogg",
+    ):
+        data = audio_b64 or ""
+        mime_n = (mime or "audio/ogg").strip() or "audio/ogg"
+        if not data.startswith("data:"):
+            data = f"data:{mime_n};base64,{data}"
+        path = f"/message/sendMedia/{self.instance_name}"
+        payload = {
+            "number": destino_evolution(telefone),
+            "mediatype": "audio",
+            "mimetype": mime_n,
+            "media": data,
+            "fileName": filename or "audio.ogg",
+        }
+        resp = self._request("POST", path, payload, timeout=90)
+        if isinstance(resp, dict) and resp.get("error"):
+            return None
+        if resp and self.resposta_indica_sucesso(resp if isinstance(resp, dict) else {}):
+            return self._normalize_success(resp)
+        return None
+
     def enviar_pdf_url(
         self,
         telefone: str,

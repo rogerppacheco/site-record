@@ -1,12 +1,14 @@
 """Testes de normalização Portal Parceiros (FPD/OSAB)."""
 
 import io
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 from django.test import SimpleTestCase
 
-from crm_app.fpd_status_mapping import normalizar_status_fpd
+from crm_app.fpd_status_mapping import INDICADOR_PARA_NUMERO_FATURA, normalizar_status_fpd
+from crm_app.services.fpd_import_service import extrair_campos_linha_fpd
 from crm_app.portal_parceiros_import_utils import (
     coluna_nr_ordem_fpd_presente,
     coluna_tem_valores,
@@ -116,3 +118,39 @@ class PortalParceirosImportUtilsTest(SimpleTestCase):
     def test_fpd_status_nao_paga(self):
         self.assertEqual(normalizar_status_fpd('NAO PAGA'), 'NAO_PAGO')
         self.assertEqual(normalizar_status_fpd('PAGA'), 'PAGO')
+
+    def test_spd_situacao_mensal_atualiza_so_a_segunda_fatura(self):
+        df = pd.DataFrame({
+            'NR_ORDEM': ['09890709'],
+            'INDICADOR': ['SPD'],
+            'SITUACAO_FATURA_MENSAL': ['FECHADA'],
+            'DS_STATUS_FATURA': ['Paga'],
+            'ID_CONTRATO': ['2768219'],
+            'NR_FATURA': ['11537695760'],
+            'DT_VENC_ORIG': ['2026-08-05'],
+        })
+        out = normalizar_colunas_fpd(df)
+        self.assertIn('ds_sit_fatura', out.columns)
+        self.assertNotIn('situacao_fatura_mensal', out.columns)
+        self.assertEqual(out.iloc[0]['ds_sit_fatura'], 'FECHADA')
+
+        campos = extrair_campos_linha_fpd(out.iloc[0], hoje=date(2026, 10, 13))
+        self.assertEqual(campos['indicador'], 'SPD')
+        self.assertEqual(INDICADOR_PARA_NUMERO_FATURA['SPD'], 2)
+        self.assertEqual(campos['numero_fatura'], 2)
+        self.assertEqual(campos['status'], 'PAGO')
+        self.assertEqual(campos['ds_sit_fatura'], 'FECHADA')
+
+        cancelada = out.iloc[0].copy()
+        cancelada['ds_status_fatura'] = 'Cancelada'
+        self.assertEqual(
+            extrair_campos_linha_fpd(cancelada, hoje=date(2026, 10, 13))['status'],
+            'OUTROS',
+        )
+        aberta = out.iloc[0].copy()
+        aberta['ds_status_fatura'] = 'Aguardando_arrecadacao'
+        aberta['ds_sit_fatura'] = 'ABERTA'
+        self.assertEqual(
+            extrair_campos_linha_fpd(aberta, hoje=date(2026, 10, 13))['status'],
+            'ATRASADO',
+        )

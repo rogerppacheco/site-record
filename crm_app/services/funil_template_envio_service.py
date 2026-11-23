@@ -256,7 +256,8 @@ def montar_contexto_interesse(mapped: dict, *, pedido_id: Any = None) -> dict:
         motivos.append('Sem endereço no pedido PAP.')
     if not pedido:
         motivos.append('Sem número de pedido.')
-    if cpf and _cpf_tem_venda_crm(cpf):
+    # CRM/dedup só quando ainda poderia ser elegível (evita N queries lentas na listagem).
+    if not motivos and cpf and _cpf_tem_venda_crm(cpf):
         motivos.append('CPF já possui venda no CRM.')
 
     params = [primeiro_nome(nome), endereco, pedido] if not motivos else []
@@ -319,8 +320,19 @@ def enviar_contexto(ctx: dict, *, usuario=None, force: bool = False) -> dict:
                 'contexto': ctx,
             }
 
-    # Sem fallback texto — só template oficial Meta
-    ok, resp = enviar_template_funil(ctx['telefone'], ctx['template_nome'], ctx['body_params'])
+    # Sem fallback texto — só template oficial Meta (espelho inbox via enviar_template_funil).
+    params = ctx.get('body_params') or []
+    preview = f"[Template {ctx['template_nome']}] " + " · ".join(str(p) for p in params[:4])
+    ok, resp = enviar_template_funil(
+        ctx['telefone'],
+        ctx['template_nome'],
+        ctx['body_params'],
+        espelho_texto=preview[:500],
+        usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
+        venda=ctx.get('venda'),
+        aba=ctx.get('aba') or '',
+        ref_id=str(ctx.get('ref_id') or ''),
+    )
     mid = _extrair_message_id(resp) if ok else ''
     envio = FunilTemplateEnvio.objects.create(
         aba=ctx['aba'],

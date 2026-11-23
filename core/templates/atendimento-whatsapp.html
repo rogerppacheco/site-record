@@ -8,36 +8,64 @@
 {% block header_nav %}{% endblock %}
 
 {% block header_module_actions %}
+<button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-lista" title="Lista"><i class="bi bi-list-ul"></i><span class="header-action-label ms-1">Lista</span></button>
+<button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-kanban" title="Kanban"><i class="bi bi-columns-gap"></i><span class="header-action-label ms-1">Kanban</span></button>
+<button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-metricas" title="Métricas"><i class="bi bi-speedometer2"></i><span class="header-action-label ms-1">Métricas</span></button>
+<button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-triggers" title="Triggers"><i class="bi bi-lightning-charge"></i><span class="header-action-label ms-1">Triggers</span></button>
 <a href="/boas-vindas/" class="btn btn-sm btn-primary"><i class="bi bi-chat-heart"></i><span class="header-action-label ms-1">Boas Vindas</span></a>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-    .wa-inbox { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+    .wa-inbox { max-width: 1680px; margin: 0 auto; padding: 8px 12px 10px; }
     .wa-layout {
         display: grid;
-        grid-template-columns: 280px minmax(0, 1fr) 300px;
-        gap: 14px;
+        grid-template-columns: 260px minmax(0, 1fr) 250px;
+        gap: 10px;
         min-height: 72vh;
     }
+    .wa-layout.lead-collapsed {
+        grid-template-columns: 260px minmax(0, 1fr);
+    }
+    .wa-layout.lead-collapsed .wa-lead { display: none; }
     .wa-lista, .wa-chat, .wa-lead {
         border: 1px solid var(--border-color);
-        border-radius: 12px;
+        border-radius: 10px;
         background: var(--bg-card);
         display: flex;
         flex-direction: column;
-        min-height: 560px;
+        min-height: 0;
+        max-height: calc(100vh - 108px);
+        height: calc(100vh - 108px);
+        overflow: hidden;
     }
     .wa-lista-head, .wa-chat-head, .wa-lead-head {
-        padding: 14px 16px;
+        padding: 8px 10px;
         border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
     }
+    .wa-filas { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    .wa-fila-btn {
+        border: 1px solid var(--border-color);
+        background: transparent;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        color: var(--text-muted, #6c757d);
+    }
+    .wa-fila-btn.ativo { background: var(--color-primary, #0d6efd); color: #fff; border-color: transparent; }
+    .wa-fila-btn .n { opacity: .85; margin-left: 4px; }
     .wa-busca { width: 100%; }
     .wa-conversas { overflow-y: auto; flex: 1; }
-    .wa-item { padding: 12px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; position: relative; }
+    .wa-item { padding: 8px 10px; border-bottom: 1px solid var(--border-color); cursor: pointer; position: relative; }
     .wa-item:hover, .wa-item.ativo { background: var(--bg-secondary); }
     .wa-item .nome { font-weight: 600; }
     .wa-item .preview { color: var(--text-muted, #6c757d); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wa-tag-chip {
+        display: inline-block; font-size: 0.65rem; padding: 1px 6px; border-radius: 999px;
+        margin-right: 4px; color: #fff; vertical-align: middle;
+    }
     .wa-badge-unread {
         position: absolute; top: 10px; right: 10px;
         min-width: 1.25rem; height: 1.25rem; border-radius: 999px;
@@ -45,30 +73,184 @@
         font-size: 0.7rem; display: inline-flex; align-items: center; justify-content: center;
         padding: 0 5px;
     }
-    .wa-msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; background: var(--bg-secondary); }
-    .wa-bubble { max-width: 80%; border-radius: 10px; padding: 8px 12px; }
+    .wa-msgs {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px;
+        display: flex; flex-direction: column; gap: 8px;
+        background:
+            radial-gradient(ellipse at top, color-mix(in srgb, var(--color-primary, #0d6efd) 6%, transparent), transparent 55%),
+            var(--bg-secondary);
+    }
+    .wa-bubble { max-width: 78%; border-radius: 12px; padding: 8px 12px; box-shadow: 0 1px 0 color-mix(in srgb, #000 8%, transparent); }
     .wa-bubble.entrada { align-self: flex-start; background: color-mix(in srgb, var(--color-info, #0d6efd) 16%, var(--bg-card)); }
     .wa-bubble.saida { align-self: flex-end; background: color-mix(in srgb, var(--color-success, #198754) 16%, var(--bg-card)); }
+    .wa-bubble.nota {
+        align-self: stretch; max-width: 100%;
+        background: color-mix(in srgb, #ffc107 18%, var(--bg-card));
+        border-left: 3px solid #ffc107;
+    }
+    .wa-bubble.evento {
+        align-self: center; max-width: 92%;
+        background: transparent; border: 1px dashed var(--border-color);
+        font-size: 0.8rem; color: var(--text-muted, #6c757d); text-align: center;
+    }
     .wa-bubble .meta { font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
     .wa-bubble .corpo { white-space: pre-wrap; word-break: break-word; }
-    .wa-composer { padding: 12px 16px; border-top: 1px solid var(--border-color); }
+    .wa-composer {
+        padding: 6px 10px 8px;
+        border-top: 1px solid var(--border-color);
+        flex: 0 0 auto;
+        background: var(--bg-card);
+        z-index: 2;
+    }
+    .wa-composer-bar {
+        display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 4px;
+    }
+    .wa-acoes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .wa-acoes .btn { padding: 0.12rem 0.4rem; font-size: 0.7rem; line-height: 1.15; }
+    .wa-chat-head-row {
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+    }
+    .wa-chat-head-main { min-width: 0; flex: 1; }
+    .wa-chat-toolbar {
+        display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+        flex-shrink: 0;
+    }
+    .wa-chat-toolbar .btn { padding: 0.2rem 0.55rem; font-size: 0.72rem; line-height: 1.15; }
+    .wa-aviso-compact {
+        display: none; font-size: 0.7rem; line-height: 1.25; padding: 3px 8px; margin: 0 0 4px;
+        border-radius: 6px; color: #664d03; background: color-mix(in srgb, #ffc107 22%, var(--bg-card));
+        border: 1px solid color-mix(in srgb, #ffc107 40%, transparent);
+    }
+    .wa-aviso-compact.show { display: block; }
+    .wa-aviso-compact.info {
+        color: #055160; background: color-mix(in srgb, #0dcaf0 18%, var(--bg-card));
+        border-color: color-mix(in srgb, #0dcaf0 35%, transparent);
+    }
+    .wa-aviso-compact.ok { color: #0f5132; background: color-mix(in srgb, #198754 14%, var(--bg-card)); border-color: transparent; }
+    .wa-composer-tabs { display: flex; gap: 4px; }
+    .wa-composer-tab {
+        border: 1px solid var(--border-color); background: transparent; border-radius: 999px;
+        padding: 2px 9px; font-size: 0.7rem; cursor: pointer; color: var(--text-muted, #6c757d);
+    }
+    .wa-composer-tab.ativo { background: var(--color-primary, #0d6efd); color: #fff; border-color: transparent; }
+    .wa-rapidas { display: none; flex-wrap: wrap; gap: 4px; margin: 4px 0; max-height: 52px; overflow: auto; }
+    .wa-rapidas.show { display: flex; }
+    #ia-painel { max-height: 110px; overflow-y: auto; margin-bottom: 4px !important; padding: 6px 8px !important; }
+    #ia-painel .ia-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    #ia-painel .ia-head .fw-semibold { flex: 1; margin: 0; }
+    #texto-resposta { min-height: 36px; max-height: 72px; resize: vertical; }
+    .wa-canais { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; align-items: center; }
+    .wa-canal-btn {
+        border: 1px solid var(--border-color); background: transparent; border-radius: 999px;
+        padding: 2px 9px; font-size: 0.7rem; cursor: pointer; color: var(--text-muted, #6c757d);
+    }
+    .wa-canal-btn.ativo { background: #fd7e14; color: #fff; border-color: transparent; }
+    .wa-canal-hint { display: none; }
+    .wa-tmpl-btns { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .wa-tmpl-btn {
+        display: block; text-align: center; font-size: 0.78rem; padding: 5px 8px;
+        border: 1px solid color-mix(in srgb, var(--color-primary, #0d6efd) 45%, var(--border-color));
+        border-radius: 8px; color: var(--color-primary, #0d6efd); background: color-mix(in srgb, var(--bg-card) 85%, #fff);
+        pointer-events: none; user-select: none;
+    }
+    .wa-bubble .corpo strong { font-weight: 700; }
+    .wa-rapida {
+        border: 1px dashed var(--border-color); background: var(--bg-secondary);
+        border-radius: 999px; padding: 2px 10px; font-size: 0.72rem; cursor: pointer;
+    }
+    .wa-tmpl-params { display: grid; gap: 6px; margin-top: 8px; }
+    .wa-modo {
+        display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: .03em;
+        padding: 2px 7px; border-radius: 999px; vertical-align: middle;
+    }
+    .wa-modo.BOT { background: #6c757d; color: #fff; }
+    .wa-modo.IA { background: #6f42c1; color: #fff; }
+    .wa-modo.HUMANO { background: #198754; color: #fff; }
+    .wa-modo.ENCERRADA { background: #212529; color: #fff; }
     .wa-vazio { padding: 24px; color: var(--text-muted, #6c757d); }
     .wa-falha { font-size: 0.75rem; color: var(--color-danger, #dc3545); }
-    .wa-lead-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
-    .wa-lead-row { margin-bottom: 12px; }
-    .wa-lead-row .lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted, #6c757d); }
-    .wa-lead-row .val { font-size: 0.95rem; word-break: break-word; }
+    .wa-lead-body { padding: 12px 14px; overflow-y: auto; flex: 1; }
+    .wa-lead-row { margin-bottom: 10px; }
+    .wa-lead-row .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted, #6c757d); }
+    .wa-lead-row .val { font-size: 0.92rem; word-break: break-word; }
+    .wa-section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin: 14px 0 8px; font-weight: 600; }
     .wa-sse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #adb5bd; }
     .wa-sse-dot.on { background: #198754; }
     .wa-sse-dot.off { background: #dc3545; }
+    .wa-tarefa { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; margin-bottom: 6px; font-size: 0.85rem; }
+    .wa-tarefa.done { opacity: .65; text-decoration: line-through; }
     @media (max-width: 1100px) {
         .wa-layout { grid-template-columns: 260px 1fr; }
-        .wa-lead { grid-column: 1 / -1; min-height: 220px; max-height: 280px; }
+        .wa-lead { grid-column: 1 / -1; min-height: 280px; max-height: 360px; }
     }
     @media (max-width: 860px) {
         .wa-layout { grid-template-columns: 1fr; }
         .wa-lista { min-height: 240px; max-height: 320px; }
     }
+    .wa-metricas {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px; margin-bottom: 14px;
+    }
+    .wa-metrica-card {
+        border: 1px solid var(--border-color); border-radius: 12px;
+        background: var(--bg-card); padding: 12px 14px;
+    }
+    .wa-metrica-card .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+    .wa-metrica-card .val { font-size: 1.35rem; font-weight: 700; margin-top: 4px; }
+    .wa-kanban-wrap { overflow-x: auto; padding-bottom: 8px; }
+    .wa-kanban {
+        display: flex; gap: 12px; min-height: 70vh; align-items: flex-start;
+    }
+    .wa-kanban-col {
+        flex: 0 0 260px; max-width: 280px;
+        border: 1px solid var(--border-color); border-radius: 12px;
+        background: var(--bg-card); display: flex; flex-direction: column;
+        min-height: 420px; max-height: 78vh;
+    }
+    .wa-kanban-col-head {
+        padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+        font-weight: 600; display: flex; justify-content: space-between; gap: 8px;
+    }
+    .wa-kanban-col-body { overflow-y: auto; flex: 1; padding: 8px; min-height: 120px; }
+    .wa-kanban-col-body.drag-over { outline: 2px dashed var(--color-primary, #0d6efd); background: var(--bg-secondary); }
+    .wa-kcard {
+        border: 1px solid var(--border-color); border-radius: 10px;
+        padding: 10px; margin-bottom: 8px; background: var(--bg-secondary);
+        cursor: grab; font-size: 0.85rem;
+    }
+    .wa-kcard:active { cursor: grabbing; }
+    .wa-kcard .preview { color: var(--text-muted); font-size: 0.78rem; margin-top: 4px; }
+    .wa-vista-panel[hidden] { display: none !important; }
+    .wa-csat-box { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+    .wa-csat-box button { min-width: 2.2rem; }
+
+    .wa-triggers { border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); padding: 14px; }
+    .wa-trig-board-wrap { overflow-x: auto; padding-bottom: 8px; }
+    .wa-trig-board { display: flex; gap: 12px; align-items: stretch; min-height: 420px; }
+    .wa-trig-col {
+        flex: 0 0 260px; max-width: 280px;
+        border: 1px solid var(--border-color); border-radius: 12px;
+        background: var(--bg-secondary); display: flex; flex-direction: column;
+        min-height: 380px; max-height: 72vh;
+    }
+    .wa-trig-col-head {
+        padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+        background: var(--bg-card); border-radius: 12px 12px 0 0;
+    }
+    .wa-trig-col-head .sub { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; }
+    .wa-trig-col-body { overflow-y: auto; flex: 1; padding: 8px; min-height: 100px; }
+    .wa-trig-col-body.drag-over { outline: 2px dashed var(--color-primary, #0d6efd); }
+    .wa-trig-card {
+        border: 1px solid var(--border-color); border-radius: 10px;
+        padding: 10px; margin-bottom: 8px; background: var(--bg-card);
+        cursor: grab; font-size: 0.85rem;
+    }
+    .wa-trig-card:active { cursor: grabbing; }
+    .wa-trig-card.off { opacity: 0.55; }
+    .wa-trig-card .acao-ico { font-size: 1rem; margin-right: 4px; }
+    .wa-trig-card .resumo { color: var(--text-muted); font-size: 0.78rem; margin-top: 4px; }
+    .wa-audio-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+
 </style>
 {% endblock %}
 
@@ -80,47 +262,180 @@
             <span id="sse-label">Conectando alertas…</span>
         </div>
     </div>
+    <div id="vista-metricas" class="wa-vista-panel" hidden>
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <strong>Métricas do inbox</strong>
+            <select id="metricas-periodo" class="form-select form-select-sm" style="width:auto">
+                <option value="hoje">Hoje</option>
+                <option value="7d" selected>7 dias</option>
+                <option value="30d">30 dias</option>
+            </select>
+        </div>
+        <div class="wa-metricas" id="metricas-cards"></div>
+        <div class="table-responsive border rounded" style="background:var(--bg-card)">
+            <table class="table table-sm mb-0 align-middle">
+                <thead><tr><th>Agente</th><th>Abertas</th><th>Encerradas</th><th>TMR</th><th>CSAT</th></tr></thead>
+                <tbody id="metricas-agentes"><tr><td colspan="5" class="text-muted p-3">Carregando…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    <div id="vista-triggers" class="wa-vista-panel" hidden>
+        <div class="wa-triggers">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <div>
+                    <strong>Salesbot — ao entrar na etapa</strong>
+                    <div class="small text-muted">Arraste cards para ordenar ou mover entre etapas</div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-trig-seed" title="Criar padrões se vazio">Seed padrão</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="btn-trig-novo">Novo trigger</button>
+                </div>
+            </div>
+            <div id="trig-form" class="border rounded p-2 mb-3" hidden>
+                <div class="row g-2">
+                    <div class="col-md-3"><select id="trig-etapa" class="form-select form-select-sm"></select></div>
+                    <div class="col-md-3"><select id="trig-acao" class="form-select form-select-sm">
+                        <option value="PAUSAR_BOT">Pausar bot</option>
+                        <option value="DEVOLVER_BOT">Devolver bot</option>
+                        <option value="TAG">Aplicar tag</option>
+                        <option value="TAREFA">Criar tarefa</option>
+                        <option value="TEMPLATE">Template Meta</option>
+                    </select></div>
+                    <div class="col-md-2"><input id="trig-prio" type="number" class="form-control form-control-sm" value="100" min="0" max="9999" title="Prioridade"></div>
+                    <div class="col-md-2 form-check mt-1"><input class="form-check-input" type="checkbox" id="trig-ativo" checked><label class="form-check-label" for="trig-ativo">Ativo</label></div>
+                    <div class="col-md-3"><input id="trig-tag" class="form-control form-control-sm" placeholder="Tag (ação TAG)"></div>
+                    <div class="col-md-2"><input id="trig-tag-cor" type="color" class="form-control form-control-sm form-control-color" value="#6c757d" title="Cor da tag"></div>
+                    <div class="col-md-4"><input id="trig-tarefa" class="form-control form-control-sm" placeholder="Título tarefa"></div>
+                    <div class="col-md-4"><input id="trig-tmpl" class="form-control form-control-sm" placeholder="Template name"></div>
+                    <div class="col-md-8"><input id="trig-tmpl-params" class="form-control form-control-sm" placeholder='Params template (JSON array, ex: ["{{1}}","nome"])'></div>
+                    <div class="col-12"><button type="button" class="btn btn-sm btn-success" id="btn-trig-salvar">Salvar</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-trig-cancelar">Cancelar</button></div>
+                </div>
+            </div>
+            <div class="wa-trig-board-wrap">
+                <div id="trig-lista" class="wa-trig-board"><div class="wa-vazio">Carregando…</div></div>
+            </div>
+        </div>
+    </div>
+    <div id="vista-kanban" class="wa-vista-panel" hidden>
+        <div class="wa-kanban-wrap">
+            <div class="wa-kanban" id="kanban-board">
+                <div class="wa-vazio">Carregando kanban…</div>
+            </div>
+        </div>
+    </div>
+    <div id="vista-lista" class="wa-vista-panel">
     <div class="wa-layout">
         <section class="wa-lista">
             <div class="wa-lista-head">
-                <input type="search" id="busca" class="form-control wa-busca" placeholder="Buscar cliente ou telefone">
+                <div class="wa-filas" id="filas">
+                    <button type="button" class="wa-fila-btn ativo" data-fila="todas">Todas <span class="n" id="n-todas">0</span></button>
+                    <button type="button" class="wa-fila-btn" data-fila="minhas">Minhas <span class="n" id="n-minhas">0</span></button>
+                    <button type="button" class="wa-fila-btn" data-fila="nao_atribuidas">Não atrib. <span class="n" id="n-nao_atribuidas">0</span></button>
+                    <button type="button" class="wa-fila-btn" data-fila="bot">Bot <span class="n" id="n-bot">0</span></button>
+                    <button type="button" class="wa-fila-btn" data-fila="encerradas">Encerradas <span class="n" id="n-encerradas">0</span></button>
+                </div>
+                <div class="wa-canais" id="canais">
+                    <button type="button" class="wa-canal-btn ativo" data-canal="" title="Inbox + Funil (mais recentes)">Todos</button>
+                    <button type="button" class="wa-canal-btn" data-canal="cliente" title="Inbox Cliente #194">Inbox <span class="n" id="n-canal-cliente">0</span></button>
+                    <button type="button" class="wa-canal-btn" data-canal="funil" title="Funil / mailing #247">Funil <span class="n" id="n-canal-funil">0</span></button>
+                    <button type="button" class="wa-canal-btn" id="btn-janela-aberta" data-janela="aberta" title="Cliente já respondeu — texto livre liberado">24h aberta <span class="n" id="n-janela-aberta">0</span></button>
+                </div>
+                <input type="search" id="busca" class="form-control form-control-sm wa-busca" placeholder="Buscar cliente, telefone ou tag" title="Inbox #194 · Funil #247 espelhado">
+                <div class="wa-lista-meta small text-muted" id="lista-meta" style="font-size:0.68rem;margin-top:4px"></div>
             </div>
             <div id="lista-conversas" class="wa-conversas">
                 <div class="wa-vazio">Carregando conversas…</div>
             </div>
         </section>
         <section class="wa-chat">
-            <div class="wa-chat-head" id="chat-head">
-                <strong>Selecione uma conversa</strong>
-                <div class="small text-muted">Lista à esquerda · chat no centro · lead à direita.</div>
+            <div class="wa-chat-head" id="chat-head-wrap">
+                <div class="wa-chat-head-row">
+                    <div class="wa-chat-head-main" id="chat-head">
+                        <strong>Selecione uma conversa</strong>
+                        <div class="small text-muted">Mensagens e atendimento</div>
+                    </div>
+                    <div class="wa-chat-toolbar" id="chat-toolbar" hidden>
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-assumir" title="Assumir conversa">Assumir</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-liberar" title="Liberar / Bot">Liberar</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-transferir" title="Transferir">Transf.</button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="btn-encerrar" title="Encerrar">Encerrar</button>
+                        <button type="button" class="btn btn-outline-success btn-sm" id="btn-reabrir" hidden title="Reabrir">Reabrir</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-toggle-lead" title="Mostrar/ocultar painel do lead">Lead</button>
+                        <span class="small text-muted align-self-center" id="bot-status" style="font-size:0.68rem"></span>
+                    </div>
+                </div>
             </div>
             <div id="chat-msgs" class="wa-msgs">
                 <div class="wa-vazio">Nenhuma conversa aberta.</div>
             </div>
             <div class="wa-composer" id="composer" hidden>
-                <div id="aviso-janela" class="alert alert-warning py-2 small" hidden></div>
-                <div id="janela-aberta" class="small text-success mb-2" hidden></div>
-                <div id="aviso-canal" class="alert alert-info py-2 small" hidden></div>
-                <div class="d-flex gap-2 mb-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-assumir">Assumir conversa</button>
-                    <span class="small text-muted align-self-center" id="bot-status"></span>
+                <div id="aviso-janela" class="wa-aviso-compact" hidden></div>
+                <div id="janela-aberta" class="wa-aviso-compact ok" hidden></div>
+                <div id="aviso-canal" class="wa-aviso-compact info" hidden></div>
+                <div class="wa-composer-bar">
+                    <div class="wa-composer-tabs" id="composer-tabs">
+                        <button type="button" class="wa-composer-tab ativo" data-tab="texto">Texto</button>
+                        <button type="button" class="wa-composer-tab" data-tab="template">Template</button>
+                        <button type="button" class="wa-composer-tab" data-tab="midia">Mídia</button>
+                    </div>
+                    <div class="wa-acoes" id="panel-texto-acoes">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-toggle-atalhos" title="Atalhos">/…</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="btn-ia-sugerir" title="Sugerir resposta">Sugerir</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ia-reescrever" title="Reescrever texto">Reescrever</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ia-resumo" title="Resumir conversa">Resumo</button>
+                    </div>
                 </div>
-                <div class="input-group">
-                    <textarea id="texto-resposta" class="form-control" rows="2" placeholder="Escreva a resposta" maxlength="4000"></textarea>
-                    <button type="button" class="btn btn-success" id="btn-enviar"><i class="bi bi-send"></i> Enviar</button>
+                <div id="panel-texto">
+                    <div class="wa-rapidas" id="rapidas"></div>
+                    <div id="ia-painel" class="alert alert-light border small" hidden>
+                        <div class="ia-head">
+                            <div class="fw-semibold" id="ia-painel-titulo" style="font-size:0.75rem">Copilot</div>
+                            <button type="button" class="btn btn-sm btn-link text-muted p-0" id="btn-ia-fechar" title="Fechar">✕</button>
+                        </div>
+                        <div id="ia-painel-corpo" style="white-space:pre-wrap;font-size:0.78rem"></div>
+                        <button type="button" class="btn btn-sm btn-primary mt-1" id="btn-ia-usar" hidden>Usar</button>
+                    </div>
+                    <div class="input-group input-group-sm">
+                        <textarea id="texto-resposta" class="form-control" rows="1" placeholder="Escreva a resposta (ou /atalho)" maxlength="4000"></textarea>
+                        <button type="button" class="btn btn-success" id="btn-enviar" title="Enviar"><i class="bi bi-send"></i></button>
+                    </div>
+                </div>
+                <div id="panel-template" hidden>
+                    <select id="sel-template" class="form-select form-select-sm mb-2"></select>
+                    <div class="small text-muted mb-1" id="tmpl-hint"></div>
+                    <div class="wa-tmpl-params" id="tmpl-params"></div>
+                    <button type="button" class="btn btn-primary btn-sm mt-2" id="btn-enviar-template">
+                        <i class="bi bi-file-earmark-text"></i> Enviar template
+                    </button>
+                    <div class="small text-muted mt-1">Templates reabrem a conversa fora da janela de 24h.</div>
+                </div>
+                <div id="panel-midia" hidden>
+                    <input type="file" id="file-midia" class="form-control form-control-sm mb-2" accept="image/*,.pdf,application/pdf,audio/*,.ogg,.webm,.mp3,.m4a">
+                    <input type="text" id="midia-caption" class="form-control form-control-sm mb-2" placeholder="Legenda (opcional)" maxlength="1000">
+                    <div class="wa-audio-bar">
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="btn-gravar-audio"><i class="bi bi-mic"></i> Gravar áudio</button>
+                        <span class="small text-muted" id="audio-rec-status"></span>
+                        <audio id="audio-preview" controls hidden style="max-width:220px;height:32px"></audio>
+                    </div>
+                    <button type="button" class="btn btn-success btn-sm" id="btn-enviar-midia">
+                        <i class="bi bi-paperclip"></i> Enviar arquivo
+                    </button>
+                    <div class="small text-muted mt-1">Imagem, PDF ou áudio · máx. 15 MB · exige janela 24h.</div>
                 </div>
             </div>
         </section>
         <aside class="wa-lead">
             <div class="wa-lead-head">
-                <strong>Lead / Pedido</strong>
-                <div class="small text-muted">Status, endereço e plano</div>
+                <strong>Lead / Funil</strong>
+                <div class="small text-muted">Etapa, tags, notas e tarefas</div>
             </div>
             <div class="wa-lead-body" id="lead-panel">
                 <div class="wa-vazio">Selecione uma conversa para ver o painel do lead.</div>
             </div>
         </aside>
     </div>
+    </div><!-- /vista-lista -->
 </div>
 {% endblock %}
 
@@ -130,10 +445,68 @@
     if (!localStorage.getItem('accessToken')) { window.location.href = '/'; }
     const API = '/api/crm/atendimento-whatsapp';
     let telefoneAberto = null;
-    let timer = null;
+    let conversaAtual = null;
+    let filaAtual = 'todas';
+    let canalAtual = '';
+    let janelaAtual = '';
+    let meta = { agentes: [], tags: [], respostas_rapidas: [], templates: [], etapas: [] };
     let sseAtivo = false;
     let tituloBase = document.title;
     let unreadBadge = 0;
+    let composerTab = 'texto';
+
+    function setComposerTab(tab) {
+        composerTab = tab;
+        document.querySelectorAll('.wa-composer-tab').forEach((b) => b.classList.toggle('ativo', b.dataset.tab === tab));
+        document.getElementById('panel-texto').hidden = tab !== 'texto';
+        document.getElementById('panel-template').hidden = tab !== 'template';
+        document.getElementById('panel-midia').hidden = tab !== 'midia';
+        const acoes = document.getElementById('panel-texto-acoes');
+        if (acoes) acoes.hidden = tab !== 'texto';
+        if (tab !== 'texto') {
+            const rap = document.getElementById('rapidas');
+            if (rap) rap.classList.remove('show');
+        }
+    }
+
+    function renderRapidas() {
+        const el = document.getElementById('rapidas');
+        const items = meta.respostas_rapidas || [];
+        if (!items.length) { el.innerHTML = ''; return; }
+        el.innerHTML = items.map((r) =>
+            `<button type="button" class="wa-rapida" data-atalho="${esc(r.atalho)}" title="${esc(r.texto)}">/${esc(r.atalho)}</button>`
+        ).join('');
+        el.querySelectorAll('.wa-rapida').forEach((btn) => {
+            btn.onclick = () => {
+                const rr = items.find((x) => x.atalho === btn.dataset.atalho);
+                if (!rr) return;
+                const campo = document.getElementById('texto-resposta');
+                campo.value = rr.texto;
+                campo.focus();
+            };
+        });
+    }
+
+    function renderTemplatesSelect() {
+        const sel = document.getElementById('sel-template');
+        const items = meta.templates || [];
+        sel.innerHTML = items.map((t) =>
+            `<option value="${esc(t.name)}" data-params="${esc(t.body_params || 0)}" data-hint="${esc(t.hint || '')}">${esc(t.label || t.name)}</option>`
+        ).join('') || '<option value="">Nenhum template</option>';
+        atualizarParamsTemplate();
+    }
+
+    function atualizarParamsTemplate() {
+        const sel = document.getElementById('sel-template');
+        const opt = sel.options[sel.selectedIndex];
+        const n = opt ? parseInt(opt.dataset.params || '0', 10) : 0;
+        document.getElementById('tmpl-hint').textContent = opt ? (opt.dataset.hint || opt.value) : '';
+        const box = document.getElementById('tmpl-params');
+        if (!n) { box.innerHTML = '<div class="small text-muted">Sem parâmetros obrigatórios (ou informe manualmente abaixo).</div><input class="form-control form-control-sm" id="tmpl-extra" placeholder="Params extras separados por | (opcional)">'; return; }
+        box.innerHTML = Array.from({ length: n }, (_, i) =>
+            `<input class="form-control form-control-sm tmpl-param" data-i="${i}" placeholder="{` + `{${i + 1}}}` + `">`
+        ).join('');
+    }
 
     function api(path, opts = {}) {
         const token = localStorage.getItem('accessToken');
@@ -186,58 +559,352 @@
         }
     }
 
-    function renderLead(lead) {
-        const el = document.getElementById('lead-panel');
-        if (!lead) {
-            el.innerHTML = '<div class="wa-vazio">Sem pedido vinculado a este telefone.</div>';
-            return;
-        }
-        const elig = lead.is_whatsapp_eligible
-            ? '<span class="badge bg-success">Elegível WhatsApp</span>'
-            : `<span class="badge bg-secondary">Inelegível</span>`;
-        const motivos = (lead.whatsapp_eligibility && lead.whatsapp_eligibility.motivos || [])
-            .map((m) => `<li>${esc(m)}</li>`).join('');
-        el.innerHTML = `
-            <div class="wa-lead-row"><div class="lbl">Cliente</div><div class="val">${esc(lead.cliente || '—')}</div></div>
-            <div class="wa-lead-row"><div class="lbl">Pedido</div><div class="val">#${esc(lead.venda_id || '—')} ${lead.ordem_servico ? '· OS ' + esc(lead.ordem_servico) : ''}</div></div>
-            <div class="wa-lead-row"><div class="lbl">Plano</div><div class="val">${esc(lead.plano || '—')}</div></div>
-            <div class="wa-lead-row"><div class="lbl">Status tratamento</div><div class="val">${esc(lead.status_tratamento || '—')}</div></div>
-            <div class="wa-lead-row"><div class="lbl">Status esteira</div><div class="val">${esc(lead.status_esteira || '—')}</div></div>
-            <div class="wa-lead-row"><div class="lbl">Endereço</div><div class="val">${esc(lead.endereco || '—')}</div></div>
-            <div class="wa-lead-row"><div class="lbl">Telefones</div><div class="val">${esc(lead.telefone1 || '—')}${lead.telefone2 ? ' · ' + esc(lead.telefone2) : ''}</div></div>
-            <div class="wa-lead-row"><div class="lbl">WhatsApp</div><div class="val">${elig}${lead.nao_perturbe ? ' · <span class="badge bg-warning text-dark">Não perturbe</span>' : ''}</div>
-                ${motivos ? `<ul class="small text-muted mt-1 mb-0">${motivos}</ul>` : ''}
-            </div>
-            <div class="d-grid gap-2 mt-3">
-                ${lead.venda_id ? `<a class="btn btn-outline-primary btn-sm" href="/funil-vendas/" target="_blank" rel="noopener">Abrir Funil</a>` : ''}
-            </div>
-        `;
+    function fmtWaTexto(texto) {
+        /* Escapa HTML e aplica *negrito* estilo WhatsApp. */
+        const safe = esc(texto || '');
+        return safe.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
     }
 
-    function renderLista(items) {
-        const el = document.getElementById('lista-conversas');
-        if (!items.length) {
-            el.innerHTML = '<div class="wa-vazio">Nenhuma conversa ainda. As mensagens do número oficial aparecem aqui conforme chegam e são enviadas pelo CRM.</div>';
-            return;
+    function fecharIaPainel() {
+        const painel = document.getElementById('ia-painel');
+        if (painel) painel.hidden = true;
+        const btnUsar = document.getElementById('btn-ia-usar');
+        if (btnUsar) btnUsar.hidden = true;
+    }
+
+    function atualizarContagens(filas) {
+        if (!filas) return;
+        ['todas','minhas','nao_atribuidas','bot','encerradas'].forEach((k) => {
+            const el = document.getElementById('n-' + k);
+            if (el) el.textContent = String(filas[k] ?? 0);
+        });
+        const nCli = document.getElementById('n-canal-cliente');
+        const nFun = document.getElementById('n-canal-funil');
+        const nJan = document.getElementById('n-janela-aberta');
+        if (nCli) nCli.textContent = String(filas.canal_cliente ?? 0);
+        if (nFun) nFun.textContent = String(filas.canal_funil ?? 0);
+        if (nJan) nJan.textContent = String(filas.janela_aberta ?? 0);
+    }
+
+    let listaItemsCache = [];
+    let listaHasMore = false;
+    let listaOffset = 0;
+
+    function atualizarListaMeta() {
+        const metaEl = document.getElementById('lista-meta');
+        if (!metaEl) return;
+        const canalLbl = canalAtual === 'funil' ? 'Funil' : (canalAtual === 'cliente' ? 'Inbox' : 'Todos');
+        const janLbl = janelaAtual === 'aberta' ? ' · 24h aberta' : '';
+        metaEl.textContent = `Mostrando ${listaItemsCache.length}${listaHasMore ? '+' : ''} · ${canalLbl}${janLbl}`;
+    }
+
+    function bindListaClicks(el) {
+        el.querySelectorAll('.wa-item').forEach((node) => {
+            node.onclick = () => abrir(node.dataset.tel);
+        });
+        const mais = el.querySelector('#btn-lista-mais');
+        if (mais) {
+            mais.onclick = () => carregarLista({ skipCounts: true, append: true }).catch((e) => alert(e.message || e));
         }
-        el.innerHTML = items.map((item) => `
+    }
+
+    function htmlItemLista(item) {
+        const tags = (item.tags || []).map((t) =>
+            `<span class="wa-tag-chip" style="background:${esc(t.cor || '#6c757d')}">${esc(t.nome)}</span>`
+        ).join('');
+        return `
             <div class="wa-item ${item.telefone === telefoneAberto ? 'ativo' : ''}" data-tel="${esc(item.telefone)}">
                 ${item.unread_count > 0 ? `<span class="wa-badge-unread">${esc(item.unread_count)}</span>` : ''}
                 <div class="d-flex justify-content-between gap-2 pe-3">
                     <span class="nome">${esc(item.cliente || item.telefone_exibicao)}</span>
                     <span class="small text-muted">${hora(item.ultima_em)}</span>
                 </div>
-                <div class="small text-muted">${esc(item.telefone_exibicao)}${item.venda_id ? ' · Pedido #' + item.venda_id : ''}</div>
+                <div class="small text-muted">${esc(item.telefone_exibicao)}
+                    ${item.assignee ? ' · ' + esc(item.assignee) : ''}
+                    ${item.etapa_funil ? ' · ' + esc(item.etapa_funil) : ''}
+                    ${item.venda_id ? ' · #' + item.venda_id : ''}
+                </div>
                 <div class="preview">${esc(item.ultima_mensagem || '')}</div>
-                <div class="mt-1">${item.janela_aberta ? '<span class="badge bg-success">Janela 24h aberta</span>' : '<span class="badge bg-secondary">Janela 24h fechada</span>'}</div>
+                <div class="mt-1">${tags}
+                    <span class="wa-modo ${esc(item.modo || 'BOT')}">${esc(item.modo || 'BOT')}</span>
+                    ${item.reply_canal === 'funil'
+                        ? '<span class="badge text-bg-warning" title="Resposta via Funil #247">Funil</span>'
+                        : '<span class="badge text-bg-secondary" title="Inbox Cliente #194">Inbox</span>'}
+                    ${item.janela_aberta ? '<span class="badge bg-success">24h</span>' : '<span class="badge bg-secondary">24h fechada</span>'}
+                    ${item.status === 'ENCERRADA' ? '<span class="badge bg-dark">Encerrada</span>' : ''}
+                </div>
+            </div>`;
+    }
+
+    function renderLista(items, { append = false, hasMore = false } = {}) {
+        const el = document.getElementById('lista-conversas');
+        if (!append) listaItemsCache = [];
+        const vistos = new Set(listaItemsCache.map((i) => i.telefone));
+        (items || []).forEach((it) => {
+            if (!vistos.has(it.telefone)) {
+                listaItemsCache.push(it);
+                vistos.add(it.telefone);
+            }
+        });
+        listaHasMore = !!hasMore;
+        if (!listaItemsCache.length) {
+            el.innerHTML = '<div class="wa-vazio">Nenhuma conversa neste filtro.</div>';
+            atualizarListaMeta();
+            return;
+        }
+        const rodape = listaHasMore
+            ? `<div class="p-2 text-center"><button type="button" class="btn btn-sm btn-outline-primary" id="btn-lista-mais">Carregar mais</button></div>`
+            : `<div class="p-2 text-center small text-muted">Fim da lista neste filtro</div>`;
+        el.innerHTML = listaItemsCache.map(htmlItemLista).join('') + rodape;
+        bindListaClicks(el);
+        atualizarListaMeta();
+    }
+
+    function optionsAgentes(selectedId) {
+        return (meta.agentes || []).map((a) =>
+            `<option value="${a.id}" ${String(a.id) === String(selectedId || '') ? 'selected' : ''}>${esc(a.nome || a.username)}</option>`
+        ).join('');
+    }
+
+    function optionsEtapas(selected) {
+        const opts = (meta.etapas && meta.etapas.length)
+            ? meta.etapas
+            : [
+                {value:'',label:'—'},{value:'INTERESSE',label:'Interesse'},{value:'PRE_VENDA',label:'Pré-venda'},
+                {value:'VENDA',label:'Venda'},{value:'CHURN',label:'Churn'},{value:'BIO',label:'Bio'},
+                {value:'MAILING',label:'Mailing'},{value:'SUPORTE',label:'Suporte'}
+            ];
+        return opts.map((e) =>
+            `<option value="${esc(e.value)}" ${e.value === (selected || '') ? 'selected' : ''}>${esc(e.label)}</option>`
+        ).join('');
+    }
+
+    function renderLead(data) {
+        const el = document.getElementById('lead-panel');
+        if (!data) {
+            el.innerHTML = '<div class="wa-vazio">Selecione uma conversa.</div>';
+            return;
+        }
+        const lead = data.lead || null;
+        const tags = (data.tags || []).map((t) =>
+            `<span class="wa-tag-chip" style="background:${esc(t.cor)}" title="Remover" data-remove-tag="${t.id}">${esc(t.nome)} ×</span>`
+        ).join(' ');
+        const tarefas = (data.tarefas || []).map((t) => `
+            <div class="wa-tarefa ${t.status !== 'PENDENTE' ? 'done' : ''}">
+                <div class="d-flex justify-content-between gap-2">
+                    <strong>${esc(t.titulo)}</strong>
+                    ${t.status === 'PENDENTE' ? `<button type="button" class="btn btn-sm btn-link p-0" data-done-tarefa="${t.id}">Concluir</button>` : `<span class="small">${esc(t.status)}</span>`}
+                </div>
+                <div class="small text-muted">${t.dono ? esc(t.dono) : 'Sem dono'}${t.prazo ? ' · ' + hora(t.prazo) : ''}</div>
             </div>
-        `).join('');
-        el.querySelectorAll('.wa-item').forEach((node) => {
-            node.onclick = () => abrir(node.dataset.tel);
+        `).join('') || '<div class="small text-muted">Nenhuma tarefa.</div>';
+
+        const elig = lead
+            ? (lead.is_whatsapp_eligible
+                ? '<span class="badge bg-success">Elegível</span>'
+                : '<span class="badge bg-secondary">Inelegível</span>')
+            : '';
+        const motivos = lead && lead.whatsapp_eligibility && lead.whatsapp_eligibility.motivos
+            ? lead.whatsapp_eligibility.motivos.map((m) => `<li>${esc(m)}</li>`).join('')
+            : '';
+
+        el.innerHTML = `
+            <div class="wa-lead-row">
+                <div class="lbl">Etapa do funil</div>
+                <select id="sel-etapa" class="form-select form-select-sm">${optionsEtapas(data.etapa_funil)}</select>
+            </div>
+            <div class="wa-lead-row">
+                <div class="lbl">Responsável</div>
+                <select id="sel-assignee" class="form-select form-select-sm">
+                    <option value="">— Não atribuído —</option>
+                    ${optionsAgentes(data.assignee_id)}
+                </select>
+            </div>
+            <div class="wa-lead-row">
+                <div class="lbl">Tags</div>
+                <div class="mb-1">${tags || '<span class="small text-muted">Sem tags</span>'}</div>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="nova-tag" class="form-control" placeholder="Nova tag" maxlength="40">
+                    <button type="button" class="btn btn-outline-secondary" id="btn-add-tag">+</button>
+                </div>
+            </div>
+            ${lead ? `
+            <div class="wa-section-title">Pedido</div>
+            <div class="wa-lead-row"><div class="lbl">Cliente</div><div class="val">${esc(lead.cliente || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Pedido</div><div class="val">#${esc(lead.venda_id || '—')} ${lead.ordem_servico ? '· OS ' + esc(lead.ordem_servico) : ''}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Plano</div><div class="val">${esc(lead.plano || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Status</div><div class="val">${esc(lead.status_tratamento || '—')} / ${esc(lead.status_esteira || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">Endereço</div><div class="val">${esc(lead.endereco || '—')}</div></div>
+            <div class="wa-lead-row"><div class="lbl">WhatsApp</div><div class="val">${elig}
+                <label class="ms-2 small"><input type="checkbox" id="chk-nao-perturbe" ${lead.nao_perturbe ? 'checked' : ''}> Não perturbe</label>
+                ${motivos ? `<ul class="small text-muted mt-1 mb-0">${motivos}</ul>` : ''}
+            </div></div>
+            ` : '<div class="wa-vazio py-2">Sem pedido vinculado.</div>'}
+            ${data.funil ? `<div class="wa-lead-row"><div class="lbl">Funil vinculado</div><div class="val">${esc(data.funil.aba)} #${esc(data.funil.ref_id)} · ${esc(data.funil.status)}</div></div>` : ''}
+
+            <div class="wa-section-title">Nota interna</div>
+            <div class="input-group input-group-sm mb-2">
+                <input type="text" id="nova-nota" class="form-control" placeholder="Nota só para a equipe">
+                <button type="button" class="btn btn-outline-warning" id="btn-add-nota">Salvar</button>
+            </div>
+
+            <div class="wa-section-title">Tarefas / follow-up</div>
+            <div class="input-group input-group-sm mb-1">
+                <input type="text" id="nova-tarefa" class="form-control" placeholder="Título da tarefa">
+                <button type="button" class="btn btn-outline-primary" id="btn-add-tarefa">+</button>
+            </div>
+            <input type="datetime-local" id="nova-tarefa-prazo" class="form-control form-control-sm mb-2" title="Prazo">
+            <div id="lista-tarefas">${tarefas}</div>
+
+            <div class="d-grid gap-2 mt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ia-lead">IA resumo do lead</button>
+                <a class="btn btn-outline-primary btn-sm" href="/funil-vendas/" target="_blank" rel="noopener">Abrir Funil</a>
+            </div>
+            <div id="ia-lead-box" class="small mt-2" style="white-space:pre-wrap"></div>
+        `;
+
+        document.getElementById('sel-etapa').onchange = async (e) => {
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/crm/', {
+                    method: 'PATCH', body: JSON.stringify({ etapa_funil: e.target.value })
+                });
+                if (r.conversa) renderChat(r.conversa);
+            } catch (err) { alert(err.message || err); }
+        };
+        document.getElementById('sel-assignee').onchange = async (e) => {
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/crm/', {
+                    method: 'PATCH', body: JSON.stringify({ assignee_id: e.target.value || null })
+                });
+                if (r.conversa) renderChat(r.conversa);
+            } catch (err) { alert(err.message || err); }
+        };
+        const chk = document.getElementById('chk-nao-perturbe');
+        if (chk) chk.onchange = async () => {
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/crm/', {
+                    method: 'PATCH', body: JSON.stringify({ nao_perturbe: chk.checked })
+                });
+                if (r.conversa) renderChat(r.conversa);
+            } catch (err) { alert(err.message || err); }
+        };
+        document.getElementById('btn-add-tag').onclick = async () => {
+            const nome = document.getElementById('nova-tag').value.trim();
+            if (!nome) return;
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/crm/', {
+                    method: 'PATCH', body: JSON.stringify({ add_tag: nome })
+                });
+                if (r.conversa) renderChat(r.conversa);
+            } catch (err) { alert(err.message || err); }
+        };
+        el.querySelectorAll('[data-remove-tag]').forEach((node) => {
+            node.onclick = async () => {
+                try {
+                    const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/crm/', {
+                        method: 'PATCH', body: JSON.stringify({ remove_tag_id: node.dataset.removeTag })
+                    });
+                    if (r.conversa) renderChat(r.conversa);
+                } catch (err) { alert(err.message || err); }
+            };
+        });
+        document.getElementById('btn-add-nota').onclick = async () => {
+            const texto = document.getElementById('nova-nota').value.trim();
+            if (!texto) return;
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/notas/', {
+                    method: 'POST', body: JSON.stringify({ texto })
+                });
+                if (r.conversa) renderChat(r.conversa);
+            } catch (err) { alert(err.message || err); }
+        };
+        document.getElementById('btn-add-tarefa').onclick = async () => {
+            const titulo = document.getElementById('nova-tarefa').value.trim();
+            if (!titulo) return;
+            const prazoLocal = document.getElementById('nova-tarefa-prazo').value;
+            let prazo = '';
+            if (prazoLocal) {
+                const d = new Date(prazoLocal);
+                if (!Number.isNaN(d.getTime())) prazo = d.toISOString();
+            }
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/tarefas/', {
+                    method: 'POST', body: JSON.stringify({ titulo, prazo })
+                });
+                if (r.conversa) renderChat(r.conversa);
+            } catch (err) { alert(err.message || err); }
+        };
+        el.querySelectorAll('[data-done-tarefa]').forEach((node) => {
+            node.onclick = async () => {
+                try {
+                    const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/tarefas/' + node.dataset.doneTarefa + '/', {
+                        method: 'PATCH', body: JSON.stringify({ status: 'CONCLUIDA' })
+                    });
+                    if (r.conversa) renderChat(r.conversa);
+                } catch (err) { alert(err.message || err); }
+            };
+        });
+        const btnLead = document.getElementById('btn-ia-lead');
+        if (btnLead) btnLead.onclick = async () => {
+            const box = document.getElementById('ia-lead-box');
+            box.textContent = 'Gerando resumo…';
+            try {
+                const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/copilot/', {
+                    method: 'POST', body: JSON.stringify({ acao: 'resumo_lead' })
+                });
+                box.textContent = r.resumo_lead || '';
+            } catch (err) {
+                box.textContent = err.message || String(err);
+            }
+        };
+    }
+
+    function mostrarIaPainel(titulo, corpo, { usar } = {}) {
+        const painel = document.getElementById('ia-painel');
+        const btnUsar = document.getElementById('btn-ia-usar');
+        document.getElementById('ia-painel-titulo').textContent = titulo;
+        document.getElementById('ia-painel-corpo').textContent = corpo || '';
+        painel.hidden = false;
+        btnUsar.hidden = !usar;
+        btnUsar.onclick = () => {
+            document.getElementById('texto-resposta').value = corpo || '';
+            setComposerTab('texto');
+        };
+    }
+
+    async function chamarCopilot(acao, extra = {}) {
+        if (!telefoneAberto) return;
+        mostrarIaPainel('Copilot', 'Pensando…', { usar: false });
+        try {
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/copilot/', {
+                method: 'POST', body: JSON.stringify({ acao, ...extra })
+            });
+            if (acao === 'resumo') {
+                mostrarIaPainel('Resumo da conversa', r.resumo || '', { usar: false });
+            } else if (acao === 'sugestao') {
+                mostrarIaPainel('Sugestão de resposta', r.sugestao || '', { usar: true });
+            } else if (acao === 'reescrever') {
+                mostrarIaPainel('Texto reescrito', r.texto || '', { usar: true });
+            }
+            if (r.conversa) renderChat(r.conversa);
+        } catch (err) {
+            mostrarIaPainel('Copilot', err.message || String(err), { usar: false });
+        }
+    }
+
+    function mergeTimeline(data) {
+        const msgs = (data.mensagens || []).map((m) => ({ kind: 'msg', at: m.data_hora, m }));
+        const notas = (data.notas || []).map((n) => ({ kind: 'nota', at: n.criado_em, n }));
+        const eventos = (data.eventos || []).map((e) => ({ kind: 'evento', at: e.criado_em, e }));
+        return [...msgs, ...notas, ...eventos].sort((a, b) => {
+            const ta = a.at ? new Date(a.at).getTime() : 0;
+            const tb = b.at ? new Date(b.at).getTime() : 0;
+            return ta - tb;
         });
     }
 
     function renderChat(data) {
+        conversaAtual = data;
         const head = document.getElementById('chat-head');
         const msgs = document.getElementById('chat-msgs');
         const composer = document.getElementById('composer');
@@ -247,105 +914,231 @@
         const enviar = document.getElementById('btn-enviar');
         const bot = document.getElementById('bot-status');
         const btnAssumir = document.getElementById('btn-assumir');
+        const btnReabrir = document.getElementById('btn-reabrir');
+        const btnEncerrar = document.getElementById('btn-encerrar');
 
         composer.hidden = false;
+        const toolbar = document.getElementById('chat-toolbar');
+        if (toolbar) toolbar.hidden = false;
         const titulo = data.cliente || data.telefone_exibicao;
-        const pedido = data.venda_id ? `Pedido #${data.venda_id}` : 'Sem pedido vinculado';
-        head.innerHTML = `<strong>${esc(titulo)}</strong>
-            <div class="small text-muted">${esc(data.telefone_exibicao)} · ${esc(pedido)}</div>`;
+        const pedido = data.venda_id ? `Pedido #${data.venda_id}` : 'Sem pedido';
+        const etapa = data.etapa_funil_label || data.etapa_funil || '—';
+        const modo = data.modo || 'BOT';
+        const replyLbl = data.reply_canal === 'funil' ? 'Funil' : 'Inbox';
+        const replyBadge = data.reply_canal === 'funil'
+            ? `<span class="badge text-bg-warning ms-1" title="Respostas saem pelo canal Funil (#247)">Reply: ${esc(replyLbl)}</span>`
+            : `<span class="badge text-bg-secondary ms-1" title="Respostas saem pelo inbox (#194)">Reply: ${esc(replyLbl)}</span>`;
+        head.innerHTML = `<strong>${esc(titulo)}</strong> <span class="wa-modo ${esc(modo)}">${esc(modo)}</span>${replyBadge}
+            <div class="small text-muted">${esc(data.telefone_exibicao)} · ${esc(pedido)} · Etapa ${esc(etapa)}
+            ${data.assignee ? ' · ' + esc(data.assignee) : ''} · ${esc(data.status || '')}</div>`;
 
-        if (!data.mensagens || !data.mensagens.length) {
+        const timeline = mergeTimeline(data);
+        if (!timeline.length) {
             msgs.innerHTML = '<div class="wa-vazio">Esta conversa ainda não tem mensagens.</div>';
         } else {
-            msgs.innerHTML = data.mensagens.map((m) => `
+            msgs.innerHTML = timeline.map((item) => {
+                if (item.kind === 'nota') {
+                    return `<div class="wa-bubble nota"><div class="meta"><span>Nota interna</span><span>${esc(item.n.autor || '')}</span><span>${hora(item.n.criado_em)}</span></div><div class="corpo">${esc(item.n.texto)}</div></div>`;
+                }
+                if (item.kind === 'evento') {
+                    return `<div class="wa-bubble evento">${esc(item.e.texto || item.e.tipo)} · ${hora(item.e.criado_em)}</div>`;
+                }
+                const m = item.m;
+                const badgeFunil = (m.origem === 'FUNIL')
+                    ? '<span class="badge text-bg-warning">Funil</span>'
+                    : '';
+                const st = (m.status_entrega || '').toUpperCase();
+                const stLabel = ({
+                    ACEITO: 'Aceito',
+                    ENVIADO: 'Enviado',
+                    ENTREGUE: 'Entregue',
+                    LIDO: 'Lido',
+                    FALHOU: 'Falhou',
+                })[st] || '';
+                const stClass = st === 'LIDO' ? 'text-bg-primary'
+                    : st === 'ENTREGUE' ? 'text-bg-success'
+                    : st === 'FALHOU' ? 'text-bg-danger'
+                    : st ? 'text-bg-secondary' : '';
+                const badgeSt = stLabel
+                    ? `<span class="badge ${stClass}">${esc(stLabel)}</span>`
+                    : '';
+                return `
                 <div class="wa-bubble ${m.direcao === 'ENTRADA' ? 'entrada' : 'saida'}">
                     <div class="meta">
                         <span>${esc(m.direcao_label)}</span>
                         <span>${esc(m.tipo_label)}</span>
                         <span>${hora(m.data_hora)}</span>
                         ${m.enviado_por ? `<span>${esc(m.enviado_por)}</span>` : ''}
+                        ${badgeFunil}
+                        ${badgeSt}
+                        ${m.template_name ? `<span class="badge bg-secondary">${esc(m.template_name)}</span>` : ''}
                     </div>
-                    <div class="corpo">${esc(m.texto || '')}</div>
+                    <div class="corpo">${fmtWaTexto(m.texto || '')}</div>
+                    ${(m.template_botoes || []).length
+                        ? `<div class="wa-tmpl-btns">${(m.template_botoes || []).map((b) => `<span class="wa-tmpl-btn">${esc(b)}</span>`).join('')}</div>`
+                        : ''}
+                    ${m.media_url && ((m.media_tipo || '').startsWith('audio') || /\[áudio\]/i.test(m.texto || '')) ? `<audio controls preload="none" src="${esc(m.media_url)}" style="max-width:100%;margin-top:6px"></audio>` : ''}
                     ${m.sucesso ? '' : `<div class="wa-falha">Não enviada${m.erro ? ': ' + esc(m.erro) : ''}</div>`}
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
             msgs.scrollTop = msgs.scrollHeight;
         }
 
-        if (data.janela_aberta) {
+        const encerrada = data.status === 'ENCERRADA';
+        btnReabrir.hidden = !encerrada;
+        btnEncerrar.hidden = encerrada;
+
+        if (data.janela_aberta && !encerrada) {
             aviso.hidden = true;
-            aviso.textContent = '';
+            aviso.classList.remove('show');
             aberta.hidden = false;
-            aberta.textContent = 'Janela de 24 horas aberta até ' + hora(data.janela_ate) + '. Texto livre permitido pela Cloud API.';
+            aberta.classList.add('show');
+            aberta.textContent = '24h aberta até ' + hora(data.janela_ate);
             campo.disabled = false;
             enviar.disabled = false;
         } else {
             aberta.hidden = true;
+            aberta.classList.remove('show');
             aviso.hidden = false;
-            aviso.textContent = data.aviso_janela || 'A janela de 24 horas está fechada. Só um modelo aprovado pode reabrir a conversa.';
+            aviso.classList.add('show');
+            aviso.textContent = encerrada
+                ? 'Conversa encerrada. Reabra para continuar.'
+                : (data.aviso_janela || 'Janela de 24h fechada — use Template.');
             campo.disabled = true;
             enviar.disabled = true;
-            campo.value = '';
         }
 
         const avisoCanal = document.getElementById('aviso-canal');
-        if (data.janela_aberta && data.canal_oficial_pronto === false) {
+        if (data.janela_aberta && data.canal_oficial_pronto === false && !encerrada) {
             avisoCanal.hidden = false;
-            avisoCanal.textContent = data.aviso_canal || 'O número oficial ainda não está liberado para envio a clientes.';
+            avisoCanal.classList.add('show');
+            avisoCanal.textContent = data.aviso_canal || 'Canal oficial indisponível.';
             campo.disabled = true;
             enviar.disabled = true;
         } else {
             avisoCanal.hidden = true;
-            avisoCanal.textContent = '';
+            avisoCanal.classList.remove('show');
         }
 
         if (data.bot_pausado) {
-            bot.textContent = 'Bot pausado neste número.';
+            bot.textContent = 'Bot pausado.';
             btnAssumir.disabled = true;
-            btnAssumir.textContent = 'Conversa assumida';
+            btnAssumir.textContent = 'Assumida';
         } else {
-            bot.textContent = 'O bot ainda pode responder neste número.';
-            btnAssumir.disabled = false;
-            btnAssumir.textContent = 'Assumir conversa';
+            bot.textContent = 'Bot ativo.';
+            btnAssumir.disabled = encerrada;
+            btnAssumir.textContent = 'Assumir';
         }
 
-        renderLead(data.lead || null);
+        renderLead(data);
         unreadBadge = 0;
         document.title = tituloBase;
     }
 
-    async function carregarLista() {
+    let listaSeq = 0;
+    let ultimaContagemEm = 0;
+    async function carregarLista(opts = {}) {
+        const skipCounts = !!opts.skipCounts;
+        const append = !!opts.append;
+        const seq = ++listaSeq;
+        const elLista = document.getElementById('lista-conversas');
+        if (!opts.silent && elLista && !append) {
+            elLista.style.opacity = '0.55';
+        }
         const q = document.getElementById('busca').value.trim();
-        const params = new URLSearchParams({ limit: '40' });
+        // Funil (~60) cabe numa página; Todos/Inbox usam 60 e "Carregar mais".
+        const limite = canalAtual === 'funil' ? '80' : '60';
+        const offset = append ? String(listaItemsCache.length) : '0';
+        if (!append) listaOffset = 0;
+        const params = new URLSearchParams({ limit: limite, offset, fila: filaAtual });
+        if (canalAtual) params.set('canal', canalAtual);
+        if (janelaAtual) params.set('janela', janelaAtual);
         if (q) params.set('q', q);
-        const r = await api('/conversas/?' + params.toString());
-        renderLista(r.items || []);
+        // Contagens são caras no DB remoto — pula na troca de canal/fila e no polling.
+        const precisaContagem = !skipCounts || (Date.now() - ultimaContagemEm > 60000);
+        if (!precisaContagem) params.set('skip_counts', '1');
+        try {
+            const r = await api('/conversas/?' + params.toString());
+            if (seq !== listaSeq) return;
+            if (r.filas) {
+                atualizarContagens(r.filas);
+                ultimaContagemEm = Date.now();
+            }
+            listaOffset = Number(r.loaded || ((append ? listaItemsCache.length : 0) + (r.items || []).length));
+            renderLista(r.items || [], { append, hasMore: !!r.has_more });
+        } finally {
+            if (elLista && seq === listaSeq) elLista.style.opacity = '1';
+        }
     }
 
+    let abrirSeq = 0;
     async function abrir(telefone, silencioso) {
         telefoneAberto = telefone;
+        const seq = ++abrirSeq;
         document.querySelectorAll('.wa-item').forEach((node) => {
             node.classList.toggle('ativo', node.dataset.tel === telefone);
         });
+        if (!silencioso) {
+            document.getElementById('chat-msgs').innerHTML = '<div class="wa-vazio">Carregando conversa…</div>';
+            document.getElementById('chat-toolbar').hidden = false;
+            document.getElementById('composer').hidden = false;
+        }
         try {
-            const data = await api('/conversas/' + encodeURIComponent(telefone) + '/?limit=80');
+            // Fase 1: msgs + header (sem CRM pesado) — aparece rápido.
+            const data = await api('/conversas/' + encodeURIComponent(telefone) + '/?limit=25&crm=0');
+            if (seq !== abrirSeq) return;
             renderChat(data);
+            // Fase 2: lead/notas/tarefas em background.
+            api('/conversas/' + encodeURIComponent(telefone) + '/?limit=25&crm=1')
+                .then((full) => {
+                    if (seq !== abrirSeq || telefoneAberto !== telefone) return;
+                    if (full.lead !== undefined) data.lead = full.lead;
+                    ['tags','notas','tarefas','eventos','etapa_funil','assignee_id','assignee','funil','modo','etapas_opcoes'].forEach((k) => {
+                        if (full[k] !== undefined) data[k] = full[k];
+                    });
+                    conversaAtual = data;
+                    renderLead(data);
+                })
+                .catch(() => {});
         } catch (e) {
+            if (seq !== abrirSeq) return;
             if (!silencioso) alert(e.message || e);
         }
     }
 
+    async function carregarMeta() {
+        try {
+            meta = await api('/meta/');
+            atualizarContagens(meta.filas);
+            renderRapidas();
+            renderTemplatesSelect();
+        } catch (_) {}
+    }
+
+    document.getElementById('composer-tabs').onclick = (e) => {
+        const btn = e.target.closest('.wa-composer-tab');
+        if (!btn) return;
+        setComposerTab(btn.dataset.tab);
+    };
+    document.getElementById('sel-template').onchange = atualizarParamsTemplate;
+
+    let sseCtrl = null;
+    let sseRetryTimer = null;
     function conectarSSE() {
         const token = localStorage.getItem('accessToken');
-        if (!token || !window.EventSource) {
+        if (!token) {
             setSseStatus(false, 'SSE indisponível — usando polling');
             return;
         }
-        // EventSource não envia Authorization; usamos query token se o backend aceitar via header
-        // em fetch stream. Aqui usamos fetch+ReadableStream polyfill via native EventSource
-        // com cookie/sessão quando houver; fallback: polling.
-        // DRF JWT: abrimos via fetch stream manual.
+        if (sseCtrl) {
+            try { sseCtrl.abort(); } catch (_) {}
+        }
+        if (sseRetryTimer) {
+            clearTimeout(sseRetryTimer);
+            sseRetryTimer = null;
+        }
         const ctrl = new AbortController();
+        sseCtrl = ctrl;
         (async () => {
             try {
                 const r = await fetch(API + '/events/', {
@@ -372,6 +1165,10 @@
                             if (line.startsWith('data:')) dataLine += line.slice(5).trim();
                         }
                         if (eventName === 'reconnect') break;
+                        if (eventName === 'ready') {
+                            setSseStatus(true, 'Alertas em tempo real');
+                            continue;
+                        }
                         if (!dataLine || dataLine === '{}') continue;
                         let payload = null;
                         try { payload = JSON.parse(dataLine); } catch (_) { continue; }
@@ -385,30 +1182,96 @@
                                 abrir(telefoneAberto, true).catch(() => {});
                             }
                         }
+                        if (payload && payload.type === 'handoff') {
+                            bumpTitleBadge(1);
+                            notifyDesktop('Handoff WhatsApp', payload.preview || 'Cliente pediu atendente');
+                            carregarLista().catch(() => {});
+                            if (telefoneAberto && payload.telefone === telefoneAberto) {
+                                abrir(telefoneAberto, true).catch(() => {});
+                            }
+                        }
+                        if (payload && payload.type === 'message.status') {
+                            if (telefoneAberto && payload.telefone === telefoneAberto) {
+                                abrir(telefoneAberto, true).catch(() => {});
+                            }
+                        }
                     }
                 }
+                setSseStatus(false, 'SSE reconectando…');
             } catch (e) {
+                if (ctrl.signal.aborted) return;
                 setSseStatus(false, 'Alertas offline (polling)');
             } finally {
-                setTimeout(conectarSSE, 5000);
+                if (!ctrl.signal.aborted) {
+                    sseRetryTimer = setTimeout(conectarSSE, 5000);
+                }
             }
         })();
-        window.addEventListener('beforeunload', () => ctrl.abort(), { once: true });
+        window.addEventListener('beforeunload', () => {
+            try { ctrl.abort(); } catch (_) {}
+        }, { once: true });
     }
 
-    const telUrl = new URLSearchParams(location.search).get('tel');
+    document.getElementById('filas').onclick = (e) => {
+        const btn = e.target.closest('.wa-fila-btn');
+        if (!btn) return;
+        filaAtual = btn.dataset.fila;
+        document.querySelectorAll('.wa-fila-btn').forEach((b) => b.classList.toggle('ativo', b === btn));
+        carregarLista({ skipCounts: true }).catch((err) => alert(err.message || err));
+    };
+
+    document.getElementById('canais').onclick = (e) => {
+        const btn = e.target.closest('.wa-canal-btn');
+        if (!btn) return;
+        if (btn.dataset.janela !== undefined) {
+            // Toggle janela aberta (pode combinar com Inbox/Funil se já filtrado).
+            const ligar = janelaAtual !== 'aberta';
+            janelaAtual = ligar ? 'aberta' : '';
+            btn.classList.toggle('ativo', ligar);
+            // Se não há canal ativo, não limpa canal; só marca janela.
+            carregarLista({ skipCounts: true }).catch((err) => alert(err.message || err));
+            return;
+        }
+        canalAtual = btn.dataset.canal || '';
+        document.querySelectorAll('.wa-canal-btn').forEach((b) => {
+            if (b.dataset.janela !== undefined) return;
+            b.classList.toggle('ativo', b === btn);
+        });
+        carregarLista({ skipCounts: true }).catch((err) => alert(err.message || err));
+    };
+
+    document.getElementById('btn-ia-fechar').onclick = () => fecharIaPainel();
+
+    document.getElementById('btn-toggle-atalhos').onclick = () => {
+        document.getElementById('rapidas').classList.toggle('show');
+    };
+    document.getElementById('btn-toggle-lead').onclick = () => {
+        document.querySelector('.wa-layout')?.classList.toggle('lead-collapsed');
+    };
+
+    document.getElementById('btn-ia-sugerir').onclick = () => chamarCopilot('sugestao');
+    document.getElementById('btn-ia-resumo').onclick = () => chamarCopilot('resumo');
+    document.getElementById('btn-ia-reescrever').onclick = () => {
+        const texto = document.getElementById('texto-resposta').value.trim();
+        if (!texto) { alert('Escreva um texto no composer para reescrever.'); return; }
+        chamarCopilot('reescrever', { texto, tom: 'profissional' });
+    };
 
     document.getElementById('btn-enviar').onclick = async () => {
         if (!telefoneAberto) return;
         const campo = document.getElementById('texto-resposta');
-        const texto = campo.value.trim();
+        let texto = campo.value.trim();
         if (!texto) return;
+        if (texto.startsWith('/')) {
+            const atalho = texto.slice(1).split(/\s/)[0].toLowerCase();
+            const rr = (meta.respostas_rapidas || []).find((r) => r.atalho.toLowerCase() === atalho);
+            if (rr) texto = rr.texto;
+        }
         const btn = document.getElementById('btn-enviar');
         btn.disabled = true;
         try {
             const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/responder/', {
-                method: 'POST',
-                body: JSON.stringify({ texto }),
+                method: 'POST', body: JSON.stringify({ texto }),
             });
             campo.value = '';
             if (r.conversa) renderChat(r.conversa);
@@ -424,14 +1287,138 @@
         }
     };
 
+    document.getElementById('btn-enviar-template').onclick = async () => {
+        if (!telefoneAberto) return;
+        const sel = document.getElementById('sel-template');
+        const name = sel.value;
+        if (!name) return;
+        const inputs = [...document.querySelectorAll('.tmpl-param')];
+        let params = inputs.map((i) => i.value.trim());
+        const extra = document.getElementById('tmpl-extra');
+        if (extra && extra.value.trim()) {
+            params = params.concat(extra.value.split('|').map((s) => s.trim()).filter(Boolean));
+        }
+        const btn = document.getElementById('btn-enviar-template');
+        btn.disabled = true;
+        try {
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/template/', {
+                method: 'POST',
+                body: JSON.stringify({ template_name: name, body_params: params }),
+            });
+            if (r.conversa) renderChat(r.conversa);
+            await carregarLista();
+            alert('Template enviado.');
+        } catch (e) {
+            if (e.body && e.body.conversa) renderChat(e.body.conversa);
+            alert(e.message || e);
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    document.getElementById('btn-enviar-midia').onclick = async () => {
+        if (!telefoneAberto) return;
+        const input = document.getElementById('file-midia');
+        const file = input.files && input.files[0];
+        const blob = file || recordedBlob;
+        if (!blob) { alert('Selecione um arquivo ou grave um áudio.'); return; }
+        if (blob.size > 15 * 1024 * 1024) { alert('Arquivo maior que 15 MB.'); return; }
+        const btn = document.getElementById('btn-enviar-midia');
+        btn.disabled = true;
+        try {
+            const buf = await blob.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            const b64 = btoa(binary);
+            const name = (file && file.name) || ('audio.' + ((blob.type || '').includes('ogg') ? 'ogg' : 'webm'));
+            const mime = (file && file.type) || blob.type || '';
+            let kind = 'document';
+            if ((mime || '').startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(name)) kind = 'image';
+            else if ((mime || '').startsWith('audio/') || /\.(ogg|webm|mp3|m4a|wav|opus)$/i.test(name) || recordedBlob) kind = 'audio';
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/midia/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    kind,
+                    base64: b64,
+                    filename: name,
+                    mime,
+                    caption: document.getElementById('midia-caption').value.trim(),
+                }),
+            });
+            input.value = '';
+            recordedBlob = null;
+            document.getElementById('audio-preview').hidden = true;
+            document.getElementById('audio-rec-status').textContent = '';
+            document.getElementById('midia-caption').value = '';
+            if (r.conversa) renderChat(r.conversa);
+            await carregarLista();
+        } catch (e) {
+            if (e.body && e.body.conversa) renderChat(e.body.conversa);
+            alert(e.message || e);
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
     document.getElementById('btn-assumir').onclick = async () => {
         if (!telefoneAberto) return;
         try {
             const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/assumir/', { method: 'POST', body: '{}' });
             if (r.conversa) renderChat(r.conversa);
-        } catch (e) {
-            alert(e.message || e);
-        }
+            await carregarLista();
+        } catch (e) { alert(e.message || e); }
+    };
+
+    document.getElementById('btn-liberar').onclick = async () => {
+        if (!telefoneAberto) return;
+        if (!confirm('Liberar conversa e devolver ao bot?')) return;
+        try {
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/liberar/', {
+                method: 'POST', body: JSON.stringify({ devolver_bot: true })
+            });
+            if (r.conversa) renderChat(r.conversa);
+            await carregarLista();
+        } catch (e) { alert(e.message || e); }
+    };
+
+    document.getElementById('btn-transferir').onclick = async () => {
+        if (!telefoneAberto) return;
+        const nomes = (meta.agentes || []).map((a) => `${a.id}: ${a.nome || a.username}`).join('\n');
+        const raw = prompt('ID do atendente para transferir:\n' + nomes);
+        if (!raw) return;
+        try {
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/transferir/', {
+                method: 'POST', body: JSON.stringify({ assignee_id: raw.trim() })
+            });
+            if (r.conversa) renderChat(r.conversa);
+            await carregarLista();
+        } catch (e) { alert(e.message || e); }
+    };
+
+    document.getElementById('btn-encerrar').onclick = async () => {
+        if (!telefoneAberto) return;
+        const raw = prompt('Encerrar conversa.\nCSAT (1-5) opcional — deixe em branco para pular:');
+        if (raw === null) return;
+        const body = {};
+        const n = String(raw || '').trim();
+        if (n) body.csat_nota = n;
+        try {
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/encerrar/', {
+                method: 'POST', body: JSON.stringify(body)
+            });
+            if (r.conversa) renderChat(r.conversa);
+            await carregarLista();
+        } catch (e) { alert(e.message || e); }
+    };
+
+    document.getElementById('btn-reabrir').onclick = async () => {
+        if (!telefoneAberto) return;
+        try {
+            const r = await api('/conversas/' + encodeURIComponent(telefoneAberto) + '/reabrir/', { method: 'POST', body: '{}' });
+            if (r.conversa) renderChat(r.conversa);
+            await carregarLista();
+        } catch (e) { alert(e.message || e); }
     };
 
     let buscaTimer = null;
@@ -444,17 +1431,425 @@
         Notification.requestPermission().catch(() => {});
     }
 
-    carregarLista().then(() => {
+
+    let vistaAtual = 'lista';
+    function fmtMin(seg) {
+        if (seg == null || seg === undefined) return '—';
+        const m = Number(seg) / 60;
+        if (m < 1) return Math.round(Number(seg)) + 's';
+        return m.toFixed(1) + ' min';
+    }
+    function setVista(nome) {
+        vistaAtual = nome;
+        document.getElementById('vista-lista').hidden = nome !== 'lista';
+        document.getElementById('vista-kanban').hidden = nome !== 'kanban';
+        document.getElementById('vista-metricas').hidden = nome !== 'metricas';
+        document.getElementById('vista-triggers').hidden = nome !== 'triggers';
+        ['lista','kanban','metricas','triggers'].forEach((v) => {
+            const btn = document.getElementById('btn-vista-' + v);
+            if (!btn) return;
+            btn.classList.toggle('btn-primary', nome === v);
+            btn.classList.toggle('btn-outline-primary', nome !== v);
+        });
+        if (nome === 'kanban') carregarKanban().catch((e) => alert(e.message || e));
+        if (nome === 'metricas') carregarMetricas().catch((e) => alert(e.message || e));
+        if (nome === 'triggers') carregarTriggers().catch((e) => alert(e.message || e));
+    }
+    function renderKanban(data) {
+        const board = document.getElementById('kanban-board');
+        const cols = data.colunas || [];
+        if (!cols.length) {
+            board.innerHTML = '<div class="wa-vazio">Nenhuma coluna.</div>';
+            return;
+        }
+        board.innerHTML = cols.map((col) => {
+            const cards = (col.items || []).map((c) => `
+                <div class="wa-kcard" draggable="true" data-tel="${esc(c.telefone)}" data-etapa="${esc(col.etapa || '')}">
+                    <div class="d-flex justify-content-between gap-2">
+                        <strong>${esc(c.cliente || c.telefone_exibicao || c.telefone)}</strong>
+                        <span class="wa-modo ${esc(c.modo || 'BOT')}">${esc(c.modo || 'BOT')}</span>
+                    </div>
+                    <div class="preview">${esc(c.ultima_mensagem || '—')}</div>
+                    <div class="small text-muted mt-1">${esc(c.assignee || 'Sem responsável')}${c.venda_id ? ' · #' + esc(c.venda_id) : ''}</div>
+                </div>
+            `).join('');
+            return `
+                <div class="wa-kanban-col" data-etapa="${esc(col.etapa || '')}">
+                    <div class="wa-kanban-col-head">
+                        <span>${esc(col.label || '—')}</span>
+                        <span class="badge text-bg-secondary">${col.count || 0}</span>
+                    </div>
+                    <div class="wa-kanban-col-body" data-drop-etapa="${esc(col.etapa || '')}">${cards || '<div class="wa-vazio small">Vazio</div>'}</div>
+                </div>
+            `;
+        }).join('');
+
+        board.querySelectorAll('.wa-kcard').forEach((card) => {
+            card.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/tel', card.dataset.tel);
+                e.dataTransfer.setData('text/etapa', card.dataset.etapa || '');
+            });
+            card.addEventListener('dblclick', () => {
+                setVista('lista');
+                abrir(card.dataset.tel, false).catch((err) => alert(err.message || err));
+            });
+            card.addEventListener('click', () => {
+                /* single click also opens after short delay avoided — use dblclick + button */
+            });
+        });
+        board.querySelectorAll('.wa-kanban-col-body').forEach((body) => {
+            body.addEventListener('dragover', (e) => { e.preventDefault(); body.classList.add('drag-over'); });
+            body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
+            body.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                body.classList.remove('drag-over');
+                const tel = e.dataTransfer.getData('text/tel');
+                const fromEtapa = e.dataTransfer.getData('text/etapa');
+                const toEtapa = body.dataset.dropEtapa || '';
+                if (!tel || fromEtapa === toEtapa) return;
+                try {
+                    await api('/conversas/' + encodeURIComponent(tel) + '/crm/', {
+                        method: 'PATCH',
+                        body: JSON.stringify({ etapa_funil: toEtapa }),
+                    });
+                    await carregarKanban();
+                } catch (err) {
+                    alert(err.message || err);
+                }
+            });
+        });
+        // open on card click (not only dblclick)
+        board.querySelectorAll('.wa-kcard').forEach((card) => {
+            card.onclick = () => {
+                const tel = card.dataset.tel;
+                setVista('lista');
+                abrir(tel, false).catch((err) => alert(err.message || err));
+            };
+        });
+    }
+    async function carregarKanban() {
+        const r = await api('/kanban/');
+        renderKanban(r);
+    }
+    function renderMetricas(data) {
+        const vol = data.volume || {};
+        const cards = [
+            ['Abertas', vol.abertas],
+            ['Encerradas', vol.encerradas_periodo],
+            ['Bot', vol.bot],
+            ['Humanas', vol.humanas],
+            ['TMR', data.tmr_minutos != null ? data.tmr_minutos + ' min' : '—'],
+            ['SLA ≤' + (data.sla_alvo_minutos || 15) + 'm', data.sla_pct != null ? data.sla_pct + '%' : '—'],
+            ['CSAT médio', data.csat_medio != null ? data.csat_medio : '—'],
+            ['CSAT (n)', data.csat_n || 0],
+        ];
+        document.getElementById('metricas-cards').innerHTML = cards.map(([lbl, val]) => `
+            <div class="wa-metrica-card"><div class="lbl">${esc(lbl)}</div><div class="val">${esc(val)}</div></div>
+        `).join('');
+        const rows = data.por_agente || [];
+        const tb = document.getElementById('metricas-agentes');
+        if (!rows.length) {
+            tb.innerHTML = '<tr><td colspan="5" class="text-muted p-3">Sem agentes com conversas no período.</td></tr>';
+            return;
+        }
+        tb.innerHTML = rows.map((a) => `
+            <tr>
+                <td>${esc(a.username || a.assignee_id)}</td>
+                <td>${esc(a.abertas)}</td>
+                <td>${esc(a.encerradas_periodo)}</td>
+                <td>${esc(fmtMin(a.tmr_segundos))}</td>
+                <td>${a.csat_medio != null ? esc(a.csat_medio) + ' (' + esc(a.csat_n) + ')' : '—'}</td>
+            </tr>
+        `).join('');
+    }
+    async function carregarMetricas() {
+        const periodo = document.getElementById('metricas-periodo').value || '7d';
+        const r = await api('/metricas/?periodo=' + encodeURIComponent(periodo));
+        renderMetricas(r);
+    }
+
+    let trigEditId = null;
+    let trigItemsCache = [];
+    let audioChunks = [];
+    let mediaRecorder = null;
+    let recordedBlob = null;
+
+    const TRIG_ACAO_ICO = {
+        PAUSAR_BOT: '⏸',
+        DEVOLVER_BOT: '▶',
+        TAG: '🏷',
+        TAREFA: '☑',
+        TEMPLATE: '✉',
+    };
+    function trigEtapasOpts() {
+        return (meta.etapas || []).filter((e) => e.value);
+    }
+    function trigResumo(t) {
+        const bits = [];
+        if (t.tag_nome) bits.push('tag ' + t.tag_nome);
+        if (t.tarefa_titulo) bits.push(t.tarefa_titulo);
+        if (t.template_name) bits.push('tmpl ' + t.template_name);
+        if (Array.isArray(t.template_params) && t.template_params.length) {
+            bits.push(t.template_params.length + ' params');
+        }
+        return bits.join(' · ') || '—';
+    }
+    function renderTriggers(items) {
+        const el = document.getElementById('trig-lista');
+        trigItemsCache = items || [];
+        const etapas = trigEtapasOpts();
+        if (!etapas.length) {
+            el.innerHTML = '<div class="wa-vazio">Nenhuma etapa configurada.</div>';
+            return;
+        }
+        const byEtapa = {};
+        etapas.forEach((e) => { byEtapa[e.value] = []; });
+        trigItemsCache.forEach((t) => {
+            const k = t.etapa || '';
+            if (!byEtapa[k]) byEtapa[k] = [];
+            byEtapa[k].push(t);
+        });
+        Object.keys(byEtapa).forEach((k) => {
+            byEtapa[k].sort((a, b) => (a.prioridade - b.prioridade) || (a.id - b.id));
+        });
+        el.className = 'wa-trig-board';
+        el.innerHTML = etapas.map((e) => {
+            const list = byEtapa[e.value] || [];
+            const cards = list.map((t) => `
+                <div class="wa-trig-card ${t.ativo ? '' : 'off'}" draggable="true"
+                     data-trig-id="${t.id}" data-trig-etapa="${esc(t.etapa)}" data-trig-prio="${esc(t.prioridade)}">
+                    <div class="d-flex justify-content-between gap-2 align-items-start">
+                        <div>
+                            <span class="acao-ico">${TRIG_ACAO_ICO[t.acao] || '⚡'}</span>
+                            <strong>${esc(t.acao)}</strong>
+                            <span class="badge ${t.ativo ? 'text-bg-success' : 'text-bg-secondary'} ms-1">${t.ativo ? 'ativo' : 'off'}</span>
+                        </div>
+                        <span class="small text-muted">#${esc(t.prioridade)}</span>
+                    </div>
+                    <div class="resumo">${esc(trigResumo(t))}</div>
+                    <div class="btn-group btn-group-sm mt-2">
+                        <button type="button" class="btn btn-outline-secondary" data-trig-edit="${t.id}">Editar</button>
+                        <button type="button" class="btn btn-outline-danger" data-trig-del="${t.id}">Excluir</button>
+                    </div>
+                </div>
+            `).join('');
+            return `
+                <div class="wa-trig-col" data-etapa="${esc(e.value)}">
+                    <div class="wa-trig-col-head">
+                        <div class="d-flex justify-content-between align-items-center gap-2">
+                            <strong>${esc(e.label || e.value)}</strong>
+                            <span class="badge text-bg-secondary">${list.length}</span>
+                        </div>
+                        <div class="sub">Ao entrar nesta etapa</div>
+                        <button type="button" class="btn btn-sm btn-link p-0 mt-1" data-trig-add="${esc(e.value)}">+ adicionar</button>
+                    </div>
+                    <div class="wa-trig-col-body" data-drop-etapa="${esc(e.value)}">${cards || '<div class="wa-vazio small">Vazio</div>'}</div>
+                </div>
+            `;
+        }).join('');
+
+        el.querySelectorAll('[data-trig-edit]').forEach((b) => {
+            b.onclick = (ev) => { ev.stopPropagation(); editarTrigger(Number(b.dataset.trigEdit)); };
+        });
+        el.querySelectorAll('[data-trig-del]').forEach((b) => {
+            b.onclick = async (ev) => {
+                ev.stopPropagation();
+                if (!confirm('Excluir trigger?')) return;
+                try {
+                    await api('/triggers/' + b.dataset.trigDel + '/', { method: 'DELETE' });
+                    await carregarTriggers();
+                } catch (err) { alert(err.message || err); }
+            };
+        });
+        el.querySelectorAll('[data-trig-add]').forEach((b) => {
+            b.onclick = () => abrirFormTrigNovo(b.dataset.trigAdd);
+        });
+        el.querySelectorAll('.wa-trig-card').forEach((card) => {
+            card.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/trig-id', card.dataset.trigId);
+                e.dataTransfer.setData('text/trig-etapa', card.dataset.trigEtapa || '');
+                e.dataTransfer.setData('text/trig-prio', card.dataset.trigPrio || '100');
+            });
+        });
+        el.querySelectorAll('.wa-trig-col-body').forEach((body) => {
+            body.addEventListener('dragover', (e) => { e.preventDefault(); body.classList.add('drag-over'); });
+            body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
+            body.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                body.classList.remove('drag-over');
+                const id = e.dataTransfer.getData('text/trig-id');
+                const fromEtapa = e.dataTransfer.getData('text/trig-etapa');
+                const toEtapa = body.dataset.dropEtapa || '';
+                if (!id || !toEtapa) return;
+                const siblings = [...body.querySelectorAll('.wa-trig-card')].map((c) => Number(c.dataset.trigId));
+                const after = e.target.closest('.wa-trig-card');
+                let insertAt = siblings.length;
+                if (after && after.dataset.trigId) {
+                    const idx = siblings.indexOf(Number(after.dataset.trigId));
+                    if (idx >= 0) insertAt = idx;
+                }
+                const ordered = siblings.filter((x) => x !== Number(id));
+                ordered.splice(Math.min(insertAt, ordered.length), 0, Number(id));
+                try {
+                    const patches = [];
+                    if (fromEtapa !== toEtapa) {
+                        patches.push(api('/triggers/' + id + '/', {
+                            method: 'PATCH',
+                            body: JSON.stringify({ etapa: toEtapa }),
+                        }));
+                    }
+                    ordered.forEach((tid, i) => {
+                        const prio = (i + 1) * 10;
+                        patches.push(api('/triggers/' + tid + '/', {
+                            method: 'PATCH',
+                            body: JSON.stringify({ prioridade: prio }),
+                        }));
+                    });
+                    await Promise.all(patches);
+                    await carregarTriggers();
+                } catch (err) {
+                    alert(err.message || err);
+                    await carregarTriggers();
+                }
+            });
+        });
+    }
+    function popularEtapasTrig() {
+        const sel = document.getElementById('trig-etapa');
+        const opts = trigEtapasOpts();
+        sel.innerHTML = opts.map((e) => `<option value="${esc(e.value)}">${esc(e.label)}</option>`).join('');
+    }
+    function parseTrigParams() {
+        const raw = (document.getElementById('trig-tmpl-params').value || '').trim();
+        if (!raw) return [];
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed.map((x) => String(x)) : [];
+        } catch (e) {
+            return raw.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+    }
+    function editarTrigger(id) {
+        const t = trigItemsCache.find((x) => x.id === id);
+        if (!t) return;
+        trigEditId = id;
+        document.getElementById('trig-form').hidden = false;
+        popularEtapasTrig();
+        document.getElementById('trig-etapa').value = t.etapa;
+        document.getElementById('trig-acao').value = t.acao;
+        document.getElementById('trig-prio').value = t.prioridade;
+        document.getElementById('trig-ativo').checked = !!t.ativo;
+        document.getElementById('trig-tag').value = t.tag_nome || '';
+        document.getElementById('trig-tag-cor').value = t.tag_cor || '#6c757d';
+        document.getElementById('trig-tarefa').value = t.tarefa_titulo || '';
+        document.getElementById('trig-tmpl').value = t.template_name || '';
+        document.getElementById('trig-tmpl-params').value = JSON.stringify(t.template_params || []);
+        document.getElementById('trig-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function abrirFormTrigNovo(etapaPre) {
+        trigEditId = null;
+        document.getElementById('trig-form').hidden = false;
+        popularEtapasTrig();
+        if (etapaPre) document.getElementById('trig-etapa').value = etapaPre;
+        document.getElementById('trig-prio').value = 100;
+        document.getElementById('trig-ativo').checked = true;
+        document.getElementById('trig-tag').value = '';
+        document.getElementById('trig-tag-cor').value = '#6c757d';
+        document.getElementById('trig-tarefa').value = '';
+        document.getElementById('trig-tmpl').value = '';
+        document.getElementById('trig-tmpl-params').value = '[]';
+    }
+    async function carregarTriggers() {
+        popularEtapasTrig();
+        const r = await api('/triggers/');
+        renderTriggers(r.items || []);
+    }
+    document.getElementById('btn-vista-triggers').onclick = () => setVista('triggers');
+    document.getElementById('btn-trig-novo').onclick = () => abrirFormTrigNovo();
+    document.getElementById('btn-trig-seed').onclick = async () => {
+        try {
+            const r = await api('/triggers/seed/', { method: 'POST', body: '{}' });
+            alert(r.detail || ('Criados: ' + (r.criados || 0)));
+            await carregarTriggers();
+        } catch (e) { alert(e.message || e); }
+    };
+    document.getElementById('btn-trig-cancelar').onclick = () => {
+        document.getElementById('trig-form').hidden = true;
+        trigEditId = null;
+    };
+    document.getElementById('btn-trig-salvar').onclick = async () => {
+        const body = {
+            etapa: document.getElementById('trig-etapa').value,
+            acao: document.getElementById('trig-acao').value,
+            prioridade: document.getElementById('trig-prio').value,
+            ativo: document.getElementById('trig-ativo').checked,
+            tag_nome: document.getElementById('trig-tag').value.trim(),
+            tag_cor: document.getElementById('trig-tag-cor').value || '#6c757d',
+            tarefa_titulo: document.getElementById('trig-tarefa').value.trim(),
+            template_name: document.getElementById('trig-tmpl').value.trim(),
+            template_params: parseTrigParams(),
+        };
+        try {
+            if (trigEditId) {
+                await api('/triggers/' + trigEditId + '/', { method: 'PATCH', body: JSON.stringify(body) });
+            } else {
+                await api('/triggers/', { method: 'POST', body: JSON.stringify(body) });
+            }
+            document.getElementById('trig-form').hidden = true;
+            trigEditId = null;
+            await carregarTriggers();
+        } catch (e) { alert(e.message || e); }
+    };
+
+    document.getElementById('btn-gravar-audio').onclick = async () => {
+        const btn = document.getElementById('btn-gravar-audio');
+        const st = document.getElementById('audio-rec-status');
+        const preview = document.getElementById('audio-preview');
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunks = [];
+            recordedBlob = null;
+            const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : (MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : '');
+            mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) audioChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                stream.getTracks().forEach((tr) => tr.stop());
+                recordedBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                preview.src = URL.createObjectURL(recordedBlob);
+                preview.hidden = false;
+                st.textContent = 'Áudio pronto — clique em Enviar arquivo';
+                btn.innerHTML = '<i class="bi bi-mic"></i> Gravar áudio';
+            };
+            mediaRecorder.start();
+            st.textContent = 'Gravando… clique de novo para parar';
+            btn.innerHTML = '<i class="bi bi-stop-fill"></i> Parar';
+        } catch (e) {
+            alert('Não foi possível acessar o microfone: ' + (e.message || e));
+        }
+    };
+
+    document.getElementById('btn-vista-lista').onclick = () => setVista('lista');
+    document.getElementById('btn-vista-kanban').onclick = () => setVista('kanban');
+    document.getElementById('btn-vista-metricas').onclick = () => setVista('metricas');
+    document.getElementById('metricas-periodo').onchange = () => carregarMetricas().catch((e) => alert(e.message || e));
+    setVista('lista');
+
+    const telUrl = new URLSearchParams(location.search).get('tel');
+    carregarMeta().then(() => carregarLista()).then(() => {
         if (telUrl) abrir(telUrl.replace(/\D/g, ''), false).catch(() => {});
     }).catch((e) => {
         document.getElementById('lista-conversas').innerHTML = '<div class="wa-vazio">' + esc(e.message || e) + '</div>';
     });
 
     conectarSSE();
-    timer = setInterval(() => {
-        const intervalOk = sseAtivo ? 30000 : 15000;
-        // reusa o mesmo timer; se SSE ativo, lista a cada tick ainda é leve
-        carregarLista().catch(() => {});
+    setInterval(() => {
+        carregarLista({ skipCounts: true, silent: true }).catch(() => {});
         if (telefoneAberto && !sseAtivo) abrir(telefoneAberto, true);
     }, 15000);
 </script>

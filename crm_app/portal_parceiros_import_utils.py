@@ -83,6 +83,8 @@ OSAB_PEDIDO_FALLBACKS = ('NR_ORDEM', 'NR_ORDEM_ORIGINAL', 'NUMERO_BA')
 FPD_ALIASES = {
     'nr_ordem_venda': 'nr_ordem',
     'status_pag': 'ds_status_fatura',
+    # Export novo da Nio: a situação ABERTA/FECHADA vem neste nome.
+    'situacao_fatura_mensal': 'ds_sit_fatura',
 }
 
 FPD_COLUNAS_TEXTO = (

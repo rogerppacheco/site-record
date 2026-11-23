@@ -245,8 +245,76 @@ def persistir_resultado_entrega(
             env.save(update_fields=['status_entrega', 'status_atualizado_em', 'sucesso', 'erro'])
             atualizados += 1
     except Exception as exc:
-        if exc.__class__.__name__ != "DatabaseOperationForbidden":
+        if getattr(exc, "__class__", type(exc)).__name__ != "DatabaseOperationForbidden":
             logger.exception("[StatusEntrega] Falha ao atualizar MailingEnvio ids=%s", ids)
+
+    # Inbox CRM + Funil: mesma correlação por message_id.
+    try:
+        from crm_app.models import MensagemWhatsAppAtendimento
+
+        for msg in MensagemWhatsAppAtendimento.objects.filter(message_id__in=ids):
+            atual = getattr(msg, "status_entrega", "") or ""
+            if not _pode_atualizar_status(atual, status_novo):
+                continue
+            msg.status_entrega = status_novo
+            dirty = ["status_entrega"]
+            if status_novo == STATUS_FALHOU:
+                msg.sucesso = False
+                dirty.append("sucesso")
+                if msg_erro:
+                    msg.erro = msg_erro[:2000]
+                    dirty.append("erro")
+            elif status_novo in (STATUS_ENVIADO, STATUS_ENTREGUE, STATUS_LIDO):
+                msg.sucesso = True
+                dirty.append("sucesso")
+            msg.save(update_fields=dirty)
+            atualizados += 1
+            try:
+                from crm_app.services.whatsapp.inbox_events import publish_inbox_event
+
+                publish_inbox_event(
+                    {
+                        "type": "message.status",
+                        "telefone": msg.telefone,
+                        "message_id": msg.message_id or "",
+                        "status_entrega": status_novo,
+                        "conversation_id": msg.conversa_id,
+                    }
+                )
+            except Exception:
+                pass
+    except Exception as exc:
+        if getattr(exc, "__class__", type(exc)).__name__ != "DatabaseOperationForbidden":
+            logger.exception(
+                "[StatusEntrega] Falha ao atualizar MensagemWhatsAppAtendimento ids=%s",
+                ids,
+            )
+
+    try:
+        from crm_app.models import FunilTemplateEnvio
+
+        for env in FunilTemplateEnvio.objects.filter(message_id__in=ids):
+            atual = env.status_entrega or ""
+            if not _pode_atualizar_status(atual, status_novo):
+                continue
+            env.status_entrega = status_novo
+            dirty = ["status_entrega"]
+            if status_novo == STATUS_FALHOU:
+                env.sucesso = False
+                dirty.append("sucesso")
+                if msg_erro:
+                    env.erro = msg_erro[:2000]
+                    dirty.append("erro")
+            elif status_novo in (STATUS_ENVIADO, STATUS_ENTREGUE, STATUS_LIDO):
+                env.sucesso = True
+                dirty.append("sucesso")
+            env.save(update_fields=dirty)
+            atualizados += 1
+    except Exception as exc:
+        if getattr(exc, "__class__", type(exc)).__name__ != "DatabaseOperationForbidden":
+            logger.exception(
+                "[StatusEntrega] Falha ao atualizar FunilTemplateEnvio ids=%s", ids
+            )
 
     if atualizados:
         logger.info(

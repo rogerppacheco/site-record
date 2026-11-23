@@ -183,6 +183,33 @@ def marcar_tratado(aba: str, ref_id: Any, *, usuario=None, observacao: str = '')
             tratado_em=agora,
             tratado_por=usuario if getattr(usuario, 'is_authenticated', False) else None,
         )
+    # Liga tratamento à conversa do inbox quando houver telefone.
+    tel = (ctx.get('telefone') or obj.telefone or '')
+    if tel:
+        try:
+            from crm_app.services.whatsapp.atendimento_crm import vincular_funil_tratamento
+            from crm_app.services.whatsapp.atendimento_service import get_or_create_conversation
+
+            conv = get_or_create_conversation(
+                tel,
+                contact_name=(ctx.get('nome') or obj.nome or '')[:255],
+            )
+            if conv is not None:
+                vincular_funil_tratamento(
+                    conv,
+                    aba=ctx['aba'],
+                    ref_id=str(ctx['ref_id']),
+                    usuario=usuario,
+                    telefone=tel,
+                    nome=ctx.get('nome') or '',
+                )
+                # marcar_tratado já criou o FunilTratamento; garante o mesmo PK
+                if conv.funil_tratamento_id != obj.id:
+                    conv.funil_tratamento = obj
+                    conv.save(update_fields=['funil_tratamento', 'atualizado_em'])
+        except Exception:
+            pass
+
     out = serializar(obj)
     out.update({
         'ok': True,

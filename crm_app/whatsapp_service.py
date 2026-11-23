@@ -277,6 +277,12 @@ class WhatsAppService:
     def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf", caption=None):
         return self._provider.enviar_pdf_b64(telefone, base64_data, nome_arquivo, caption=caption)
 
+    def enviar_audio_b64(self, telefone, audio_b64, mime="audio/ogg", filename="audio.ogg"):
+        fn = getattr(self._provider, "enviar_audio_b64", None)
+        if not callable(fn):
+            return None
+        return fn(telefone, audio_b64, mime=mime, filename=filename)
+
     def listar_grupos(self):
         return self._provider.listar_grupos()
 

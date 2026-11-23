@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+# llama-3.3-70b-versatile saiu do catálogo da conta; qwen3.8 responde bem em PT.
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b").strip() or "qwen/qwen3.8-27b"
 
 
 def _contexto_sistema(reduzido: bool = False, contexto_externo: bool = False) -> str:

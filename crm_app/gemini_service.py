@@ -16,8 +16,13 @@ logger = logging.getLogger(__name__)
 GEMINI_MAX_RETRIES_429 = 2
 GEMINI_RETRY_DELAY_SEC = 2
 
-# Chave da API: use variável de ambiente GEMINI_API_KEY (nunca commitar a chave).
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+def _gemini_api_key() -> str:
+    """Lê a chave em tempo de chamada (respeita .env carregado pelo manage.py)."""
+    return (os.environ.get("GEMINI_API_KEY") or "").strip()
+
+
+# Compat: módulos que importam GEMINI_API_KEY no import.
+GEMINI_API_KEY = _gemini_api_key()
 
 # URL da API REST Gemini (generateContent)
 # gemini-1.5-flash-latest retornava 404; usar gemini-2.0-flash (suportado na API)
@@ -32,7 +37,8 @@ def _contexto_sistema(contexto_externo: bool = False) -> str:
 
 def responder_com_gemini_custom(mensagem_usuario: str, system_prompt: str) -> str | None:
     """Gemini com systemInstruction customizado."""
-    if not GEMINI_API_KEY:
+    api_key = _gemini_api_key()
+    if not api_key:
         return None
     mensagem_usuario = (mensagem_usuario or "").strip()
     system_prompt = (system_prompt or "").strip()
@@ -44,9 +50,15 @@ def responder_com_gemini_custom(mensagem_usuario: str, system_prompt: str) -> st
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "generationConfig": {"maxOutputTokens": 512, "temperature": 0.3},
     }
-    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    url = f"{GEMINI_API_URL}?key={api_key}"
     try:
         resp = requests.post(url, json=payload, timeout=30)
+        if resp.status_code == 403:
+            logger.warning(
+                "[Gemini] 403 Forbidden — chave inválida/revogada ou reportada como vazada. "
+                "Gere uma nova GEMINI_API_KEY no Google AI Studio."
+            )
+            return None
         resp.raise_for_status()
         data = resp.json()
         candidates = data.get("candidates") or []
@@ -68,7 +80,8 @@ def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "", context
     Retorna None em caso de erro ou se GEMINI_API_KEY não estiver configurada.
     contexto_externo=True: usa prompt curto para contatos não cadastrados.
     """
-    if not GEMINI_API_KEY:
+    api_key = _gemini_api_key()
+    if not api_key:
         logger.warning("[Gemini] GEMINI_API_KEY não configurada. Configure a variável de ambiente para ativar respostas da IA.")
         return None
 
@@ -91,7 +104,7 @@ def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "", context
         },
     }
 
-    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    url = f"{GEMINI_API_URL}?key={api_key}"
     for attempt in range(GEMINI_MAX_RETRIES_429 + 1):
         try:
             resp = requests.post(url, json=payload, timeout=30)

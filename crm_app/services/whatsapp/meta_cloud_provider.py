@@ -357,5 +357,33 @@ class MetaCloudProvider(WhatsAppProvider):
         ok, _resp = self._ok_resp(self._post_messages(payload))
         return ok
 
+
+    def enviar_audio_b64(
+        self,
+        telefone: str,
+        audio_b64: str,
+        *,
+        mime: str = "audio/ogg",
+        filename: str = "audio.ogg",
+    ):
+        try:
+            blob, detected = self._decodificar_b64(audio_b64 or "")
+        except (ValueError, TypeError):
+            return None
+        mime_n = (mime or detected or "audio/ogg").strip() or "audio/ogg"
+        if not mime_n.startswith("audio/"):
+            mime_n = "audio/ogg"
+        media_id = self._upload_media(blob, mime_n, filename or "audio.ogg")
+        if not media_id:
+            return None
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": self._destino(telefone),
+            "type": "audio",
+            "audio": {"id": media_id},
+        }
+        ok, resp = self._ok_resp(self._post_messages(payload))
+        return resp if ok and isinstance(resp, dict) else None
+
     def listar_grupos(self) -> List[Dict[str, str]]:
         return []

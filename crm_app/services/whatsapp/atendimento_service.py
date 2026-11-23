@@ -20,18 +20,22 @@ logger = logging.getLogger(__name__)
 JANELA_ATENDIMENTO = timedelta(hours=24)
 
 AVISO_JANELA_FECHADA = (
-    "A janela de 24 horas da Meta está fechada. "
-    "Texto livre pela Cloud API só pode ser enviado se a última mensagem do cliente "
-    "tiver chegado há menos de 24 horas. "
-    "Fora dessa janela, somente um modelo aprovado pode reabrir a conversa. "
-    "O envio de modelo não está disponível nesta tela."
+    "Janela de 24h fechada — texto/mídia bloqueados. Use a aba Template."
 )
 
 AVISO_SEM_MENSAGEM_CLIENTE = (
-    "Ainda não há mensagem recebida deste contato. "
-    "A Cloud API só libera texto livre depois que o cliente escreve, e apenas por 24 horas. "
-    "Fora dessa janela, somente um modelo aprovado pode reabrir a conversa. "
-    "O envio de modelo não está disponível nesta tela."
+    "Sem resposta do cliente ainda — texto livre bloqueado. Use a aba Template."
+)
+
+# Catálogo fallback (quando o provedor não lista templates).
+_TEMPLATES_INBOX_CURADOS = (
+    {"name": "nio_boas_vindas_v1", "label": "Boas-vindas", "body_params": 1, "hint": "{{1}} saudação"},
+    {"name": "nio_confirmacao_pedido_v1", "label": "Confirmação de pedido", "body_params": 3, "hint": "nome / endereço / data"},
+    {"name": "nio_consulta_viabilidade_v1", "label": "Consulta viabilidade", "body_params": 2, "hint": "saudação / nome"},
+    {"name": "nio_reativacao_contrato_v1", "label": "Reativação contrato", "body_params": 2, "hint": "saudação / nome"},
+    {"name": "nio_selfie_pendente_v1", "label": "Selfie pendente", "body_params": 2, "hint": "nome / protocolo"},
+    {"name": "nio_lembrete_instalacao_v1", "label": "Lembrete instalação", "body_params": 2, "hint": "nome / data"},
+    {"name": "mailing_generico_v1", "label": "Mailing genérico", "body_params": 1, "hint": "{{1}} nome"},
 )
 
 AVISO_CANAL_INDISPONIVEL = (
@@ -315,9 +319,21 @@ def gravar_mensagem(
             direcao=direcao,
         ).first()
         if existente:
+            dirty_ex = []
             if conversa and not existente.conversa_id:
                 existente.conversa = conversa
-                existente.save(update_fields=["conversa"])
+                dirty_ex.append("conversa")
+            # Espelho histórico: corrige data se o caller passou o horário real do envio.
+            if data_hora is not None and existente.data_hora != data_hora:
+                existente.data_hora = data_hora
+                dirty_ex.append("data_hora")
+            if dirty_ex:
+                existente.save(update_fields=dirty_ex)
+                if "data_hora" in dirty_ex:
+                    _atualizar_conversa_apos_mensagem(
+                        existente,
+                        incrementar_unread=False,
+                    )
             return existente
 
     try:
@@ -337,6 +353,22 @@ def gravar_mensagem(
         msg,
         incrementar_unread=(direcao == M.DIRECAO_ENTRADA),
     )
+    if (
+        direcao == M.DIRECAO_SAIDA
+        and sucesso
+        and enviado_por is not None
+        and conversa is not None
+    ):
+        try:
+            from crm_app.services.whatsapp.atendimento_metricas import (
+                marcar_primeira_resposta_humana,
+            )
+
+            marcar_primeira_resposta_humana(
+                conversa, quando=msg.data_hora, enviado_por=enviado_por
+            )
+        except Exception:
+            logger.exception("[Atendimento WA] Falha ao marcar 1ª resposta humana")
     return msg
 
 
@@ -407,7 +439,7 @@ def registrar_entrada_webhook(data: Any):
         else MensagemWhatsAppAtendimento.ORIGEM_WEBHOOK
     )
     try:
-        return gravar_mensagem(
+        msg = gravar_mensagem(
             telefone=str(telefone),
             direcao=direcao,
             texto=texto,
@@ -416,6 +448,26 @@ def registrar_entrada_webhook(data: Any):
             sucesso=True,
             message_id=str(payload.get("messageId") or "")[:128],
         )
+        if msg is not None:
+            try:
+                _marcar_reply_canal_por_webhook(msg.telefone, payload)
+            except Exception:
+                logger.debug(
+                    "[Atendimento WA] reply_canal webhook falhou", exc_info=True
+                )
+        if (
+            msg is not None
+            and direcao == MensagemWhatsAppAtendimento.DIRECAO_ENTRADA
+        ):
+            try:
+                from crm_app.services.whatsapp.atendimento_automacao import (
+                    processar_entrada_para_automacao,
+                )
+
+                processar_entrada_para_automacao(msg)
+            except Exception:
+                logger.exception("[Atendimento WA] Automação pós-entrada falhou")
+        return msg
     except Exception:
         logger.exception("[Atendimento WA] Falha ao gravar mensagem do webhook")
         return None
@@ -455,16 +507,15 @@ def registrar_saida_cliente(
 
 
 def texto_modelo(template_name: str, body_params: Any = None) -> str:
-    linhas = [f"Modelo: {template_name or 'sem nome'}"]
+    """Texto do histórico: corpo legível do catálogo (ou fallback rotulado)."""
+    from crm_app.services.whatsapp.nio_templates import render_template_preview
+
     params = body_params if isinstance(body_params, (list, tuple)) else None
     if params is None and isinstance(body_params, dict):
         corpo = body_params.get("body")
         if isinstance(corpo, list):
             params = corpo
-    if params:
-        for indice, valor in enumerate(params, start=1):
-            linhas.append(f"{{{{{indice}}}}} {valor}")
-    return "\n".join(linhas)
+    return render_template_preview(template_name or "", params or [])
 
 
 def ultima_entrada(telefone: str):
@@ -503,8 +554,90 @@ def estado_janela(telefone: str, agora=None) -> dict:
     }
 
 
+def _reply_canal_conversa(telefone: str) -> str:
+    from crm_app.models import WhatsAppConversation
+
+    tel = canonicalizar_telefone(telefone)
+    conv = get_or_create_conversation(tel)
+    if conv is None:
+        return WhatsAppConversation.REPLY_CANAL_CLIENTE
+    canal = (getattr(conv, "reply_canal", None) or "").strip().lower()
+    if canal == WhatsAppConversation.REPLY_CANAL_FUNIL:
+        return WhatsAppConversation.REPLY_CANAL_FUNIL
+    return WhatsAppConversation.REPLY_CANAL_CLIENTE
+
+
+def set_reply_canal(telefone: str, canal: str) -> None:
+    from crm_app.models import WhatsAppConversation
+
+    tel = canonicalizar_telefone(telefone)
+    conv = get_or_create_conversation(tel)
+    if conv is None:
+        return
+    canal_n = (canal or "").strip().lower()
+    if canal_n not in (
+        WhatsAppConversation.REPLY_CANAL_CLIENTE,
+        WhatsAppConversation.REPLY_CANAL_FUNIL,
+    ):
+        canal_n = WhatsAppConversation.REPLY_CANAL_CLIENTE
+    if getattr(conv, "reply_canal", "") != canal_n:
+        WhatsAppConversation.objects.filter(pk=conv.pk).update(reply_canal=canal_n)
+
+
+def _whatsapp_service_para_reply(telefone: str):
+    """Escolhe para_funil (#247) ou para_cliente (#194) conforme reply_canal."""
+    from crm_app.models import WhatsAppConversation
+    from crm_app.services.whatsapp_config_service import canal_funil_pronto
+    from crm_app.whatsapp_service import WhatsAppService
+
+    if (
+        _reply_canal_conversa(telefone) == WhatsAppConversation.REPLY_CANAL_FUNIL
+        and canal_funil_pronto()
+    ):
+        return WhatsAppService.para_funil(), WhatsAppConversation.REPLY_CANAL_FUNIL
+    return WhatsAppService.para_cliente(), WhatsAppConversation.REPLY_CANAL_CLIENTE
+
+
+def _whatsapp_id_do_payload(payload: dict) -> str:
+    raw = payload.get("_whatsatende_raw")
+    sources = [payload]
+    if isinstance(raw, dict):
+        sources.append(raw)
+    for src in sources:
+        for key in ("whatsappId", "whatsapp_id", "wid", "connectionId", "whatsappID"):
+            val = src.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+    return ""
+
+
+def _marcar_reply_canal_por_webhook(telefone: str, payload: dict) -> None:
+    """Se o inbound veio do ID Funil (#247), próximo reply humano sai pelo Funil."""
+    from django.conf import settings
+
+    from crm_app.models import WhatsAppConversation
+
+    wid = _whatsapp_id_do_payload(payload if isinstance(payload, dict) else {})
+    if not wid:
+        return
+    id_funil = str(getattr(settings, "WHATSATENDE_WHATSAPP_ID_FUNIL", "") or "").strip()
+    if id_funil and wid == id_funil:
+        set_reply_canal(telefone, WhatsAppConversation.REPLY_CANAL_FUNIL)
+
+
+_CANAL_PRONTO_CACHE: tuple[float, bool] | None = None
+_CANAL_PRONTO_TTL = 45.0
+
+
 def canal_oficial_pronto() -> bool:
     """O inbox só envia pelo número oficial (Cloud API Meta ou WhatsAtende B)."""
+    global _CANAL_PRONTO_CACHE
+    import time
+
+    agora = time.monotonic()
+    if _CANAL_PRONTO_CACHE is not None and (agora - _CANAL_PRONTO_CACHE[0]) < _CANAL_PRONTO_TTL:
+        return _CANAL_PRONTO_CACHE[1]
+    ok = False
     try:
         from crm_app.services.whatsapp.factory import (
             PURPOSE_CLIENTE,
@@ -515,15 +648,16 @@ def canal_oficial_pronto() -> bool:
             get_active_whatsapp_provider_name,
         )
 
-        if not canal_cliente_pronto():
-            return False
-        backend, role = resolve_backend_for_purpose(
-            get_active_whatsapp_provider_name(), PURPOSE_CLIENTE
-        )
-        return role == PURPOSE_CLIENTE and backend in _BACKENDS_OFICIAIS
+        if canal_cliente_pronto():
+            backend, role = resolve_backend_for_purpose(
+                get_active_whatsapp_provider_name(), PURPOSE_CLIENTE
+            )
+            ok = role == PURPOSE_CLIENTE and backend in _BACKENDS_OFICIAIS
     except Exception:
         logger.debug("[Atendimento WA] Falha ao checar canal oficial", exc_info=True)
-        return False
+        ok = False
+    _CANAL_PRONTO_CACHE = (agora, ok)
+    return ok
 
 
 def bot_pausado(telefone: str) -> bool:
@@ -631,15 +765,62 @@ def _nome_cliente(venda) -> Optional[str]:
     return cliente.nome_razao_social or None
 
 
-def serializar_mensagem(msg) -> dict:
+def serializar_mensagem(msg, *, mailing_params_cache: Optional[dict] = None) -> dict:
+    import re
+
+    from crm_app.services.whatsapp.nio_templates import (
+        botoes_template_catalogo,
+        formatar_texto_template_exibicao,
+        params_mailing_por_telefone,
+    )
+
+    texto_bruto = msg.texto or ""
+    template_name = (msg.template_name or "").strip()
+    if not template_name:
+        m_mail = re.match(r"^\[Mailing\]\s*(\S+)\s*$", texto_bruto.strip(), re.I)
+        if m_mail:
+            template_name = m_mail.group(1)
+    body_params = None
+    tel_msg = getattr(msg, "telefone", "") or ""
+    precisa_mail = bool(
+        template_name.startswith("mailing_")
+        or texto_bruto.startswith("[Mailing]")
+        or (template_name and "—" in texto_bruto)
+    )
+    if precisa_mail and tel_msg and (
+        texto_bruto.startswith("[Mailing]") or "—" in texto_bruto or "{{" in texto_bruto
+    ):
+        cache = mailing_params_cache if mailing_params_cache is not None else {}
+        if tel_msg not in cache:
+            cache[tel_msg] = params_mailing_por_telefone(tel_msg, template_name)
+        body_params = cache.get(tel_msg)
+    # Templates (tipo MODELO ou dump legado) → preview legível na UI.
+    if (
+        getattr(msg, "tipo", "") == "MODELO"
+        or template_name
+        or texto_bruto.startswith("Modelo:")
+        or texto_bruto.startswith("[Mailing]")
+        or "{{" in texto_bruto
+        or (template_name.startswith("mailing_") and "—" in texto_bruto)
+    ):
+        texto_exibicao = formatar_texto_template_exibicao(
+            texto_bruto,
+            template_name,
+            telefone=tel_msg,
+            body_params=body_params,
+        )
+    else:
+        texto_exibicao = texto_bruto
     return {
         "id": msg.id,
         "direcao": msg.direcao,
         "direcao_label": "Recebida" if msg.direcao == "ENTRADA" else "Enviada",
         "tipo": msg.tipo,
         "tipo_label": "Modelo" if msg.tipo == "MODELO" else "Sessão",
-        "texto": msg.texto or "",
-        "template_name": msg.template_name or "",
+        "texto": texto_exibicao,
+        "texto_bruto": texto_bruto,
+        "template_name": template_name,
+        "template_botoes": botoes_template_catalogo(template_name) if template_name else [],
         "data_hora": msg.data_hora.isoformat() if msg.data_hora else None,
         "sucesso": bool(msg.sucesso),
         "erro": msg.erro or "",
@@ -742,28 +923,55 @@ def _serializar_conversa_base(
     }
 
 
-def _qs_conversas_visiveis(usuario):
-    from crm_app.models import WhatsAppChannel, WhatsAppConversation
+_CHANNEL_CLIENTE_ID: int | None = None
+
+
+def _channel_cliente_id() -> int:
+    """Cache do FK do canal cliente — evita get_or_create a cada request."""
+    global _CHANNEL_CLIENTE_ID
+    if _CHANNEL_CLIENTE_ID:
+        return _CHANNEL_CLIENTE_ID
+    channel = get_or_create_channel("cliente")
+    _CHANNEL_CLIENTE_ID = int(channel.pk)
+    return _CHANNEL_CLIENTE_ID
+
+
+def _qs_conversas_visiveis(usuario, *, for_list: bool = False):
+    from crm_app.models import WhatsAppConversation
     from crm_app.services.escopo_operadora import (
         operadora_ids_permitidas,
         usuario_tem_bypass_operadora,
     )
 
-    channel = get_or_create_channel("cliente")
-    qs = WhatsAppConversation.objects.filter(channel=channel).select_related(
-        "venda__cliente",
-        "venda__plano",
-        "venda__status_tratamento",
-        "venda__status_esteira",
-        "assignee",
-        "channel",
-    )
+    qs = WhatsAppConversation.objects.filter(channel_id=_channel_cliente_id())
+    if for_list:
+        # Listagem: JOINs mínimos (nome + assignee). Contagens usam select_related(None).
+        qs = qs.select_related("venda__cliente", "assignee")
+    else:
+        qs = qs.select_related(
+            "venda__cliente",
+            "venda__plano",
+            "venda__status_tratamento",
+            "venda__status_esteira",
+            "assignee",
+            "channel",
+            "funil_tratamento",
+        )
     if usuario_tem_bypass_operadora(usuario):
         return qs
     permitidas = operadora_ids_permitidas(usuario)
     if permitidas is None:
         return qs
     return qs.filter(Q(venda__isnull=True) | Q(venda__plano__operadora_id__in=permitidas))
+
+
+def _modo_conv(conv) -> str:
+    try:
+        from crm_app.services.whatsapp.atendimento_automacao import modo_atendimento
+
+        return modo_atendimento(conv)
+    except Exception:
+        return "BOT"
 
 
 def _serializar_conversation_row(conv, *, agora=None) -> dict:
@@ -775,6 +983,14 @@ def _serializar_conversation_row(conv, *, agora=None) -> dict:
     if len(preview) > 90:
         preview = preview[:90] + "…"
     nome = conv.contact_name or _nome_cliente(venda)
+    tags = []
+    try:
+        tags = [
+            {"id": t.id, "nome": t.nome, "cor": t.cor or "#6c757d"}
+            for t in conv.tags.all()[:8]
+        ]
+    except Exception:
+        tags = []
     return {
         "id": conv.id,
         "conversation_id": conv.id,
@@ -789,10 +1005,21 @@ def _serializar_conversation_row(conv, *, agora=None) -> dict:
         "janela_aberta": janela_aberta,
         "janela_ate": janela_ate.isoformat() if janela_ate else None,
         "aviso_janela": "" if janela_aberta else AVISO_JANELA_FECHADA,
-        "bot_pausado": bool(conv.bot_pausado) or bot_pausado(conv.telefone),
+        # Lista usa flag denormalizada (sem hit extra na blocklist por linha).
+        "bot_pausado": bool(conv.bot_pausado),
         "unread_count": int(conv.unread_count or 0),
         "status": conv.status,
         "assignee": conv.assignee.username if conv.assignee_id else None,
+        "assignee_id": conv.assignee_id,
+        "etapa_funil": getattr(conv, "etapa_funil", "") or "",
+        "reply_canal": getattr(conv, "reply_canal", None) or "cliente",
+        "reply_canal_label": (
+            "Funil"
+            if getattr(conv, "reply_canal", "") == "funil"
+            else "Inbox"
+        ),
+        "tags": tags,
+        "modo": _modo_conv(conv),
     }
 
 
@@ -802,19 +1029,48 @@ def listar_conversas(
     limite: int = 40,
     *,
     since: Optional[str] = None,
-) -> list[dict]:
-    """Lista conversas a partir de WhatsAppConversation (denormalizado)."""
-    limite = max(1, min(int(limite or 40), 80))
-    qs = _qs_conversas_visiveis(usuario)
+    fila: str = "todas",
+    etapa: str = "",
+    canal: str = "",
+    janela: str = "",
+    offset: int = 0,
+) -> dict:
+    """Lista conversas a partir de WhatsAppConversation (denormalizado).
+
+    Retorna ``{items, has_more, limit, offset}``.
+    """
+    from crm_app.models import WhatsAppConversation
+    from crm_app.services.whatsapp.atendimento_crm import aplicar_filtro_fila
+
+    limite = max(1, min(int(limite or 40), 100))
+    offset_n = max(0, int(offset or 0))
+    qs = _qs_conversas_visiveis(usuario, for_list=True)
+    qs = aplicar_filtro_fila(qs, usuario, fila)
+    canal_n = (canal or "").strip().lower()
+    if canal_n in ("cliente", "inbox"):
+        qs = qs.filter(reply_canal=WhatsAppConversation.REPLY_CANAL_CLIENTE)
+    elif canal_n == "funil":
+        qs = qs.filter(reply_canal=WhatsAppConversation.REPLY_CANAL_FUNIL)
+    janela_n = (janela or "").strip().lower()
+    agora = timezone.now()
+    if janela_n in ("aberta", "open", "24h"):
+        qs = qs.filter(janela_aberta_ate__gt=agora)
+    elif janela_n in ("fechada", "closed"):
+        qs = qs.filter(Q(janela_aberta_ate__isnull=True) | Q(janela_aberta_ate__lte=agora))
+    etapa_n = (etapa or "").strip().upper()
+    if etapa_n:
+        qs = qs.filter(etapa_funil=etapa_n)
     termo = (busca or "").strip()
     if termo:
         digitos = "".join(ch for ch in termo if ch.isdigit())
-        filtro = Q(contact_name__icontains=termo) | Q(
-            venda__cliente__nome_razao_social__icontains=termo
+        filtro = (
+            Q(contact_name__icontains=termo)
+            | Q(venda__cliente__nome_razao_social__icontains=termo)
+            | Q(tags__nome__icontains=termo)
         )
         if digitos:
             filtro |= Q(telefone__icontains=digitos)
-        qs = qs.filter(filtro)
+        qs = qs.filter(filtro).distinct()
 
     if since:
         try:
@@ -825,45 +1081,78 @@ def listar_conversas(
         except Exception:
             pass
 
-    qs = qs.order_by("-last_message_at", "-id")[:limite]
-    agora = timezone.now()
-    return [_serializar_conversation_row(c, agora=agora) for c in qs]
+    qs = (
+        qs.only(
+            "id",
+            "telefone",
+            "contact_name",
+            "last_message_at",
+            "last_message_preview",
+            "last_direction",
+            "janela_aberta_ate",
+            "bot_pausado",
+            "unread_count",
+            "status",
+            "assignee_id",
+            "etapa_funil",
+            "reply_canal",
+            "venda_id",
+            "assignee__username",
+            "venda__cliente__nome_razao_social",
+        )
+        .prefetch_related("tags")
+        .order_by("-last_message_at", "-id")
+    )
+    fatia = list(qs[offset_n : offset_n + limite + 1])
+    has_more = len(fatia) > limite
+    if has_more:
+        fatia = fatia[:limite]
+    items = [_serializar_conversation_row(c, agora=agora) for c in fatia]
+    return {
+        "items": items,
+        "has_more": has_more,
+        "limit": limite,
+        "offset": offset_n,
+        "loaded": offset_n + len(items),
+    }
 
 
 def detalhe_conversa(
     usuario,
     telefone: str,
     *,
-    limit_msgs: int = 80,
+    limit_msgs: int = 40,
     before_id: Optional[int] = None,
+    incluir_crm: bool = True,
 ) -> Optional[dict]:
     from crm_app.models import WhatsAppConversation
+    from crm_app.services.whatsapp_config_service import canal_funil_pronto as _funil_pronto
 
     tel = canonicalizar_telefone(telefone)
     if len(tel) < 8:
         return None
-    if not conversa_visivel(usuario, tel):
-        # Permite abrir conversa nova iniciada pelo funil (ainda sem mensagens).
-        conv_existente = WhatsAppConversation.objects.filter(
-            telefone__in=telefones_equivalentes(tel)
-        ).exists()
-        if not conv_existente:
-            return None
     chaves = telefones_equivalentes(tel)
-    limit_msgs = max(10, min(int(limit_msgs or 80), 200))
+    limit_msgs = max(10, min(int(limit_msgs or 40), 80))
+
+    # Uma query leve da conversa (sem JOINs de lead pesados).
     conv = (
-        _qs_conversas_visiveis(usuario)
-        .filter(telefone__in=chaves)
-        .order_by("-last_message_at")
+        WhatsAppConversation.objects.filter(
+            channel_id=_channel_cliente_id(),
+            telefone__in=chaves,
+        )
+        .select_related("assignee", "venda__cliente")
+        .order_by("-last_message_at", "-id")
         .first()
     )
+    if conv is None and not conversa_visivel(usuario, tel):
+        return None
     if conv is None:
         conv = get_or_create_conversation(tel, venda=_venda_cabecalho(tel, usuario))
 
     qs = (
         _qs_visivel(usuario)
         .filter(telefone__in=chaves)
-        .select_related("venda__cliente", "enviado_por")
+        .select_related("enviado_por")
         .order_by("-data_hora", "-id")
     )
     if before_id:
@@ -876,6 +1165,7 @@ def detalhe_conversa(
         return None
     mensagens = list(reversed(mensagens_desc))
     ultima = mensagens[-1] if mensagens else None
+    mailing_cache: dict = {}
     if ultima is None:
         base = _serializar_conversation_row(conv) if conv else {
             "telefone": tel,
@@ -884,21 +1174,62 @@ def detalhe_conversa(
         base["mensagens"] = []
         base["has_more"] = False
     else:
-        base = _serializar_conversa_base(tel, ultima, usuario, venda=conv.venda if conv else None)
+        base = _serializar_conversa_base(
+            tel, ultima, usuario, venda=conv.venda if conv else None
+        )
         if conv:
             base["conversation_id"] = conv.id
             base["unread_count"] = int(conv.unread_count or 0)
             base["status"] = conv.status
-        base["mensagens"] = [serializar_mensagem(m) for m in mensagens]
+            base["assignee"] = conv.assignee.username if conv.assignee_id else None
+            base["assignee_id"] = conv.assignee_id
+            base["etapa_funil"] = getattr(conv, "etapa_funil", "") or ""
+            base["bot_pausado"] = bool(conv.bot_pausado)
+            base["modo"] = _modo_conv(conv)
+        base["mensagens"] = [
+            serializar_mensagem(m, mailing_params_cache=mailing_cache) for m in mensagens
+        ]
         base["has_more"] = len(mensagens_desc) >= limit_msgs
         base["oldest_id"] = mensagens[0].id if mensagens else None
 
+    reply_canal = (
+        getattr(conv, "reply_canal", None) or WhatsAppConversation.REPLY_CANAL_CLIENTE
+        if conv is not None
+        else WhatsAppConversation.REPLY_CANAL_CLIENTE
+    )
+    base["reply_canal"] = reply_canal
+    base["reply_canal_label"] = (
+        "Funil" if reply_canal == WhatsAppConversation.REPLY_CANAL_FUNIL else "Inbox"
+    )
     canal_pronto = canal_oficial_pronto()
-    base["canal_oficial_pronto"] = canal_pronto
-    base["aviso_canal"] = "" if canal_pronto else AVISO_CANAL_INDISPONIVEL
-    base["pode_texto_livre"] = bool(base.get("janela_aberta")) and canal_pronto
-    venda = conv.venda if conv and conv.venda_id else _venda_cabecalho(tel, usuario)
-    if venda is not None:
+    envio_pronto = (
+        _funil_pronto()
+        if reply_canal == WhatsAppConversation.REPLY_CANAL_FUNIL
+        else canal_pronto
+    )
+    if not envio_pronto:
+        envio_pronto = canal_pronto or _funil_pronto()
+    base["canal_oficial_pronto"] = bool(envio_pronto)
+    base["aviso_canal"] = "" if envio_pronto else AVISO_CANAL_INDISPONIVEL
+    base["pode_texto_livre"] = bool(base.get("janela_aberta")) and bool(envio_pronto)
+
+    if conv and int(conv.unread_count or 0) > 0 and not before_id:
+        WhatsAppConversation.objects.filter(pk=conv.pk).update(unread_count=0)
+        base["unread_count"] = 0
+
+    if not incluir_crm:
+        base["lead"] = None
+        base["tags"] = []
+        base["notas"] = []
+        base["tarefas"] = []
+        base["eventos"] = []
+        base["crm_parcial"] = True
+        return base
+
+    venda = conv.venda if conv and conv.venda_id else None
+    if venda is None and incluir_crm:
+        venda = _venda_cabecalho(tel, usuario)
+    if venda is not None and not hasattr(venda, "cliente"):
         try:
             venda = type(venda).objects.select_related(
                 "cliente", "plano", "status_tratamento", "status_esteira"
@@ -907,14 +1238,27 @@ def detalhe_conversa(
             pass
     base["lead"] = _painel_lead(venda)
 
-    if conv and int(conv.unread_count or 0) > 0 and not before_id:
-        WhatsAppConversation.objects.filter(pk=conv.pk).update(unread_count=0)
-        base["unread_count"] = 0
+    if conv is not None:
+        from crm_app.services.whatsapp.atendimento_crm import enriquecer_detalhe_crm
+
+        try:
+            conv_crm = (
+                WhatsAppConversation.objects.select_related(
+                    "assignee", "funil_tratamento"
+                )
+                .prefetch_related("tags")
+                .get(pk=conv.pk)
+            )
+        except WhatsAppConversation.DoesNotExist:
+            pass
+        else:
+            base = enriquecer_detalhe_crm(base, conv_crm)
     return base
 
 
 def assumir_conversa(usuario, telefone: str) -> Optional[dict]:
     from crm_app.models import WhatsAppConversation
+    from crm_app.services.whatsapp.atendimento_crm import registrar_evento
 
     tel = canonicalizar_telefone(telefone)
     if len(tel) < 10:
@@ -929,7 +1273,25 @@ def assumir_conversa(usuario, telefone: str) -> Optional[dict]:
         conv.bot_pausado = True
         conv.assignee = usuario if getattr(usuario, "pk", None) else None
         conv.status = WhatsAppConversation.STATUS_EM_ATENDIMENTO
-        conv.save(update_fields=["bot_pausado", "assignee", "status", "atualizado_em"])
+        if getattr(conv, "encerrada_em", None):
+            conv.encerrada_em = None
+            conv.save(
+                update_fields=[
+                    "bot_pausado",
+                    "assignee",
+                    "status",
+                    "encerrada_em",
+                    "atualizado_em",
+                ]
+            )
+        else:
+            conv.save(update_fields=["bot_pausado", "assignee", "status", "atualizado_em"])
+        registrar_evento(
+            conv,
+            "ASSUMIU",
+            autor=usuario,
+            texto=f"Assumiu a conversa ({getattr(usuario, 'username', '')})",
+        )
     return detalhe_conversa(usuario, tel)
 
 
@@ -939,8 +1301,12 @@ def iniciar_conversa_por_telefone(
     *,
     venda=None,
     contact_name: str = "",
+    aba: str = "",
+    ref_id: str = "",
 ) -> Optional[dict]:
     """Cria/abre Conversation e retorna detalhe (uso Funil → Iniciar Conversa)."""
+    from crm_app.services.whatsapp.atendimento_crm import vincular_funil_tratamento
+
     tel = canonicalizar_telefone(telefone)
     if len(tel) < 10:
         return None
@@ -951,7 +1317,79 @@ def iniciar_conversa_por_telefone(
     )
     if conv is None:
         return None
+    vincular_funil_tratamento(
+        conv,
+        aba=aba,
+        ref_id=ref_id,
+        usuario=usuario,
+        telefone=tel,
+        nome=contact_name or (_nome_cliente(venda) or ""),
+    )
     return detalhe_conversa(usuario, tel)
+
+
+def _preflight_envio(
+    usuario,
+    telefone: str,
+    *,
+    exigir_janela: bool = True,
+) -> tuple[str, dict, str]:
+    """Retorna (codigo, payload_erro, telefone_canonico). codigo 'ok' se liberado."""
+    tel = canonicalizar_telefone(telefone)
+    if len(tel) < 10:
+        return "invalido", {"detail": "Telefone inválido."}, tel
+    if not conversa_visivel(usuario, tel):
+        return "nao_encontrado", {"detail": "Conversa não encontrada."}, tel
+    if exigir_janela:
+        janela = estado_janela(tel)
+        if not janela["aberta"]:
+            return (
+                "janela_fechada",
+                {
+                    "detail": janela["aviso"],
+                    "janela_aberta": False,
+                    "codigo": "janela_fechada",
+                },
+                tel,
+            )
+    from crm_app.models import WhatsAppConversation
+    from crm_app.services.whatsapp_config_service import canal_funil_pronto
+
+    reply = _reply_canal_conversa(tel)
+    envio_ok = (
+        canal_funil_pronto()
+        if reply == WhatsAppConversation.REPLY_CANAL_FUNIL
+        else canal_oficial_pronto()
+    )
+    if not envio_ok and not canal_oficial_pronto() and not canal_funil_pronto():
+        return (
+            "canal_indisponivel",
+            {
+                "detail": "A resposta não foi enviada. " + AVISO_CANAL_INDISPONIVEL,
+                "janela_aberta": True,
+                "codigo": "canal_indisponivel",
+            },
+            tel,
+        )
+    return "ok", {}, tel
+
+
+def _message_id_de_resp(resp) -> str:
+    if not isinstance(resp, dict):
+        return ""
+    for key in ("messageId", "message_id", "id", "keyId"):
+        val = resp.get(key)
+        if val:
+            return str(val)[:128]
+    msgs = resp.get("messages")
+    if isinstance(msgs, list) and msgs:
+        mid = msgs[0].get("id") if isinstance(msgs[0], dict) else None
+        if mid:
+            return str(mid)[:128]
+    data = resp.get("data")
+    if isinstance(data, dict):
+        return _message_id_de_resp(data)
+    return ""
 
 
 def responder_texto(usuario, telefone: str, texto: str) -> tuple[str, dict]:
@@ -961,38 +1399,38 @@ def responder_texto(usuario, telefone: str, texto: str) -> tuple[str, dict]:
     falha_envio | nao_encontrado.
     """
     from crm_app.models import MensagemWhatsAppAtendimento
-    from crm_app.whatsapp_service import WhatsAppService
 
-    tel = canonicalizar_telefone(telefone)
     corpo = (texto or "").strip()
-    if len(tel) < 10 or not corpo:
+    if not corpo:
         return "invalido", {"detail": "Informe o telefone e o texto da resposta."}
-    if not conversa_visivel(usuario, tel):
-        return "nao_encontrado", {"detail": "Conversa não encontrada."}
-
-    janela = estado_janela(tel)
-    if not janela["aberta"]:
-        return "janela_fechada", {
-            "detail": janela["aviso"],
-            "janela_aberta": False,
-            "codigo": "janela_fechada",
-        }
-
-    if not canal_oficial_pronto():
-        return "canal_indisponivel", {
-            "detail": "A resposta não foi enviada. " + AVISO_CANAL_INDISPONIVEL,
-            "janela_aberta": True,
-            "codigo": "canal_indisponivel",
-        }
+    codigo, err, tel = _preflight_envio(usuario, telefone, exigir_janela=True)
+    if codigo != "ok":
+        return codigo, err
 
     pausar_bot(tel, usuario, "Resposta humana no atendimento WhatsApp")
+    svc, purpose = _whatsapp_service_para_reply(tel)
     with contexto_registro_saida(
         origem=MensagemWhatsAppAtendimento.ORIGEM_OPERADOR,
         enviado_por=usuario,
     ):
-        ok, resp = WhatsAppService.para_cliente().enviar_mensagem_texto(
-            tel, corpo, variar=False
-        )
+        ok, resp = svc.enviar_mensagem_texto(tel, corpo, variar=False)
+    if ok:
+        set_reply_canal(tel, purpose)
+        # Saídas via Funil não passam por _registrar_atendimento do purpose cliente.
+        if purpose == "funil":
+            try:
+                gravar_mensagem(
+                    telefone=tel,
+                    direcao=MensagemWhatsAppAtendimento.DIRECAO_SAIDA,
+                    texto=corpo[:4000],
+                    tipo=MensagemWhatsAppAtendimento.TIPO_SESSAO,
+                    origem=MensagemWhatsAppAtendimento.ORIGEM_OPERADOR,
+                    sucesso=True,
+                    message_id=_message_id_de_resp(resp) if isinstance(resp, dict) else "",
+                    enviado_por=usuario,
+                )
+            except Exception:
+                logger.exception("[atendimento] falha ao gravar reply Funil")
     if not ok:
         return "falha_envio", {
             "detail": "A Cloud API não confirmou o envio. A tentativa ficou registrada na conversa.",
@@ -1004,5 +1442,284 @@ def responder_texto(usuario, telefone: str, texto: str) -> tuple[str, dict]:
         "ok": True,
         "janela_aberta": True,
         "bot_pausado": True,
+        "reply_canal": purpose,
+        "conversa": detalhe_conversa(usuario, tel),
+    }
+
+
+
+def _salvar_audio_local(b64: str, mime: str, filename: str) -> str:
+    """Grava áudio em MEDIA_ROOT e devolve URL /media/... para o player do inbox."""
+    import base64
+    import uuid
+    from pathlib import Path as _P
+
+    from django.conf import settings
+
+    raw = (b64 or "").strip()
+    if "base64," in raw:
+        raw = raw.split("base64,", 1)[1]
+    raw = raw.replace(chr(13), "").replace(chr(10), "")
+    blob = base64.b64decode(raw)
+    if len(blob) > 15 * 1024 * 1024:
+        raise ValueError("Áudio maior que 15 MB")
+    ext = "ogg"
+    mime_n = (mime or "").lower()
+    if "webm" in mime_n:
+        ext = "webm"
+    elif "mpeg" in mime_n or "mp3" in mime_n:
+        ext = "mp3"
+    elif "mp4" in mime_n or "m4a" in mime_n:
+        ext = "m4a"
+    elif "wav" in mime_n:
+        ext = "wav"
+    elif "ogg" in mime_n or "opus" in mime_n:
+        ext = "ogg"
+    nome = (filename or ("audio." + ext)).replace("\\", "/").split("/")[-1]
+    if "." not in nome:
+        nome = nome + "." + ext
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in nome)[:80]
+    rel_dir = _P("whatsapp_audio")
+    dest_dir = _P(settings.MEDIA_ROOT) / rel_dir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    final = uuid.uuid4().hex[:12] + "_" + safe
+    (dest_dir / final).write_bytes(blob)
+    base = (settings.MEDIA_URL or "/media/").rstrip("/")
+    return base + "/" + rel_dir.as_posix() + "/" + final
+
+
+def responder_midia(
+    usuario,
+    telefone: str,
+    *,
+    kind: str,
+    base64_data: str,
+    filename: str = "",
+    caption: str = "",
+    mime: str = "",
+) -> tuple[str, dict]:
+    """Envia imagem ou PDF (base64) na janela de 24h e grava no histórico."""
+    from crm_app.models import MensagemWhatsAppAtendimento
+
+    kind_n = (kind or "").strip().lower()
+    if kind_n in ("image", "imagem", "img", "foto"):
+        kind_n = "image"
+    elif kind_n in ("document", "documento", "pdf", "doc"):
+        kind_n = "document"
+    elif kind_n in ("audio", "ptt", "voice", "voz", "ogg", "webm"):
+        kind_n = "audio"
+    else:
+        return "invalido", {"detail": "Tipo de mídia inválido (use image, document ou audio)."}
+
+    raw = (base64_data or "").strip()
+    if not raw:
+        return "invalido", {"detail": "Arquivo vazio."}
+
+    codigo, err, tel = _preflight_envio(usuario, telefone, exigir_janela=True)
+    if codigo != "ok":
+        return codigo, err
+
+    caption_n = (caption or "").strip()[:1000]
+    if kind_n == "image":
+        default_name, default_mime = "image.png", "image/png"
+    elif kind_n == "audio":
+        default_name, default_mime = "audio.ogg", "audio/ogg"
+    else:
+        default_name, default_mime = "documento.pdf", "application/pdf"
+    fname = (filename or default_name)[:120]
+    mime_n = (mime or "").strip()[:40]
+    if not mime_n:
+        mime_n = default_mime
+
+    # Normaliza data-URL
+    b64 = raw
+    if "base64," in b64:
+        header, b64 = b64.split("base64,", 1)
+        if "image/" in header and kind_n == "image":
+            mime_n = header.split("data:", 1)[-1].split(";", 1)[0] or mime_n
+        elif "pdf" in header:
+            mime_n = "application/pdf"
+
+    pausar_bot(tel, usuario, "Envio de mídia no atendimento WhatsApp")
+    svc, purpose = _whatsapp_service_para_reply(tel)
+    ok = False
+    resp: Any = None
+    media_url_local = ""
+    with contexto_registro_saida(
+        origem=MensagemWhatsAppAtendimento.ORIGEM_OPERADOR,
+        enviado_por=usuario,
+    ):
+        if kind_n == "image":
+            data_url = raw if raw.startswith("data:") else f"data:{mime_n};base64,{b64}"
+            resp = svc.enviar_imagem_b64(tel, data_url, caption=caption_n)
+            ok = resp is not None
+        elif kind_n == "audio":
+            data_url = raw if raw.startswith("data:") else f"data:{mime_n};base64,{b64}"
+            resp = svc.enviar_audio_b64(tel, data_url, mime=mime_n, filename=fname)
+            ok = resp is not None
+            if ok:
+                try:
+                    media_url_local = _salvar_audio_local(b64, mime_n, fname)
+                except Exception:
+                    logger.exception("[atendimento] falha ao salvar áudio local")
+        else:
+            ok = bool(
+                svc.enviar_pdf_b64(
+                    tel, b64, nome_arquivo=fname, caption=caption_n or fname
+                )
+            )
+            resp = {"ok": ok}
+
+    if kind_n == "image":
+        preview = caption_n or f"[imagem] {fname}"
+    elif kind_n == "audio":
+        preview = caption_n or f"[áudio] {fname}"
+    else:
+        preview = caption_n or f"[documento] {fname}"
+    try:
+        gravar_mensagem(
+            telefone=tel,
+            direcao=MensagemWhatsAppAtendimento.DIRECAO_SAIDA,
+            texto=preview[:4000],
+            tipo=MensagemWhatsAppAtendimento.TIPO_SESSAO,
+            origem=MensagemWhatsAppAtendimento.ORIGEM_OPERADOR,
+            sucesso=bool(ok),
+            message_id=_message_id_de_resp(resp) if isinstance(resp, dict) else "",
+            erro="" if ok else str(resp)[:2000],
+            enviado_por=usuario,
+            media_tipo=mime_n,
+            media_url=media_url_local if kind_n == "audio" else "",
+        )
+    except Exception:
+        logger.exception("[atendimento] falha ao gravar mídia no histórico")
+
+    if ok:
+        set_reply_canal(tel, purpose)
+
+    if not ok:
+        return "falha_envio", {
+            "detail": "O envio da mídia não foi confirmado pelo canal.",
+            "codigo": "falha_envio",
+            "conversa": detalhe_conversa(usuario, tel),
+        }
+    return "ok", {
+        "ok": True,
+        "janela_aberta": True,
+        "bot_pausado": True,
+        "reply_canal": purpose,
+        "conversa": detalhe_conversa(usuario, tel),
+    }
+
+
+def listar_templates_inbox() -> list[dict]:
+    """Catálogo para o composer: API do provedor + fallback curado."""
+    from crm_app.whatsapp_service import WhatsAppService
+
+    items: list[dict] = []
+    seen: set[str] = set()
+    try:
+        raw = WhatsAppService.para_cliente().listar_templates() or []
+    except Exception:
+        raw = []
+    if isinstance(raw, dict):
+        raw = raw.get("templates") or raw.get("data") or raw.get("items") or []
+    if isinstance(raw, list):
+        for t in raw:
+            if isinstance(t, str):
+                name = t
+                label = t
+                n_params = 0
+            elif isinstance(t, dict):
+                name = (
+                    t.get("name")
+                    or t.get("template_name")
+                    or t.get("nome")
+                    or ""
+                ).strip()
+                label = (t.get("label") or t.get("displayName") or name).strip()
+                n_params = int(t.get("body_params") or t.get("params") or 0)
+            else:
+                continue
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            items.append(
+                {
+                    "name": name,
+                    "label": label or name,
+                    "body_params": n_params,
+                    "hint": "",
+                    "source": "provider",
+                }
+            )
+    for t in _TEMPLATES_INBOX_CURADOS:
+        if t["name"] in seen:
+            continue
+        seen.add(t["name"])
+        items.append({**t, "source": "curado"})
+    return items
+
+
+def responder_template(
+    usuario,
+    telefone: str,
+    *,
+    template_name: str,
+    body_params: Optional[list] = None,
+    language_code: str = "pt_BR",
+) -> tuple[str, dict]:
+    """Envia template Meta (reabre conversa fora da janela 24h)."""
+    from crm_app.models import MensagemWhatsAppAtendimento
+
+    nome = (template_name or "").strip()
+    if not nome:
+        return "invalido", {"detail": "Informe o nome do template."}
+    codigo, err, tel = _preflight_envio(usuario, telefone, exigir_janela=False)
+    if codigo != "ok":
+        return codigo, err
+
+    params = []
+    for p in body_params or []:
+        params.append("" if p is None else str(p))
+
+    pausar_bot(tel, usuario, "Template enviado no atendimento WhatsApp")
+    svc, purpose = _whatsapp_service_para_reply(tel)
+    with contexto_registro_saida(
+        origem=MensagemWhatsAppAtendimento.ORIGEM_OPERADOR,
+        enviado_por=usuario,
+    ):
+        ok, resp = svc.enviar_template(
+            tel,
+            nome,
+            language_code=language_code or "pt_BR",
+            body_params=params,
+        )
+    if ok:
+        set_reply_canal(tel, purpose)
+        if purpose == "funil":
+            try:
+                gravar_mensagem(
+                    telefone=tel,
+                    direcao=MensagemWhatsAppAtendimento.DIRECAO_SAIDA,
+                    texto=texto_modelo(nome, params)[:4000],
+                    tipo=MensagemWhatsAppAtendimento.TIPO_MODELO,
+                    template_name=nome[:120],
+                    origem=MensagemWhatsAppAtendimento.ORIGEM_OPERADOR,
+                    sucesso=True,
+                    message_id=_message_id_de_resp(resp) if isinstance(resp, dict) else "",
+                    enviado_por=usuario,
+                )
+            except Exception:
+                logger.exception("[atendimento] falha ao gravar template Funil")
+    if not ok:
+        return "falha_envio", {
+            "detail": "O template não foi aceito pelo canal. " + str(resp)[:300],
+            "codigo": "falha_envio",
+            "conversa": detalhe_conversa(usuario, tel),
+        }
+    return "ok", {
+        "ok": True,
+        "bot_pausado": True,
+        "reply_canal": purpose,
         "conversa": detalhe_conversa(usuario, tel),
     }

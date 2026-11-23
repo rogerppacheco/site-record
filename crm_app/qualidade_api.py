@@ -9,6 +9,7 @@ from rest_framework import permissions, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from django.db.utils import OperationalError, ProgrammingError
+from django.http import HttpResponse
 from rest_framework.views import APIView
 
 from crm_app.services import qualidade_service as qs
@@ -59,6 +60,27 @@ class QualidadePeriodosView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+def _filtros_dashboard(request) -> dict:
+    return {
+        'q': request.GET.get('q'),
+        'status': request.GET.get('status'),
+        'elegivel': request.GET.get('elegivel'),
+        'vendedor': request.GET.get('vendedor'),
+        'page': request.GET.get('page', 1),
+        'page_size': request.GET.get('page_size', 100),
+        'orfao': request.GET.get('orfao'),
+        'status_fatura1': request.GET.get('status_fatura1'),
+        'fila': request.GET.get('fila', 'todos'),
+        'status_tratamento_id': request.GET.get('status_tratamento_id') or request.GET.get('status_tratamento'),
+        'conferencia_fpd': request.GET.get('conferencia_fpd'),
+        'faixa_atraso': request.GET.get('faixa_atraso') or request.GET.get('faixa'),
+        'faturas_pagas': request.GET.get('faturas_pagas') or request.GET.get('faturas_pagas_n'),
+        'promessa': request.GET.get('promessa'),
+        'indicador': request.GET.get('indicador'),
+        'nm_seg': request.GET.get('nm_seg') or request.GET.get('segmento'),
+    }
+
+
 class QualidadeDashboardView(APIView):
     """GET /api/qualidade/dashboard/?lente=&mes=YYYY-MM&q=&status=&elegivel=&page="""
 
@@ -72,32 +94,44 @@ class QualidadeDashboardView(APIView):
         mes = request.GET.get('mes')
         if not mes:
             return Response({'error': 'Parâmetro mes é obrigatório (YYYY-MM)'}, status=400)
-        filtros = {
-            'q': request.GET.get('q'),
-            'status': request.GET.get('status'),
-            'elegivel': request.GET.get('elegivel'),
-            'vendedor': request.GET.get('vendedor'),
-            'page': request.GET.get('page', 1),
-            'page_size': request.GET.get('page_size', 100),
-            'orfao': request.GET.get('orfao'),
-            'status_fatura1': request.GET.get('status_fatura1'),
-            'fila': request.GET.get('fila', 'todos'),
-            'status_tratamento_id': request.GET.get('status_tratamento_id') or request.GET.get('status_tratamento'),
-            'conferencia_fpd': request.GET.get('conferencia_fpd'),
-            'faixa_atraso': request.GET.get('faixa_atraso') or request.GET.get('faixa'),
-            'faturas_pagas': request.GET.get('faturas_pagas') or request.GET.get('faturas_pagas_n'),
-            'promessa': request.GET.get('promessa'),
-            'indicador': request.GET.get('indicador'),
-            'nm_seg': request.GET.get('nm_seg') or request.GET.get('segmento'),
-        }
         try:
-            data = qs.dashboard_qualidade(lente, mes, request.user, filtros)
+            data = qs.dashboard_qualidade(lente, mes, request.user, _filtros_dashboard(request))
             return Response(data)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
         except Exception as e:
             logger.exception('Erro no dashboard Qualidade')
             return Response({'error': str(e)}, status=500)
+
+
+class QualidadeExportarBaseView(APIView):
+    """GET /api/qualidade/exportar/ — mesma base filtrada da tela, em Excel."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        bloqueio = _exige_acesso(request.user)
+        if bloqueio:
+            return bloqueio
+        lente = request.GET.get('lente', qs.LENTE_VENCIMENTO)
+        mes = (request.GET.get('mes') or '').strip()
+        if not mes:
+            return Response({'error': 'Parâmetro mes é obrigatório (YYYY-MM)'}, status=400)
+        try:
+            conteudo, nome = qs.gerar_excel_base_qualidade(
+                lente, mes, request.user, _filtros_dashboard(request),
+            )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        except Exception as e:
+            logger.exception('Erro ao exportar base Qualidade')
+            return Response({'error': str(e)}, status=500)
+        response = HttpResponse(
+            conteudo,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{nome}"'
+        return response
 
 
 class QualidadeFocoTratamentoView(APIView):

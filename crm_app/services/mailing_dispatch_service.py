@@ -1,4 +1,4 @@
-"""Disparo em lote de templates de mailing (throttle + status)."""
+"""Disparo em lote de templates de mailing (throttle + status + janela/cota)."""
 from __future__ import annotations
 
 import logging
@@ -8,7 +8,7 @@ from typing import Optional
 from django.db.models import F
 from django.utils import timezone
 
-from crm_app.models import MailingContato, MailingEnvio, MailingLote
+from crm_app.models import FunilTemplateEnvio, MailingContato, MailingEnvio, MailingLote
 from crm_app.services.mailing_templates import enviar_mailing_contato
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # ~25 envios/minuto
 INTERVALO_SEGUNDOS = 2.4
 LOTE_POR_CICLO = 40
+ABA_MAILING = FunilTemplateEnvio.ABA_MAILING
 
 
 def _extrair_message_id(resp) -> str:
@@ -30,12 +31,48 @@ def _extrair_message_id(resp) -> str:
         return ''
 
 
+def _config_mailing():
+    from crm_app.services import funil_dispatch_service as disp
+    return disp.obter_ou_criar_config(ABA_MAILING)
+
+
+def assert_pode_disparar_mailing(*, exigir_ativo: bool = False) -> tuple:
+    """Se a config Mailing estiver ativa, exige janela e cota.
+
+    Retorna (cfg, limite_ciclo) onde limite_ciclo já considera cota restante
+    quando a config está ativa; senão usa LOTE_POR_CICLO.
+    """
+    from crm_app.services import funil_dispatch_service as disp
+
+    cfg = _config_mailing()
+    if exigir_ativo and not cfg.ativo:
+        raise ValueError('Disparo automático de Mailing está desligado em Config. disparo.')
+    if not cfg.ativo:
+        return cfg, int(cfg.limite_por_ciclo or LOTE_POR_CICLO) or LOTE_POR_CICLO
+
+    if not disp.dentro_da_janela(cfg):
+        ini = cfg.hora_inicio.strftime('%H:%M') if cfg.hora_inicio else '09:00'
+        fim = cfg.hora_fim.strftime('%H:%M') if cfg.hora_fim else '18:00'
+        raise ValueError(
+            f'Fora da janela de horário do Mailing ({ini}–{fim}). Ajuste em Config. disparo.'
+        )
+    restante = disp.cota_restante(cfg)
+    if restante <= 0:
+        raise ValueError(
+            f'Cota diária de Mailing atingida ({cfg.qtd_diaria}/dia). '
+            'Ajuste em Config. disparo ou aguarde amanhã.'
+        )
+    limite = min(int(cfg.limite_por_ciclo or LOTE_POR_CICLO) or LOTE_POR_CICLO, restante)
+    return cfg, max(1, limite)
+
+
 def iniciar_disparo(
     lote_id: int,
     usuario=None,
     situacao: str = '',
     incluir_falhas: bool = False,
 ) -> MailingLote:
+    assert_pode_disparar_mailing()
     lote = MailingLote.objects.get(pk=lote_id)
     sit = (situacao or '').strip().upper()
     if sit and sit not in dict(MailingContato.SITUACAO_CHOICES):
@@ -136,11 +173,51 @@ def processar_ciclo(lote_id: int, *, limite: int = LOTE_POR_CICLO, sleep: bool =
     if lote.status != MailingLote.STATUS_DISPARANDO:
         return {'enviados': 0, 'falhas': 0, 'restantes': 0, 'status': lote.status}
 
+    from crm_app.services import funil_dispatch_service as disp
+
+    try:
+        cfg, limite_cfg = assert_pode_disparar_mailing()
+    except ValueError as exc:
+        lote.mensagem = str(exc)
+        # Fora da janela/cota: pausa para não ficar rodando no scheduler
+        lote.status = MailingLote.STATUS_PAUSADO
+        lote.save(update_fields=['status', 'mensagem', 'atualizado_em'])
+        return {
+            'enviados': 0,
+            'falhas': 0,
+            'restantes': _qs_pendentes(lote).count(),
+            'status': lote.status,
+            'bloqueado': True,
+            'detail': str(exc),
+        }
+
+    if cfg.ativo:
+        limite = min(limite, limite_cfg, disp.cota_restante(cfg))
+    else:
+        limite = min(limite, limite_cfg)
+    if limite <= 0:
+        lote.mensagem = 'Cota diária de Mailing atingida.'
+        lote.status = MailingLote.STATUS_PAUSADO
+        lote.save(update_fields=['status', 'mensagem', 'atualizado_em'])
+        return {
+            'enviados': 0,
+            'falhas': 0,
+            'restantes': _qs_pendentes(lote).count(),
+            'status': lote.status,
+            'bloqueado': True,
+            'detail': lote.mensagem,
+        }
+
     pendentes = list(_qs_pendentes(lote)[:limite])
     enviados = falhas = 0
     for contato in pendentes:
         lote.refresh_from_db(fields=['status'])
         if lote.status != MailingLote.STATUS_DISPARANDO:
+            break
+        if cfg.ativo and disp.cota_restante(cfg) <= 0:
+            lote.mensagem = 'Cota diária de Mailing atingida — disparo pausado.'
+            lote.status = MailingLote.STATUS_PAUSADO
+            lote.save(update_fields=['status', 'mensagem', 'atualizado_em'])
             break
         try:
             ok, resp, canal, template = enviar_mailing_contato(contato)

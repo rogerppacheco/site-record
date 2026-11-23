@@ -1031,6 +1031,63 @@ def _vendedor_nome(contrato: ContratoM10) -> str:
     return nome or '-'
 
 
+def _rotulo_fila_fatura(
+    fatura: Optional[FaturaM10],
+    hoje: Optional[date] = None,
+) -> str:
+    """Fila da tela de tratamento para a fatura do indicador."""
+    ref = hoje or timezone.localdate()
+    if fatura is None:
+        return 'Sem fatura'
+    status = (fatura.status or '').upper()
+    if status in STATUS_FATURA_FECHADA:
+        return 'Pagas'
+    venc = fatura.data_vencimento
+    if status in ('NAO_PAGO', 'AGUARDANDO') and venc and venc >= ref:
+        return 'Aberto'
+    corte = corte_vencimento_fpd(ref)
+    if venc and venc <= corte:
+        return '+60d'
+    return '−60d'
+
+
+def _mapa_importacao_por_contrato(
+    contrato_ids: list[int],
+    indicador: str,
+    mes: Optional[str] = None,
+) -> dict[int, ImportacaoFPD]:
+    """Última importação do indicador por contrato. No mês informado, ela tem prioridade."""
+    if not contrato_ids:
+        return {}
+    inicio = fim = None
+    if mes:
+        try:
+            inicio, fim = mes_range(mes)
+        except ValueError:
+            inicio = fim = None
+    por: dict[int, ImportacaoFPD] = {}
+    qs = ImportacaoFPD.objects.filter(
+        contrato_m10_id__in=contrato_ids,
+        indicador=indicador,
+    ).order_by('atualizada_em', 'id')
+    for imp in qs:
+        atual = por.get(imp.contrato_m10_id)
+        no_mes = bool(
+            inicio and fim and imp.dt_venc_orig and inicio <= imp.dt_venc_orig < fim
+        )
+        if atual is None:
+            por[imp.contrato_m10_id] = imp
+            continue
+        atual_no_mes = bool(
+            inicio and fim and atual.dt_venc_orig and inicio <= atual.dt_venc_orig < fim
+        )
+        if no_mes and not atual_no_mes:
+            por[imp.contrato_m10_id] = imp
+        elif no_mes == atual_no_mes:
+            por[imp.contrato_m10_id] = imp
+    return por
+
+
 def _id_contrato_fpd(
     contrato: ContratoM10,
     fatura1: Optional[FaturaM10] = None,
@@ -1280,6 +1337,7 @@ def dashboard_qualidade(
             'pode_ver_valor_bonus': ver_bonus,
         }
 
+    exportar = str(filtros.get('exportar') or '').lower() in ('1', 'true', 'sim', 'yes')
     try:
         page = max(1, int(filtros.get('page', 1) or 1))
     except (TypeError, ValueError):
@@ -1288,13 +1346,29 @@ def dashboard_qualidade(
         page_size = max(1, min(250, int(filtros.get('page_size', 100) or 100)))
     except (TypeError, ValueError):
         page_size = 100
-    start = (page - 1) * page_size
-    end = start + page_size
-    total_pages = (total + page_size - 1) // page_size if total else 0
+    if exportar:
+        page = 1
+        page_size = max(total, 1)
+        start = 0
+        end = total
+        total_pages = 1 if total else 0
+    else:
+        start = (page - 1) * page_size
+        end = start + page_size
+        total_pages = (total + page_size - 1) // page_size if total else 0
 
     contratos_data: list[dict[str, Any]] = []
     pagina_contratos = contratos_list[start:end]
-    resumo_contatos = montar_resumo_contatos_por_contrato(pagina_contratos)
+    if exportar:
+        resumo_contatos = {}
+        mapa_imp = _mapa_importacao_por_contrato(
+            [c.id for c in pagina_contratos],
+            indicador_fila,
+            None if busca_geral else mes,
+        )
+    else:
+        resumo_contatos = montar_resumo_contatos_por_contrato(pagina_contratos)
+        mapa_imp = {}
     for c in pagina_contratos:
         is_elegivel = _contrato_elegivel_dinamico(c)
         f1 = faturas1_map.get(c.id)
@@ -1353,7 +1427,7 @@ def dashboard_qualidade(
             faturas_por_contrato.get(c.id, []),
             timezone.localdate(),
         )
-        contratos_data.append({
+        item = {
             'id': c.id,
             'venda_id': c.venda_id,
             'ordem_servico': c.ordem_servico or '-',
@@ -1393,7 +1467,29 @@ def dashboard_qualidade(
             'pode_enviar_cobranca': pode_enviar_cobranca,
             'motivo_bloqueio_envio': motivo_bloqueio_envio if not pode_enviar_cobranca else '',
             'contatos': resumo_contatos.get(c.id) or {},
-        })
+        }
+        if exportar:
+            imp = mapa_imp.get(c.id)
+            nr_fatura = ''
+            if imp and imp.nr_fatura:
+                nr_fatura = imp.nr_fatura
+            elif f1 and f1.numero_fatura_operadora:
+                nr_fatura = f1.numero_fatura_operadora
+            item.update({
+                'numero_contrato': c.numero_contrato or '',
+                'nr_fatura': nr_fatura,
+                'ds_sit_fatura': (imp.ds_sit_fatura if imp else '') or '',
+                'ds_status_planilha': (imp.ds_status_fatura if imp else '') or '',
+                'faixa_planilha': (imp.faixa if imp else '') or '',
+                'nr_dias_atraso_planilha': imp.nr_dias_atraso if imp else None,
+                'dt_venc_planilha': (
+                    imp.dt_venc_orig.isoformat() if imp and imp.dt_venc_orig else ''
+                ),
+                'nm_seg_planilha': (imp.nm_seg if imp else '') or '',
+                'match_status': (imp.match_status if imp else '') or '',
+                'fila_label': _rotulo_fila_fatura(f1),
+            })
+        contratos_data.append(item)
 
     return {
         'lente': lente_norm,
@@ -1417,6 +1513,156 @@ def dashboard_qualidade(
         'segmento': segmento_fila,
         'numero_fatura': numero_fatura,
     }
+
+
+def _fmt_data_br(valor: Optional[str]) -> str:
+    if not valor:
+        return ''
+    texto = str(valor)[:10]
+    partes = texto.split('-')
+    if len(partes) == 3 and all(partes):
+        return f'{partes[2]}/{partes[1]}/{partes[0]}'
+    return texto
+
+
+def gerar_excel_base_qualidade(
+    lente: str,
+    mes: str,
+    user: Any,
+    filtros: Optional[dict[str, Any]] = None,
+) -> tuple[bytes, str]:
+    """Planilha da base do tratamento com os mesmos filtros da tela."""
+    from io import BytesIO
+
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    filtros = dict(filtros or {})
+    filtros['exportar'] = '1'
+    filtros['page'] = 1
+    dados = dashboard_qualidade(lente, mes, user, filtros)
+    filas = dados.get('filas') or {}
+    indicador = dados.get('indicador') or 'FPD'
+    fila = dados.get('fila') or 'todos'
+    contratos = dados.get('contratos') or []
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Base'
+
+    headers = [
+        'O.S.',
+        'Contrato',
+        'ID contrato Nio',
+        'NR fatura',
+        'Cliente',
+        'CPF',
+        'Vendedor',
+        'Status contrato',
+        'Indicador',
+        'Status no CRM',
+        'Status na planilha',
+        'Situação planilha',
+        'Vencimento CRM',
+        'Vencimento planilha',
+        'Faixa planilha',
+        'Dias atraso planilha',
+        'Conferência',
+        'Origem do status',
+        'Status tratamento',
+        'Fila',
+        'Faturas pagas',
+        'Total faturas',
+        'Elegível',
+        'Segmento',
+        'Match',
+    ]
+    ws.append(headers)
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+
+    for c in contratos:
+        pagas = c.get('faturas_pagas') or 0
+        total_f = c.get('total_faturas') or 0
+        ws.append([
+            c.get('ordem_servico') or '',
+            c.get('numero_contrato') or '',
+            c.get('id_contrato') or '',
+            c.get('nr_fatura') or '',
+            c.get('cliente_nome') or '',
+            c.get('cpf_cliente') or '',
+            c.get('vendedor_nome') or '',
+            c.get('status_contrato') or '',
+            indicador,
+            c.get('status_fatura1_display') or c.get('status_fatura1') or '',
+            c.get('ds_status_planilha') or c.get('ds_status_fatura_fpd') or '',
+            c.get('ds_sit_fatura') or '',
+            _fmt_data_br(c.get('data_vencimento_f1')),
+            _fmt_data_br(c.get('dt_venc_planilha')),
+            c.get('faixa_planilha') or '',
+            c.get('nr_dias_atraso_planilha') if c.get('nr_dias_atraso_planilha') is not None else '',
+            c.get('conferencia_fpd') or '',
+            c.get('status_origem') or '',
+            c.get('status_tratamento_nome') or '',
+            c.get('fila_label') or '',
+            pagas,
+            total_f,
+            'Sim' if c.get('elegivel') else 'Não',
+            c.get('nm_seg_planilha') or (dados.get('segmento') or ''),
+            c.get('match_status') or '',
+        ])
+
+    for col in ws.columns:
+        largura = 12
+        letra = col[0].column_letter
+        for cell in col:
+            texto = '' if cell.value is None else str(cell.value)
+            if len(texto) + 2 > largura:
+                largura = min(len(texto) + 2, 42)
+        ws.column_dimensions[letra].width = largura
+    ws.auto_filter.ref = ws.dimensions
+    ws.freeze_panes = 'A2'
+
+    resumo = wb.create_sheet('Resumo', 0)
+    abertos = int(filas.get('abertos') or 0)
+    pagas_mes = int(filas.get('pagas') or 0)
+    total_mes = int(filas.get('todos') or 0)
+    pct = filas.get('pct_fpd')
+    linhas_resumo = [
+        ('Indicador', indicador),
+        ('Mês', dados.get('label') or mes),
+        ('Segmento', dados.get('segmento') or 'Todos'),
+        ('Fila exportada', fila),
+        ('Linhas nesta planilha', len(contratos)),
+        ('Atrasados −60d', filas.get('atrasados_lt60') or 0),
+        ('Atrasados +60d', filas.get('atrasados_gte60') or 0),
+        ('Em aberto', abertos),
+        ('Pagas', pagas_mes),
+        ('Total do mês', total_mes),
+        ('% aberto', pct if pct is not None else ''),
+        (
+            'Fórmula',
+            '% aberto = (atrasados + em aberto) / total do mês. '
+            'Atrasados e pagas acima são do mês inteiro, mesmo se a planilha trouxer só uma fila.',
+        ),
+    ]
+    resumo.append(['Campo', 'Valor'])
+    for cell in resumo[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+    for linha in linhas_resumo:
+        resumo.append(list(linha))
+    resumo.column_dimensions['A'].width = 28
+    resumo.column_dimensions['B'].width = 88
+
+    buf = BytesIO()
+    wb.save(buf)
+    nome = f'qualidade_{indicador}_{mes or "busca"}_{fila}.xlsx'
+    return buf.getvalue(), nome
 
 
 def reconciliar_fpd_com_painel(
@@ -1452,9 +1698,13 @@ def reconciliar_fpd_com_painel(
         ds_sit_fatura__iexact='ABERTA', match_status='MATCHED'
     ).count()
     fpd_total_matched = qs_fpd.filter(match_status='MATCHED').count()
-    faltam_crm = qs_fpd.filter(match_status='FALTA_CRM').count()
+    faltam_crm = qs_fpd.filter(
+        match_status='FALTA_CRM', contrato_m10_id__isnull=True,
+    ).count()
     faltam_crm_abertas = qs_fpd.filter(
-        match_status='FALTA_CRM', ds_sit_fatura__iexact='ABERTA'
+        match_status='FALTA_CRM',
+        contrato_m10_id__isnull=True,
+        ds_sit_fatura__iexact='ABERTA',
     ).count()
 
     # PAGO no tratamento ainda aguardando/divergente da planilha (explica Δ abertas)
@@ -2189,6 +2439,18 @@ def _listar_vendedores_dashboard_fpd(indicador: str) -> list[dict[str, Any]]:
     return out
 
 
+def _qs_faltam_no_crm():
+    """Planilha marcada FALTA_CRM e ainda sem ContratoM10.
+
+    Linha que já aponta para um contrato não aparece nesta aba, mesmo que o
+    importador antigo tenha deixado match_status desatualizado.
+    """
+    return ImportacaoFPD.objects.filter(
+        match_status='FALTA_CRM',
+        contrato_m10_id__isnull=True,
+    )
+
+
 def listar_faltam_no_crm(
     *,
     indicador: Optional[str] = None,
@@ -2198,10 +2460,12 @@ def listar_faltam_no_crm(
     page: int = 1,
     page_size: int = 100,
 ) -> dict[str, Any]:
-    """Linhas da planilha FPD/SPD/TPD sem ContratoM10/Venda no CRM."""
-    qs = ImportacaoFPD.objects.filter(match_status='FALTA_CRM').order_by(
-        '-atualizada_em', 'nr_ordem'
-    )
+    """Linhas da planilha FPD/SPD/TPD sem ContratoM10 no CRM.
+
+    Quem já tem contrato_m10 fica de fora mesmo se o match_status antigo
+    ainda disser FALTA_CRM — o importador antigo não atualizava esse campo.
+    """
+    qs = _qs_faltam_no_crm().order_by('-atualizada_em', 'nr_ordem')
 
     if indicador:
         ind = str(indicador).strip().upper()
@@ -2260,7 +2524,7 @@ def listar_faltam_no_crm(
             ),
         })
 
-    base_totais = ImportacaoFPD.objects.filter(match_status='FALTA_CRM')
+    base_totais = _qs_faltam_no_crm()
     if mes:
         data_inicio, data_fim = mes_range(mes)
         base_totais = base_totais.filter(

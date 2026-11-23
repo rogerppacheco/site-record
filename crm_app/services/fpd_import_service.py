@@ -285,6 +285,146 @@ def chave_importacao(nr_ordem: str, indicador: str) -> str:
     return f'{nr_ordem}|{(indicador or "FPD").upper()}'
 
 
+def normalizar_digitos_chave(valor: Any) -> str:
+    """Dígitos da O.S., do id_contrato ou da nr_fatura, sem zeros à esquerda.
+
+    '02812957' e '2812957' passam a ser a mesma chave. Vazio vira ''.
+    """
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return ''
+    try:
+        if pd.isna(valor):
+            return ''
+    except TypeError:
+        pass
+    texto = str(valor).strip()
+    if not texto or texto.lower() in ('nan', 'none'):
+        return ''
+    if texto.replace('.', '', 1).replace('-', '').isdigit():
+        texto = texto.split('.')[0]
+    digitos = ''.join(ch for ch in texto if ch.isdigit())
+    if not digitos:
+        return ''
+    return digitos.lstrip('0') or '0'
+
+
+def chaves_importacao_fpd(nr_ordem: Any, indicador: Any, nr_fatura: Any = '', id_contrato: Any = '') -> list[tuple]:
+    """Chaves de dedupe. Com nr_fatura, ela vem primeiro (fatura + indicador)."""
+    ind = (str(indicador or 'FPD')).strip().upper() or 'FPD'
+    chaves: list[tuple] = []
+    nf = normalizar_digitos_chave(nr_fatura)
+    if nf and nf != '0':
+        chaves.append(('nf', nf, ind))
+    os_norm = normalizar_digitos_chave(nr_ordem)
+    if os_norm:
+        chaves.append(('os', os_norm, ind))
+    idc = normalizar_digitos_chave(id_contrato)
+    if idc and idc != '0':
+        chaves.append(('idc', idc, ind))
+    return chaves
+
+
+def completude_importacao(imp: Any) -> tuple:
+    """Quanto mais dados de planilha (situação, município, PDV), maior a tupla."""
+
+    def preenchido(valor: Any) -> int:
+        texto = str(valor or '').strip()
+        return 1 if texto and texto.lower() not in ('nan', 'none') else 0
+
+    momento = getattr(imp, 'atualizada_em', None) or getattr(imp, 'importada_em', None)
+    try:
+        marca = momento.timestamp() if momento is not None else 0
+    except (OSError, OverflowError, ValueError):
+        marca = 0
+    vinculado = 1 if (
+        getattr(imp, 'contrato_m10_id', None) or getattr(imp, 'contrato_m10', None)
+    ) else 0
+    return (
+        preenchido(getattr(imp, 'ds_sit_fatura', '')),
+        preenchido(getattr(imp, 'municipio', '')),
+        preenchido(getattr(imp, 'nm_pdv', '')),
+        vinculado,
+        marca,
+        int(getattr(imp, 'pk', None) or 0),
+    )
+
+
+def _nr_fatura_compativel(imp: Any, nf_norm: str) -> bool:
+    if not nf_norm or nf_norm == '0':
+        return True
+    atual = normalizar_digitos_chave(getattr(imp, 'nr_fatura', ''))
+    return (not atual) or atual == '0' or atual == nf_norm
+
+
+def _os_compativel(imp: Any, os_norm: str) -> bool:
+    if not os_norm:
+        return True
+    atual = normalizar_digitos_chave(getattr(imp, 'nr_ordem', ''))
+    return (not atual) or atual == os_norm
+
+
+def indexar_importacoes(registros) -> dict:
+    """Um registro por chave normalizada. Empate fica com a linha mais completa."""
+    indice: dict = {}
+    for imp in registros:
+        registrar_importacao_no_indice(indice, imp)
+    return indice
+
+
+def registrar_importacao_no_indice(indice: dict, imp: Any) -> None:
+    for chave in chaves_importacao_fpd(
+        getattr(imp, 'nr_ordem', ''),
+        getattr(imp, 'indicador', ''),
+        getattr(imp, 'nr_fatura', ''),
+        getattr(imp, 'id_contrato', ''),
+    ):
+        atual = indice.get(chave)
+        if atual is None or completude_importacao(imp) >= completude_importacao(atual):
+            indice[chave] = imp
+
+
+def buscar_importacao_indexada(
+    indice: dict,
+    nr_ordem: Any,
+    indicador: Any,
+    nr_fatura: Any = '',
+    id_contrato: Any = '',
+):
+    """Acha a linha já importada. nr_fatura+indicador ganha de O.S. e de id_contrato.
+
+    O.S. e id_contrato só unem a linha quando a nr_fatura é a mesma (ou uma delas está vazia).
+    Assim duas faturas diferentes da mesma O.S. não se sobrescrevem.
+    """
+    ind = (str(indicador or 'FPD')).strip().upper() or 'FPD'
+    nf = normalizar_digitos_chave(nr_fatura)
+    os_norm = normalizar_digitos_chave(nr_ordem)
+    idc = normalizar_digitos_chave(id_contrato)
+    if nf and nf != '0':
+        hit = indice.get(('nf', nf, ind))
+        if hit is not None:
+            return hit
+    hit_os = indice.get(('os', os_norm, ind)) if os_norm else None
+    if hit_os is not None and _nr_fatura_compativel(hit_os, nf):
+        return hit_os
+    hit_id = indice.get(('idc', idc, ind)) if idc and idc != '0' else None
+    if hit_id is not None and _nr_fatura_compativel(hit_id, nf) and _os_compativel(hit_id, os_norm):
+        return hit_id
+    return None
+
+
+def match_status_para_contrato(contrato: Any, *, sem_contrato_real: bool = False) -> str:
+    """MATCHED quando o ContratoM10 foi encontrado.
+
+    Sem contrato nenhum: FALTA_CRM. Placeholder órfão criado porque a O.S. não
+    estava no CRM: ORFAO (não entra em Faltam no CRM nem no universo do tratamento).
+    """
+    if contrato is None:
+        return MATCH_FALTA_CRM
+    if sem_contrato_real and getattr(contrato, 'orfao', False):
+        return MATCH_ORFAO
+    return MATCH_MATCHED
+
+
 def sincronizar_vencimentos_fpd_nas_faturas() -> dict[str, int]:
     """Corrige ``FaturaM10.data_vencimento`` com a data da planilha (ImportacaoFPD).
 

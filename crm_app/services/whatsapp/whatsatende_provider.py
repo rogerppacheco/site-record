@@ -443,6 +443,40 @@ class WhatsAtendeProvider(WhatsAppProvider):
         resp = self._request("POST", "/api/messages/send/base64", payload, timeout=90)
         return self.resposta_indica_sucesso(resp)
 
+
+    def enviar_audio_b64(
+        self,
+        telefone: str,
+        audio_b64: str,
+        *,
+        mime: str = "audio/ogg",
+        filename: str = "audio.ogg",
+    ):
+        numero = self._destino(telefone)
+        data = audio_b64 or ""
+        mime_n = (mime or "audio/ogg").strip() or "audio/ogg"
+        if not mime_n.startswith("audio/"):
+            mime_n = "audio/ogg"
+        if data.startswith("data:") and "base64," in data:
+            raw = data.split("base64,", 1)[1]
+        else:
+            raw = data
+        raw = raw.replace(chr(13), "").replace(chr(10), "")
+        payload = {
+            "number": numero,
+            "base64Data": f"data:{mime_n};base64,{raw}",
+            "fileName": filename or "audio.ogg",
+            "caption": "",
+            "msdelay": 1000,
+        }
+        resp = self._request("POST", "/api/messages/send/base64", payload, timeout=90)
+        if self.resposta_indica_sucesso(resp) and isinstance(resp, dict):
+            mid = self._message_id(resp)
+            if mid and "messageId" not in resp:
+                resp = {**resp, "messageId": mid}
+            return resp
+        return None
+
     def listar_grupos(self) -> List[Dict[str, str]]:
         logger.info(
             "[WhatsAtende] listar_grupos ainda não documentado na API pública"

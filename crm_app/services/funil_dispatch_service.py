@@ -15,7 +15,14 @@ from crm_app.services import funil_template_envio_service as tmpl
 logger = logging.getLogger(__name__)
 
 INTERVALO_SEGUNDOS = 2.4
-ABAS = (FunilTemplateEnvio.ABA_INTERESSE, FunilTemplateEnvio.ABA_CHURN, FunilTemplateEnvio.ABA_BIO)
+# Templates Funil (massa/auto). MAILING só entra em config — dispara em mailing_dispatch.
+ABAS_TEMPLATE = (
+    FunilTemplateEnvio.ABA_INTERESSE,
+    FunilTemplateEnvio.ABA_CHURN,
+    FunilTemplateEnvio.ABA_BIO,
+)
+ABAS_CONFIG = ABAS_TEMPLATE + (FunilTemplateEnvio.ABA_MAILING,)
+ABAS = ABAS_TEMPLATE
 
 
 def _serializar_lote(lote: FunilDisparoLote) -> dict:
@@ -36,12 +43,19 @@ def _serializar_lote(lote: FunilDisparoLote) -> dict:
     }
 
 
+def _fmt_hora(valor) -> str:
+    if isinstance(valor, dtime):
+        return valor.strftime('%H:%M')
+    parsed = _parse_hora(valor)
+    return parsed.strftime('%H:%M') if parsed else '09:00'
+
+
 def serializar_config(cfg: ConfigDisparoFunil) -> dict:
     return {
         'aba': cfg.aba,
         'ativo': bool(cfg.ativo),
-        'hora_inicio': cfg.hora_inicio.strftime('%H:%M') if cfg.hora_inicio else '09:00',
-        'hora_fim': cfg.hora_fim.strftime('%H:%M') if cfg.hora_fim else '18:00',
+        'hora_inicio': _fmt_hora(cfg.hora_inicio),
+        'hora_fim': _fmt_hora(cfg.hora_fim) if cfg.hora_fim else '18:00',
         'qtd_diaria': cfg.qtd_diaria,
         'limite_por_ciclo': cfg.limite_por_ciclo,
         'enviados_hoje': _enviados_hoje(cfg.aba),
@@ -51,7 +65,7 @@ def serializar_config(cfg: ConfigDisparoFunil) -> dict:
 
 def obter_ou_criar_config(aba: str) -> ConfigDisparoFunil:
     aba = (aba or '').strip().upper()
-    if aba not in ABAS:
+    if aba not in ABAS_CONFIG:
         raise ValueError(f'Aba inválida: {aba}')
     cfg, _ = ConfigDisparoFunil.objects.get_or_create(aba=aba)
     return cfg
@@ -59,7 +73,7 @@ def obter_ou_criar_config(aba: str) -> ConfigDisparoFunil:
 
 def listar_configs() -> list[dict]:
     out = []
-    for aba in ABAS:
+    for aba in ABAS_CONFIG:
         out.append(serializar_config(obter_ou_criar_config(aba)))
     return out
 
@@ -99,6 +113,13 @@ def _parse_hora(valor) -> Optional[dtime]:
 def _enviados_hoje(aba: str) -> int:
     hoje = timezone.localdate()
     inicio = timezone.make_aware(datetime.combine(hoje, dtime.min))
+    aba = (aba or '').strip().upper()
+    if aba == FunilTemplateEnvio.ABA_MAILING:
+        from crm_app.models import MailingEnvio
+        return MailingEnvio.objects.filter(
+            sucesso=True,
+            enviado_em__gte=inicio,
+        ).count()
     return FunilTemplateEnvio.objects.filter(
         aba=aba,
         sucesso=True,
@@ -109,8 +130,8 @@ def _enviados_hoje(aba: str) -> int:
 def dentro_da_janela(cfg: ConfigDisparoFunil, agora=None) -> bool:
     agora = agora or timezone.localtime()
     h = agora.time()
-    ini = cfg.hora_inicio or dtime(9, 0)
-    fim = cfg.hora_fim or dtime(18, 0)
+    ini = _parse_hora(cfg.hora_inicio) or dtime(9, 0)
+    fim = _parse_hora(cfg.hora_fim) or dtime(18, 0)
     if ini <= fim:
         return ini <= h <= fim
     # Janela que cruza meia-noite
@@ -378,8 +399,8 @@ def processar_lotes_em_disparo(limite_por_lote: int = 40) -> int:
     for lote in qs:
         processar_lote(lote, limite=limite_por_lote)
         n += 1
-    # Autoenvio: cria/avança lotes AUTO por aba com config ativa
-    for aba in ABAS:
+    # Autoenvio: cria/avança lotes AUTO por esteira de template (Mailing tem fila própria)
+    for aba in ABAS_TEMPLATE:
         try:
             cfg = obter_ou_criar_config(aba)
         except Exception:

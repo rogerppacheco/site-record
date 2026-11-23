@@ -703,7 +703,11 @@ from .models import CdoiSolicitacao, CdoiBloco, PreVenda, LinkPublicoPreVenda
 from .cloudflare_r2_service import CloudflareR2Storage
 
 # Importar mapeamento de status FPD
-from .fpd_status_mapping import normalizar_status_fpd
+from .fpd_status_mapping import (
+    INDICADOR_PARA_NUMERO_FATURA,
+    normalizar_status_fpd,
+    resolver_status_fatura_fpd,
+)
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -13992,12 +13996,15 @@ class ImportarFPDView(APIView):
                 faturas_contrato = list(c.faturas.all())
                 faturas_por_contrato[c.id] = {f.numero_fatura: f for f in faturas_contrato}
             
-            # Otimização: pre-carregar ImportacaoFPD em memória também
-            # Indexar apenas por nr_ordem (atualizar registro existente com mesmo nr_ordem)
-            importacoes_dict = {}
-            for imp in ImportacaoFPD.objects.all().order_by('-atualizada_em'):
-                if imp.nr_ordem and imp.nr_ordem not in importacoes_dict:
-                    importacoes_dict[imp.nr_ordem] = imp
+            # Uma linha por nr_fatura+indicador (ou O.S./id_contrato sem zeros à esquerda).
+            # SPD não pode sobrescrever o registro do FPD: a chave inclui o indicador.
+            from crm_app.services.fpd_import_service import (
+                buscar_importacao_indexada,
+                indexar_importacoes,
+                match_status_para_contrato,
+                registrar_importacao_no_indice,
+            )
+            importacoes_dict = indexar_importacoes(ImportacaoFPD.objects.all())
             
             # Listas para bulk operations (reduz queries drasticamente)
             faturas_para_criar = []
@@ -14006,6 +14013,7 @@ class ImportarFPDView(APIView):
             importacoes_para_atualizar = []
             # GAP 1+2: contratos que tiveram fatura 1 criada/atualizada (para atualizar ContratoM10 e elegibilidade)
             contratos_afetados_ids = set()
+            contratos_fatura1_ids = set()
             faturas_atualizar_ids: set[int] = set()
 
             def _carregar_faturas_contrato(contrato_id: int) -> dict:
@@ -14019,32 +14027,39 @@ class ImportarFPDView(APIView):
                     faturas_por_contrato[contrato_id] = cache
                 return cache
 
-            def _agendar_fatura1(contrato, campos: dict) -> None:
-                """Agenda create/update da fatura 1 sem duplicar (mesmo O.S ou signal)."""
+            from crm_app.services.fpd_import_service import aplicar_status_fpd_com_conferencia
+
+            def _agendar_fatura(contrato, numero: int, campos: dict) -> None:
+                """Agenda create/update da fatura do indicador (1=FPD, 2=SPD, 3=TPD)."""
                 cache = _carregar_faturas_contrato(contrato.id)
-                fatura = cache.get(1)
+                fatura = cache.get(numero)
                 if fatura is None:
                     fatura = FaturaM10.objects.filter(
-                        contrato_id=contrato.id, numero_fatura=1
+                        contrato_id=contrato.id, numero_fatura=numero
                     ).first()
                     if fatura:
-                        cache[1] = fatura
+                        cache[numero] = fatura
 
                 if fatura is not None and getattr(fatura, 'pk', None):
+                    campos = aplicar_status_fpd_com_conferencia(
+                        fatura,
+                        status_fpd=campos.get('status') or 'NAO_PAGO',
+                        campos_fpd=campos,
+                    )
                     for chave, valor in campos.items():
                         setattr(fatura, chave, valor)
                     if fatura.pk not in faturas_atualizar_ids:
                         faturas_para_atualizar.append(fatura)
                         faturas_atualizar_ids.add(fatura.pk)
-                    cache[1] = fatura
+                    cache[numero] = fatura
                 elif fatura is not None:
                     # Já enfileirada em faturas_para_criar (O.S repetida na planilha)
                     for chave, valor in campos.items():
                         setattr(fatura, chave, valor)
                 else:
-                    nova = FaturaM10(contrato=contrato, numero_fatura=1, **campos)
+                    nova = FaturaM10(contrato=contrato, numero_fatura=numero, **campos)
                     faturas_para_criar.append(nova)
-                    cache[1] = nova
+                    cache[numero] = nova
 
             with transaction.atomic():  # Garantir atomicidade
                 for idx, row in df.iterrows():
@@ -14117,8 +14132,9 @@ class ImportarFPDView(APIView):
                             indicador_fpd = extrair_indicador_fpd(row)
                             nr_dias_atraso = row.get('nr_dias_atraso', 0)
                             
-                            # Normalizar status usando mapeamento padronizado
-                            status = normalizar_status_fpd(status_str)
+                            ds_sit = str(row.get('ds_sit_fatura') or '').strip()
+                            if ds_sit.lower() == 'nan':
+                                ds_sit = ''
 
                             # Extrair e converter datas - Excel armazena como números serial
                             dt_venc = row.get('dt_venc_orig')
@@ -14149,10 +14165,17 @@ class ImportarFPDView(APIView):
                                     defaults={'total_instalados': 0, 'total_ativos': 0}
                                 )
 
-                            # Preparar fatura 1 (update se já existe — inclusive via signal)
+                            # FPD=1ª, SPD=2ª, TPD=3ª. A planilha não pode cair sempre na fatura 1.
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
+                            numero_fatura = INDICADOR_PARA_NUMERO_FATURA.get(indicador_fpd, 1)
+                            status = resolver_status_fatura_fpd(
+                                status_str,
+                                ds_sit_fatura=ds_sit,
+                                data_vencimento=dt_venc_date,
+                                dias_atraso=nr_dias_atraso_int,
+                            )
 
-                            _agendar_fatura1(contrato, {
+                            _agendar_fatura(contrato, numero_fatura, {
                                 'numero_fatura_operadora': nr_fatura,
                                 'valor': vl_fatura_float,
                                 'data_vencimento': dt_venc_date,
@@ -14165,10 +14188,13 @@ class ImportarFPDView(APIView):
                                 'data_importacao_fpd': data_importacao_agora,
                             })
                             contratos_afetados_ids.add(contrato.id)
+                            if numero_fatura == 1:
+                                contratos_fatura1_ids.add(contrato.id)
 
-                            # Preparar ImportacaoFPD para bulk
-                            # Buscar por nr_ordem (atualizar se existir, criar se não existir)
-                            importacao_existente = importacoes_dict.get(nr_ordem)
+                            # Preparar ImportacaoFPD para bulk (nr_fatura+indicador, senão O.S. sem zeros)
+                            importacao_existente = buscar_importacao_indexada(
+                                importacoes_dict, nr_ordem, indicador_fpd, nr_fatura, id_contrato,
+                            )
                             
                             if importacao_existente:
                                 # Atualizar registro existente com novos dados da planilha
@@ -14178,14 +14204,19 @@ class ImportarFPDView(APIView):
                                 importacao_existente.dt_pagamento = dt_pgto_date
                                 importacao_existente.nr_dias_atraso = nr_dias_atraso_int
                                 importacao_existente.ds_status_fatura = status_str
+                                importacao_existente.ds_sit_fatura = ds_sit.upper()
                                 importacao_existente.vl_fatura = vl_fatura_float
                                 importacao_existente.indicador = indicador_fpd
+                                importacao_existente.numero_fatura_m10 = numero_fatura
                                 importacao_existente.contrato_m10 = contrato
-                                importacoes_para_atualizar.append(importacao_existente)
+                                importacao_existente.match_status = match_status_para_contrato(contrato)
+                                registrar_importacao_no_indice(importacoes_dict, importacao_existente)
+                                if importacao_existente.pk and importacao_existente not in importacoes_para_atualizar:
+                                    importacoes_para_atualizar.append(importacao_existente)
                                 registros_atualizados += 1
                             else:
                                 # Criar novo registro
-                                importacoes_para_criar.append(ImportacaoFPD(
+                                nova_imp = ImportacaoFPD(
                                     nr_ordem=nr_ordem,
                                     nr_fatura=nr_fatura,
                                     id_contrato=id_contrato,
@@ -14193,10 +14224,15 @@ class ImportarFPDView(APIView):
                                     dt_pagamento=dt_pgto_date,
                                     nr_dias_atraso=nr_dias_atraso_int,
                                     ds_status_fatura=status_str,
+                                    ds_sit_fatura=ds_sit.upper(),
                                     vl_fatura=vl_fatura_float,
                                     indicador=indicador_fpd,
-                                    contrato_m10=contrato
-                                ))
+                                    numero_fatura_m10=numero_fatura,
+                                    contrato_m10=contrato,
+                                    match_status=match_status_para_contrato(contrato),
+                                )
+                                importacoes_para_criar.append(nova_imp)
+                                registrar_importacao_no_indice(importacoes_dict, nova_imp)
                                 registros_importacoes_fpd += 1
                             
                             valor_total += vl_fatura_float
@@ -14213,7 +14249,9 @@ class ImportarFPDView(APIView):
                             vl_fatura_float = extrair_vl_fatura_fpd(row)
                             indicador_fpd = extrair_indicador_fpd(row)
                             nr_dias_atraso = row.get('nr_dias_atraso', 0)
-                            status = normalizar_status_fpd(status_str)
+                            ds_sit = str(row.get('ds_sit_fatura') or '').strip()
+                            if ds_sit.lower() == 'nan':
+                                ds_sit = ''
 
                             if pd.notna(dt_venc):
                                 if isinstance(dt_venc, (int, float)):
@@ -14233,6 +14271,13 @@ class ImportarFPDView(APIView):
 
                             vl_fatura_float = extrair_vl_fatura_fpd(row)
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
+                            numero_fatura = INDICADOR_PARA_NUMERO_FATURA.get(indicador_fpd, 1)
+                            status = resolver_status_fatura_fpd(
+                                status_str,
+                                ds_sit_fatura=ds_sit,
+                                data_vencimento=dt_venc_date,
+                                dias_atraso=nr_dias_atraso_int,
+                            )
 
                             try:
                                 contrato_orfao = criar_contrato_orfao_fpd(
@@ -14255,7 +14300,7 @@ class ImportarFPDView(APIView):
                                     f.numero_fatura: f
                                     for f in FaturaM10.objects.filter(contrato_id=contrato_orfao.id)
                                 }
-                                _agendar_fatura1(contrato_orfao, {
+                                _agendar_fatura(contrato_orfao, numero_fatura, {
                                     'numero_fatura_operadora': nr_fatura,
                                     'valor': vl_fatura_float,
                                     'data_vencimento': dt_venc_date,
@@ -14268,12 +14313,19 @@ class ImportarFPDView(APIView):
                                     'data_importacao_fpd': data_importacao_agora,
                                 })
                                 contratos_afetados_ids.add(contrato_orfao.id)
+                                if numero_fatura == 1:
+                                    contratos_fatura1_ids.add(contrato_orfao.id)
                                 vinculo_contrato = contrato_orfao
                             except Exception as e_orf:
                                 logger.warning('Falha ao criar órfão FPD OS=%s: %s', nr_ordem, e_orf)
                                 vinculo_contrato = None
 
-                            importacao_sem_contrato = importacoes_dict.get(nr_ordem)
+                            importacao_sem_contrato = buscar_importacao_indexada(
+                                importacoes_dict, nr_ordem, indicador_fpd, nr_fatura, id_contrato,
+                            )
+                            status_match = match_status_para_contrato(
+                                vinculo_contrato, sem_contrato_real=True,
+                            )
                             if importacao_sem_contrato:
                                 importacao_sem_contrato.id_contrato = id_contrato
                                 importacao_sem_contrato.nr_fatura = nr_fatura
@@ -14281,13 +14333,18 @@ class ImportarFPDView(APIView):
                                 importacao_sem_contrato.dt_pagamento = dt_pgto_date
                                 importacao_sem_contrato.nr_dias_atraso = nr_dias_atraso_int
                                 importacao_sem_contrato.ds_status_fatura = status_str
+                                importacao_sem_contrato.ds_sit_fatura = ds_sit.upper()
                                 importacao_sem_contrato.vl_fatura = vl_fatura_float
                                 importacao_sem_contrato.indicador = indicador_fpd
+                                importacao_sem_contrato.numero_fatura_m10 = numero_fatura
                                 importacao_sem_contrato.contrato_m10 = vinculo_contrato
-                                importacoes_para_atualizar.append(importacao_sem_contrato)
+                                importacao_sem_contrato.match_status = status_match
+                                registrar_importacao_no_indice(importacoes_dict, importacao_sem_contrato)
+                                if importacao_sem_contrato.pk and importacao_sem_contrato not in importacoes_para_atualizar:
+                                    importacoes_para_atualizar.append(importacao_sem_contrato)
                                 registros_nao_encontrados += 1
                             else:
-                                importacoes_para_criar.append(ImportacaoFPD(
+                                nova_imp = ImportacaoFPD(
                                     nr_ordem=nr_ordem,
                                     nr_fatura=nr_fatura,
                                     id_contrato=id_contrato,
@@ -14295,10 +14352,15 @@ class ImportarFPDView(APIView):
                                     dt_pagamento=dt_pgto_date,
                                     nr_dias_atraso=nr_dias_atraso_int,
                                     ds_status_fatura=status_str,
+                                    ds_sit_fatura=ds_sit.upper(),
                                     vl_fatura=vl_fatura_float,
                                     indicador=indicador_fpd,
+                                    numero_fatura_m10=numero_fatura,
                                     contrato_m10=vinculo_contrato,
-                                ))
+                                    match_status=status_match,
+                                )
+                                importacoes_para_criar.append(nova_imp)
+                                registrar_importacao_no_indice(importacoes_dict, nova_imp)
                                 registros_importacoes_fpd += 1
                                 registros_nao_encontrados += 1
 
@@ -14333,7 +14395,6 @@ class ImportarFPDView(APIView):
                         (cid, num): pk
                         for cid, num, pk in FaturaM10.objects.filter(
                             contrato_id__in=ids_contratos_criar,
-                            numero_fatura=1,
                         ).values_list('contrato_id', 'numero_fatura', 'id')
                     } if ids_contratos_criar else {}
 
@@ -14364,7 +14425,8 @@ class ImportarFPDView(APIView):
                 if importacoes_para_atualizar:
                     ImportacaoFPD.objects.bulk_update(importacoes_para_atualizar, [
                         'id_contrato', 'nr_fatura', 'dt_venc_orig', 'dt_pagamento', 'nr_dias_atraso',
-                        'ds_status_fatura', 'vl_fatura', 'indicador', 'contrato_m10'
+                        'ds_status_fatura', 'ds_sit_fatura', 'vl_fatura', 'indicador',
+                        'numero_fatura_m10', 'contrato_m10', 'match_status',
                     ], batch_size=500)
                 
                 # Salvar contratos atualizados em bulk
@@ -14373,9 +14435,9 @@ class ImportarFPDView(APIView):
                     ContratoM10.objects.bulk_update(contratos_para_atualizar, ['numero_contrato_definitivo'], batch_size=500)
 
                 # GAP 1+2: Atualizar campos FPD no ContratoM10 e recalcular elegibilidade nos contratos afetados
-                if contratos_afetados_ids:
+                if contratos_fatura1_ids:
                     faturas1 = FaturaM10.objects.filter(
-                        contrato_id__in=contratos_afetados_ids,
+                        contrato_id__in=contratos_fatura1_ids,
                         numero_fatura=1
                     ).select_related('contrato')
                     contratos_fpd_atualizar = []

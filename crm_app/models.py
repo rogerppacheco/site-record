@@ -5476,6 +5476,27 @@ class WhatsAppConversation(models.Model):
         blank=True,
         related_name="conversas_whatsapp",
     )
+    # Etapa comercial espelhada do Funil (estilo Kommo: mover etapa no chat).
+    ETAPA_INTERESSE = "INTERESSE"
+    ETAPA_PRE_VENDA = "PRE_VENDA"
+    ETAPA_VENDA = "VENDA"
+    ETAPA_CHURN = "CHURN"
+    ETAPA_BIO = "BIO"
+    ETAPA_MAILING = "MAILING"
+    ETAPA_SUPORTE = "SUPORTE"
+    ETAPA_CHOICES = (
+        ("", "—"),
+        (ETAPA_INTERESSE, "Interesse"),
+        (ETAPA_PRE_VENDA, "Pré-venda"),
+        (ETAPA_VENDA, "Venda"),
+        (ETAPA_CHURN, "Repescar Churn"),
+        (ETAPA_BIO, "Repescagem Bio"),
+        (ETAPA_MAILING, "Mailing"),
+        (ETAPA_SUPORTE, "Suporte"),
+    )
+    etapa_funil = models.CharField(
+        max_length=16, choices=ETAPA_CHOICES, blank=True, default="", db_index=True
+    )
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -5492,8 +5513,36 @@ class WhatsAppConversation(models.Model):
     last_message_preview = models.CharField(max_length=240, blank=True, default="")
     last_direction = models.CharField(max_length=10, blank=True, default="")
     janela_aberta_ate = models.DateTimeField(null=True, blank=True)
+    encerrada_em = models.DateTimeField(null=True, blank=True)
+    primeira_resposta_humana_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Momento da 1ª mensagem de saída de um operador humano.",
+    )
+    csat_nota = models.PositiveSmallIntegerField(null=True, blank=True)
+    csat_em = models.DateTimeField(null=True, blank=True)
+    # Canal Meta usado na próxima resposta humana (timeline CRM unificada).
+    REPLY_CANAL_CLIENTE = "cliente"
+    REPLY_CANAL_FUNIL = "funil"
+    REPLY_CANAL_CHOICES = (
+        (REPLY_CANAL_CLIENTE, "Inbox (#194)"),
+        (REPLY_CANAL_FUNIL, "Funil (#247)"),
+    )
+    reply_canal = models.CharField(
+        max_length=16,
+        choices=REPLY_CANAL_CHOICES,
+        default=REPLY_CANAL_CLIENTE,
+        db_index=True,
+        help_text="Purpose de envio do próximo reply humano (cliente=#194, funil=#247).",
+    )
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
+    tags = models.ManyToManyField(
+        "WhatsAppTag",
+        blank=True,
+        related_name="conversas",
+    )
 
     class Meta:
         db_table = "crm_whatsapp_conversation"
@@ -5506,6 +5555,10 @@ class WhatsAppConversation(models.Model):
                 name="crm_wa_conv_ch_last_idx",
             ),
             models.Index(fields=["telefone", "-last_message_at"], name="crm_wa_conv_tel_idx"),
+            models.Index(
+                fields=["channel", "reply_canal", "status", "-last_message_at"],
+                name="crm_wa_conv_ch_rc_st_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -5543,6 +5596,7 @@ class MensagemWhatsAppAtendimento(models.Model):
     ORIGEM_OPERADOR = "OPERADOR"
     ORIGEM_CRM = "CRM"
     ORIGEM_CANAL = "CANAL"
+    ORIGEM_FUNIL = "FUNIL"
 
     telefone = models.CharField(
         max_length=20,
@@ -5643,6 +5697,221 @@ class MensagemWhatsAppAtendimentoArquivo(models.Model):
 
     def __str__(self) -> str:
         return f"Arquivo {self.telefone} {self.data_hora}"
+
+
+class WhatsAppTag(models.Model):
+    """Tag comercial/operacional para conversas do inbox (estilo Kommo)."""
+
+    nome = models.CharField(max_length=40, unique=True)
+    cor = models.CharField(max_length=16, blank=True, default="#6c757d")
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_tag"
+        verbose_name = "Tag WhatsApp"
+        verbose_name_plural = "Tags WhatsApp"
+        ordering = ["nome"]
+
+    def __str__(self) -> str:
+        return self.nome
+
+
+class ConversacaoNota(models.Model):
+    """Nota interna (só equipe) na timeline da conversa."""
+
+    conversa = models.ForeignKey(
+        WhatsAppConversation,
+        on_delete=models.CASCADE,
+        related_name="notas",
+    )
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notas_conversa_whatsapp",
+    )
+    texto = models.TextField()
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_conversacao_nota"
+        verbose_name = "Nota de conversa WhatsApp"
+        verbose_name_plural = "Notas de conversa WhatsApp"
+        ordering = ["-criado_em", "-id"]
+
+    def __str__(self) -> str:
+        return f"Nota #{self.pk} conv={self.conversa_id}"
+
+
+class ConversacaoTarefa(models.Model):
+    """Follow-up / tarefa ligada à conversa (estilo Kommo)."""
+
+    STATUS_PENDENTE = "PENDENTE"
+    STATUS_CONCLUIDA = "CONCLUIDA"
+    STATUS_CANCELADA = "CANCELADA"
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, "Pendente"),
+        (STATUS_CONCLUIDA, "Concluída"),
+        (STATUS_CANCELADA, "Cancelada"),
+    )
+
+    conversa = models.ForeignKey(
+        WhatsAppConversation,
+        on_delete=models.CASCADE,
+        related_name="tarefas",
+    )
+    titulo = models.CharField(max_length=200)
+    dono = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tarefas_conversa_whatsapp",
+    )
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tarefas_criadas_conversa_whatsapp",
+    )
+    prazo = models.DateTimeField(null=True, blank=True, db_index=True)
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDENTE, db_index=True
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    concluida_em = models.DateTimeField(null=True, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_conversacao_tarefa"
+        verbose_name = "Tarefa de conversa WhatsApp"
+        verbose_name_plural = "Tarefas de conversa WhatsApp"
+        ordering = ["status", "prazo", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.titulo} ({self.status})"
+
+
+class ConversacaoEvento(models.Model):
+    """Timeline de eventos de sistema/CRM na conversa."""
+
+    TIPO_ASSUMIU = "ASSUMIU"
+    TIPO_TRANSFERIU = "TRANSFERIU"
+    TIPO_LIBEROU = "LIBEROU"
+    TIPO_ENCERROU = "ENCERROU"
+    TIPO_REABRIU = "REABRIU"
+    TIPO_ETAPA = "ETAPA"
+    TIPO_TAG = "TAG"
+    TIPO_NOTA = "NOTA"
+    TIPO_TAREFA = "TAREFA"
+    TIPO_NAO_PERTURBE = "NAO_PERTURBE"
+    TIPO_FUNIL = "FUNIL"
+    TIPO_HANDOFF = "HANDOFF"
+    TIPO_TRIGGER = "TRIGGER"
+    TIPO_SISTEMA = "SISTEMA"
+    TIPO_CHOICES = (
+        (TIPO_ASSUMIU, "Assumiu"),
+        (TIPO_TRANSFERIU, "Transferiu"),
+        (TIPO_LIBEROU, "Liberou"),
+        (TIPO_ENCERROU, "Encerrou"),
+        (TIPO_REABRIU, "Reabriu"),
+        (TIPO_ETAPA, "Etapa"),
+        (TIPO_TAG, "Tag"),
+        (TIPO_NOTA, "Nota"),
+        (TIPO_TAREFA, "Tarefa"),
+        (TIPO_NAO_PERTURBE, "Não perturbe"),
+        (TIPO_FUNIL, "Funil"),
+        (TIPO_HANDOFF, "Handoff"),
+        (TIPO_TRIGGER, "Trigger"),
+        (TIPO_SISTEMA, "Sistema"),
+    )
+
+    conversa = models.ForeignKey(
+        WhatsAppConversation,
+        on_delete=models.CASCADE,
+        related_name="eventos",
+    )
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, db_index=True)
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="eventos_conversa_whatsapp",
+    )
+    texto = models.CharField(max_length=500, blank=True, default="")
+    payload = models.JSONField(default=dict, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_conversacao_evento"
+        verbose_name = "Evento de conversa WhatsApp"
+        verbose_name_plural = "Eventos de conversa WhatsApp"
+        ordering = ["-criado_em", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.tipo} conv={self.conversa_id}"
+
+
+class RespostaRapida(models.Model):
+    """Atalhos de texto para o composer do inbox."""
+
+    atalho = models.CharField(max_length=40, unique=True)
+    texto = models.TextField()
+    grupo = models.CharField(max_length=40, blank=True, default="")
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_resposta_rapida"
+        verbose_name = "Resposta rápida WhatsApp"
+        verbose_name_plural = "Respostas rápidas WhatsApp"
+        ordering = ["atalho"]
+
+    def __str__(self) -> str:
+        return self.atalho
+
+
+class WhatsAppEtapaTrigger(models.Model):
+    """Ação automática ao entrar numa etapa do funil (estilo Salesbot/Kommo)."""
+
+    ACAO_PAUSAR_BOT = "PAUSAR_BOT"
+    ACAO_DEVOLVER_BOT = "DEVOLVER_BOT"
+    ACAO_TAG = "TAG"
+    ACAO_TAREFA = "TAREFA"
+    ACAO_TEMPLATE = "TEMPLATE"
+    ACAO_CHOICES = (
+        (ACAO_PAUSAR_BOT, "Pausar bot / fila humana"),
+        (ACAO_DEVOLVER_BOT, "Devolver ao bot"),
+        (ACAO_TAG, "Aplicar tag"),
+        (ACAO_TAREFA, "Criar tarefa"),
+        (ACAO_TEMPLATE, "Enviar template Meta"),
+    )
+
+    etapa = models.CharField(max_length=16, db_index=True)
+    acao = models.CharField(max_length=20, choices=ACAO_CHOICES)
+    ativo = models.BooleanField(default=True)
+    prioridade = models.PositiveSmallIntegerField(default=100)
+    # Parâmetros por ação
+    tag_nome = models.CharField(max_length=40, blank=True, default="")
+    tag_cor = models.CharField(max_length=16, blank=True, default="#6c757d")
+    tarefa_titulo = models.CharField(max_length=200, blank=True, default="")
+    template_name = models.CharField(max_length=120, blank=True, default="")
+    template_params = models.JSONField(default=list, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_whatsapp_etapa_trigger"
+        verbose_name = "Trigger de etapa WhatsApp"
+        verbose_name_plural = "Triggers de etapa WhatsApp"
+        ordering = ["etapa", "prioridade", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.etapa} → {self.acao}"
 
 
 class SessaoTratamento(models.Model):
@@ -6021,15 +6290,21 @@ class RepescagemBioRegistro(models.Model):
 
 
 class FunilTemplateEnvio(models.Model):
-    """Log de envios de template Meta no Funil (Interesse / Churn / Bio)."""
+    """Log de envios de template Meta no Funil (Interesse / Churn / Bio).
+
+    ABA_MAILING entra nas choices para ConfigDisparoFunil / FunilDisparoLote;
+    o envio de mailing continua em MailingEnvio (fila própria).
+    """
 
     ABA_INTERESSE = 'INTERESSE'
     ABA_CHURN = 'CHURN'
     ABA_BIO = 'BIO'
+    ABA_MAILING = 'MAILING'
     ABA_CHOICES = (
         (ABA_INTERESSE, 'Interesse'),
         (ABA_CHURN, 'Repescar Churn'),
         (ABA_BIO, 'Repescagem Bio'),
+        (ABA_MAILING, 'Mailing'),
     )
 
     STATUS_ACEITO = 'ACEITO'

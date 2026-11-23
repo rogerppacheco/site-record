@@ -30,7 +30,7 @@ Planilhas de 03/11/2026 em `docs/mailings/` (Algar, TIM, Nio, Vero) sobem pela a
 4. Respostas (texto ou botão *Falar conosco*) → status `RESPONDEU` na mesma aba
 5. *Falar conosco* ou *Estou com dúvida* → resposta no Funil (`RESPONDEU`)
 
-## Templates Meta (MARKETING / pt_BR)
+## Templates Meta (UTILITY / pt_BR)
 
 Arquivo para colar no gerenciador: `docs/WhatsApp_Templates_Mailing_Mercado.docx`  
 Gerar: `python docs/gerar_docx_templates_mailing.py`  

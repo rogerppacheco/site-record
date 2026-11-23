@@ -11,7 +11,9 @@ from crm_app.services.qualidade_service import (
     FILA_ATRASADOS_GTE60,
     FILA_ATRASADOS_LT60,
     HORARIO_JOB_COBRANCA,
+    _fmt_data_br,
     _id_contrato_fpd,
+    _rotulo_fila_fatura,
     classificar_fila_atraso,
     classificar_motivo_bloqueio_cobranca,
     corte_vencimento_fpd,
@@ -315,3 +317,33 @@ class TestFocoTratamento(SimpleTestCase):
         self.assertEqual(normalizar_segmento_foco(''), '')
         self.assertEqual(normalizar_segmento_foco('Varejo'), '')
         self.assertEqual(normalizar_segmento_foco('todos'), '')
+
+
+class TestRotuloFilaExportacao(SimpleTestCase):
+    def test_classifica_como_a_tela(self) -> None:
+        hoje = date(2026, 10, 13)
+        self.assertEqual(
+            _rotulo_fila_fatura(SimpleNamespace(status='PAGO', data_vencimento=date(2026, 8, 2)), hoje),
+            'Pagas',
+        )
+        self.assertEqual(
+            _rotulo_fila_fatura(SimpleNamespace(status='OUTROS', data_vencimento=date(2026, 8, 2)), hoje),
+            'Pagas',
+        )
+        self.assertEqual(
+            _rotulo_fila_fatura(SimpleNamespace(status='ATRASADO', data_vencimento=date(2026, 8, 15)), hoje),
+            '−60d',
+        )
+        self.assertEqual(
+            _rotulo_fila_fatura(SimpleNamespace(status='ATRASADO', data_vencimento=date(2026, 8, 14)), hoje),
+            '+60d',
+        )
+        self.assertEqual(
+            _rotulo_fila_fatura(SimpleNamespace(status='NAO_PAGO', data_vencimento=date(2026, 10, 20)), hoje),
+            'Aberto',
+        )
+        self.assertEqual(_rotulo_fila_fatura(None, hoje), 'Sem fatura')
+
+    def test_data_br(self) -> None:
+        self.assertEqual(_fmt_data_br('2026-08-15'), '15/08/2026')
+        self.assertEqual(_fmt_data_br(''), '')

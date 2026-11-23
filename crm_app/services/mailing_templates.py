@@ -1,11 +1,14 @@
-"""Templates Meta (MARKETING) para mailings comprados — tom informativo, sem oferta."""
+"""Templates Meta (UTILITY) para mailings — tom informativo, sem oferta."""
 from __future__ import annotations
 
 from typing import Any, Sequence, Tuple
 
 from crm_app.models import MailingContato
 from crm_app.services.mailing_import_service import primeiro_nome
-from crm_app.services.whatsapp.nio_templates import tentar_enviar_ou_texto_funil
+from crm_app.services.whatsapp.nio_templates import (
+    render_template_preview,
+    tentar_enviar_ou_texto_funil,
+)
 
 TEMPLATE_REPARO = 'mailing_reparo_v1'
 TEMPLATE_INSTALACAO = 'mailing_instalacao_v1'
@@ -32,7 +35,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_REPARO,
         'titulo': 'Reparo / problema de internet',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -47,7 +50,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_INSTALACAO,
         'titulo': 'Instalação recente',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -62,7 +65,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_MUDANCA,
         'titulo': 'Mudança de endereço',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -77,7 +80,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_SERVICO,
         'titulo': 'Serviço / retirada',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -92,7 +95,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_CANCELAMENTO,
         'titulo': 'Cancelamento',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -110,7 +113,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_FECHADO,
         'titulo': 'Contrato fechado',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -128,7 +131,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_ABERTO,
         'titulo': 'Chamado aberto / técnico',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -146,7 +149,7 @@ TEMPLATE_SPECS = [
     {
         'nome': TEMPLATE_GENERICO,
         'titulo': 'Genérico',
-        'categoria': 'MARKETING',
+        'categoria': 'UTILITY',
         'corpo': (
             'Olá, {{1}}.\n'
             '\n'
@@ -207,6 +210,133 @@ def enviar_mailing_contato(contato: MailingContato) -> Tuple[bool, Any, str, str
         contato.telefone_e164,
         template,
         params,
-        fallback_texto(contato),
+        fallback_texto(contato) or render_template_preview(template, params),
     )
     return ok, resp, canal, template
+
+
+def corrigir_datas_mailing_no_inbox(*, limite: int = 2000) -> dict:
+    """Alinha data_hora das msgs espelhadas com MailingEnvio.enviado_em."""
+    from crm_app.models import MailingEnvio, MensagemWhatsAppAtendimento, WhatsAppConversation
+
+    limite = max(1, min(int(limite or 2000), 5000))
+    envios = list(
+        MailingEnvio.objects.filter(sucesso=True)
+        .exclude(message_id="")
+        .exclude(enviado_em__isnull=True)
+        .order_by("-enviado_em")[:limite]
+    )
+    by_mid = {
+        (e.message_id or "")[:128]: e.enviado_em
+        for e in envios
+        if e.message_id and e.enviado_em
+    }
+    if not by_mid:
+        return {"ok": True, "atualizados": 0, "conversas": 0}
+
+    msgs = list(
+        MensagemWhatsAppAtendimento.objects.filter(
+            origem=MensagemWhatsAppAtendimento.ORIGEM_FUNIL,
+            message_id__in=list(by_mid.keys()),
+        ).only("id", "message_id", "data_hora", "conversa_id", "telefone", "texto", "direcao")
+    )
+    atualizados = 0
+    conv_ids: set[int] = set()
+    for msg in msgs:
+        mid = (msg.message_id or "")[:128]
+        dt = by_mid.get(mid)
+        if not dt:
+            continue
+        if msg.data_hora and abs((msg.data_hora - dt).total_seconds()) < 2:
+            continue
+        MensagemWhatsAppAtendimento.objects.filter(pk=msg.pk).update(data_hora=dt)
+        atualizados += 1
+        if msg.conversa_id:
+            conv_ids.add(msg.conversa_id)
+
+    # Recalcula preview/data da conversa pela mensagem mais recente.
+    conversas_ok = 0
+    for cid in conv_ids:
+        ultima = (
+            MensagemWhatsAppAtendimento.objects.filter(conversa_id=cid)
+            .order_by("-data_hora", "-id")
+            .only("data_hora", "texto", "direcao")
+            .first()
+        )
+        if ultima is None:
+            continue
+        preview = (ultima.texto or "").replace("\n", " ").strip()[:240]
+        WhatsAppConversation.objects.filter(pk=cid).update(
+            last_message_at=ultima.data_hora,
+            last_message_preview=preview,
+            last_direction=ultima.direcao or "",
+        )
+        conversas_ok += 1
+
+    return {
+        "ok": True,
+        "atualizados": atualizados,
+        "conversas": conversas_ok,
+        "candidatos": len(msgs),
+    }
+
+
+def backfill_mailing_no_inbox(*, limite: int = 300, corrigir_datas: bool = True) -> dict:
+    """Espelha envios de mailing já feitos (histórico) no inbox CRM.
+
+    Só sucesso + message_id; não duplica se a mensagem já existir.
+    Por padrão também corrige data_hora de espelhos já criados.
+    """
+    from crm_app.models import MailingEnvio, MensagemWhatsAppAtendimento
+    from crm_app.services.whatsapp.atendimento_crm import espelhar_envio_funil_no_inbox
+    from crm_app.services.whatsapp.nio_templates import render_template_preview
+
+    limite = max(1, min(int(limite or 300), 1500))
+    envios = list(
+        MailingEnvio.objects.filter(sucesso=True)
+        .exclude(message_id="")
+        .select_related("contato")
+        .order_by("-enviado_em")[:limite]
+    )
+    mids = [(env.message_id or "")[:128] for env in envios if env.message_id]
+    ja = set(
+        MensagemWhatsAppAtendimento.objects.filter(message_id__in=mids).values_list(
+            "message_id", flat=True
+        )
+    )
+    criados = 0
+    pulados = 0
+    for env in envios:
+        mid = (env.message_id or "")[:128]
+        if not mid or mid in ja:
+            pulados += 1
+            continue
+        contato = env.contato
+        tel = getattr(contato, "telefone_e164", "") or ""
+        if len("".join(ch for ch in tel if ch.isdigit())) < 8:
+            pulados += 1
+            continue
+        params = body_params_contato(contato) if contato else []
+        preview = render_template_preview(env.template_nome or "", params)
+        if not preview or preview.startswith("Template:"):
+            preview = fallback_texto(contato) if contato else f"[Mailing] {env.template_nome}"
+        try:
+            # Sem vincular FunilTratamento (ref mailing) — só timeline + etapa.
+            espelhar_envio_funil_no_inbox(
+                telefone=tel,
+                template_nome=env.template_nome or "",
+                texto=preview[:500],
+                message_id=mid,
+                sucesso=True,
+                aba="MAILING",
+                ref_id="",
+                data_hora=env.enviado_em,
+            )
+            ja.add(mid)
+            criados += 1
+        except Exception:
+            pulados += 1
+    out = {"ok": True, "criados": criados, "pulados": pulados, "limite": limite}
+    if corrigir_datas:
+        out["datas"] = corrigir_datas_mailing_no_inbox(limite=max(limite, 500))
+    return out
