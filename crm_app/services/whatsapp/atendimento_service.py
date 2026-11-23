@@ -1458,12 +1458,22 @@ def responder_texto(usuario, telefone: str, texto: str) -> tuple[str, dict]:
             detalhe_api = str(resp.get("message") or resp.get("error") or resp)[:240]
         else:
             detalhe_api = str(resp or "")[:240]
+        # Meta/WhatsAtende diz janela fechada: alinha o CRM (evita badge 24h mentiroso).
+        if "24-hour window is closed" in detalhe_api.lower() or "template is required" in detalhe_api.lower():
+            try:
+                from crm_app.models import WhatsAppConversation
+
+                WhatsAppConversation.objects.filter(
+                    telefone__in=telefones_equivalentes(tel)
+                ).update(janela_aberta_ate=None)
+            except Exception:
+                logger.debug("[atendimento] falha ao alinhar janela fechada", exc_info=True)
         msg = "A Cloud API não confirmou o envio. A tentativa ficou registrada na conversa."
         if detalhe_api:
             msg = f"{msg} ({detalhe_api})"
         return "falha_envio", {
             "detail": msg,
-            "janela_aberta": True,
+            "janela_aberta": False if "24-hour window is closed" in detalhe_api.lower() else True,
             "codigo": "falha_envio",
             "conversa": detalhe_conversa(usuario, tel),
         }

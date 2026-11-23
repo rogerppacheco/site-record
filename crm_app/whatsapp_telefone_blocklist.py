@@ -58,10 +58,20 @@ def _telefones_extra_settings() -> Iterable[str]:
 
 
 def _telefones_banco_dados() -> Iterable[str]:
+    """Só bloqueio duro (loop IA / outro).
+
+    `conversa_manual` (Assumir no inbox) NÃO entra aqui: pausa o bot via
+    `bot_pausado()`, mas o webhook precisa continuar gravando entradas no
+    atendimento e abrindo a janela 24h.
+    """
     try:
         from crm_app.models import WhatsAppTelefoneSemIa
 
-        return WhatsAppTelefoneSemIa.objects.filter(ativo=True).values_list('telefone', flat=True)
+        return (
+            WhatsAppTelefoneSemIa.objects.filter(ativo=True)
+            .exclude(motivo=WhatsAppTelefoneSemIa.MOTIVO_CONVERSA_MANUAL)
+            .values_list('telefone', flat=True)
+        )
     except Exception:
         return ()
 
