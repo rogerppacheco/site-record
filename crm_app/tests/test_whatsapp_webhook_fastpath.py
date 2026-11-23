@@ -56,6 +56,19 @@ class WhatsappWebhookFastpathTests(SimpleTestCase):
         }
         self.assertIsNone(avaliar_fastpath_zapi(payload))
 
+    def test_type_button_com_texto_nao_ignora(self):
+        """WhatsAtende/Meta costumam mandar type=button no clique do template."""
+        payload = {
+            'phone': '5531988804000',
+            'type': 'button',
+            'text': {'message': 'Falar com atendente'},
+            'buttonsResponseMessage': {
+                'buttonId': 'falar_atendente',
+                'selectedButtonText': 'Falar com atendente',
+            },
+        }
+        self.assertIsNone(avaliar_fastpath_zapi(payload))
+
     def test_webhook_vazio_sem_botao_ignora(self):
         payload = {
             'phone': '553187970208',

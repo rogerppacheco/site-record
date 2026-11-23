@@ -417,12 +417,12 @@ class WhatsAtendeProvider(WhatsAppProvider):
         caption: Optional[str] = None,
     ) -> bool:
         numero = self._destino(telefone)
-        payload: Dict[str, Any] = {
+        payload: Dict[str, Any] = self._anexar_whatsapp_id({
             "number": numero,
             "fileUrl": pdf_url,
             "caption": caption or nome_arquivo,
             "msdelay": 1000,
-        }
+        })
         resp = self._request("POST", "/api/messages/send/linkPDF", payload, timeout=60)
         return self.resposta_indica_sucesso(resp)
 

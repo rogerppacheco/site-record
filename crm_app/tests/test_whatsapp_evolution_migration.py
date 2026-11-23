@@ -56,6 +56,29 @@ class TestWebhookNormalizer(SimpleTestCase):
         }
         self.assertEqual(detectar_provedor(payload), "whatsatende")
 
+    def test_normaliza_hub_chat_phone_number(self) -> None:
+        """Payload hub (subscriptions): telefone em chat.phoneNumber."""
+        payload = {
+            "event": "message.received",
+            "connection": {"id": "uuid", "channel": "whatsapp"},
+            "chat": {
+                "id": 1,
+                "phoneNumber": "5531988804000",
+                "contactName": "Roger",
+            },
+            "message": {
+                "id": 99,
+                "direction": "in",
+                "type": "button",
+                "text": "Falar com atendente",
+            },
+        }
+        self.assertEqual(detectar_provedor(payload), "whatsatende")
+        canon = normalizar_webhook(payload)
+        self.assertEqual(canon["phone"], "5531988804000")
+        self.assertFalse(canon["fromMe"])
+        self.assertEqual(canon["message"]["text"], "Falar com atendente")
+
     def test_normaliza_texto_evolution(self) -> None:
         payload = {
             "event": "messages.upsert",

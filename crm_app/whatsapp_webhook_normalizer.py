@@ -516,21 +516,29 @@ def _normalizar_whatsatende(payload: Dict[str, Any]) -> Dict[str, Any]:
         ).strip()
 
     contact = payload.get("contact") if isinstance(payload.get("contact"), dict) else {}
+    chat = payload.get("chat") if isinstance(payload.get("chat"), dict) else {}
     phone = _digitos_telefone(
         payload.get("senderNumber")
         or contact.get("number")
         or contact.get("phone")
+        or chat.get("phoneNumber")
+        or chat.get("phone")
+        or chat.get("number")
         or payload.get("number")
         or payload.get("phone")
+        or payload.get("from")
     )
 
     # userId preenchido = mensagem enviada pelo WhatsAtende/API (fromMe)
+    # Hub novo: message.direction in/out
+    direction = str(message_obj.get("direction") or payload.get("direction") or "").lower()
     user_id = payload.get("userId")
     from_me = bool(
         user_id not in (None, "", 0, "0")
         or payload.get("fromMe")
         or payload.get("isFromMe")
         or message_obj.get("fromMe")
+        or direction in ("out", "outbound", "outgoing")
     )
 
     mid = (

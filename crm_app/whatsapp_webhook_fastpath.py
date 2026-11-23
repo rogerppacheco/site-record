@@ -22,6 +22,12 @@ _TIPOS_PROCESSAR = frozenset({
     'receivedcallback',
     'message',
     'messages',
+    # Clique em botão / reply de template (WhatsAtende / Meta Cloud).
+    'button',
+    'buttons_response',
+    'button_reply',
+    'interactive',
+    'templatebuttonreply',
 })
 
 _CHAVES_MIDIA = frozenset({
