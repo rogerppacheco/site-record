@@ -16,13 +16,15 @@ python manage.py createcachetable 2>/dev/null || true
 # marca tudo como "unmodified", mantendo staticfiles/ commitado (menu.js v5 etc.).
 echo "[STATIC] collectstatic --clear (fonte: static/ → staticfiles/)..."
 python manage.py collectstatic --noinput --clear --skip-checks
-if ! grep -q 'MENU.JS v6.0' /app/staticfiles/js/menu.js 2>/dev/null \
-   && ! grep -q 'MENU.JS v6.0' /app/staticfiles/js/menu.*.js 2>/dev/null; then
-  echo "[STATIC] ERRO: menu.js v6.0 nao apareceu em staticfiles apos collectstatic"
+# Aceita qualquer patch 6.x (v6.0, v6.2, …) — o marcador muda com o cache-bust.
+if ! grep -qE 'MENU\.JS v6\.' /app/staticfiles/js/menu.js 2>/dev/null \
+   && ! grep -qE 'MENU\.JS v6\.' /app/staticfiles/js/menu.*.js 2>/dev/null; then
+  echo "[STATIC] ERRO: menu.js v6.x nao apareceu em staticfiles apos collectstatic"
   ls -la /app/static/js/menu.js /app/staticfiles/js/menu* 2>&1 || true
+  head -n 3 /app/staticfiles/js/menu.js 2>&1 || true
   exit 1
 fi
-echo "[STATIC] menu.js v6.0 OK"
+echo "[STATIC] menu.js v6.x OK"
 
 echo "[GUNICORN] workers=${WORKERS} threads=${THREADS} timeout=1200"
 
