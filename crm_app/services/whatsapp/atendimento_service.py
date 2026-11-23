@@ -1453,8 +1453,16 @@ def responder_texto(usuario, telefone: str, texto: str) -> tuple[str, dict]:
             except Exception:
                 logger.exception("[atendimento] falha ao gravar reply Funil")
     if not ok:
+        detalhe_api = ""
+        if isinstance(resp, dict):
+            detalhe_api = str(resp.get("message") or resp.get("error") or resp)[:240]
+        else:
+            detalhe_api = str(resp or "")[:240]
+        msg = "A Cloud API não confirmou o envio. A tentativa ficou registrada na conversa."
+        if detalhe_api:
+            msg = f"{msg} ({detalhe_api})"
         return "falha_envio", {
-            "detail": "A Cloud API não confirmou o envio. A tentativa ficou registrada na conversa.",
+            "detail": msg,
             "janela_aberta": True,
             "codigo": "falha_envio",
             "conversa": detalhe_conversa(usuario, tel),

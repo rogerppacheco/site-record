@@ -94,6 +94,15 @@ class WhatsAtendeProvider(WhatsAppProvider):
     def _destino(self, telefone: str) -> str:
         return formatar_telefone_br(telefone)
 
+    def _anexar_whatsapp_id(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Garante envio na conexão certa (Funil #247 / Cliente #194 / Interno)."""
+        if self.whatsapp_id:
+            try:
+                payload["whatsappId"] = int(self.whatsapp_id)
+            except (TypeError, ValueError):
+                payload["whatsappId"] = self.whatsapp_id
+        return payload
+
     def _request(
         self,
         method: str,
@@ -229,12 +238,12 @@ class WhatsAtendeProvider(WhatsAppProvider):
         self, telefone: str, mensagem: str
     ) -> Tuple[bool, Any]:
         numero = self._destino(telefone)
-        payload = {
+        payload = self._anexar_whatsapp_id({
             "number": numero,
             "body": mensagem or "",
             "closeTicket": False,
             "msdelay": 1000,
-        }
+        })
         resp = self._request("POST", "/api/messages/send", payload)
         if self.resposta_indica_sucesso(resp):
             mid = self._message_id(resp)
@@ -305,11 +314,7 @@ class WhatsAtendeProvider(WhatsAppProvider):
             "number": numero,
             "template": template_obj,
         }
-        if self.whatsapp_id:
-            try:
-                payload["whatsappId"] = int(self.whatsapp_id)
-            except (TypeError, ValueError):
-                payload["whatsappId"] = self.whatsapp_id
+        self._anexar_whatsapp_id(payload)
         if params_list:
             payload["templateParams"] = params_list
 
@@ -340,12 +345,12 @@ class WhatsAtendeProvider(WhatsAppProvider):
         self, telefone: str, url: str, caption: str = ""
     ) -> Tuple[bool, Any]:
         numero = self._destino(telefone)
-        payload = {
+        payload = self._anexar_whatsapp_id({
             "number": numero,
             "msdelay": 1000,
             "url": url,
             "caption": caption or "",
-        }
+        })
         resp = self._request("POST", "/api/messages/send/linkImage", payload, timeout=60)
         return self.resposta_indica_sucesso(resp), resp
 
@@ -389,13 +394,13 @@ class WhatsAtendeProvider(WhatsAppProvider):
         data = img_b64 or ""
         if "base64," not in data:
             data = "data:image/png;base64," + data
-        payload = {
+        payload = self._anexar_whatsapp_id({
             "number": numero,
             "base64Data": data,
             "fileName": "image.png",
             "caption": caption or "",
             "msdelay": 1000,
-        }
+        })
         resp = self._request("POST", "/api/messages/send/base64", payload, timeout=60)
         if self.resposta_indica_sucesso(resp) and isinstance(resp, dict):
             mid = self._message_id(resp)
