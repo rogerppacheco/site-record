@@ -19531,6 +19531,220 @@ def _atuacao_q_no_periodo(metrica, d_ini=None, d_fim=None, dia=None):
     return Q(data_abertura__date__gte=d_ini, data_abertura__date__lte=d_fim)
 
 
+def _atuacao_parse_iso_date(valor):
+    from datetime import date
+
+    if not valor:
+        return None
+    try:
+        parts = str(valor).strip()[:10].split('-')
+        if len(parts) != 3:
+            return None
+        return date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except (TypeError, ValueError):
+        return None
+
+
+def _atuacao_periodos_visao_diaria(request, hoje, meses_mensal):
+    """
+    Resolve quais meses/dias entram na Visão Diária do Excel.
+    Retorna lista de dicts: {'ano', 'mes', 'dias', 'rotulo'} ou (None, erro_str).
+    """
+    import calendar
+    from datetime import date
+    from dateutil.relativedelta import relativedelta
+
+    modo = (request.query_params.get('diario_modo') or 'mes_atual').strip().lower()
+    if modo not in ('mes_atual', 'todos', 'dia', 'intervalo'):
+        modo = 'mes_atual'
+
+    def _mes_completo(ano, mes):
+        ultimo = calendar.monthrange(ano, mes)[1]
+        return {
+            'ano': ano,
+            'mes': mes,
+            'dias': list(range(1, ultimo + 1)),
+            'rotulo': f'{mes:02d}/{ano}',
+        }
+
+    if modo == 'mes_atual':
+        return [_mes_completo(hoje.year, hoje.month)], None
+
+    if modo == 'todos':
+        periodos = []
+        for m in meses_mensal:
+            periodos.append(_mes_completo(m.year, m.month))
+        return periodos, None
+
+    d_ini = _atuacao_parse_iso_date(request.query_params.get('diario_inicio'))
+    d_fim = _atuacao_parse_iso_date(request.query_params.get('diario_fim')) or d_ini
+
+    if modo == 'dia':
+        if not d_ini:
+            return None, 'Informe a data (diario_inicio) para a Visão Diária.'
+        return [{
+            'ano': d_ini.year,
+            'mes': d_ini.month,
+            'dias': [d_ini.day],
+            'rotulo': d_ini.strftime('%d/%m/%Y'),
+        }], None
+
+    # intervalo
+    if not d_ini or not d_fim:
+        return None, 'Informe data início e fim para o intervalo da Visão Diária.'
+    if d_ini > d_fim:
+        return None, 'A data início não pode ser maior que a data fim.'
+    limite = hoje - relativedelta(months=12)
+    if d_ini < limite:
+        return None, 'O intervalo da Visão Diária pode cobrir no máximo 12 meses retroativos.'
+    if (d_fim - d_ini).days > 366:
+        return None, 'O intervalo da Visão Diária não pode ultrapassar 366 dias.'
+
+    periodos = []
+    cursor = date(d_ini.year, d_ini.month, 1)
+    fim_mes = date(d_fim.year, d_fim.month, 1)
+    while cursor <= fim_mes:
+        ultimo = calendar.monthrange(cursor.year, cursor.month)[1]
+        dias = []
+        for d in range(1, ultimo + 1):
+            dia_dt = date(cursor.year, cursor.month, d)
+            if d_ini <= dia_dt <= d_fim:
+                dias.append(d)
+        if dias:
+            periodos.append({
+                'ano': cursor.year,
+                'mes': cursor.month,
+                'dias': dias,
+                'rotulo': f'{cursor.month:02d}/{cursor.year}',
+            })
+        cursor = cursor + relativedelta(months=1)
+    if not periodos:
+        return None, 'Nenhum dia válido no intervalo informado.'
+    return periodos, None
+
+
+def _atuacao_escrever_planilha_diaria(
+    wb,
+    qs,
+    group_fields,
+    metrica,
+    rotulo_metrica,
+    periodo,
+    estilos,
+    titulo_aba,
+):
+    """Escreve uma aba de Visão Diária para um mês (ou subconjunto de dias)."""
+    from django.db.models import Count
+    from datetime import date
+
+    ano = periodo['ano']
+    mes = periodo['mes']
+    dias = periodo['dias']
+    # Filtra pelo intervalo efetivo dos dias selecionados
+    d_ini = date(ano, mes, dias[0])
+    d_fim = date(ano, mes, dias[-1])
+    qs_periodo = qs.filter(_atuacao_q_no_periodo(metrica, d_ini, d_fim))
+
+    annotations_d = {}
+    for d in dias:
+        dia_date = date(ano, mes, d)
+        annotations_d[f'dia_{d}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, dia=dia_date))
+
+    dados_d = qs_periodo.values(*group_fields).annotate(
+        total_mes=Count('id', filter=_atuacao_q_no_periodo(metrica, d_ini, d_fim)),
+        **annotations_d
+    ).filter(total_mes__gt=0).order_by('-total_mes')
+
+    ws2 = wb.create_sheet(title=titulo_aba[:31])
+    headers_d = [f"Local ({rotulo_metrica})"] + [str(d) for d in dias] + ["Total"]
+    ws2.append(headers_d)
+
+    header_font = estilos['header_font']
+    header_fill = estilos['header_fill']
+    border_thin = estilos['border_thin']
+    fill_level_0 = estilos['fill_level_0']
+    font_level_0 = estilos['font_level_0']
+    fill_level_1 = estilos['fill_level_1']
+    font_level_1 = estilos['font_level_1']
+    fill_level_2 = estilos['fill_level_2']
+    font_level_2 = estilos['font_level_2']
+    fill_level_3 = estilos['fill_level_3']
+    font_level_3 = estilos['font_level_3']
+    font_muted = estilos['font_muted']
+    Alignment = estilos['Alignment']
+
+    for col, h in enumerate(headers_d, 1):
+        cell = ws2.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+        ws2.column_dimensions[estilos['get_column_letter'](col)].width = 6 if col > 1 else 40
+
+    n_dias = len(dias)
+    root_d = {
+        'nome': f"TOTAL {periodo['rotulo']}",
+        'totais': [0] * n_dias,
+        'total_mes': 0,
+        'children': {},
+    }
+    for d in dados_d:
+        current = root_d
+        current['total_mes'] += d['total_mes']
+        for i, dia_num in enumerate(dias):
+            current['totais'][i] += d.get(f'dia_{dia_num}', 0)
+
+        path = [d.get(f) or 'NI' for f in group_fields]
+        for p in path:
+            if p not in current['children']:
+                current['children'][p] = {
+                    'nome': p,
+                    'totais': [0] * n_dias,
+                    'total_mes': 0,
+                    'children': {},
+                }
+            current = current['children'][p]
+            current['total_mes'] += d['total_mes']
+            for i, dia_num in enumerate(dias):
+                current['totais'][i] += d.get(f'dia_{dia_num}', 0)
+
+    current_row_d = 2
+
+    def write_node_d(node, level):
+        nonlocal current_row_d
+
+        indent = "    " * level
+        row_data = [f"{indent}{node['nome']}"] + [v if v > 0 else '-' for v in node['totais']] + [node['total_mes']]
+        ws2.append(row_data)
+
+        row_idx = current_row_d
+        fill = fill_level_0 if level == 0 else fill_level_1 if level == 1 else fill_level_2 if level == 2 else fill_level_3
+        font = font_level_0 if level == 0 else font_level_1 if level == 1 else font_level_2 if level == 2 else font_level_3
+
+        for col in range(1, len(row_data) + 1):
+            cell = ws2.cell(row=row_idx, column=col)
+            cell.fill = fill
+            cell.font = font
+            cell.border = border_thin
+            if col > 1:
+                cell.alignment = Alignment(horizontal="center")
+                if col < len(row_data) and row_data[col - 1] == '-':
+                    cell.font = font_muted if level > 0 else font_level_0
+
+        if level > 0:
+            ws2.row_dimensions[row_idx].outline_level = level
+            ws2.row_dimensions[row_idx].hidden = True
+
+        current_row_d += 1
+
+        if node['children']:
+            sorted_children = sorted(node['children'].values(), key=lambda x: x['total_mes'], reverse=True)
+            for child in sorted_children:
+                write_node_d(child, level + 1)
+
+    write_node_d(root_d, 0)
+    return ws2
+
+
 class AtuacaoCampoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -19619,7 +19833,11 @@ class ExportarAtuacaoCampoExcelView(APIView):
         for i in range(6):
             m = hoje - relativedelta(months=i)
             meses.append(m)
-        
+
+        periodos_diario, erro_diario = _atuacao_periodos_visao_diaria(request, hoje, meses)
+        if erro_diario:
+            return Response({'detail': erro_diario}, status=status.HTTP_400_BAD_REQUEST)
+
         qs = _atuacao_campo_queryset(
             vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
         )
@@ -19754,93 +19972,41 @@ class ExportarAtuacaoCampoExcelView(APIView):
                     write_node(child, level + 1)
                     
         write_node(root, 0)
-        
-        # --- PLANILHA 2: VISÃO DIÁRIA ---
-        ws2 = wb.create_sheet(title="Visão Diária")
-        
-        start_m0 = date(hoje.year, hoje.month, 1)
-        end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
-        qs_m0 = qs.filter(_atuacao_q_no_periodo(metrica, start_m0, end_m0))
-        
-        annotations_d = {}
-        for d in range(1, 32):
-            try:
-                dia_date = date(hoje.year, hoje.month, d)
-                annotations_d[f'dia_{d}'] = Count('id', filter=_atuacao_q_no_periodo(metrica, dia=dia_date))
-            except ValueError:
-                annotations_d[f'dia_{d}'] = Count('id', filter=Q(id__isnull=True))
-                
-        dados_d = qs_m0.values(*group_fields).annotate(
-            total_mes=Count('id'),
-            **annotations_d
-        ).filter(total_mes__gt=0).order_by('-total_mes')
-        
-        headers_d = [f"Local ({rotulo_metrica})"] + [str(i) for i in range(1, 32)] + ["Total Mês"]
-        ws2.append(headers_d)
-        
-        for col, h in enumerate(headers_d, 1):
-            cell = ws2.cell(row=1, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center")
-            ws2.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 6
-        ws2.column_dimensions['A'].width = 40
-        
-        root_d = {'nome': 'TOTAL ' + start_m0.strftime('%m/%Y'), 'totais': [0]*31, 'total_mes': 0, 'children': {}}
-        for d in dados_d:
-            current = root_d
-            current['total_mes'] += d['total_mes']
-            for i in range(1, 32):
-                current['totais'][i-1] += d.get(f'dia_{i}', 0)
-                
-            path = [d.get(f) or 'NI' for f in group_fields]
-            for p in path:
-                if p not in current['children']:
-                    current['children'][p] = {'nome': p, 'totais': [0]*31, 'total_mes': 0, 'children': {}}
-                current = current['children'][p]
-                current['total_mes'] += d['total_mes']
-                for i in range(1, 32):
-                    current['totais'][i-1] += d.get(f'dia_{i}', 0)
-                    
-        current_row_d = 2
-        def write_node_d(node, level):
-            nonlocal current_row_d
-            
-            indent = "    " * level
-            row_data = [f"{indent}{node['nome']}"] + [v if v > 0 else '-' for v in node['totais']] + [node['total_mes']]
-            ws2.append(row_data)
-            
-            row_idx = current_row_d
-            fill = fill_level_0 if level == 0 else fill_level_1 if level == 1 else fill_level_2 if level == 2 else fill_level_3
-            font = font_level_0 if level == 0 else font_level_1 if level == 1 else font_level_2 if level == 2 else font_level_3
-            
-            for col in range(1, len(row_data) + 1):
-                cell = ws2.cell(row=row_idx, column=col)
-                cell.fill = fill
-                cell.font = font
-                cell.border = border_thin
-                if col > 1:
-                    cell.alignment = Alignment(horizontal="center")
-                    if col < len(row_data) and row_data[col-1] == '-':
-                        cell.font = font_muted if level > 0 else font_level_0
-            
-            if level > 0:
-                ws2.row_dimensions[row_idx].outline_level = level
-                ws2.row_dimensions[row_idx].hidden = True
-                
-            current_row_d += 1
-            
-            if node['children']:
-                sorted_children = sorted(node['children'].values(), key=lambda x: x['total_mes'], reverse=True)
-                for child in sorted_children:
-                    write_node_d(child, level + 1)
-                    
-        write_node_d(root_d, 0)
-        
+
+        # --- PLANILHAS: VISÃO DIÁRIA (conforme período escolhido) ---
+        estilos_diario = {
+            'header_font': header_font,
+            'header_fill': header_fill,
+            'border_thin': border_thin,
+            'fill_level_0': fill_level_0,
+            'font_level_0': font_level_0,
+            'fill_level_1': fill_level_1,
+            'font_level_1': font_level_1,
+            'fill_level_2': fill_level_2,
+            'font_level_2': font_level_2,
+            'fill_level_3': fill_level_3,
+            'font_level_3': font_level_3,
+            'font_muted': font_muted,
+            'Alignment': Alignment,
+            'get_column_letter': openpyxl.utils.get_column_letter,
+        }
+        multiplas_abas = len(periodos_diario) > 1
+        for periodo in periodos_diario:
+            if multiplas_abas:
+                titulo = f"Diário {periodo['rotulo'].replace('/', '-')}"
+            elif len(periodo['dias']) == 1:
+                titulo = f"Visão Diária {periodo['rotulo'].replace('/', '-')}"
+            else:
+                titulo = "Visão Diária"
+            _atuacao_escrever_planilha_diaria(
+                wb, qs, group_fields, metrica, rotulo_metrica,
+                periodo, estilos_diario, titulo,
+            )
+
         output = BytesIO()
         wb.save(output)
         output.seek(0)
-        
+
         response = HttpResponse(output.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         sufixo = 'Gross' if metrica == 'GROSS' else 'VB'
         response['Content-Disposition'] = f'attachment; filename="Atuacao_em_Campo_{sufixo}.xlsx"'

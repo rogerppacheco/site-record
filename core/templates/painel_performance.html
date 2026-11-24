@@ -896,7 +896,7 @@
                             </div>
 
                             <!-- Exportar -->
-                            <button class="btn btn-sm btn-outline-success fw-bold mt-1 mt-md-0 ms-auto" onclick="exportarAtuacaoCampoExcel()" title="Exportar Excel">
+                            <button class="btn btn-sm btn-outline-success fw-bold mt-1 mt-md-0 ms-auto" id="btn-exportar-atuacao-excel" onclick="abrirModalExportAtuacaoCampo()" title="Exportar Excel">
                                 <i class="bi bi-file-earmark-excel"></i> Excel
                             </button>
                         </div>
@@ -937,6 +937,65 @@
     </main>
 
     <div class="modal fade" id="modalEnvioManual" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Enviar Imagem Agora</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="fw-bold">Para quem?</label><div class="input-group"><input type="text" id="manual-destino" class="form-control" placeholder="ID Grupo ou Telefone..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('manual-destino')"><i class="bi bi-search"></i></button></div></div><div class="alert alert-info small">Isso vai gerar um "print" da tabela atual e enviar imediatamente.</div></div><div class="modal-footer"><button class="btn btn-success w-100" id="btn-enviar-manual" onclick="dispararEnvioManual()">🚀 Enviar Imagem</button></div></div></div></div>
+
+    <div class="modal fade" id="modalExportAtuacaoCampo" tabindex="-1" aria-labelledby="modalExportAtuacaoCampoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="modalExportAtuacaoCampoLabel">
+                        <i class="bi bi-file-earmark-excel text-success"></i> Exportar Excel
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        A aba <strong>Atuação em Campo</strong> (visão mensal) sempre entra no arquivo.
+                        Escolha o período da aba <strong>Visão Diária</strong>:
+                    </p>
+                    <div class="d-flex flex-column gap-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="atuacao-diario-modo" id="atuacao-diario-mes-atual" value="mes_atual" checked onchange="atualizarCamposExportAtuacao()">
+                            <label class="form-check-label" for="atuacao-diario-mes-atual">Mês atual (dias 1–31)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="atuacao-diario-modo" id="atuacao-diario-todos" value="todos" onchange="atualizarCamposExportAtuacao()">
+                            <label class="form-check-label" for="atuacao-diario-todos">Todos os períodos (últimos 6 meses — uma aba por mês)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="atuacao-diario-modo" id="atuacao-diario-dia" value="dia" onchange="atualizarCamposExportAtuacao()">
+                            <label class="form-check-label" for="atuacao-diario-dia">Um dia específico</label>
+                        </div>
+                        <div class="ms-4 mb-1" id="atuacao-export-campo-dia" style="display: none;">
+                            <input type="date" id="atuacao-export-dia" class="form-control form-control-sm" style="max-width: 200px;">
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="atuacao-diario-modo" id="atuacao-diario-intervalo" value="intervalo" onchange="atualizarCamposExportAtuacao()">
+                            <label class="form-check-label" for="atuacao-diario-intervalo">Intervalo de datas</label>
+                        </div>
+                        <div class="ms-4 d-flex flex-wrap align-items-end gap-2" id="atuacao-export-campo-intervalo" style="display: none;">
+                            <div>
+                                <label class="form-label small mb-0" for="atuacao-export-inicio">De</label>
+                                <input type="date" id="atuacao-export-inicio" class="form-control form-control-sm">
+                            </div>
+                            <div>
+                                <label class="form-label small mb-0" for="atuacao-export-fim">Até</label>
+                                <input type="date" id="atuacao-export-fim" class="form-control form-control-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-light border small mt-3 mb-0 py-2">
+                        No intervalo ou em “todos os períodos”, cada mês vira uma aba de Visão Diária no Excel.
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-sm btn-success" id="btn-confirmar-export-atuacao" onclick="exportarAtuacaoCampoExcel()">
+                        <i class="bi bi-download"></i> Baixar Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="modalConfigRobo" tabindex="-1">
         <div class="modal-dialog modal-xl">
@@ -2682,6 +2741,38 @@
             }
         };
         
+        window.atualizarCamposExportAtuacao = function() {
+            const modo = document.querySelector('input[name="atuacao-diario-modo"]:checked')?.value || 'mes_atual';
+            const campoDia = document.getElementById('atuacao-export-campo-dia');
+            const campoIntervalo = document.getElementById('atuacao-export-campo-intervalo');
+            if (campoDia) campoDia.style.display = modo === 'dia' ? '' : 'none';
+            if (campoIntervalo) campoIntervalo.style.display = modo === 'intervalo' ? '' : 'none';
+        };
+
+        window.abrirModalExportAtuacaoCampo = function() {
+            const hoje = new Date();
+            const yyyyMmDd = (d) => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            };
+            const diaInput = document.getElementById('atuacao-export-dia');
+            const iniInput = document.getElementById('atuacao-export-inicio');
+            const fimInput = document.getElementById('atuacao-export-fim');
+            if (diaInput && !diaInput.value) diaInput.value = yyyyMmDd(hoje);
+            if (fimInput && !fimInput.value) fimInput.value = yyyyMmDd(hoje);
+            if (iniInput && !iniInput.value) {
+                const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+                iniInput.value = yyyyMmDd(inicioMes);
+            }
+            atualizarCamposExportAtuacao();
+            const el = document.getElementById('modalExportAtuacaoCampo');
+            if (el && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+        };
+
         window.exportarAtuacaoCampoExcel = async function() {
             const metrica = document.getElementById('atuacao-metrica')?.value || 'VB';
             const vendedor = document.getElementById('atuacao-vendedor').value;
@@ -2691,7 +2782,26 @@
             const agrupamentos = Array.from(document.querySelectorAll('.atuacao-grupo'))
                 .map(s => s.value).filter(v => v);
             const agrupamentosUnicos = [...new Set(agrupamentos)];
-            
+            const modo = document.querySelector('input[name="atuacao-diario-modo"]:checked')?.value || 'mes_atual';
+            const diaSel = (document.getElementById('atuacao-export-dia')?.value || '').trim();
+            const iniSel = (document.getElementById('atuacao-export-inicio')?.value || '').trim();
+            const fimSel = (document.getElementById('atuacao-export-fim')?.value || '').trim();
+
+            if (modo === 'dia' && !diaSel) {
+                alert('Selecione o dia para a Visão Diária.');
+                return;
+            }
+            if (modo === 'intervalo') {
+                if (!iniSel || !fimSel) {
+                    alert('Informe data início e fim para o intervalo da Visão Diária.');
+                    return;
+                }
+                if (iniSel > fimSel) {
+                    alert('A data início não pode ser maior que a data fim.');
+                    return;
+                }
+            }
+
             const params = new URLSearchParams();
             params.set('metrica', metrica);
             if (vendedor) params.set('vendedor', vendedor);
@@ -2701,17 +2811,30 @@
             const supervisor = document.getElementById('filtro-supervisor')?.value || '';
             if (supervisor) params.set('supervisor', supervisor);
             if (agrupamentosUnicos.length > 0) params.set('agrupamento', agrupamentosUnicos.join(','));
-            
+            params.set('diario_modo', modo);
+            if (modo === 'dia') {
+                params.set('diario_inicio', diaSel);
+                params.set('diario_fim', diaSel);
+            } else if (modo === 'intervalo') {
+                params.set('diario_inicio', iniSel);
+                params.set('diario_fim', fimSel);
+            }
+
             const url = `/api/crm/atuacao-campo/exportar/?${params.toString()}`;
+            const btnToolbar = document.getElementById('btn-exportar-atuacao-excel');
+            const btnModal = document.getElementById('btn-confirmar-export-atuacao');
+            const btns = [btnToolbar, btnModal].filter(Boolean);
+            const originais = btns.map(b => b.innerHTML);
             try {
-                const btn = document.querySelector('button[onclick="exportarAtuacaoCampoExcel()"]');
-                const btnOriginalHTML = btn.innerHTML;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
-                btn.disabled = true;
-                
+                btns.forEach(b => {
+                    b.disabled = true;
+                    b.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
+                });
+
                 const response = await axios.get(url, {
                     responseType: 'blob',
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    validateStatus: (s) => s >= 200 && s < 300,
                 });
                 const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
                 const link = document.createElement('a');
@@ -2721,12 +2844,32 @@
                 link.click();
                 link.remove();
                 window.URL.revokeObjectURL(blobUrl);
-                
-                btn.innerHTML = btnOriginalHTML;
-                btn.disabled = false;
+
+                const modalEl = document.getElementById('modalExportAtuacaoCampo');
+                if (modalEl && window.bootstrap) {
+                    const inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) inst.hide();
+                }
             } catch (err) {
                 console.error("Erro exportando excel", err);
-                alert("Erro ao exportar Excel");
+                let msg = "Erro ao exportar Excel";
+                try {
+                    const data = err?.response?.data;
+                    if (data instanceof Blob) {
+                        const texto = await data.text();
+                        msg = (JSON.parse(texto).detail) || msg;
+                    } else if (data?.detail) {
+                        msg = data.detail;
+                    } else if (err?.message) {
+                        msg = err.message;
+                    }
+                } catch (_) {}
+                alert(msg);
+            } finally {
+                btns.forEach((b, i) => {
+                    b.innerHTML = originais[i];
+                    b.disabled = false;
+                });
             }
         };
         
