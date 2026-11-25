@@ -19537,15 +19537,24 @@ def _atuacao_usuarios_ativos_escopo_painel(request):
     return _perf_aplicar_filtro_supervisor(users, params.get('supervisor'))
 
 
-def _atuacao_contar_vendedores_zeraram(request, qs_dia):
-    """Quantidade de vendedores ativos (escopo painel) sem venda no dia (qs já filtrado)."""
+def _atuacao_listar_vendedores_zeraram(request, qs_dia):
+    """
+    Vendedores ativos (escopo painel) sem venda no dia (qs já filtrado).
+    Retorna lista de usernames em maiúsculo, ordenada.
+    """
     vendidos_ids = set(
         qs_dia.exclude(vendedor_id__isnull=True)
         .values_list('vendedor_id', flat=True)
         .distinct()
     )
-    ativos = _atuacao_usuarios_ativos_escopo_painel(request)
-    return ativos.exclude(id__in=vendidos_ids).count()
+    ativos = _atuacao_usuarios_ativos_escopo_painel(request).exclude(id__in=vendidos_ids)
+    nomes = [(u or '').strip().upper() for u in ativos.values_list('username', flat=True)]
+    return sorted(n for n in nomes if n)
+
+
+def _atuacao_contar_vendedores_zeraram(request, qs_dia):
+    """Quantidade de vendedores ativos (escopo painel) sem venda no dia."""
+    return len(_atuacao_listar_vendedores_zeraram(request, qs_dia))
 
 
 def _atuacao_q_no_periodo(metrica, d_ini=None, d_fim=None, dia=None):
@@ -19782,21 +19791,37 @@ def _atuacao_escrever_planilha_diaria(
 
     write_node_d(root_d, 0)
 
-    # Dia específico: linha resumo de vendedores ativos sem venda
+    # Dia específico: resumo + lista de vendedores ativos sem venda
     if request is not None and n_dias == 1:
         dia_unico = date(ano, mes, dias[0])
         qs_dia = qs.filter(_atuacao_q_no_periodo(metrica, dia=dia_unico))
-        qtd_zeraram = _atuacao_contar_vendedores_zeraram(request, qs_dia)
+        nomes_zeraram = _atuacao_listar_vendedores_zeraram(request, qs_dia)
+        qtd_zeraram = len(nomes_zeraram)
         row_zeraram = [f'ZERARAM ({qtd_zeraram})'] + [0] * n_dias + [0]
         ws2.append(row_zeraram)
         row_idx = current_row_d
         for col in range(1, len(row_zeraram) + 1):
             cell = ws2.cell(row=row_idx, column=col)
             cell.fill = fill_level_1
-            cell.font = font_muted
+            cell.font = font_level_1
             cell.border = border_thin
             if col > 1:
                 cell.alignment = Alignment(horizontal='center')
+                cell.font = font_muted
+        current_row_d += 1
+        for nome in nomes_zeraram:
+            row_nome = [f'    {nome}'] + ['-'] * n_dias + [0]
+            ws2.append(row_nome)
+            row_idx = current_row_d
+            for col in range(1, len(row_nome) + 1):
+                cell = ws2.cell(row=row_idx, column=col)
+                cell.fill = fill_level_3
+                cell.font = font_muted
+                cell.border = border_thin
+                if col > 1:
+                    cell.alignment = Alignment(horizontal='center')
+            ws2.row_dimensions[row_idx].outline_level = 1
+            current_row_d += 1
 
     return ws2
 
