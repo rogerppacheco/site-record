@@ -983,6 +983,28 @@
                             </div>
                         </div>
                     </div>
+                    <div class="mt-3">
+                        <label class="form-label small fw-bold mb-1">Canais</label>
+                        <div class="d-flex flex-wrap gap-3" id="atuacao-export-canais">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input atuacao-export-canal" type="checkbox" value="PAP" id="atuacao-export-canal-pap" checked>
+                                <label class="form-check-label" for="atuacao-export-canal-pap">PAP</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input atuacao-export-canal" type="checkbox" value="DIGITAL" id="atuacao-export-canal-digital" checked>
+                                <label class="form-check-label" for="atuacao-export-canal-digital">Digital</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input atuacao-export-canal" type="checkbox" value="RECEPTIVO" id="atuacao-export-canal-receptivo" checked>
+                                <label class="form-check-label" for="atuacao-export-canal-receptivo">Receptivo</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input atuacao-export-canal" type="checkbox" value="PARCEIRO" id="atuacao-export-canal-parceiro" checked>
+                                <label class="form-check-label" for="atuacao-export-canal-parceiro">Parceiro</label>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1">Marque um ou mais canais para filtrar vendas e a lista ZERARAM.</div>
+                    </div>
                     <div class="alert alert-light border small mt-3 mb-0 py-2">
                         No intervalo ou em “todos os períodos”, cada mês vira uma aba de Visão Diária no Excel.
                     </div>
@@ -2766,6 +2788,10 @@
                 const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
                 iniInput.value = yyyyMmDd(inicioMes);
             }
+            const canalToolbar = (document.getElementById('filtro-canal')?.value || '').trim().toUpperCase();
+            document.querySelectorAll('.atuacao-export-canal').forEach(cb => {
+                cb.checked = !canalToolbar || cb.value === canalToolbar;
+            });
             atualizarCamposExportAtuacao();
             const el = document.getElementById('modalExportAtuacaoCampo');
             if (el && window.bootstrap) {
@@ -2802,6 +2828,15 @@
                 }
             }
 
+            const canaisSel = Array.from(document.querySelectorAll('.atuacao-export-canal:checked'))
+                .map(cb => cb.value)
+                .filter(Boolean);
+            const todosCanais = ['PAP', 'DIGITAL', 'RECEPTIVO', 'PARCEIRO'];
+            if (canaisSel.length === 0) {
+                alert('Selecione ao menos um canal (ou marque todos).');
+                return;
+            }
+
             const params = new URLSearchParams();
             params.set('metrica', metrica);
             if (vendedor) params.set('vendedor', vendedor);
@@ -2811,6 +2846,10 @@
             const supervisor = document.getElementById('filtro-supervisor')?.value || '';
             if (supervisor) params.set('supervisor', supervisor);
             if (agrupamentosUnicos.length > 0) params.set('agrupamento', agrupamentosUnicos.join(','));
+            // Só envia filtro se não for exatamente todos os canais
+            if (!(canaisSel.length === todosCanais.length && todosCanais.every(c => canaisSel.includes(c)))) {
+                params.set('canais', canaisSel.join(','));
+            }
             params.set('diario_modo', modo);
             if (modo === 'dia') {
                 params.set('diario_inicio', diaSel);

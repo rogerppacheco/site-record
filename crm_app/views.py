@@ -19487,8 +19487,49 @@ def _atuacao_supervisor_param(request):
     return normalizar_filtro_supervisor(request.query_params.get('supervisor'))
 
 
-def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica, supervisor_id=None):
+_ATUACAO_CANAIS_VALIDOS = ('PAP', 'DIGITAL', 'RECEPTIVO', 'PARCEIRO')
+
+
+def _atuacao_parse_canais(request_or_params):
+    """
+    Lê canais do request/query.
+    Aceita canais=PAP,DIGITAL ou canal=PAP (único / repetido).
+    Retorna lista normalizada ou [] = todos.
+    """
+    if request_or_params is None:
+        return []
+    params = getattr(request_or_params, 'query_params', None)
+    if params is None:
+        params = getattr(request_or_params, 'GET', None)
+    if params is None and hasattr(request_or_params, 'get'):
+        params = request_or_params
+    if params is None:
+        return []
+
+    brutos = []
+    if hasattr(params, 'getlist'):
+        brutos.extend(params.getlist('canal') or [])
+        brutos.extend(params.getlist('canais') or [])
+    joined = None
+    if hasattr(params, 'get'):
+        joined = params.get('canais') or params.get('canal')
+    if joined and not brutos:
+        brutos = [joined]
+    elif joined and ',' in str(joined) and joined not in brutos:
+        brutos.append(joined)
+
+    canais = []
+    for item in brutos:
+        for parte in str(item).split(','):
+            c = parte.strip().upper()
+            if c and c in _ATUACAO_CANAIS_VALIDOS and c not in canais:
+                canais.append(c)
+    return canais
+
+
+def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica, supervisor_id=None, canais=None):
     from .models import Venda
+    from django.db.models import Q
 
     qs = Venda.objects.filter(
         ativo=True,
@@ -19508,6 +19549,11 @@ def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica, supervisor_id
         qs = qs.filter(vendedor__supervisor_id__isnull=True)
     elif supervisor_id:
         qs = qs.filter(vendedor__supervisor_id=supervisor_id)
+    if canais:
+        q_canais = Q()
+        for c in canais:
+            q_canais |= Q(vendedor__canal__iexact=c)
+        qs = qs.filter(q_canais)
     return qs
 
 
@@ -19519,7 +19565,7 @@ def _atuacao_qs_visao_diaria(qs):
 def _atuacao_usuarios_ativos_escopo_painel(request):
     """
     Mesmo universo de vendedores do Painel Hoje, forçando apenas ativos.
-    Escopo por perfil (gestão/supervisor/próprio) + filtro supervisor da query.
+    Escopo por perfil (gestão/supervisor/próprio) + filtro supervisor/canais da query.
     """
     from django.db.models import Q
 
@@ -19534,7 +19580,14 @@ def _atuacao_usuarios_ativos_escopo_painel(request):
     else:
         users = users.filter(id=user.id)
     params = getattr(request, 'query_params', None) or request.GET
-    return _perf_aplicar_filtro_supervisor(users, params.get('supervisor'))
+    users = _perf_aplicar_filtro_supervisor(users, params.get('supervisor'))
+    canais = _atuacao_parse_canais(request)
+    if canais:
+        q_canais = Q()
+        for c in canais:
+            q_canais |= Q(canal__iexact=c)
+        users = users.filter(q_canais)
+    return users
 
 
 def _atuacao_listar_vendedores_zeraram(request, qs_dia):
@@ -19850,7 +19903,9 @@ class AtuacaoCampoView(APIView):
             meses.append(m)
         
         qs = _atuacao_campo_queryset(
-            vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
+            vendedor, uf, cidade, bairro, metrica,
+            supervisor_id=_atuacao_supervisor_param(request),
+            canais=_atuacao_parse_canais(request),
         )
             
         annotations = {}
@@ -19864,8 +19919,8 @@ class AtuacaoCampoView(APIView):
             'cidade': 'cidade',
             'bairro': 'bairro',
             'vendedor': 'vendedor__username',
-            'canal': 'canal',
-            'cluster': 'cluster'
+            'canal': 'vendedor__canal',
+            'cluster': 'vendedor__cluster'
         }
         
         group_fields = []
@@ -19920,7 +19975,9 @@ class ExportarAtuacaoCampoExcelView(APIView):
             return Response({'detail': erro_diario}, status=status.HTTP_400_BAD_REQUEST)
 
         qs = _atuacao_campo_queryset(
-            vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
+            vendedor, uf, cidade, bairro, metrica,
+            supervisor_id=_atuacao_supervisor_param(request),
+            canais=_atuacao_parse_canais(request),
         )
             
         annotations = {}
@@ -19934,8 +19991,8 @@ class ExportarAtuacaoCampoExcelView(APIView):
             'cidade': 'cidade',
             'bairro': 'bairro',
             'vendedor': 'vendedor__username',
-            'canal': 'canal',
-            'cluster': 'cluster'
+            'canal': 'vendedor__canal',
+            'cluster': 'vendedor__cluster'
         }
         
         group_fields = []
@@ -20114,7 +20171,9 @@ class AtuacaoCampoDiarioView(APIView):
         hoje = timezone.localtime(timezone.now()).date()
         
         qs = _atuacao_qs_visao_diaria(_atuacao_campo_queryset(
-            vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
+            vendedor, uf, cidade, bairro, metrica,
+            supervisor_id=_atuacao_supervisor_param(request),
+            canais=_atuacao_parse_canais(request),
         ))
             
         start_m0 = date(hoje.year, hoje.month, 1)
@@ -20134,8 +20193,8 @@ class AtuacaoCampoDiarioView(APIView):
             'cidade': 'cidade',
             'bairro': 'bairro',
             'vendedor': 'vendedor__username',
-            'canal': 'canal',
-            'cluster': 'cluster'
+            'canal': 'vendedor__canal',
+            'cluster': 'vendedor__cluster'
         }
         
         group_fields = []
