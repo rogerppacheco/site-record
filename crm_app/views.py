@@ -19511,6 +19511,43 @@ def _atuacao_campo_queryset(vendedor, uf, cidade, bairro, metrica, supervisor_id
     return qs
 
 
+def _atuacao_qs_visao_diaria(qs):
+    """Visão Diária alinha ao Painel Hoje/Semana: não conta reemissão."""
+    return qs.filter(reemissao=False)
+
+
+def _atuacao_usuarios_ativos_escopo_painel(request):
+    """
+    Mesmo universo de vendedores do Painel Hoje, forçando apenas ativos.
+    Escopo por perfil (gestão/supervisor/próprio) + filtro supervisor da query.
+    """
+    from django.db.models import Q
+
+    User = get_user_model()
+    user = request.user
+    users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root']).filter(is_active=True)
+    grupos_gestao = _perf_grupos_gestao()
+    if is_member(user, grupos_gestao):
+        pass
+    elif is_member(user, ['Supervisor']):
+        users = users.filter(Q(supervisor=user) | Q(id=user.id))
+    else:
+        users = users.filter(id=user.id)
+    params = getattr(request, 'query_params', None) or request.GET
+    return _perf_aplicar_filtro_supervisor(users, params.get('supervisor'))
+
+
+def _atuacao_contar_vendedores_zeraram(request, qs_dia):
+    """Quantidade de vendedores ativos (escopo painel) sem venda no dia (qs já filtrado)."""
+    vendidos_ids = set(
+        qs_dia.exclude(vendedor_id__isnull=True)
+        .values_list('vendedor_id', flat=True)
+        .distinct()
+    )
+    ativos = _atuacao_usuarios_ativos_escopo_painel(request)
+    return ativos.exclude(id__in=vendidos_ids).count()
+
+
 def _atuacao_q_no_periodo(metrica, d_ini=None, d_fim=None, dia=None):
     """VB conta pela data de abertura. Gross conta pela data efetiva de instalação."""
     from django.db.models import Q
@@ -19632,6 +19669,7 @@ def _atuacao_escrever_planilha_diaria(
     periodo,
     estilos,
     titulo_aba,
+    request=None,
 ):
     """Escreve uma aba de Visão Diária para um mês (ou subconjunto de dias)."""
     from django.db.models import Count
@@ -19640,7 +19678,8 @@ def _atuacao_escrever_planilha_diaria(
     ano = periodo['ano']
     mes = periodo['mes']
     dias = periodo['dias']
-    # Filtra pelo intervalo efetivo dos dias selecionados
+    # Filtra pelo intervalo efetivo dos dias selecionados (sem reemissão, como Painel Hoje)
+    qs = _atuacao_qs_visao_diaria(qs)
     d_ini = date(ano, mes, dias[0])
     d_fim = date(ano, mes, dias[-1])
     qs_periodo = qs.filter(_atuacao_q_no_periodo(metrica, d_ini, d_fim))
@@ -19742,6 +19781,23 @@ def _atuacao_escrever_planilha_diaria(
                 write_node_d(child, level + 1)
 
     write_node_d(root_d, 0)
+
+    # Dia específico: linha resumo de vendedores ativos sem venda
+    if request is not None and n_dias == 1:
+        dia_unico = date(ano, mes, dias[0])
+        qs_dia = qs.filter(_atuacao_q_no_periodo(metrica, dia=dia_unico))
+        qtd_zeraram = _atuacao_contar_vendedores_zeraram(request, qs_dia)
+        row_zeraram = [f'ZERARAM ({qtd_zeraram})'] + [0] * n_dias + [0]
+        ws2.append(row_zeraram)
+        row_idx = current_row_d
+        for col in range(1, len(row_zeraram) + 1):
+            cell = ws2.cell(row=row_idx, column=col)
+            cell.fill = fill_level_1
+            cell.font = font_muted
+            cell.border = border_thin
+            if col > 1:
+                cell.alignment = Alignment(horizontal='center')
+
     return ws2
 
 
@@ -20001,6 +20057,7 @@ class ExportarAtuacaoCampoExcelView(APIView):
             _atuacao_escrever_planilha_diaria(
                 wb, qs, group_fields, metrica, rotulo_metrica,
                 periodo, estilos_diario, titulo,
+                request=request,
             )
 
         output = BytesIO()
@@ -20031,9 +20088,9 @@ class AtuacaoCampoDiarioView(APIView):
         
         hoje = timezone.localtime(timezone.now()).date()
         
-        qs = _atuacao_campo_queryset(
+        qs = _atuacao_qs_visao_diaria(_atuacao_campo_queryset(
             vendedor, uf, cidade, bairro, metrica, supervisor_id=_atuacao_supervisor_param(request),
-        )
+        ))
             
         start_m0 = date(hoje.year, hoje.month, 1)
         end_m0 = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
