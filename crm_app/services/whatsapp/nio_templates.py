@@ -492,7 +492,13 @@ def _espelhar_funil_no_inbox(
             ref_id=ref_id or "",
         )
     except Exception:
-        logger.debug("[NioTemplates] espelho Funil→inbox falhou", exc_info=True)
+        logger.exception(
+            "[NioTemplates] espelho Funil→inbox falhou tel=%s tpl=%s aba=%s ref=%s",
+            telefone,
+            template_name,
+            aba,
+            ref_id,
+        )
 
 
 def enviar_template_funil(
@@ -569,6 +575,12 @@ def tentar_enviar_ou_texto_funil(
     template_name: str,
     body_params: Sequence[str],
     fallback_texto: str,
+    *,
+    usuario=None,
+    venda=None,
+    aba: str = "",
+    ref_id: str = "",
+    espelho_texto: str = "",
 ) -> Tuple[bool, Any, str]:
     """
     Template Meta pela conexão Funil (#247). Fallback de texto só se o template falhar.
@@ -576,8 +588,18 @@ def tentar_enviar_ou_texto_funil(
     """
     from crm_app.whatsapp_service import WhatsAppService
 
+    preview = (espelho_texto or fallback_texto or "").strip()
     if templates_habilitados():
-        ok, resp = enviar_template_funil(telefone, template_name, body_params)
+        ok, resp = enviar_template_funil(
+            telefone,
+            template_name,
+            body_params,
+            espelho_texto=preview[:500],
+            usuario=usuario,
+            venda=venda,
+            aba=aba,
+            ref_id=ref_id,
+        )
         if ok:
             return True, resp, "template"
         logger.warning(
@@ -594,6 +616,10 @@ def tentar_enviar_ou_texto_funil(
         texto=(fallback_texto or "")[:500],
         resp=resp,
         sucesso=bool(ok),
+        usuario=usuario,
+        venda=venda,
+        aba=aba,
+        ref_id=ref_id,
     )
     return bool(ok), resp, "texto"
 

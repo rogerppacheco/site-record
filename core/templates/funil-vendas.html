@@ -2011,6 +2011,11 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     function badgeElegibilidade(r) {
         if (!r) return '';
         const motivo = String(r.motivo_inelegivel || '').trim();
+        const jaTentou = /j[aá]\s+houve\s+tentativa|j[aá]\s+enviado/i.test(motivo);
+        if (jaTentou) {
+            const curto = motivo.length > 42 ? motivo.slice(0, 40) + '…' : (motivo || 'Já enviado');
+            return `<span class="funil-badge-eleg no" title="${esc(motivo)}"><i class="bi bi-send-check"></i> ${esc(curto)}</span>`;
+        }
         if (r.elegivel_envio === true) {
             return `<span class="funil-badge-eleg ok" title="Elegível para envio de template"><i class="bi bi-check-circle-fill"></i> Elegível</span>`;
         }
@@ -2094,6 +2099,7 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
     function btnEnviarTemplate(aba, id, r) {
         const elegivel = !!r.elegivel_envio;
         const motivo = r.motivo_inelegivel || '';
+        const jaTentou = /j[aá]\s+houve\s+tentativa|j[aá]\s+enviado/i.test(motivo);
         const prev = r.preview_envio || {};
         const previewBits = [prev.nome, prev.protocolo || prev.contrato || prev.pedido, prev.endereco]
             .filter(Boolean).join(' · ');
@@ -2101,10 +2107,12 @@ mark.funil-mark { padding: 0 2px; border-radius: 3px; background: rgba(250, 204,
             ? (previewBits ? `Enviar template: ${previewBits}` : 'Enviar template WhatsApp')
             : (motivo || 'Não elegível para envio');
         const cls = elegivel ? 'btn-success' : 'btn-outline-secondary';
+        const label = jaTentou ? 'Já enviado' : 'Enviar';
+        const icone = jaTentou ? 'bi-send-check' : 'bi-send';
         return `<button type="button" class="btn btn-sm ${cls} rounded-pill fw-bold btn-funil-tmpl"
             data-aba="${esc(aba)}" data-id="${esc(String(id || ''))}"
             ${elegivel ? '' : 'disabled'} title="${esc(title)}">
-            <i class="bi bi-send me-1"></i>Enviar
+            <i class="bi ${icone} me-1"></i>${label}
         </button>`;
     }
 

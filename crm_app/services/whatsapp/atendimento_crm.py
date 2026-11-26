@@ -4,6 +4,7 @@ Filas, transferência, etapa funil, tags, notas, tarefas e timeline.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Optional
 
@@ -20,6 +21,8 @@ from crm_app.services.whatsapp.atendimento_service import (
     pausar_bot,
     telefones_equivalentes,
 )
+
+logger = logging.getLogger(__name__)
 
 FILAS = ("todas", "minhas", "nao_atribuidas", "bot", "encerradas")
 ETAPAS_VALIDAS = {
@@ -867,7 +870,13 @@ def espelhar_envio_funil_no_inbox(
         )
     except Exception:
         # Dedup message_id ou falha de gravação não deve quebrar o disparo Funil.
-        pass
+        logger.exception(
+            "[AtendimentoCRM] espelho Funil→inbox falhou tel=%s tpl=%s aba=%s ref=%s",
+            tel,
+            template_nome,
+            aba,
+            ref_id,
+        )
     dirty_conv = []
     if sucesso and getattr(conv, "reply_canal", "") != WhatsAppConversation.REPLY_CANAL_FUNIL:
         conv.reply_canal = WhatsAppConversation.REPLY_CANAL_FUNIL

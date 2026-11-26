@@ -26,6 +26,7 @@ ABA_CHURN = FunilTemplateEnvio.ABA_CHURN
 ABA_BIO = FunilTemplateEnvio.ABA_BIO
 
 DEDUP_HORAS = 48
+ENVIANDO_TTL_MIN = 10
 _DIGITS = re.compile(r'\D')
 
 
@@ -64,21 +65,72 @@ def _cpf_tem_venda_crm(cpf: str) -> bool:
     ).exists()
 
 
+def _motivo_dedup(envio: FunilTemplateEnvio) -> str:
+    if envio.status_entrega == FunilTemplateEnvio.STATUS_ENVIANDO:
+        return f'Já houve tentativa de envio em andamento (#{envio.pk}).'
+    return f'Já houve tentativa de envio há menos de {DEDUP_HORAS}h (#{envio.pk}).'
+
+
+def _qs_bloqueia_reenvio(qs):
+    """Sucesso, status de entrega ok, ou claim ENVIANDO ainda fresco."""
+    agora = timezone.now()
+    enviando_desde = agora - timedelta(minutes=ENVIANDO_TTL_MIN)
+    return qs.filter(
+        Q(sucesso=True)
+        | Q(
+            status_entrega__in=(
+                FunilTemplateEnvio.STATUS_ACEITO,
+                FunilTemplateEnvio.STATUS_ENVIADO,
+                FunilTemplateEnvio.STATUS_ENTREGUE,
+                FunilTemplateEnvio.STATUS_LIDO,
+            )
+        )
+        | Q(
+            status_entrega=FunilTemplateEnvio.STATUS_ENVIANDO,
+            enviado_em__gte=enviando_desde,
+        )
+    )
+
+
 def _dedup_recente(cpf: str, template: str) -> Optional[FunilTemplateEnvio]:
+    """Fallback legado: CPF + template (qualquer tentativa que bloqueia)."""
     digitos = _cpf_limpo(cpf)
     if not digitos:
         return None
     limite = timezone.now() - timedelta(hours=DEDUP_HORAS)
     return (
-        FunilTemplateEnvio.objects.filter(
-            cpf=digitos,
-            template_nome=template,
-            sucesso=True,
-            enviado_em__gte=limite,
+        _qs_bloqueia_reenvio(
+            FunilTemplateEnvio.objects.filter(
+                cpf=digitos,
+                template_nome=template,
+                enviado_em__gte=limite,
+            )
         )
         .order_by('-enviado_em')
         .first()
     )
+
+
+def _dedup_tentativa(ctx: dict) -> Optional[FunilTemplateEnvio]:
+    """Bloqueia reenvio: primário aba+ref_id; secundário CPF+template."""
+    limite = timezone.now() - timedelta(hours=DEDUP_HORAS)
+    aba = str(ctx.get('aba') or '').strip().upper()
+    ref = str(ctx.get('ref_id') or '').strip()[:64]
+    if aba and ref:
+        hit = (
+            _qs_bloqueia_reenvio(
+                FunilTemplateEnvio.objects.filter(
+                    aba=aba,
+                    ref_id=ref,
+                    enviado_em__gte=limite,
+                )
+            )
+            .order_by('-enviado_em')
+            .first()
+        )
+        if hit:
+            return hit
+    return _dedup_recente(ctx.get('cpf') or '', ctx.get('template_nome') or '')
 
 
 def _canal_pronto() -> tuple[bool, str]:
@@ -141,13 +193,19 @@ def montar_contexto_bio(linha: dict, *, resolver_nome: bool = True) -> dict:
         motivos.append('Sem nome (CRM/Assertiva).')
 
     params = [primeiro_nome(nome), prot_label] if nome and prot_label else []
-    dedup = _dedup_recente(cpf, template) if not motivos else None
+    ctx_parcial = {
+        'aba': ABA_BIO,
+        'ref_id': cpf or str(linha.get('protocolo') or ''),
+        'cpf': cpf,
+        'template_nome': template,
+    }
+    dedup = _dedup_tentativa(ctx_parcial) if not motivos else None
     if dedup:
-        motivos.append(f'Já enviado há menos de {DEDUP_HORAS}h (#{dedup.pk}).')
+        motivos.append(_motivo_dedup(dedup))
 
     return {
         'aba': ABA_BIO,
-        'ref_id': cpf or str(linha.get('protocolo') or ''),
+        'ref_id': ctx_parcial['ref_id'],
         'cpf': cpf,
         'telefone': tel,
         'template_nome': template,
@@ -205,13 +263,19 @@ def montar_contexto_churn(linha: dict, venda: Optional[Venda] = None) -> dict:
         motivos.append('Sem O.S./pedido para o template.')
 
     params = [primeiro_nome(nome), contrato, endereco] if not motivos else []
-    dedup = _dedup_recente(cpf, template) if not motivos else None
+    ctx_parcial = {
+        'aba': ABA_CHURN,
+        'ref_id': str(linha.get('churn_id') or linha.get('venda_id') or cpf),
+        'cpf': cpf,
+        'template_nome': template,
+    }
+    dedup = _dedup_tentativa(ctx_parcial) if not motivos else None
     if dedup:
-        motivos.append(f'Já enviado há menos de {DEDUP_HORAS}h (#{dedup.pk}).')
+        motivos.append(_motivo_dedup(dedup))
 
     return {
         'aba': ABA_CHURN,
-        'ref_id': str(linha.get('churn_id') or linha.get('venda_id') or cpf),
+        'ref_id': ctx_parcial['ref_id'],
         'cpf': cpf,
         'telefone': tel,
         'template_nome': template,
@@ -261,13 +325,19 @@ def montar_contexto_interesse(mapped: dict, *, pedido_id: Any = None) -> dict:
         motivos.append('CPF já possui venda no CRM.')
 
     params = [primeiro_nome(nome), endereco, pedido] if not motivos else []
-    dedup = _dedup_recente(cpf, template) if not motivos else None
+    ctx_parcial = {
+        'aba': ABA_INTERESSE,
+        'ref_id': str(pedido_id or pedido or cpf),
+        'cpf': cpf,
+        'template_nome': template,
+    }
+    dedup = _dedup_tentativa(ctx_parcial) if not motivos else None
     if dedup:
-        motivos.append(f'Já enviado há menos de {DEDUP_HORAS}h (#{dedup.pk}).')
+        motivos.append(_motivo_dedup(dedup))
 
     return {
         'aba': ABA_INTERESSE,
-        'ref_id': str(pedido_id or pedido or cpf),
+        'ref_id': ctx_parcial['ref_id'],
         'cpf': cpf,
         'telefone': tel,
         'template_nome': template,
@@ -299,6 +369,65 @@ def validar_params(template: str, params: list) -> tuple[bool, str]:
     return True, ''
 
 
+def _reivindicar_envio(ctx: dict, *, usuario=None, force: bool = False):
+    """Cria registro ENVIANDO antes da API. Retorna (envio, erro_dedup)."""
+    if not force:
+        dedup = _dedup_tentativa(ctx)
+        if dedup:
+            return None, _motivo_dedup(dedup)
+
+    usuario_ok = usuario if getattr(usuario, 'is_authenticated', False) else None
+    envio = FunilTemplateEnvio.objects.create(
+        aba=ctx['aba'],
+        ref_id=str(ctx.get('ref_id') or '')[:64],
+        cpf=_cpf_limpo(ctx.get('cpf')),
+        telefone=ctx.get('telefone') or '',
+        template_nome=ctx['template_nome'],
+        body_params=ctx.get('body_params') or [],
+        message_id='',
+        status_entrega=FunilTemplateEnvio.STATUS_ENVIANDO,
+        sucesso=False,
+        erro='',
+        enviado_por=usuario_ok,
+    )
+
+    if not force:
+        # Guarda de corrida: outro claim/sucesso com pk menor venceu.
+        limite = timezone.now() - timedelta(hours=DEDUP_HORAS)
+        conflito = (
+            _qs_bloqueia_reenvio(
+                FunilTemplateEnvio.objects.filter(
+                    aba=envio.aba,
+                    ref_id=envio.ref_id,
+                    enviado_em__gte=limite,
+                    pk__lt=envio.pk,
+                )
+            )
+            .exists()
+        )
+        if not conflito and envio.cpf:
+            conflito = (
+                _qs_bloqueia_reenvio(
+                    FunilTemplateEnvio.objects.filter(
+                        cpf=envio.cpf,
+                        template_nome=envio.template_nome,
+                        enviado_em__gte=limite,
+                        pk__lt=envio.pk,
+                    )
+                )
+                .exists()
+            )
+        if conflito:
+            envio.status_entrega = FunilTemplateEnvio.STATUS_FALHOU
+            envio.erro = 'Duplicata: outra tentativa em andamento ou já enviada.'
+            envio.save(update_fields=['status_entrega', 'erro'])
+            return None, (
+                f'Já houve tentativa de envio desta aba/linha '
+                f'(bloqueado por corrida; claim #{envio.pk}).'
+            )
+    return envio, None
+
+
 def enviar_contexto(ctx: dict, *, usuario=None, force: bool = False) -> dict:
     pronto, motivo_canal = _canal_pronto()
     if not pronto:
@@ -311,42 +440,43 @@ def enviar_contexto(ctx: dict, *, usuario=None, force: bool = False) -> dict:
     if not ok_params:
         return {'ok': False, 'detail': motivo_params, 'contexto': ctx}
 
-    if not force:
-        dedup = _dedup_recente(ctx.get('cpf') or '', ctx['template_nome'])
-        if dedup:
-            return {
-                'ok': False,
-                'detail': f'Já enviado há menos de {DEDUP_HORAS}h (envio #{dedup.pk}).',
-                'contexto': ctx,
-            }
+    envio, motivo_dedup = _reivindicar_envio(ctx, usuario=usuario, force=force)
+    if envio is None:
+        return {
+            'ok': False,
+            'detail': motivo_dedup or 'Já houve tentativa de envio.',
+            'contexto': ctx,
+        }
 
     # Sem fallback texto — só template oficial Meta (espelho inbox via enviar_template_funil).
     params = ctx.get('body_params') or []
     preview = f"[Template {ctx['template_nome']}] " + " · ".join(str(p) for p in params[:4])
-    ok, resp = enviar_template_funil(
-        ctx['telefone'],
-        ctx['template_nome'],
-        ctx['body_params'],
-        espelho_texto=preview[:500],
-        usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
-        venda=ctx.get('venda'),
-        aba=ctx.get('aba') or '',
-        ref_id=str(ctx.get('ref_id') or ''),
-    )
+    try:
+        ok, resp = enviar_template_funil(
+            ctx['telefone'],
+            ctx['template_nome'],
+            ctx['body_params'],
+            espelho_texto=preview[:500],
+            usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
+            venda=ctx.get('venda'),
+            aba=ctx.get('aba') or '',
+            ref_id=str(ctx.get('ref_id') or ''),
+        )
+    except Exception as exc:
+        logger.exception(
+            '[FunilEnvio] falha API aba=%s ref=%s claim=%s',
+            ctx.get('aba'), ctx.get('ref_id'), envio.pk,
+        )
+        ok, resp = False, str(exc)
+
     mid = _extrair_message_id(resp) if ok else ''
-    envio = FunilTemplateEnvio.objects.create(
-        aba=ctx['aba'],
-        ref_id=str(ctx.get('ref_id') or '')[:64],
-        cpf=_cpf_limpo(ctx.get('cpf')),
-        telefone=ctx.get('telefone') or '',
-        template_nome=ctx['template_nome'],
-        body_params=ctx.get('body_params') or [],
-        message_id=mid,
-        status_entrega=FunilTemplateEnvio.STATUS_ACEITO if ok else FunilTemplateEnvio.STATUS_FALHOU,
-        sucesso=bool(ok),
-        erro='' if ok else str(resp)[:2000],
-        enviado_por=usuario if getattr(usuario, 'is_authenticated', False) else None,
+    envio.message_id = mid
+    envio.status_entrega = (
+        FunilTemplateEnvio.STATUS_ACEITO if ok else FunilTemplateEnvio.STATUS_FALHOU
     )
+    envio.sucesso = bool(ok)
+    envio.erro = '' if ok else str(resp)[:2000]
+    envio.save(update_fields=['message_id', 'status_entrega', 'sucesso', 'erro'])
     return {
         'ok': bool(ok),
         'detail': 'Enviado.' if ok else str(resp)[:500],

@@ -202,15 +202,26 @@ def fallback_texto(contato: MailingContato) -> str:
     )
 
 
-def enviar_mailing_contato(contato: MailingContato) -> Tuple[bool, Any, str, str]:
+def enviar_mailing_contato(
+    contato: MailingContato,
+    *,
+    usuario=None,
+) -> Tuple[bool, Any, str, str]:
     """Envia template (ou fallback texto). Retorna (ok, resp, canal, template_nome)."""
+    from crm_app.models import FunilTemplateEnvio
+
     template = template_para_situacao(contato.situacao)
     params = body_params_contato(contato)
+    preview = fallback_texto(contato) or render_template_preview(template, params)
     ok, resp, canal = tentar_enviar_ou_texto_funil(
         contato.telefone_e164,
         template,
         params,
-        fallback_texto(contato) or render_template_preview(template, params),
+        preview,
+        usuario=usuario,
+        aba=FunilTemplateEnvio.ABA_MAILING,
+        ref_id=str(contato.pk),
+        espelho_texto=f'[Template {template}] ' + ' · '.join(str(p) for p in params[:4]),
     )
     return ok, resp, canal, template
 

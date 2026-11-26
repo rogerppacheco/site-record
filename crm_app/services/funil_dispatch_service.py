@@ -367,7 +367,13 @@ def processar_lote(lote: FunilDisparoLote, *, limite: int = 40) -> FunilDisparoL
                 lote.enviados += 1
             else:
                 detail = str(result.get('detail') or '')
-                if 'Já enviado' in detail or 'Não elegível' in detail or 'não elegível' in detail.lower():
+                detail_l = detail.lower()
+                if (
+                    'Já enviado' in detail
+                    or 'Já houve tentativa' in detail
+                    or 'Não elegível' in detail
+                    or 'não elegível' in detail_l
+                ):
                     lote.pulados += 1
                 else:
                     lote.falhas += 1

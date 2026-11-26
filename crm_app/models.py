@@ -6307,17 +6307,27 @@ class FunilTemplateEnvio(models.Model):
         (ABA_MAILING, 'Mailing'),
     )
 
+    STATUS_ENVIANDO = 'ENVIANDO'
     STATUS_ACEITO = 'ACEITO'
     STATUS_ENVIADO = 'ENVIADO'
     STATUS_ENTREGUE = 'ENTREGUE'
     STATUS_LIDO = 'LIDO'
     STATUS_FALHOU = 'FALHOU'
     STATUS_CHOICES = (
+        (STATUS_ENVIANDO, 'Enviando'),
         (STATUS_ACEITO, 'Aceito pela API'),
         (STATUS_ENVIADO, 'Enviado'),
         (STATUS_ENTREGUE, 'Entregue'),
         (STATUS_LIDO, 'Lido'),
         (STATUS_FALHOU, 'Falhou'),
+    )
+    # Status que bloqueiam novo envio (já saiu / em andamento).
+    STATUS_BLOQUEIAM_REENVIO = (
+        STATUS_ENVIANDO,
+        STATUS_ACEITO,
+        STATUS_ENVIADO,
+        STATUS_ENTREGUE,
+        STATUS_LIDO,
     )
 
     aba = models.CharField(max_length=16, choices=ABA_CHOICES, db_index=True)
@@ -6485,6 +6495,7 @@ class MailingContato(models.Model):
     )
 
     STATUS_NOVO = 'NOVO'
+    STATUS_ENVIANDO = 'ENVIANDO'
     STATUS_ENVIADO = 'ENVIADO'
     STATUS_FALHOU = 'FALHOU'
     STATUS_RESPONDEU = 'RESPONDEU'
@@ -6492,6 +6503,7 @@ class MailingContato(models.Model):
     STATUS_IGNORADO = 'IGNORADO'
     STATUS_CHOICES = (
         (STATUS_NOVO, 'Novo'),
+        (STATUS_ENVIANDO, 'Enviando'),
         (STATUS_ENVIADO, 'Enviado'),
         (STATUS_FALHOU, 'Falhou'),
         (STATUS_RESPONDEU, 'Respondeu'),

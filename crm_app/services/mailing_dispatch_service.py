@@ -90,6 +90,7 @@ def iniciar_disparo(
         MailingLote.STATUS_CONCLUIDO,
     ):
         raise ValueError(f'Lote #{lote_id} não está pronto para disparo (status={lote.status}).')
+    _reabrir_enviando_do_lote(lote)
     lote.status = MailingLote.STATUS_DISPARANDO
     lote.filtro_situacao = sit
     lote.disparado_por = usuario if getattr(usuario, 'is_authenticated', False) else lote.disparado_por
@@ -111,6 +112,7 @@ def iniciar_disparo(
 def pausar_disparo(lote_id: int) -> MailingLote:
     lote = MailingLote.objects.get(pk=lote_id)
     if lote.status == MailingLote.STATUS_DISPARANDO:
+        _reabrir_enviando_do_lote(lote)
         lote.status = MailingLote.STATUS_PAUSADO
         lote.mensagem = 'Disparo pausado.'
         lote.save(update_fields=['status', 'mensagem', 'atualizado_em'])
@@ -144,6 +146,14 @@ def _qs_pendentes(lote: MailingLote, situacao: str = ''):
     if sit:
         qs = qs.filter(situacao=sit)
     return qs.order_by('id')
+
+
+def _reabrir_enviando_do_lote(lote: MailingLote) -> int:
+    """Devolve ENVIANDO→NOVO (pausa/retomada ou crash). Não usar no meio do ciclo ativo."""
+    return MailingContato.objects.filter(
+        lote=lote,
+        status=MailingContato.STATUS_ENVIANDO,
+    ).update(status=MailingContato.STATUS_NOVO)
 
 
 def contar_elegiveis(lote_id: int | None = None, situacao: str = '') -> dict:
@@ -210,6 +220,7 @@ def processar_ciclo(lote_id: int, *, limite: int = LOTE_POR_CICLO, sleep: bool =
 
     pendentes = list(_qs_pendentes(lote)[:limite])
     enviados = falhas = 0
+    usuario = getattr(lote, 'disparado_por', None)
     for contato in pendentes:
         lote.refresh_from_db(fields=['status'])
         if lote.status != MailingLote.STATUS_DISPARANDO:
@@ -219,8 +230,19 @@ def processar_ciclo(lote_id: int, *, limite: int = LOTE_POR_CICLO, sleep: bool =
             lote.status = MailingLote.STATUS_PAUSADO
             lote.save(update_fields=['status', 'mensagem', 'atualizado_em'])
             break
+
+        # Claim atômico: só um worker envia cada contato.
+        claimed = MailingContato.objects.filter(
+            pk=contato.pk,
+            status=MailingContato.STATUS_NOVO,
+        ).update(status=MailingContato.STATUS_ENVIANDO)
+        if not claimed:
+            continue
+
         try:
-            ok, resp, canal, template = enviar_mailing_contato(contato)
+            ok, resp, canal, template = enviar_mailing_contato(
+                contato, usuario=usuario,
+            )
             mid = _extrair_message_id(resp)
         except Exception as exc:
             logger.exception('[Mailing] Falha envio contato #%s', contato.pk)
@@ -252,6 +274,10 @@ def processar_ciclo(lote_id: int, *, limite: int = LOTE_POR_CICLO, sleep: bool =
             time.sleep(INTERVALO_SEGUNDOS)
 
     restantes = _qs_pendentes(lote).count()
+    enviando_n = MailingContato.objects.filter(
+        lote=lote,
+        status=MailingContato.STATUS_ENVIANDO,
+    ).count()
     restantes_total = (
         MailingContato.objects.filter(
             lote=lote,
@@ -264,13 +290,19 @@ def processar_ciclo(lote_id: int, *, limite: int = LOTE_POR_CICLO, sleep: bool =
     )
     lote.refresh_from_db()
     if lote.status == MailingLote.STATUS_DISPARANDO and restantes == 0:
-        if restantes_total == 0:
+        if enviando_n > 0:
+            lote.mensagem = f'Aguardando {enviando_n} envio(s) em andamento…'
+            lote.save(update_fields=['mensagem', 'atualizado_em'])
+        elif restantes_total == 0:
             lote.status = MailingLote.STATUS_CONCLUIDO
             lote.disparo_finalizado_em = timezone.now()
             lote.mensagem = (
                 f'Disparo concluído. Enviados={lote.total_enviados}, falhas={lote.total_falhas}, '
                 f'respostas={lote.total_respostas}.'
             )
+            lote.save(update_fields=[
+                'status', 'disparo_finalizado_em', 'mensagem', 'atualizado_em',
+            ])
         else:
             lote.status = MailingLote.STATUS_PRONTO
             sit = lote.filtro_situacao
@@ -278,9 +310,9 @@ def processar_ciclo(lote_id: int, *, limite: int = LOTE_POR_CICLO, sleep: bool =
             lote.mensagem = (
                 f'Situação {sit} concluída neste ciclo. Ainda restam {restantes_total} elegíveis em outras situações.'
             )
-        lote.save(update_fields=[
-            'status', 'filtro_situacao', 'disparo_finalizado_em', 'mensagem', 'atualizado_em',
-        ])
+            lote.save(update_fields=[
+                'status', 'filtro_situacao', 'mensagem', 'atualizado_em',
+            ])
     return {
         'enviados': enviados,
         'falhas': falhas,
