@@ -319,6 +319,11 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const submitBtn = loginForm.querySelector('button[type="submit"]');
             const originalText = submitBtn ? submitBtn.innerText : 'Entrar';
+            const errBox = document.getElementById('error-message');
+            if (errBox) {
+                errBox.style.display = 'none';
+                errBox.textContent = '';
+            }
             if(submitBtn) { submitBtn.innerText = 'Entrando...'; submitBtn.disabled = true; }
             try {
                 const u = document.getElementById('username').value;
@@ -334,6 +339,19 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', (e) => { e.preventDefault(); logout(); });
     });
 });
+
+function mostrarErroLogin(msg) {
+    const errBox = document.getElementById('error-message');
+    const texto = (msg || 'Não foi possível entrar.').toString();
+    if (errBox) {
+        errBox.textContent = texto;
+        errBox.style.display = 'block';
+        errBox.setAttribute('role', 'alert');
+        try { errBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+        return;
+    }
+    try { alert(texto); } catch (_) { console.error(texto); }
+}
 
 async function login(username, password) {
     const csrftoken = getCookie('csrftoken');
@@ -353,13 +371,13 @@ async function login(username, password) {
         });
 
         if (!response.ok) {
-            let msg = 'Usuário ou senha inválidos.';
+            let msg = 'Usuário e/ou senha incorreto(s).';
             try {
                 const errorData = await response.json();
                 msg = errorData.detail || msg;
             } catch (_) { /* corpo não-JSON */ }
-            alert('Falha na autenticação: ' + msg);
-            throw new Error('Falha na autenticação');
+            mostrarErroLogin(msg);
+            return false;
         }
 
         const data = await response.json();
@@ -395,14 +413,15 @@ async function login(username, password) {
             window.location.href = '/area-interna/';
             return true;
         } else {
-            alert('Erro: O servidor não retornou um token válido.');
+            mostrarErroLogin('O servidor não retornou um token válido. Tente novamente.');
             return false;
         }
     } catch (error) {
         if (error && error.name === 'AbortError') {
-            alert('O servidor demorou demais para responder. Tente novamente em alguns segundos ou avise o suporte.');
+            mostrarErroLogin('O servidor demorou demais para responder. Tente novamente em alguns segundos.');
         } else {
             console.error('Erro geral durante o login:', error);
+            mostrarErroLogin('Falha de conexão ao autenticar. Verifique a rede e tente de novo.');
         }
         return false;
     } finally {
