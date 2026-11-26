@@ -22,6 +22,7 @@ from crm_app.services.whatsapp.atendimento_service import (
     iniciar_conversa_por_telefone,
     listar_conversas,
     listar_templates_inbox,
+    resumo_status_templates,
     responder_midia,
     responder_template,
     responder_texto,
@@ -204,13 +205,23 @@ class AtendimentoWhatsAppMidiaView(_AtendimentoAutenticado):
 
 
 class AtendimentoWhatsAppTemplateView(_AtendimentoAutenticado):
-    """GET: catálogo | POST: envia template Meta (sem exigir janela 24h)."""
+    """GET: catálogo + status de aprovação | POST: envia template Meta (sem exigir janela 24h)."""
 
     def get(self, request, telefone=None):
         negado = self._negar_se_sem_perfil(request)
         if negado:
             return negado
-        return Response({"items": listar_templates_inbox()})
+        resumo = resumo_status_templates()
+        return Response({
+            "items": resumo["items"],
+            "resumo": {
+                "total": resumo["total"],
+                "aprovados": resumo["aprovados"],
+                "em_analise": resumo["em_analise"],
+                "nao_aprovados": resumo["nao_aprovados"],
+                "desconhecidos": resumo["desconhecidos"],
+            },
+        })
 
     def post(self, request, telefone):
         negado = self._negar_se_sem_perfil(request)
@@ -386,11 +397,19 @@ class AtendimentoWhatsAppMetaView(_AtendimentoAutenticado):
         negado = self._negar_se_sem_perfil(request)
         if negado:
             return negado
+        resumo_tmpl = resumo_status_templates()
         return Response({
             "agentes": crm.listar_agentes_atendimento(),
             "tags": crm.listar_tags(q=request.query_params.get("q") or ""),
             "respostas_rapidas": crm.listar_respostas_rapidas(),
-            "templates": listar_templates_inbox(),
+            "templates": resumo_tmpl["items"],
+            "templates_resumo": {
+                "total": resumo_tmpl["total"],
+                "aprovados": resumo_tmpl["aprovados"],
+                "em_analise": resumo_tmpl["em_analise"],
+                "nao_aprovados": resumo_tmpl["nao_aprovados"],
+                "desconhecidos": resumo_tmpl["desconhecidos"],
+            },
             "filas": crm.contagem_filas(request.user),
             "triggers": __import__(
                 "crm_app.services.whatsapp.atendimento_automacao",

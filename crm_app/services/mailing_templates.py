@@ -212,7 +212,7 @@ def enviar_mailing_contato(
 
     template = template_para_situacao(contato.situacao)
     params = body_params_contato(contato)
-    preview = fallback_texto(contato) or render_template_preview(template, params)
+    preview = render_template_preview(template, params) or fallback_texto(contato)
     ok, resp, canal = tentar_enviar_ou_texto_funil(
         contato.telefone_e164,
         template,
@@ -221,7 +221,7 @@ def enviar_mailing_contato(
         usuario=usuario,
         aba=FunilTemplateEnvio.ABA_MAILING,
         ref_id=str(contato.pk),
-        espelho_texto=f'[Template {template}] ' + ' · '.join(str(p) for p in params[:4]),
+        espelho_texto=preview[:500],
     )
     return ok, resp, canal, template
 

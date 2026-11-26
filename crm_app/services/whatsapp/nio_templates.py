@@ -776,24 +776,87 @@ TEMPLATE_BODY_PREVIEW: Dict[str, str] = {
         "Olá! Confirme os dados do pedido:\n\n{{1}}\n{{2}}\n{{3}}"
     ),
     TEMPLATE_LEMBRETE_INSTALACAO: (
-        "Olá, {{1}} {{2}}! Lembrete da sua instalação."
+        "Olá, {{1}} {{2}}!\n\n"
+        "Lembrete da sua instalação Nio Fibra.\n\n"
+        "Data: *{{3}}*\n"
+        "Período: *{{4}}*\n\n"
+        "Toque em um dos botões abaixo:"
     ),
     TEMPLATE_INSTALACAO_CONFIRMADA: (
-        "Instalação confirmada para {{1}} no período {{2}}."
+        "Instalação confirmada para *{{1}}* no período *{{2}}*.\n\n"
+        "Toque em um dos botões se precisar alterar."
     ),
     TEMPLATE_PENDENCIA_REAGENDAMENTO: (
-        "Olá, {{1}} {{2}}! Há uma pendência de reagendamento. "
-        f"Fale conosco: {{{{3}}}}"
+        "Olá, {{1}} {{2}}!\n\n"
+        "Há uma pendência de reagendamento.\n\n"
+        "Fale conosco: {{3}}"
     ),
     TEMPLATE_REAGENDAMENTO_CLIENTE: (
-        "Olá, {{1}} {{2}}! Reagendamento com {{3}}."
+        "Olá, {{1}} {{2}}!\n\n"
+        "Reagendamento com {{3}}.\n\n"
+        "Toque em um dos botões abaixo:"
     ),
-    TEMPLATE_CONSULTA_VIABILIDADE: "Olá, {{1}} {{2}}! Sobre a consulta de viabilidade.",
-    TEMPLATE_REATIVACAO_CONTRATO: "Olá, {{1}} {{2}}! Sobre a reativação do contrato.",
+    TEMPLATE_CONSULTA_VIABILIDADE: (
+        "Olá, {{1}}.\n"
+        "\n"
+        "Informação sobre o seu pedido de internet.\n"
+        "\n"
+        "Crédito e viabilidade aprovados para o endereço {{2}}.\n"
+        "\n"
+        "O pedido Nio Fibra {{3}} está pronto para continuar.\n"
+        "\n"
+        "Clique em uma das opções abaixo:"
+    ),
+    TEMPLATE_REATIVACAO_CONTRATO: (
+        "Olá, {{1}}.\n"
+        "\n"
+        "O contrato Nio Fibra {{2}}, no endereço {{3}}, está cancelado.\n"
+        "\n"
+        "A reativação da fibra neste endereço pode ser solicitada por este WhatsApp."
+    ),
     TEMPLATE_SELFIE_PENDENTE: (
-        "Olá, {{1}}! Ainda precisamos da sua selfie/documentos. {{2}}"
+        "Olá, {{1}}.\n"
+        "\n"
+        "Informação sobre a instalação da sua internet.\n"
+        "\n"
+        "Seu pedido {{2}} não foi concluído. Está faltando a selfie.\n"
+        "\n"
+        "Para concluí-lo, favor fazer a selfie.\n"
+        "\n"
+        "Clique nas opções abaixo:"
     ),
-    TEMPLATE_MAILING_GENERICO: "Olá, {{1}}! Podemos te ajudar com informações sobre internet no seu endereço.",
+    TEMPLATE_MAILING_GENERICO: (
+        "Olá, {{1}}.\n"
+        "\n"
+        "Podemos te ajudar com informações sobre internet no seu endereço.\n"
+        "\n"
+        "Fale conosco."
+    ),
+}
+
+# Botões Quick Reply exatamente como aprovados / solicitados na Meta.
+TEMPLATE_BOTOES: Dict[str, List[str]] = {
+    TEMPLATE_CONFIRMACAO_PEDIDO: ["CORRETO", "CORRIGIR", "Falar com atendente"],
+    TEMPLATE_LEMBRETE_INSTALACAO: ["Confirmar", "Reagendar", "Suporte"],
+    TEMPLATE_INSTALACAO_CONFIRMADA: ["Entendi", "Reagendar", "Suporte"],
+    TEMPLATE_FATURA_LEMBRETE_5D: ["Quero a 2ª via", "Já paguei", "Falar com suporte"],
+    TEMPLATE_FATURA_VENCIDA_5D: ["Quero a 2ª via", "Já paguei", "Falar com suporte"],
+    TEMPLATE_FATURA_RECORRENTE: ["Quero a 2ª via", "Já paguei", "Falar com suporte"],
+    TEMPLATE_FATURA_REDUCAO_SINAL: ["Informar previsão", "Já paguei", "Falar com suporte"],
+    TEMPLATE_PENDENCIA_REAGENDAMENTO: ["Reagendar", "Falar com atendente", "Entendi"],
+    TEMPLATE_BOAS_VINDAS: ["Entendi", "Falar com atendente", "Suporte"],
+    TEMPLATE_REAGENDAMENTO_CLIENTE: ["Sim, pode reagendar", "Não quero mais", "Falar com atendente"],
+    TEMPLATE_CONSULTA_VIABILIDADE: ["Continuar pedido", "Falar com atendente", "Estou com dúvida"],
+    TEMPLATE_REATIVACAO_CONTRATO: ["Quero reativar", "Falar com atendente", "Estou com dúvida"],
+    TEMPLATE_SELFIE_PENDENTE: ["Falar com atendente", "Estou com dúvida"],
+    TEMPLATE_MAILING_REPARO: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_INSTALACAO: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_MUDANCA: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_SERVICO: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_CANCELAMENTO: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_FECHADO: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_ABERTO: ["Falar conosco", "Estou com dúvida"],
+    TEMPLATE_MAILING_GENERICO: ["Falar conosco", "Estou com dúvida"],
 }
 
 
@@ -825,11 +888,35 @@ def _corpo_catalogo_template(nome: str) -> str:
 def botoes_template_catalogo(template_name: str) -> List[str]:
     """Rótulos dos botões quick-reply do template (quando existirem no catálogo)."""
     nome = (template_name or "").strip()
+    if not nome:
+        return []
+    if nome in TEMPLATE_BOTOES:
+        return list(TEMPLATE_BOTOES[nome])
     spec = _spec_mailing(nome)
     if not spec:
         return []
     raw = spec.get("botoes") or []
     return [str(b).strip() for b in raw if str(b).strip()]
+
+
+def parse_preview_template_curto(texto: str) -> Tuple[str, List[str]]:
+    """Extrai (nome, params) de '[Template nome] a · b · c'."""
+    raw = (texto or "").strip()
+    m = re.match(r"^\[Template\s+([^\]]+)\]\s*(.*)$", raw, re.I | re.S)
+    if not m:
+        return "", []
+    nome = m.group(1).strip()
+    resto = (m.group(2) or "").strip()
+    if not resto:
+        return nome, []
+    # Separadores usados no espelho Funil/Mailing
+    if " · " in resto or "·" in resto:
+        params = [p.strip() for p in re.split(r"\s*·\s*", resto) if p.strip()]
+    elif " | " in resto:
+        params = [p.strip() for p in resto.split("|") if p.strip()]
+    else:
+        params = [resto]
+    return nome, params
 
 
 def _chaves_telefone_simples(telefone: str) -> List[str]:
@@ -973,23 +1060,30 @@ def formatar_texto_template_exibicao(
     telefone: str = "",
     body_params: Optional[Sequence[Any]] = None,
 ) -> str:
-    """Reescreve dump legado {{n}} / [Mailing] nome para preview legível."""
+    """Reescreve dump legado / [Template] / [Mailing] para o texto que o cliente vê."""
     raw = (texto or "").strip()
     if not raw:
         return raw
     nome_hint = (template_name or "").strip()
+    params_in = list(body_params) if body_params is not None else None
+
+    # Formato curto do Funil: [Template nome] p1 · p2
+    nome_curto, params_curto = parse_preview_template_curto(raw)
+    if nome_curto:
+        nome = nome_hint or nome_curto
+        params = list(params_in) if params_in is not None else params_curto
+        return render_template_preview(nome, params)
+
     m_mail = re.match(r"^\[Mailing\]\s*(\S+)\s*$", raw, re.I)
     if m_mail:
         nome_hint = nome_hint or m_mail.group(1)
 
-    params_in = list(body_params) if body_params is not None else None
     precisa_mailing = bool(
         nome_hint.startswith("mailing_")
         or m_mail
         or raw.startswith("[Mailing]")
     )
     if precisa_mailing and nome_hint:
-        # Corpo já legível (com nome) — não consulta MailingContato de novo.
         precisa_resolver = bool(
             m_mail
             or raw.startswith("[Mailing]")
@@ -1007,7 +1101,20 @@ def formatar_texto_template_exibicao(
             return render_template_preview(nome_hint, params)
         return raw
 
-    # Já parece preview legível
+    # Template com nome conhecido + dump técnico → sempre monta preview do catálogo
+    if nome_hint and (
+        raw.lower().startswith("modelo:")
+        or raw.lower().startswith("template:")
+        or "{{" in raw
+        or raw.startswith("[Template")
+    ):
+        nome, params = parse_params_do_texto_modelo(raw)
+        nome = nome or nome_hint
+        if params_in is not None:
+            params = list(params_in)
+        return render_template_preview(nome, params)
+
+    # Já parece preview legível (corpo real, sem marcadores técnicos)
     if "{{" not in raw and not raw.lower().startswith("modelo:") and not raw.lower().startswith("template:"):
         return raw
 

@@ -16,6 +16,7 @@ from crm_app.services.whatsapp.nio_templates import (
     TEMPLATE_REATIVACAO_CONTRATO,
     TEMPLATE_SELFIE_PENDENTE,
     enviar_template_funil,
+    render_template_preview,
     templates_habilitados,
 )
 
@@ -450,13 +451,13 @@ def enviar_contexto(ctx: dict, *, usuario=None, force: bool = False) -> dict:
 
     # Sem fallback texto — só template oficial Meta (espelho inbox via enviar_template_funil).
     params = ctx.get('body_params') or []
-    preview = f"[Template {ctx['template_nome']}] " + " · ".join(str(p) for p in params[:4])
+    preview = render_template_preview(ctx['template_nome'], params)[:500]
     try:
         ok, resp = enviar_template_funil(
             ctx['telefone'],
             ctx['template_nome'],
             ctx['body_params'],
-            espelho_texto=preview[:500],
+            espelho_texto=preview,
             usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
             venda=ctx.get('venda'),
             aba=ctx.get('aba') or '',

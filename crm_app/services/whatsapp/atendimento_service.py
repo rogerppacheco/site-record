@@ -31,10 +31,10 @@ AVISO_SEM_MENSAGEM_CLIENTE = (
 _TEMPLATES_INBOX_CURADOS = (
     {"name": "nio_boas_vindas_v1", "label": "Boas-vindas", "body_params": 2, "hint": "{{1}} saudação (Bom Dia) / {{2}} nome"},
     {"name": "nio_confirmacao_pedido_v1", "label": "Confirmação de pedido", "body_params": 3, "hint": "nome / endereço / data"},
-    {"name": "nio_consulta_viabilidade_v1", "label": "Consulta viabilidade", "body_params": 2, "hint": "saudação / nome"},
-    {"name": "nio_reativacao_contrato_v1", "label": "Reativação contrato", "body_params": 2, "hint": "saudação / nome"},
+    {"name": "nio_consulta_viabilidade_v1", "label": "Consulta viabilidade", "body_params": 3, "hint": "nome / endereço / pedido"},
+    {"name": "nio_reativacao_contrato_v1", "label": "Reativação contrato", "body_params": 3, "hint": "nome / contrato / endereço"},
     {"name": "nio_selfie_pendente_v1", "label": "Selfie pendente", "body_params": 2, "hint": "nome / protocolo"},
-    {"name": "nio_lembrete_instalacao_v1", "label": "Lembrete instalação", "body_params": 2, "hint": "nome / data"},
+    {"name": "nio_lembrete_instalacao_v1", "label": "Lembrete instalação", "body_params": 4, "hint": "saudação / nome / data / período"},
     {"name": "mailing_generico_v1", "label": "Mailing genérico", "body_params": 1, "hint": "{{1}} nome"},
 )
 
@@ -995,14 +995,29 @@ def _modo_conv(conv) -> str:
         return "BOT"
 
 
+def _preview_lista_legivel(preview: str) -> str:
+    """Converte preview técnico [Template …] para texto do cliente na lista."""
+    raw = (preview or "").strip()
+    if not raw:
+        return ""
+    try:
+        from crm_app.services.whatsapp.nio_templates import formatar_texto_template_exibicao
+
+        raw = formatar_texto_template_exibicao(raw)
+    except Exception:
+        pass
+    raw = raw.replace("\n", " ").strip()
+    if len(raw) > 90:
+        return raw[:90] + "…"
+    return raw
+
+
 def _serializar_conversation_row(conv, *, agora=None) -> dict:
     agora = agora or timezone.now()
     venda = conv.venda if conv.venda_id else None
     janela_ate = conv.janela_aberta_ate
     janela_aberta = bool(janela_ate and janela_ate > agora)
-    preview = (conv.last_message_preview or "").strip()
-    if len(preview) > 90:
-        preview = preview[:90] + "…"
+    preview = _preview_lista_legivel(conv.last_message_preview or "")
     nome = conv.contact_name or _nome_cliente(venda)
     tags = []
     try:
@@ -1650,53 +1665,179 @@ def responder_midia(
     }
 
 
+def _normalizar_status_template(valor: Any) -> str:
+    s = str(valor or "").strip().upper()
+    if s in ("APPROVED", "APROVADO", "ACTIVE", "ATIVO"):
+        return "APPROVED"
+    if s in ("PENDING", "PENDING_APPROVAL", "IN_REVIEW", "EM_ANALISE", "SUBMITTED"):
+        return "PENDING"
+    if s in ("REJECTED", "REJEITADO", "DISABLED", "PAUSED", "FAILED", "ERROR"):
+        return "REJECTED"
+    if not s:
+        return "UNKNOWN"
+    return s
+
+
+def _extrair_lista_templates_api(raw: Any) -> list:
+    if isinstance(raw, dict):
+        raw = raw.get("templates") or raw.get("data") or raw.get("items") or raw.get("result") or []
+    return raw if isinstance(raw, list) else []
+
+
+def _parse_template_api_item(t: Any, *, source: str) -> Optional[dict]:
+    import re
+
+    if isinstance(t, str):
+        name = t.strip()
+        if not name:
+            return None
+        return {
+            "name": name,
+            "label": name,
+            "body_params": 0,
+            "hint": "",
+            "status": "UNKNOWN",
+            "status_label": "Desconhecido",
+            "language": "",
+            "category": "",
+            "source": source,
+            "aprovado": None,
+        }
+    if not isinstance(t, dict):
+        return None
+    name = (
+        t.get("name")
+        or t.get("template_name")
+        or t.get("nome")
+        or ""
+    ).strip()
+    if not name:
+        return None
+    status = _normalizar_status_template(
+        t.get("status") or t.get("approval_status") or t.get("state") or ""
+    )
+    components = t.get("components") or []
+    n_params = int(t.get("body_params") or t.get("params") or 0)
+    if not n_params and isinstance(components, list):
+        for c in components:
+            if isinstance(c, dict) and str(c.get("type") or "").upper() == "BODY":
+                texto = c.get("text") or ""
+                n_params = max(n_params, len(re.findall(r"\{\{\d+\}\}", str(texto))))
+    status_label = {
+        "APPROVED": "Aprovado",
+        "PENDING": "Em análise",
+        "REJECTED": "Não aprovado",
+        "UNKNOWN": "Desconhecido",
+    }.get(status, status)
+    return {
+        "name": name,
+        "label": (t.get("label") or t.get("displayName") or name).strip(),
+        "body_params": n_params,
+        "hint": "",
+        "status": status,
+        "status_label": status_label,
+        "language": str(t.get("language") or t.get("language_code") or "")[:16],
+        "category": str(t.get("category") or "")[:32],
+        "source": source,
+        "aprovado": True if status == "APPROVED" else (False if status == "REJECTED" else None),
+    }
+
+
 def listar_templates_inbox() -> list[dict]:
-    """Catálogo para o composer: API do provedor + fallback curado."""
+    """Catálogo para o composer: API cliente + Funil + fallback curado (com status)."""
     from crm_app.whatsapp_service import WhatsAppService
 
     items: list[dict] = []
-    seen: set[str] = set()
-    try:
-        raw = WhatsAppService.para_cliente().listar_templates() or []
-    except Exception:
-        raw = []
-    if isinstance(raw, dict):
-        raw = raw.get("templates") or raw.get("data") or raw.get("items") or []
-    if isinstance(raw, list):
-        for t in raw:
-            if isinstance(t, str):
-                name = t
-                label = t
-                n_params = 0
-            elif isinstance(t, dict):
-                name = (
-                    t.get("name")
-                    or t.get("template_name")
-                    or t.get("nome")
-                    or ""
-                ).strip()
-                label = (t.get("label") or t.get("displayName") or name).strip()
-                n_params = int(t.get("body_params") or t.get("params") or 0)
+    by_name: dict[str, dict] = {}
+
+    def _merge(item: dict) -> None:
+        name = item["name"]
+        prev = by_name.get(name)
+        if prev is None:
+            by_name[name] = item
+            return
+        # Preferir status conhecido da API sobre curado/UNKNOWN
+        if prev.get("status") in (None, "", "UNKNOWN") and item.get("status") not in (None, "", "UNKNOWN"):
+            by_name[name] = {**prev, **item, "label": prev.get("label") or item.get("label")}
+        elif item.get("source") == "provider_funil" and prev.get("source") == "curado":
+            by_name[name] = {**item, "label": prev.get("label") or item.get("label")}
+
+    for purpose, source in (("cliente", "provider"), ("funil", "provider_funil")):
+        try:
+            if purpose == "funil":
+                raw = WhatsAppService.para_funil().listar_templates() or []
             else:
-                continue
-            if not name or name in seen:
-                continue
-            seen.add(name)
-            items.append(
-                {
-                    "name": name,
-                    "label": label or name,
-                    "body_params": n_params,
-                    "hint": "",
-                    "source": "provider",
-                }
-            )
+                raw = WhatsAppService.para_cliente().listar_templates() or []
+        except Exception:
+            logger.debug("[Atendimento WA] listar_templates %s falhou", purpose, exc_info=True)
+            raw = []
+        for t in _extrair_lista_templates_api(raw):
+            parsed = _parse_template_api_item(t, source=source)
+            if parsed:
+                _merge(parsed)
+
     for t in _TEMPLATES_INBOX_CURADOS:
-        if t["name"] in seen:
-            continue
-        seen.add(t["name"])
-        items.append({**t, "source": "curado"})
+        _merge({
+            **t,
+            "status": "UNKNOWN",
+            "status_label": "Desconhecido",
+            "language": "pt_BR",
+            "category": "",
+            "source": "curado",
+            "aprovado": None,
+        })
+
+    # Catálogo local completo (NIO + mailing) para listagem de status
+    try:
+        from crm_app.services.whatsapp.nio_templates import TEMPLATE_BOTOES, TEMPLATE_BODY_PREVIEW
+        from crm_app.services.mailing_templates import TEMPLATE_SPECS
+
+        locais = set(TEMPLATE_BODY_PREVIEW.keys()) | set(TEMPLATE_BOTOES.keys())
+        for spec in TEMPLATE_SPECS:
+            n = (spec.get("nome") or "").strip()
+            if n:
+                locais.add(n)
+        for name in sorted(locais):
+            if name in by_name:
+                continue
+            _merge({
+                "name": name,
+                "label": name,
+                "body_params": 0,
+                "hint": "Catálogo local (não retornado pela API)",
+                "status": "UNKNOWN",
+                "status_label": "Desconhecido",
+                "language": "pt_BR",
+                "category": "",
+                "source": "catalogo_local",
+                "aprovado": None,
+            })
+    except Exception:
+        logger.debug("[Atendimento WA] merge catálogo local falhou", exc_info=True)
+
+    items = list(by_name.values())
+    ordem = {"APPROVED": 0, "PENDING": 1, "REJECTED": 2, "UNKNOWN": 3}
+    items.sort(key=lambda x: (ordem.get(x.get("status") or "UNKNOWN", 9), (x.get("name") or "").lower()))
     return items
+
+
+def resumo_status_templates() -> dict:
+    """Agrega aprovados / pendentes / rejeitados / desconhecidos."""
+    items = listar_templates_inbox()
+    agg = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
+    for t in items:
+        st = t.get("status") or "UNKNOWN"
+        if st not in agg:
+            st = "UNKNOWN"
+        agg[st] += 1
+    return {
+        "total": len(items),
+        "aprovados": agg["APPROVED"],
+        "em_analise": agg["PENDING"],
+        "nao_aprovados": agg["REJECTED"],
+        "desconhecidos": agg["UNKNOWN"],
+        "items": items,
+    }
 
 
 def responder_template(

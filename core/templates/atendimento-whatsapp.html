@@ -12,6 +12,7 @@
 <button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-kanban" title="Kanban"><i class="bi bi-columns-gap"></i><span class="header-action-label ms-1">Kanban</span></button>
 <button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-metricas" title="Métricas"><i class="bi bi-speedometer2"></i><span class="header-action-label ms-1">Métricas</span></button>
 <button type="button" class="btn btn-sm btn-outline-primary" id="btn-vista-triggers" title="Triggers"><i class="bi bi-lightning-charge"></i><span class="header-action-label ms-1">Triggers</span></button>
+<button type="button" class="btn btn-sm btn-outline-primary" id="btn-lista-templates" title="Status dos templates Meta"><i class="bi bi-file-earmark-check"></i><span class="header-action-label ms-1">Templates</span></button>
 <a href="/boas-vindas/" class="btn btn-sm btn-primary"><i class="bi bi-chat-heart"></i><span class="header-action-label ms-1">Boas Vindas</span></a>
 {% endblock %}
 
@@ -405,9 +406,15 @@
                     <select id="sel-template" class="form-select form-select-sm mb-2"></select>
                     <div class="small text-muted mb-1" id="tmpl-hint"></div>
                     <div class="wa-tmpl-params" id="tmpl-params"></div>
-                    <button type="button" class="btn btn-primary btn-sm mt-2" id="btn-enviar-template">
-                        <i class="bi bi-file-earmark-text"></i> Enviar template
-                    </button>
+                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-enviar-template">
+                            <i class="bi bi-file-earmark-text"></i> Enviar template
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-status-templates">
+                            <i class="bi bi-list-check"></i> Ver status
+                        </button>
+                    </div>
+                    <div class="small text-muted mt-1" id="tmpl-resumo-status"></div>
                     <div class="small text-muted mt-1">Templates reabrem a conversa fora da janela de 24h.</div>
                 </div>
                 <div id="panel-midia" hidden>
@@ -437,6 +444,33 @@
     </div>
     </div><!-- /vista-lista -->
 </div>
+
+<div class="modal fade" id="modal-templates-status" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title">Templates Meta — status de aprovação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="small text-muted mb-2" id="tmpl-modal-resumo"></div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Template</th>
+                                <th>Status</th>
+                                <th>Idioma</th>
+                                <th>Origem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tmpl-modal-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -449,7 +483,7 @@
     let filaAtual = 'todas';
     let canalAtual = '';
     let janelaAtual = '';
-    let meta = { agentes: [], tags: [], respostas_rapidas: [], templates: [], etapas: [] };
+    let meta = { agentes: [], tags: [], respostas_rapidas: [], templates: [], templates_resumo: null, etapas: [] };
     let sseAtivo = false;
     let tituloBase = document.title;
     let unreadBadge = 0;
@@ -487,13 +521,55 @@
         });
     }
 
+    function badgeStatusTemplate(st) {
+        const s = String(st || 'UNKNOWN').toUpperCase();
+        if (s === 'APPROVED') return '<span class="badge text-bg-success">Aprovado</span>';
+        if (s === 'PENDING') return '<span class="badge text-bg-warning">Em análise</span>';
+        if (s === 'REJECTED') return '<span class="badge text-bg-danger">Não aprovado</span>';
+        return '<span class="badge text-bg-secondary">Desconhecido</span>';
+    }
+
     function renderTemplatesSelect() {
         const sel = document.getElementById('sel-template');
         const items = meta.templates || [];
-        sel.innerHTML = items.map((t) =>
-            `<option value="${esc(t.name)}" data-params="${esc(t.body_params || 0)}" data-hint="${esc(t.hint || '')}">${esc(t.label || t.name)}</option>`
-        ).join('') || '<option value="">Nenhum template</option>';
+        sel.innerHTML = items.map((t) => {
+            const st = t.status_label || t.status || '';
+            const label = `${t.label || t.name}${st ? ' · ' + st : ''}`;
+            return `<option value="${esc(t.name)}" data-params="${esc(t.body_params || 0)}" data-hint="${esc(t.hint || '')}" data-status="${esc(t.status || '')}">${esc(label)}</option>`;
+        }).join('') || '<option value="">Nenhum template</option>';
+        const r = meta.templates_resumo;
+        const elResumo = document.getElementById('tmpl-resumo-status');
+        if (elResumo && r) {
+            elResumo.innerHTML = `Aprovados: <strong>${r.aprovados || 0}</strong> · Em análise: <strong>${r.em_analise || 0}</strong> · Não aprovados: <strong>${r.nao_aprovados || 0}</strong> · Desconhecidos: <strong>${r.desconhecidos || 0}</strong>`;
+        }
         atualizarParamsTemplate();
+    }
+
+    function abrirModalTemplatesStatus() {
+        const items = meta.templates || [];
+        const r = meta.templates_resumo || {};
+        const resumoEl = document.getElementById('tmpl-modal-resumo');
+        if (resumoEl) {
+            resumoEl.textContent = `Total ${r.total || items.length} · Aprovados ${r.aprovados || 0} · Em análise ${r.em_analise || 0} · Não aprovados ${r.nao_aprovados || 0} · Desconhecidos ${r.desconhecidos || 0}`;
+        }
+        const tbody = document.getElementById('tmpl-modal-tbody');
+        if (tbody) {
+            tbody.innerHTML = items.map((t) => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${esc(t.label || t.name)}</div>
+                        <div class="small text-muted font-monospace">${esc(t.name)}</div>
+                    </td>
+                    <td>${badgeStatusTemplate(t.status)}</td>
+                    <td>${esc(t.language || '—')}</td>
+                    <td class="small text-muted">${esc(t.source || '')}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="4" class="text-muted">Nenhum template.</td></tr>';
+        }
+        const modalEl = document.getElementById('modal-templates-status');
+        if (modalEl && window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
     }
 
     function atualizarParamsTemplate() {
@@ -557,6 +633,18 @@
         if (Notification.permission === 'granted') {
             try { new Notification(title, { body: body || '', tag: 'wa-inbox' }); } catch (_) {}
         }
+    }
+
+    function fmtErroTemplate(erro) {
+        const raw = String(erro || '').trim();
+        if (!raw) return 'Não enviada';
+        try {
+            const obj = JSON.parse(raw.replace(/'/g, '"'));
+            if (obj && obj.message) return 'Não enviada: ' + esc(obj.message);
+        } catch (_) {}
+        const m = raw.match(/'message'\s*:\s*'([^']+)'/);
+        if (m) return 'Não enviada: ' + esc(m[1]);
+        return 'Não enviada: ' + esc(raw.slice(0, 280));
     }
 
     function fmtWaTexto(texto) {
@@ -971,14 +1059,13 @@
                         ${m.enviado_por ? `<span>${esc(m.enviado_por)}</span>` : ''}
                         ${badgeFunil}
                         ${badgeSt}
-                        ${m.template_name ? `<span class="badge bg-secondary">${esc(m.template_name)}</span>` : ''}
                     </div>
                     <div class="corpo">${fmtWaTexto(m.texto || '')}</div>
                     ${(m.template_botoes || []).length
                         ? `<div class="wa-tmpl-btns">${(m.template_botoes || []).map((b) => `<span class="wa-tmpl-btn">${esc(b)}</span>`).join('')}</div>`
                         : ''}
                     ${m.media_url && ((m.media_tipo || '').startsWith('audio') || /\[áudio\]/i.test(m.texto || '')) ? `<audio controls preload="none" src="${esc(m.media_url)}" style="max-width:100%;margin-top:6px"></audio>` : ''}
-                    ${m.sucesso ? '' : `<div class="wa-falha">Não enviada${m.erro ? ': ' + esc(m.erro) : ''}</div>`}
+                    ${m.sucesso ? '' : `<div class="wa-falha">${fmtErroTemplate(m.erro)}</div>`}
                 </div>`;
             }).join('');
             msgs.scrollTop = msgs.scrollHeight;
@@ -1115,12 +1202,26 @@
         } catch (_) {}
     }
 
+    async function abrirStatusTemplates() {
+        try {
+            const data = await api('/templates/');
+            if (data.items) meta.templates = data.items;
+            if (data.resumo) meta.templates_resumo = data.resumo;
+            renderTemplatesSelect();
+        } catch (_) {}
+        abrirModalTemplatesStatus();
+    }
+
     document.getElementById('composer-tabs').onclick = (e) => {
         const btn = e.target.closest('.wa-composer-tab');
         if (!btn) return;
         setComposerTab(btn.dataset.tab);
     };
     document.getElementById('sel-template').onchange = atualizarParamsTemplate;
+    const btnStatusTmpl = document.getElementById('btn-status-templates');
+    if (btnStatusTmpl) btnStatusTmpl.onclick = abrirStatusTemplates;
+    const btnListaTmpl = document.getElementById('btn-lista-templates');
+    if (btnListaTmpl) btnListaTmpl.onclick = abrirStatusTemplates;
 
     let sseCtrl = null;
     let sseRetryTimer = null;
