@@ -122,6 +122,41 @@ class ReescritaUrlVendasPapTests(TestCase):
         sem_page = _rewritar_url_vendas_periodo(url, date(2026, 3, 1), date(2026, 3, 31))
         self.assertEqual(parse_qs(urlparse(sem_page).query)['page'], ['1'])
 
+    def test_interesse_preserva_status_da_spa(self) -> None:
+        """Interesse: só datas/limit; status/statusSecundario da SPA ficam intactos."""
+        from urllib.parse import parse_qs, urlparse
+
+        from crm_app.historico_pap_service import _rewritar_url_vendas_periodo
+
+        url = (
+            'https://pap-api.niointernet.com.br/api/portal/vendas'
+            '?dataInicio=2026-11-12T00:00:00-03:00&dataFim=2026-11-26T23:59:59-03:00'
+            '&status=MINHAS_PENDENCIAS'
+            '&statusSecundario=INTERESSE_SALVO,INTERESSE_ENCERRADO,INTERESSE_AUTOMATICO'
+            '&segmento=EMPRESARIAL,VAREJO&pdv=1068561&tipoVenda=INTERESSE_SALVO'
+            '&page=1&limit=15'
+        )
+        novo = _rewritar_url_vendas_periodo(
+            url,
+            date(2026, 11, 12),
+            date(2026, 11, 26),
+            limit=200,
+            tipo_api='INTERESSE_SALVO',
+            status=None,  # mesmo se pedirem remover, Interesse preserva a SPA
+        )
+        qs = parse_qs(urlparse(novo).query)
+        self.assertEqual(qs['status'], ['MINHAS_PENDENCIAS'])
+        self.assertEqual(qs['segmento'], ['EMPRESARIAL,VAREJO'])
+        self.assertNotIn('pdv', qs)
+        self.assertEqual(
+            qs['statusSecundario'],
+            ['INTERESSE_SALVO,INTERESSE_ENCERRADO,INTERESSE_AUTOMATICO'],
+        )
+        self.assertEqual(qs['tipoVenda'], ['INTERESSE_SALVO'])
+        self.assertEqual(qs['limit'], ['200'])
+        self.assertTrue(qs['dataInicio'][0].startswith('2026-11-12'))
+        self.assertTrue(qs['dataFim'][0].startswith('2026-11-26'))
+
 
 class JanelasPeriodoPapTests(TestCase):
     def test_divide_mes_em_janelas_contiguas(self) -> None:
@@ -154,24 +189,46 @@ class JanelasPeriodoPapTests(TestCase):
         self.assertFalse(_pack_no_periodo(url, date(2026, 1, 10), date(2026, 1, 31)))
 
 
-class InteresseUltimos30DiasTests(TestCase):
+class InteresseUltimos15DiasTests(TestCase):
     def setUp(self) -> None:
         self.usuario = Usuario.objects.create_superuser(username='dir', password='x', email='d@x.com')
 
     def test_interesse_antigo_e_recusado_com_mensagem(self) -> None:
         from django.utils import timezone as tz
 
+        from crm_app.historico_pap import MAX_DIAS_RETROATIVOS_INTERESSE
         from crm_app.historico_pap_service import criar_e_iniciar_busca
 
         hoje = tz.localdate()
+        # Período com diff <= 15, mas início antes da janela de Interesse (hoje-15).
+        data_fim = hoje - timedelta(days=MAX_DIAS_RETROATIVOS_INTERESSE + 1)
+        data_inicio = data_fim - timedelta(days=5)
         busca_id, err = criar_e_iniciar_busca(
-            self.usuario, data_inicio=hoje - timedelta(days=40), data_fim=hoje, pdv='', tipos=['INTERESSE']
+            self.usuario, data_inicio=data_inicio, data_fim=data_fim, pdv='', tipos=['INTERESSE']
         )
         self.assertIsNone(busca_id)
-        self.assertIn('últimos 30 dias', err)
-        self.assertIn((hoje - timedelta(days=30)).strftime('%d/%m/%Y'), err)
+        self.assertIn(f'últimos {MAX_DIAS_RETROATIVOS_INTERESSE} dias', err)
+        self.assertIn((hoje - timedelta(days=MAX_DIAS_RETROATIVOS_INTERESSE)).strftime('%d/%m/%Y'), err)
 
-    def test_venda_antiga_continua_permitida(self) -> None:
+    def test_periodo_acima_de_15_dias_e_recusado(self) -> None:
+        from django.utils import timezone as tz
+
+        from crm_app.historico_pap import MAX_DIAS_BUSCA
+        from crm_app.historico_pap_service import criar_e_iniciar_busca
+
+        hoje = tz.localdate()
+        # diff=16 > MAX → recusa; diff=15 (hoje-15→hoje) ainda é aceito pelo PAP.
+        busca_id, err = criar_e_iniciar_busca(
+            self.usuario,
+            data_inicio=hoje - timedelta(days=MAX_DIAS_BUSCA + 1),
+            data_fim=hoje,
+            pdv='',
+            tipos=['VENDA'],
+        )
+        self.assertIsNone(busca_id)
+        self.assertIn(f'{MAX_DIAS_BUSCA} dias', err)
+
+    def test_venda_antiga_continua_permitida_dentro_do_teto(self) -> None:
         from unittest import mock
 
         from django.utils import timezone as tz
@@ -179,12 +236,17 @@ class InteresseUltimos30DiasTests(TestCase):
         from crm_app import historico_pap_service as svc
 
         hoje = tz.localdate()
+        # Janela antiga, mas ≤ 15 dias (ex.: há 40–30 dias).
         with mock.patch('crm_app.pool_historico_pap.obter_login_historico_pap', return_value=(None, 'sem login')):
             _, err = svc.criar_e_iniciar_busca(
-                self.usuario, data_inicio=hoje - timedelta(days=60), data_fim=hoje - timedelta(days=40),
-                pdv='', tipos=['VENDA'],
+                self.usuario,
+                data_inicio=hoje - timedelta(days=40),
+                data_fim=hoje - timedelta(days=30),
+                pdv='',
+                tipos=['VENDA'],
             )
-        self.assertNotIn('30 dias', err or '')
+        self.assertNotIn('15 dias', err or '')
+        self.assertNotIn('limita o período', err or '')
 
 
 class LimitePapTests(TestCase):

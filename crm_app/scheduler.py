@@ -54,13 +54,45 @@ def buscar_repescagem_bio_ged_automatico():
 
 
 def buscar_historico_pap_funil_automatico():
-    """Todo dia às 06:00: busca Histórico PAP (Interesse + Venda) dos últimos 7 dias."""
+    """Todo dia às 06:00: busca Histórico PAP (Interesse + Venda) na janela máxima.
+
+    O PAP Nio permite (fim-início).days <= 15 → 16 dias inclusivos
+    (ex.: 11/11→26/11). Sobreposição diária evita buraco se um ciclo falhar.
+    """
     try:
-        logger.info("Iniciando busca automática Histórico PAP (Funil: Interesse/Venda)…")
-        call_command('buscar_historico_pap_funil')
+        logger.info("Iniciando busca automática Histórico PAP (Funil: Interesse/Venda, 16 dias)…")
+        call_command('buscar_historico_pap_funil', dias=16)
         logger.info("Busca automática Histórico PAP enfileirada.")
     except Exception as e:
         logger.error("Erro na busca automática Histórico PAP: %s", e)
+
+
+def enviar_relatorio_historico_pap_automatico():
+    """Todo dia às 07:15: e-mail Diretoria/Admin com resultado das buscas PAP do dia."""
+    try:
+        logger.info("Enviando relatório matinal Histórico PAP…")
+        from crm_app.services.relatorio_historico_pap_service import (
+            processar_envio_relatorio_historico_pap,
+        )
+
+        result = processar_envio_relatorio_historico_pap()
+        logger.info("Relatório Histórico PAP: %s", result)
+    except Exception as e:
+        logger.error("Erro no relatório Histórico PAP: %s", e)
+
+
+def enviar_relatorio_envios_whatsapp_automatico():
+    """Todo dia às 07:20: e-mail Diretoria/Admin com envios #194/#247 do dia anterior."""
+    try:
+        logger.info("Enviando relatório matinal envios WhatsApp #194/#247…")
+        from crm_app.services.relatorio_envios_whatsapp_service import (
+            processar_envio_relatorio_envios_whatsapp,
+        )
+
+        result = processar_envio_relatorio_envios_whatsapp()
+        logger.info("Relatório envios WA: %s", result)
+    except Exception as e:
+        logger.error("Erro no relatório envios WhatsApp: %s", e)
 
 
 def importar_osab_bi_pap_automatico():
@@ -301,7 +333,23 @@ def _registrar_jobs(scheduler):
         _wrap_scheduler_job(buscar_historico_pap_funil_automatico),
         trigger=CronTrigger.from_crontab('0 6 * * *', timezone=tz_match),
         id='buscar_historico_pap_funil',
-        name='Histórico PAP Funil — Interesse/Venda 7 dias (06:00)',
+        name='Histórico PAP Funil — Interesse/Venda 16 dias (06:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(enviar_relatorio_historico_pap_automatico),
+        trigger=CronTrigger.from_crontab('15 7 * * *', timezone=tz_match),
+        id='enviar_relatorio_historico_pap',
+        name='Relatório Histórico PAP → Diretoria/Admin (07:15)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _wrap_scheduler_job(enviar_relatorio_envios_whatsapp_automatico),
+        trigger=CronTrigger.from_crontab('20 7 * * *', timezone=tz_match),
+        id='enviar_relatorio_envios_whatsapp',
+        name='Relatório envios WA #194/#247 → Diretoria/Admin (07:20)',
         replace_existing=True,
         max_instances=1,
     )

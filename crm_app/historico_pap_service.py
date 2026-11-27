@@ -262,6 +262,12 @@ def registrar_pausa_rotina_automatica(
     """Pausa a rotina 06:00 até matrícula/senha PAP serem atualizadas (ou login ok)."""
     from crm_app.models import HistoricoPapBusca
 
+    if login_pap and (not matricula or not senha):
+        from crm_app.pool_historico_pap import resolver_credencial_historico_pap
+
+        mat_r, sen_r, _fonte = resolver_credencial_historico_pap(login_pap)
+        matricula = matricula or mat_r
+        senha = senha or sen_r
     mat = (matricula or getattr(login_pap, "matricula_pap", None) or "").strip()
     sen = (senha or getattr(login_pap, "senha_pap", None) or "").strip()
     fp = _cred_fingerprint_pap(mat, sen)
@@ -374,10 +380,10 @@ def obter_pausa_rotina_automatica() -> Optional[dict]:
     login = busca.login_pap
     fp_pausa = (rj.get("cred_fp") or "").strip()
     if login and fp_pausa:
-        fp_atual = _cred_fingerprint_pap(
-            getattr(login, "matricula_pap", None) or "",
-            getattr(login, "senha_pap", None) or "",
-        )
+        from crm_app.pool_historico_pap import resolver_credencial_historico_pap
+
+        mat_r, sen_r, _fonte = resolver_credencial_historico_pap(login)
+        fp_atual = _cred_fingerprint_pap(mat_r, sen_r)
         if fp_atual != fp_pausa:
             limpar_pausa_rotina_automatica(motivo="credenciais_atualizadas")
             return None
@@ -845,7 +851,8 @@ def _force_click(page, btn) -> None:
 PAGINAS_POR_JANELA = 2
 ITENS_ALVO_JANELA = 300
 ESPERA_429_PADRAO_S = 60
-INTERVALO_MIN_VENDAS_S = 4
+# Espaçamento mínimo entre /vendas (antes 4s). 2s reduz tempo sem martelar o gateway.
+INTERVALO_MIN_VENDAS_S = 2.0
 _ULTIMO_429 = {"t": 0.0}
 
 
@@ -923,15 +930,28 @@ def _tipo_api_para_spa(tipo_crm: str) -> str:
     return "VENDA"
 
 
-def _status_lista_para_tipo_api(tipo_api: str) -> str | None:
+def _status_lista_para_tipo_api(tipo_api: str):
+    """Status primário enviado na API.
+
+    Retornos:
+      - str: forçar esse status
+      - None: remover o parâmetro status
+      - Ellipsis (...): preservar o que a SPA mandou
+
+    Interesse: preservar status da SPA (MINHAS_PENDENCIAS) + statusSecundario.
+    O que não pode faltar é tipoVenda=INTERESSE_SALVO; o dia a mais (hoje-15)
+    fecha o gap 459→523.
+    """
     t = (tipo_api or "").upper()
     if t == "VENDA":
         return STATUS_LISTA_PADRAO
     if t in ("INTERESSE", "INTERESSE_SALVO"):
-        return "MINHAS_PENDENCIAS"
+        return ...
     return None
 
 
+# Legado / atalho XHR JS. A coleta via Filtrar+route.fetch NÃO deve forjar isso:
+# a SPA envia o statusSecundario correto (ex.: INTERESSE_SALVO).
 STATUS_SECUNDARIO_INTERESSE = (
     "INTERESSE_SALVO,INTERESSE_ENCERRADO,INTERESSE_AUTOMATICO"
 )
@@ -941,6 +961,7 @@ def _selecionar_tipo_filtro_spa(page, tipo_crm: str) -> bool:
     No drawer Filtros, troca o react-select Tipo (Venda/Interesse/Pré-Venda).
 
     React-select só confirma opção no mousedown — click simples não marca.
+    Evita varrer todos os <div> do drawer (isso selecionava a tela inteira).
     """
     if not page:
         return False
@@ -963,9 +984,10 @@ def _selecionar_tipo_filtro_spa(page, tipo_crm: str) -> bool:
         }"""
     )
     logger.info("[HISTORICO PAP] Abrir select Tipo: %s", aberto)
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(280)
 
-    # 2) Marca a opção via mousedown (react-select) — tenta várias vezes
+    # 2) Marca a opção via mousedown (react-select) — só nós de option
+    sel = None
     for tentativa in range(4):
         sel = page.evaluate(
             """(alvo) => {
@@ -974,9 +996,9 @@ def _selecionar_tipo_filtro_spa(page, tipo_crm: str) -> bool:
                 const want = norm(alvo);
                 const opts = [
                     ...document.querySelectorAll('[id*="-option-"]'),
-                    ...document.querySelectorAll('[class*="option"]'),
+                    ...document.querySelectorAll('[class*="-option"]'),
                     ...document.querySelectorAll('[role="option"]'),
-                    ...document.querySelectorAll('.MuiDrawer-paper div'),
+                    ...document.querySelectorAll('.MuiMenuItem-root, .MuiAutocomplete-option'),
                 ];
                 const seen = new Set();
                 const candidates = [];
@@ -987,7 +1009,8 @@ def _selecionar_tipo_filtro_spa(page, tipo_crm: str) -> bool:
                     if (seen.has(key)) continue;
                     seen.add(key);
                     candidates.push(t);
-                    if (norm(t) === want || norm(t).includes(want)) {
+                    // Apenas igualdade exata — "Venda" não pode casar "Pré-Venda".
+                    if (norm(t) === want) {
                         el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
                         el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
                         el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
@@ -1001,9 +1024,9 @@ def _selecionar_tipo_filtro_spa(page, tipo_crm: str) -> bool:
         )
         logger.info("[HISTORICO PAP] Opção Tipo tentativa %s: %s", tentativa + 1, sel)
         if sel and sel.get("ok"):
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(250)
             break
-        # Digita no input e Enter (fallback)
+        # Digita no input e tenta clicar a opção exata (sem Enter cego).
         try:
             page.evaluate(
                 """(txt) => {
@@ -1016,35 +1039,33 @@ def _selecionar_tipo_filtro_spa(page, tipo_crm: str) -> bool:
                     ).set;
                     setter.call(inp, txt);
                     inp.dispatchEvent(new Event('input', { bubbles: true }));
-                    inp.dispatchEvent(new Event('change', { bubbles: true }));
                     return true;
                 }""",
                 alvo,
             )
-            page.keyboard.press("Enter")
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(280)
         except Exception:
             pass
-        page.wait_for_timeout(350)
+        page.wait_for_timeout(180)
 
-    # 3) Confirma se o control deixou de mostrar só "Venda" quando pedimos Interesse
+    # 3) Confirma valor exato no control (não aceita "Pré-Venda" quando pediu "Venda")
     conf = page.evaluate(
         """(alvo) => {
             const root = document.querySelector('.MuiDrawer-paper, .MuiDrawer-root') || document;
-            const blob = (root.innerText || '').slice(0, 800);
+            const single = root.querySelector('[class*="singleValue"]');
+            const blob = ((single && single.innerText) || '').trim();
             const norm = (s) => (s || '').toLowerCase()
                 .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+            const nBlob = norm(blob);
+            const nWant = norm(alvo);
             return {
-                temAlvo: norm(blob).includes(norm(alvo)),
-                trecho: blob.slice(0, 200),
+                temAlvo: nBlob === nWant,
+                trecho: blob.slice(0, 80),
             };
         }""",
         alvo,
     )
-    ok = bool(sel and sel.get("ok")) or bool(conf and conf.get("temAlvo") and alvo.lower() != "venda")
-    # Se pediu Venda e já era Venda, ok
-    if alvo.lower() == "venda":
-        ok = True
+    ok = bool(sel and sel.get("ok")) or bool(conf and conf.get("temAlvo"))
     logger.info("[HISTORICO PAP] Tipo após seleção ok=%s conf=%s", ok, conf)
     return ok
 
@@ -1072,8 +1093,11 @@ def _rewritar_url_vendas_periodo(
     seen_status = False
     seen_status_sec = False
     tipo_alvo = (_tipo_api_para_spa(tipo_api) if tipo_api else None)
+    # Interesse: força tipoVenda=INTERESSE_SALVO; preserva status/statusSecundario/
+    # segmento da SPA. Datas/limit vêm do pedido (hoje-15 → hoje = ~523 na UI).
+    interesse = tipo_alvo in ("INTERESSE_SALVO", "INTERESSE")
     # status=... sentinel: manter; None: remover; str: setar
-    status_mode = status
+    status_mode = ... if interesse else status
 
     for k, v in pairs:
         lk = k.lower()
@@ -1085,7 +1109,10 @@ def _rewritar_url_vendas_periodo(
             out.append((k, str(limit)))
             seen_limit = True
         elif lk == "tipovenda":
-            if tipo_alvo:
+            if interesse:
+                out.append((k, "INTERESSE_SALVO"))
+                seen_tipo = True
+            elif tipo_alvo:
                 out.append((k, tipo_alvo))
                 seen_tipo = True
             else:
@@ -1101,22 +1128,24 @@ def _rewritar_url_vendas_periodo(
                 out.append((k, str(status_mode)))
                 seen_status = True
         elif lk == "statussecundario":
-            if tipo_alvo in ("INTERESSE_SALVO", "INTERESSE"):
-                out.append((k, STATUS_SECUNDARIO_INTERESSE))
-                seen_status_sec = True
-            else:
-                out.append((k, v))
-                seen_status_sec = True
+            out.append((k, v))
+            seen_status_sec = True
         else:
             out.append((k, v))
     if not seen_limit:
         out.append(("limit", str(limit)))
-    if tipo_alvo and not seen_tipo:
+    if interesse and not seen_tipo:
+        out.append(("tipoVenda", "INTERESSE_SALVO"))
+    elif tipo_alvo and not interesse and not seen_tipo:
         out.append(("tipoVenda", tipo_alvo))
+    if interesse and not seen_status_sec:
+        out.append(("statusSecundario", STATUS_SECUNDARIO_INTERESSE))
     if status_mode is not ... and status_mode is not None and not seen_status:
         out.append(("status", str(status_mode)))
-    if tipo_alvo in ("INTERESSE_SALVO", "INTERESSE") and not seen_status_sec:
-        out.append(("statusSecundario", STATUS_SECUNDARIO_INTERESSE))
+    # Só remove PDV/localidade residual; segmento da SPA fica.
+    if tipo_alvo:
+        drop = {"pdv", "uf", "estado", "municipio", "cidade"}
+        out = [(k, v) for k, v in out if k.lower() not in drop]
     return urlunparse(parsed._replace(query=urlencode(out)))
 def _authorization_de_request(request) -> str:
     try:
@@ -1527,34 +1556,34 @@ def _digitar_datas_drawer(page, data_inicio: date, data_fim: date) -> bool:
             except Exception:
                 readonly = False
 
+            # Sempre via setter nativo — evita Control+A na página (selecionava a tela inteira).
             valor = ""
-            if not readonly:
+            try:
+                valor = item.evaluate(
+                    """(el, v) => {
+                        el.focus();
+                        const setter = Object.getOwnPropertyDescriptor(
+                            HTMLInputElement.prototype, 'value'
+                        ).set;
+                        setter.call(el, v);
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        return el.value;
+                    }""",
+                    txt,
+                ) or ""
+            except Exception as exc:
+                logger.debug("[HISTORICO PAP] setter nativo data idx=%s: %s", idx, exc)
+
+            if not readonly and re.sub(r"\D", "", valor) != digitos:
                 try:
-                    item.click(timeout=2500)
-                    item.press("Control+a")
-                    item.press("Backspace")
-                    item.type(txt, delay=40)
-                    page.wait_for_timeout(250)
-                    valor = item.input_value(timeout=1500) or ""
+                    item.click(timeout=2000)
+                    item.fill("")
+                    item.type(txt, delay=25)
+                    page.wait_for_timeout(150)
+                    valor = item.input_value(timeout=1200) or ""
                 except Exception as exc:
                     logger.debug("[HISTORICO PAP] digitar data idx=%s: %s", idx, exc)
-
-            if re.sub(r"\D", "", valor) != digitos:
-                try:
-                    valor = item.evaluate(
-                        """(el, v) => {
-                            const setter = Object.getOwnPropertyDescriptor(
-                                HTMLInputElement.prototype, 'value'
-                            ).set;
-                            setter.call(el, v);
-                            el.dispatchEvent(new Event('input', { bubbles: true }));
-                            el.dispatchEvent(new Event('change', { bubbles: true }));
-                            return el.value;
-                        }""",
-                        txt,
-                    ) or ""
-                except Exception as exc:
-                    logger.debug("[HISTORICO PAP] setter nativo data idx=%s: %s", idx, exc)
 
             try:
                 item.evaluate("(el) => el.blur()")
@@ -1805,25 +1834,41 @@ def _disparar_vendas_via_spa_js(
     data_fim: date,
     page_n: int = 1,
     limit: int = 200,
+    tipo_crm: str | None = None,
 ) -> dict | None:
     """
     Dispara GET /vendas a partir do browser com JWT do cookie + anti-replay fresco
     (mesmo algoritmo da SPA: XOR + base64 de JSON.stringify(new Date)).
 
-    Retorna o JSON da API ou None. O page.route também pode capturar este XHR.
+    Respeita tipo_crm (VENDA / INTERESSE / PRE_VENDA). Retorna o JSON da API ou None.
     """
     if not page or not data_inicio or not data_fim:
         return None
     from crm_app.historico_pap import STATUS_LISTA_PADRAO, montar_url_vendas
 
+    tipo_api = _tipo_api_para_spa(tipo_crm) if tipo_crm else "VENDA"
+    status = _status_lista_para_tipo_api(tipo_api)
+    if status is None and tipo_api == "VENDA":
+        status = STATUS_LISTA_PADRAO
+    status_sec = (
+        STATUS_SECUNDARIO_INTERESSE
+        if tipo_api in ("INTERESSE_SALVO", "INTERESSE")
+        else None
+    )
     url = montar_url_vendas(
         data_inicio=_iso_inicio(data_inicio),
         data_fim=_iso_fim(data_fim),
         pdv="",
-        tipo_api="VENDA",
+        tipo_api=tipo_api,
         page=max(1, int(page_n or 1)),
         limit=max(1, int(limit or 200)),
-        status=STATUS_LISTA_PADRAO,
+        status=status,
+        status_secundario=status_sec,
+    )
+    logger.info(
+        "[HISTORICO PAP] XHR JS /vendas tipo=%s page=%s",
+        tipo_api,
+        page_n,
     )
     try:
         result = page.evaluate(
@@ -2123,6 +2168,72 @@ def _clicar_filtrar_no_drawer(page) -> bool:
     return False
 
 
+def _abrir_drawer_filtros(page, *, log_abrir: bool = True) -> bool:
+    """Abre o drawer Filtros se estiver fechado. Retorna True se ficou visível."""
+    if not page:
+        return False
+    if _painel_filtros_visivel(page):
+        return True
+    for sel in (
+        '#drawer-filter',
+        'button#drawer-filter',
+        'button.drawer-button',
+        'button:has-text("Filtros")',
+    ):
+        try:
+            loc = page.locator(sel).first
+            if loc.count() == 0:
+                continue
+            if log_abrir:
+                logger.info("[HISTORICO PAP] Abrindo filtros com '%s'...", sel)
+            else:
+                # Paginação: reabre sem contar como novo ciclo de Tipo/datas.
+                logger.info(
+                    "[HISTORICO PAP] Reabrindo drawer p/ paginação ('%s') — sem refazer Tipo/datas.",
+                    sel,
+                )
+            loc.click(timeout=4000, force=True)
+            page.wait_for_timeout(2200)
+            break
+        except Exception:
+            continue
+    fim_w = time.time() + 10
+    while time.time() < fim_w:
+        if _painel_filtros_visivel(page):
+            logger.info("[HISTORICO PAP] Painel de filtros visível.")
+            return True
+        try:
+            if page.locator(
+                ".MuiDrawer-root .MuiInputBase-adornedEnd input"
+            ).count() >= 2:
+                logger.info("[HISTORICO PAP] Painel detectado pelos inputs De/Até.")
+                return True
+        except Exception:
+            pass
+        page.wait_for_timeout(300)
+    logger.warning("[HISTORICO PAP] Drawer de filtros não ficou visível.")
+    return False
+
+
+def _filtrar_rapido_paginacao(page) -> bool:
+    """Reabre o drawer se preciso e clica Filtrar — sem refazer Tipo/datas.
+
+    O route.fetch reescreve page/janela. XHR forjado cai em 401 jwt malformed;
+    por isso a paginação precisa do Filtrar nativo da SPA.
+    """
+    if not page:
+        return False
+    if not _painel_filtros_visivel(page):
+        if not _abrir_drawer_filtros(page, log_abrir=False):
+            return False
+    _scroll_drawer_ate_filtrar(page)
+    if _aguardar_filtrar_habilitado(page, timeout_ms=3000) and _clicar_filtrar_no_drawer(page):
+        logger.info("[HISTORICO PAP] Filtrar (rápido, sem refazer filtros) clicado.")
+        return True
+    logger.info("[HISTORICO PAP] Filtrar rápido indisponível.")
+    return False
+
+
 def _tentar_clicar_filtrar(
     page,
     *,
@@ -2133,54 +2244,17 @@ def _tentar_clicar_filtrar(
 ) -> None:
     """Abre Filtros, escolhe Tipo (se pedido), dias no calendário, clica Filtrar DENTRO do drawer.
 
-    rapido=True só reabre o drawer e clica Filtrar: o route já reescreve período/tipo/página.
+    rapido=True: reabre o drawer se fechado e só clica Filtrar (sem refazer Tipo/datas).
+    O route já reescreve período/tipo/página — usado na paginação por janelas.
     """
     if not page:
         return
 
-    def _abrir_drawer() -> None:
-        if _painel_filtros_visivel(page):
-            return
-        for sel in (
-            '#drawer-filter',
-            'button#drawer-filter',
-            'button.drawer-button',
-            'button:has-text("Filtros")',
-        ):
-            try:
-                loc = page.locator(sel).first
-                if loc.count() == 0:
-                    continue
-                logger.info("[HISTORICO PAP] Abrindo filtros com '%s'...", sel)
-                loc.click(timeout=4000, force=True)
-                page.wait_for_timeout(2200)
-                break
-            except Exception:
-                continue
-        fim_w = time.time() + 10
-        while time.time() < fim_w:
-            if _painel_filtros_visivel(page):
-                logger.info("[HISTORICO PAP] Painel de filtros visível.")
-                return
-            try:
-                if page.locator(
-                    ".MuiDrawer-root .MuiInputBase-adornedEnd input"
-                ).count() >= 2:
-                    logger.info("[HISTORICO PAP] Painel detectado pelos inputs De/Até.")
-                    return
-            except Exception:
-                pass
-            page.wait_for_timeout(300)
-        logger.warning("[HISTORICO PAP] Drawer de filtros não ficou visível.")
-
-    _abrir_drawer()
-
     if rapido:
-        _scroll_drawer_ate_filtrar(page)
-        if _aguardar_filtrar_habilitado(page, timeout_ms=3000) and _clicar_filtrar_no_drawer(page):
-            logger.info("[HISTORICO PAP] Filtrar (rápido, sem refazer filtros) clicado.")
-            return
-        logger.info("[HISTORICO PAP] Filtrar rápido indisponível — refazendo filtros.")
+        _filtrar_rapido_paginacao(page)
+        return
+
+    _abrir_drawer_filtros(page, log_abrir=True)
 
     try:
         page.wait_for_selector(
@@ -2197,12 +2271,49 @@ def _tentar_clicar_filtrar(
         except Exception as exc:
             logger.warning("[HISTORICO PAP] Falha ao selecionar Tipo=%s: %s", tipo_crm, exc)
 
+    # PDV residual no drawer (ex.: 1068561 de filtro anterior) estreita/ zera a lista.
+    try:
+        limpou = page.evaluate(
+            """() => {
+                const root = document.querySelector('.MuiDrawer-paper, .MuiDrawer-root, .ant-drawer-open')
+                    || document;
+                const labels = [...root.querySelectorAll('label, span, p, div')];
+                const pdvLabel = labels.find((el) => {
+                    const t = (el.innerText || '').trim().toLowerCase();
+                    return t === 'pdv' || t.startsWith('pdv');
+                });
+                let input = null;
+                if (pdvLabel) {
+                    const wrap = pdvLabel.closest('.MuiFormControl-root, .ant-form-item, div') || pdvLabel.parentElement;
+                    input = wrap && wrap.querySelector('input');
+                }
+                if (!input) {
+                    input = [...root.querySelectorAll('input')].find((i) => {
+                        const ph = (i.placeholder || '').toLowerCase();
+                        const name = (i.name || i.id || '').toLowerCase();
+                        return ph.includes('pdv') || name.includes('pdv');
+                    });
+                }
+                if (!input || !input.value) return { ok: false, reason: 'sem_pdv', value: '' };
+                const prev = input.value;
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                setter.call(input, '');
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                return { ok: true, prev };
+            }"""
+        )
+        if limpou and limpou.get("ok"):
+            logger.info("[HISTORICO PAP] PDV residual limpo no drawer (era %s).", limpou.get("prev"))
+    except Exception as exc:
+        logger.debug("[HISTORICO PAP] limpar PDV drawer: %s", exc)
+
     _preencher_datas_filtro_spa(page, data_inicio, data_fim)
 
     # Garante que o drawer não fechou ao escolher datas
     if not _painel_filtros_visivel(page):
         logger.warning("[HISTORICO PAP] Drawer fechou após datas — reabrindo uma vez.")
-        _abrir_drawer()
+        _abrir_drawer_filtros(page, log_abrir=True)
         if tipo_crm:
             try:
                 _selecionar_tipo_filtro_spa(page, tipo_crm)
@@ -2264,8 +2375,12 @@ def _coletar_vendas_via_rede_spa(
 
     collected: list[dict] = []
     periodo_curto = bool(data_inicio and data_fim and data_inicio == data_fim)
-    auto_load_s = 4.0 if periodo_curto else min(12.0, timeout_ms / 1000.0)
-    filtrar_s = 12.0 if periodo_curto else min(25.0, timeout_ms / 1000.0)
+    dias_periodo = 1
+    if data_inicio and data_fim:
+        dias_periodo = max(1, (data_fim - data_inicio).days + 1)
+    auto_load_s = 3.0 if periodo_curto else min(8.0, timeout_ms / 1000.0)
+    # Períodos longos: a API demora; espera cresce com os dias (mín. 12s, máx. 45s).
+    filtrar_s = 8.0 if periodo_curto else min(45.0, max(12.0, 6.0 + dias_periodo * 2.5))
     erros: list[str] = []
     captured_auth = {"value": ""}
     # Página que o próximo /vendas da SPA deve buscar. Só requests disparados pela
@@ -2318,7 +2433,7 @@ def _coletar_vendas_via_rede_spa(
                 logger.info(
                     "[HISTORICO PAP] SPA→pap-api %s %s",
                     request.method,
-                    u[:180],
+                    u[:500],
                 )
             auth = _authorization_de_request(request)
             if auth:
@@ -2365,11 +2480,12 @@ def _coletar_vendas_via_rede_spa(
                 rewrote = True
                 logger.info(
                     "[HISTORICO PAP] route.fetch reescrevendo /vendas "
-                    "(período+limit=200 tipo=%s page=%s) → %s→%s",
+                    "(período+limit=200 tipo=%s page=%s) → %s→%s | %s",
                     tipo_api or "SPA",
                     pagina_alvo["n"] or "SPA",
                     janela_alvo["ini"] or data_inicio,
                     janela_alvo["fim"] or data_fim,
+                    (final_url or "")[:240],
                 )
 
         fetch_pendentes["n"] += 1
@@ -2418,11 +2534,29 @@ def _coletar_vendas_via_rede_spa(
                 )
             elif body is not None:
                 _append_pack(final_url, status, body)
+                n_itens, tot_api = _contar_itens_e_total_packs(
+                    [{"url": final_url, "status": status, "json": body}]
+                )
                 logger.info(
-                    "[HISTORICO PAP] Capturado /vendas via route.fetch (status=%s, rewrite=%s)",
+                    "[HISTORICO PAP] Capturado /vendas via route.fetch "
+                    "(status=%s, rewrite=%s, itens=%s, total_api=%s, url=%s)",
                     status,
                     rewrote,
+                    n_itens,
+                    tot_api,
+                    (final_url or "")[:500],
                 )
+                if n_itens == 0 and status != 200:
+                    try:
+                        keys = list(body.keys())[:12] if isinstance(body, dict) else type(body).__name__
+                    except Exception:
+                        keys = "?"
+                    logger.warning(
+                        "[HISTORICO PAP] /vendas vazio com HTTP %s — keys=%s preview=%s",
+                        status,
+                        keys,
+                        (preview or str(body)[:180]).replace("\n", " "),
+                    )
 
             route.fulfill(response=api_resp)
             return
@@ -2454,40 +2588,8 @@ def _coletar_vendas_via_rede_spa(
         page.route("**/api/portal/vendas**", _on_route)
         route_installed = True
 
-        # Atalho rápido (hoje / 1 dia + VENDA): XHR JS com JWT+anti-replay fresco.
-        # Evita reload + drawer/calendário quando o token já está no browser pós-login.
-        if data_inicio and data_fim and (not tipo_api or tipo_api == "VENDA"):
-            js_pack = _disparar_vendas_via_spa_js(
-                page,
-                data_inicio=data_inicio,
-                data_fim=data_fim,
-                page_n=1,
-                limit=200,
-            )
-            if js_pack and isinstance(js_pack.get("json"), dict):
-                _append_pack(
-                    js_pack.get("url") or "",
-                    int(js_pack.get("status") or 200),
-                    js_pack["json"],
-                )
-                matched_js = _matched()
-                ni_js, tot_js = _contar_itens_e_total_packs(matched_js or list(collected))
-                if tot_js and ni_js < tot_js:
-                    logger.info(
-                        "[HISTORICO PAP] XHR JS trouxe %s de %s — segue para paginação pela SPA.",
-                        ni_js,
-                        tot_js,
-                    )
-                elif matched_js:
-                    logger.info(
-                        "[HISTORICO PAP] Coleta rápida via XHR JS (%d pacote(s), período curto=%s)",
-                        len(matched_js),
-                        periodo_curto,
-                    )
-                    return matched_js
-                elif collected:
-                    logger.info("[HISTORICO PAP] XHR JS ok; usando pacotes mesmo fora do match estrito")
-                    return list(collected)
+        # Sem XHR JS no atalho: anti-replay forjado cai em jwt malformed (401)
+        # e só atrasa com reload. Coleta via Filtrar da SPA + route.fetch.
 
         # Sempre recarrega COM route/listeners já ativos — o login já pode ter
         # aberto o histórico e disparado /vendas antes da interceptação.
@@ -2538,19 +2640,32 @@ def _coletar_vendas_via_rede_spa(
                 seen_urls.clear()
             for pausa_429 in range(4):
                 _respeitar_limite_pap()
-                _tentar_clicar_filtrar(
-                    page,
-                    data_inicio=data_inicio,
-                    data_fim=data_fim,
-                    tipo_crm=tipo_crm,
-                    rapido=pausa_429 > 0,
-                )
+                if pausa_429 == 0:
+                    # Uma vez por tipo: abre drawer, Tipo + datas + Filtrar.
+                    _tentar_clicar_filtrar(
+                        page,
+                        data_inicio=data_inicio,
+                        data_fim=data_fim,
+                        tipo_crm=tipo_crm,
+                        rapido=False,
+                    )
+                else:
+                    # Retentativas: Filtrar rápido (reabre drawer se fechou; sem refazer Tipo).
+                    _tentar_clicar_filtrar(
+                        page,
+                        data_inicio=data_inicio,
+                        data_fim=data_fim,
+                        tipo_crm=tipo_crm,
+                        rapido=True,
+                    )
                 fim = time.time() + filtrar_s
                 while time.time() < fim and not _matched():
-                    if collected or bloqueio_ate["t"] > time.time():
-                        # rewrite pode ter falhado; se já temos pacotes no período, sai
+                    # Não abandona enquanto route.fetch ainda está em voo.
+                    if fetch_pendentes["n"] > 0:
+                        fim = max(fim, time.time() + 8.0)
+                    elif collected or bloqueio_ate["t"] > time.time():
                         break
-                    page.wait_for_timeout(250 if periodo_curto else 400)
+                    page.wait_for_timeout(250 if periodo_curto else 350)
                 if collected or bloqueio_ate["t"] <= time.time():
                     break
 
@@ -2616,12 +2731,14 @@ def _coletar_vendas_via_rede_spa(
                     janela_alvo["ini"], janela_alvo["fim"] = ini, fim
                     pagina_alvo["n"] = pg
                     inicio_pg = time.time()
+                    # Paginação/janelas: Filtrar nativo da SPA (anti-replay válido).
+                    # Reabre o drawer só se fechou; NÃO refaz Tipo/datas (route reescreve).
                     _tentar_clicar_filtrar(
                         page,
                         data_inicio=data_inicio,
                         data_fim=data_fim,
                         tipo_crm=tipo_crm,
-                        rapido=tentativa <= 1,
+                        rapido=True,
                     )
                     # Sem request → Filtrar não disparou; com request, espera a API.
                     sem_request_s = 10 if tentativa <= 1 else 20
@@ -2713,7 +2830,12 @@ def _coletar_vendas_via_rede_spa(
             logger.warning(
                 "[HISTORICO PAP] UI não trouxe /vendas — disparando XHR no browser com anti-replay fresco."
             )
-            pack = _disparar_vendas_via_spa_js(page, data_inicio=data_inicio, data_fim=data_fim)
+            pack = _disparar_vendas_via_spa_js(
+                page,
+                data_inicio=data_inicio,
+                data_fim=data_fim,
+                tipo_crm=tipo_crm,
+            )
             # Aguardar route capturar o mesmo XHR, se interceptou
             fim_js = time.time() + 8.0
             while time.time() < fim_js and not _matched() and not collected:
@@ -2756,7 +2878,7 @@ def _coletar_vendas_via_rede_spa(
             pass
 
 
-def _run_django_sync(func, timeout_seconds: int = 120):
+def _run_django_sync(func, timeout_seconds: int = 300):
     import queue
 
     import django.db
@@ -2792,13 +2914,15 @@ def _intervalo() -> float:
 
 
 def _validar_credenciais(usuario) -> Tuple[bool, str]:
-    matricula = (getattr(usuario, "matricula_pap", None) or "").strip()
-    senha = (getattr(usuario, "senha_pap", None) or "").strip()
+    from crm_app.pool_historico_pap import resolver_credencial_historico_pap
+
+    matricula, senha, fonte = resolver_credencial_historico_pap(usuario)
     if not matricula or not senha:
         return False, (
-            "O login Diretoria selecionado não tem matrícula/senha PAP. "
-            "Cadastre na Governança antes de buscar o histórico."
+            "Sem matrícula/senha para o histórico PAP. Cadastre a Conta de Serviço "
+            "«Auditoria/Histórico (Excel PAP)» na Governança (ou matrícula/senha no usuário)."
         )
+    logger.info("[HISTORICO PAP] Credencial OK matricula=%s fonte=%s", matricula[:12], fonte)
     return True, matricula
 
 
@@ -2917,8 +3041,13 @@ def criar_e_iniciar_busca(
 
     if data_fim < data_inicio:
         return None, "Data fim anterior à data início."
-    if (data_fim - data_inicio).days > MAX_DIAS_BUSCA:
-        return None, f"O intervalo máximo é {MAX_DIAS_BUSCA} dias."
+    # PAP: (fim - início).days <= 15 (ex.: 11/11→26/11). Contagem inclusiva chega a 16.
+    dias_diff = (data_fim - data_inicio).days
+    if dias_diff > MAX_DIAS_BUSCA:
+        return None, (
+            f"O PAP Nio limita o período a no máximo {MAX_DIAS_BUSCA} dias "
+            f"(diferença pedida: {dias_diff}; inclusivo: {dias_diff + 1}). Ajuste as datas."
+        )
 
     tipos_ok = tipos_solicitados(tipos)
     if "INTERESSE" in tipos_ok:
@@ -2948,10 +3077,7 @@ def criar_e_iniciar_busca(
         ok, msg = _validar_credenciais(login_pap)
         if not ok and not token_manual:
             if origem_automatica:
-                registrar_pausa_rotina_automatica(
-                    motivo=msg, login_pap=login_pap, matricula=getattr(login_pap, "matricula_pap", "") or "",
-                    senha=getattr(login_pap, "senha_pap", "") or "",
-                )
+                registrar_pausa_rotina_automatica(motivo=msg, login_pap=login_pap)
             return None, msg
 
         busca = HistoricoPapBusca.objects.create(
@@ -3213,7 +3339,10 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
     tipos = list(busca.tipos or [])
 
     # ─── PASSO 1: Capturar /vendas da própria SPA (um Filtrar por tipo) ───────────
-    tipos_loop = tipos or ["VENDA", "INTERESSE", "PRE_VENDA"]
+    # VENDA primeiro (auto-load da SPA); INTERESSE depois (Filtrar SPA + datas/limit).
+    tipos_base = tipos or ["VENDA", "INTERESSE", "PRE_VENDA"]
+    ordem = {"VENDA": 0, "INTERESSE": 1, "PRE_VENDA": 2}
+    tipos_loop = sorted(tipos_base, key=lambda t: ordem.get((t or "").upper(), 9))
     logger.info(
         "[HISTORICO PAP] Coleta via rede da SPA (sem forjar token). Tipos=%s período=%s→%s",
         tipos_loop,
@@ -3240,6 +3369,7 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
             )
         return _cb
 
+    tipos_sem_pacote: list[str] = []
     for tipo_crm in tipos_loop:
         packs = _coletar_vendas_via_rede_spa(
             page,
@@ -3253,14 +3383,17 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
         if packs:
             respostas_spa.extend(packs)
             _, tot = _contar_itens_e_total_packs(packs)
-            if tot:
-                total_api_por_tipo[tipo_crm] = tot
+            total_api_por_tipo[tipo_crm] = int(tot or 0)
             logger.info(
-                "[HISTORICO PAP] Tipo %s: %d pacote(s) SPA",
+                "[HISTORICO PAP] Tipo %s: %d pacote(s) SPA (total_api=%s)",
                 tipo_crm,
                 len(packs),
+                tot,
             )
         else:
+            tipos_sem_pacote.append(tipo_crm)
+            por_tipo.setdefault(tipo_crm, {"encontrados": 0, "novos": 0, "ignorados": 0})
+            total_api_por_tipo.setdefault(tipo_crm, 0)
             logger.warning("[HISTORICO PAP] Tipo %s: nenhum pacote SPA", tipo_crm)
 
     itens_brutos: list[dict] = []
@@ -3275,6 +3408,11 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
                 from urllib.parse import parse_qs, urlparse
                 qs = parse_qs(urlparse(pack.get("url") or "").query)
                 tipo_url = ((qs.get("tipoVenda") or qs.get("tipovenda") or [""])[0] or "").upper()
+                # Interesse da SPA vem só com statusSecundario (sem tipoVenda).
+                if not tipo_url:
+                    sec = ((qs.get("statusSecundario") or qs.get("statussecundario") or [""])[0] or "").upper()
+                    if "INTERESSE" in sec:
+                        tipo_url = "INTERESSE"
             except Exception:
                 tipo_url = ""
             for x in lista:
@@ -3362,23 +3500,63 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
     # ─── PASSO 3: Gravar no banco ────────────────────────────────────────────────
     def _processar_banco():
         nonlocal encontrados, ignorados, novos, por_tipo, novos_numeros
+        from crm_app.models import HistoricoPapPedido
+
+        numeros = [ped for ped, _, _, _ in vendas_para_processar]
+        conhecidos = set(
+            HistoricoPapPedido.objects.filter(numero_pedido__in=numeros).values_list(
+                "numero_pedido", flat=True
+            )
+        )
+        pendentes_create: list = []
+
+        def _flush_novos() -> None:
+            nonlocal pendentes_create
+            if not pendentes_create:
+                return
+            HistoricoPapPedido.objects.bulk_create(pendentes_create, ignore_conflicts=True)
+            pendentes_create = []
+
         for ped, t_api, pdv_venda, v in vendas_para_processar:
             encontrados += 1
             if t_api not in por_tipo:
                 por_tipo[t_api] = {"encontrados": 0, "novos": 0, "ignorados": 0}
             por_tipo[t_api]["encontrados"] += 1
-            if _pedido_conhecido(ped):
+            if ped in conhecidos:
                 _atualizar_payload_existente(ped, t_api, pdv_venda, v)
                 ignorados += 1
                 por_tipo[t_api]["ignorados"] += 1
-            else:
-                if _salvar_novo(ped, t_api, pdv_venda, v):
-                    novos += 1
-                    por_tipo[t_api]["novos"] += 1
-                    novos_numeros.append(ped)
-                else:
-                    ignorados += 1
-                    por_tipo[t_api]["ignorados"] += 1
+                continue
+
+            data_criacao = None
+            raw = v.get("dataCriacao") if isinstance(v, dict) else None
+            if raw:
+                try:
+                    data_criacao = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                except Exception:
+                    data_criacao = None
+            pendentes_create.append(
+                HistoricoPapPedido(
+                    numero_pedido=ped,
+                    tipo_venda=t_api,
+                    pdv=pdv_venda or "",
+                    status=str(
+                        (v or {}).get("status")
+                        or (v or {}).get("chaveStatusPrimario")
+                        or ""
+                    )[:80],
+                    data_criacao_pap=data_criacao,
+                    origem="api",
+                    payload=v if isinstance(v, dict) else {"numeroPedido": ped},
+                )
+            )
+            conhecidos.add(ped)
+            novos += 1
+            por_tipo[t_api]["novos"] += 1
+            novos_numeros.append(ped)
+            if len(pendentes_create) >= 200:
+                _flush_novos()
+        _flush_novos()
 
     _run_django_sync(_processar_banco)
 
@@ -3397,6 +3575,13 @@ def _executar_loop_busca(page, *, busca_id: int, busca) -> tuple[bool, str]:
         coletados = (por_tipo.get(tipo_crm) or {}).get("encontrados", 0)
         if total_api and coletados < total_api:
             incompletos.append(f"{tipo_crm}: {coletados} de {total_api}")
+    if tipos_sem_pacote:
+        msg += f" Sem retorno SPA para: {', '.join(tipos_sem_pacote)}."
+        logger.warning(
+            "[HISTORICO PAP] Busca %s sem pacote para tipos=%s",
+            busca_id,
+            tipos_sem_pacote,
+        )
     if incompletos:
         msg += " ATENÇÃO: coleta incompleta (" + "; ".join(incompletos) + ") — rode a busca de novo."
         if _pap_limitou_recentemente():
@@ -3446,9 +3631,16 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
     login_pap = _run_django_sync(lambda: User.objects.get(pk=login_pap_id))
     busca = _run_django_sync(lambda: HistoricoPapBusca.objects.get(pk=busca_id))
 
-    matricula = (getattr(login_pap, "matricula_pap", None) or "").strip()
-    senha = (getattr(login_pap, "senha_pap", None) or "").strip()
+    from crm_app.pool_historico_pap import resolver_credencial_historico_pap
+
+    matricula, senha, fonte_credencial = resolver_credencial_historico_pap(login_pap)
     origem_automatica = bool((busca.relatorio_json or {}).get("origem_automatica"))
+    logger.info(
+        "[HISTORICO PAP] Busca #%s usando matricula=%s fonte=%s",
+        busca_id,
+        matricula[:12],
+        fonte_credencial,
+    )
 
     def _marcar_erro(mensagem: str) -> None:
         _run_django_sync(
@@ -3501,9 +3693,22 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         capture_screenshots=False,
         # Mesmo caminho rápido do crédito: evita networkidle/sleeps longos (~10–20s).
         optimize_for_credit=True,
+        # Sem slow_mo: histórico não precisa “mostrar clique”; reduz minutos por busca.
+        slow_mo=0,
         url_pos_login=PAP_HISTORICO_URL,
     )
     automacao.tela_login_chave = f"historico-{busca_id}"
+
+    def _persistir_sessao() -> None:
+        """Regrava storage_state para o próximo ciclo não precisar logar de novo."""
+        try:
+            path = getattr(automacao, "storage_state_path", None)
+            ctx = getattr(automacao, "context", None)
+            if path and ctx:
+                ctx.storage_state(path=path)
+                logger.info("[HISTORICO PAP] Sessão salva em %s", path)
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] Não foi possível salvar sessão: %s", exc)
 
     def _rodar_com_sessao(*, forcar_login_fresco: bool) -> tuple[bool, str]:
         if forcar_login_fresco and hasattr(automacao, "storage_state_path"):
@@ -3524,8 +3729,11 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
 
         limpar_cooldown_login(matricula)
         limpar_pausa_rotina_automatica(motivo="login_ok")
+        _persistir_sessao()
         try:
-            return _executar_loop_busca(page=automacao.page, busca_id=busca_id, busca=busca)
+            ok_loop = _executar_loop_busca(page=automacao.page, busca_id=busca_id, busca=busca)
+            _persistir_sessao()
+            return ok_loop
         except SessaoPapExpirada as exc:
             logger.warning(
                 "[HISTORICO PAP] Busca %s: sessão caiu no login (%s) — relogin único e recomeço.",
@@ -3538,8 +3746,11 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         ok_relogin, msg_relogin = automacao.garantir_sessao_ativa(PAP_HISTORICO_URL)
         if not ok_relogin:
             return False, f"A sessão do PAP expirou durante a busca e o novo login não funcionou: {msg_relogin}"
+        _persistir_sessao()
         try:
-            return _executar_loop_busca(page=automacao.page, busca_id=busca_id, busca=busca)
+            ok_loop = _executar_loop_busca(page=automacao.page, busca_id=busca_id, busca=busca)
+            _persistir_sessao()
+            return ok_loop
         except SessaoPapExpirada:
             return False, (
                 "A sessão do PAP expirou de novo logo após o novo login (tela de login Microsoft). "
@@ -3576,6 +3787,10 @@ def _executar_busca(busca_id: int, login_pap_id: int, token_manual: str = ""):
         _marcar_erro(err_msg or "Falha na busca do histórico PAP.")
         _pausar_se_falha_login(err_msg or "")
     finally:
+        try:
+            _persistir_sessao()
+        except Exception:
+            pass
         try:
             automacao._fechar_sessao()
         except Exception:

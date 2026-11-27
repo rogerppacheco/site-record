@@ -47,9 +47,11 @@ SEGMENTO_PADRAO = "EMPRESARIAL,VAREJO"
 PAP_API_VENDAS = "https://pap-api.niointernet.com.br/api/portal/vendas"
 PAP_HISTORICO_URL = "https://pap.niointernet.com.br/administrativo/historico"
 LIMIT_PAGINA = 15
-MAX_DIAS_BUSCA = 93
-# O PAP só libera Tipo=Interesse nos últimos 30 dias (calendário e API).
-MAX_DIAS_RETROATIVOS_INTERESSE = 30
+# Regra Nio (nov/2026): (dataFim - dataInicio).days <= 15 no Histórico.
+# Ex.: 11/11→26/11 (diff=15, 16 dias de calendário) — a UI lista ~523 interesses.
+MAX_DIAS_BUSCA = 15
+# Interesse: mesmo teto de diferença (início mínimo = hoje - 15).
+MAX_DIAS_RETROATIVOS_INTERESSE = 15
 
 PEDIDO_COLUNAS = (
     "pedido",
@@ -501,6 +503,7 @@ def montar_url_vendas(
     limit: int = LIMIT_PAGINA,
     status: str | None = STATUS_LISTA_PADRAO,
     segmento: str = SEGMENTO_PADRAO,
+    status_secundario: str | None = None,
 ) -> str:
     from urllib.parse import urlencode
 
@@ -516,4 +519,6 @@ def montar_url_vendas(
         params["pdv"] = (pdv or "").strip()
     if status:
         params["status"] = status
+    if status_secundario:
+        params["statusSecundario"] = status_secundario
     return f"{PAP_API_VENDAS}?{urlencode(params)}"

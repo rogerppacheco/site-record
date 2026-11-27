@@ -2,8 +2,8 @@
 
 Uso:
   python manage.py buscar_historico_pap_funil
-  python manage.py buscar_historico_pap_funil --dias 7
-  python manage.py buscar_historico_pap_funil --dias 30 --tipos INTERESSE,VENDA
+  python manage.py buscar_historico_pap_funil --dias 14
+  python manage.py buscar_historico_pap_funil --dias 15 --tipos INTERESSE,VENDA
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from django.utils import timezone
 from crm_app.historico_pap import MAX_DIAS_BUSCA, MAX_DIAS_RETROATIVOS_INTERESSE, tipos_solicitados
 
 
-# Padrão da rotina diária (06:00): janela curta o suficiente para Interest+Venda.
-DIAS_ROTINA_PADRAO = 7
+# Rotina diária (06:00): janela máxima do PAP = hoje - 15 (ex.: 11/11→26/11).
+DIAS_ROTINA_PADRAO = MAX_DIAS_BUSCA
 TIPOS_ROTINA_PADRAO = ("INTERESSE", "VENDA")
 
 
@@ -28,7 +28,7 @@ class Command(BaseCommand):
             "--dias",
             type=int,
             default=DIAS_ROTINA_PADRAO,
-            help=f"Dias para trás (padrão {DIAS_ROTINA_PADRAO}; máx. {MAX_DIAS_BUSCA}).",
+            help=f"Dias para trás a partir de hoje (padrão {DIAS_ROTINA_PADRAO}; início = hoje - N).",
         )
         parser.add_argument(
             "--tipos",
@@ -60,13 +60,13 @@ class Command(BaseCommand):
         if not tipos:
             tipos = list(TIPOS_ROTINA_PADRAO)
 
+        # Nio: (fim-início).days <= 15 → --dias 15 = hoje-15.
         dias = max(1, min(int(options["dias"] or DIAS_ROTINA_PADRAO), MAX_DIAS_BUSCA))
-        # Interesse no PAP só libera ~30 dias — corta a janela se pedirem mais.
         if "INTERESSE" in tipos:
             dias = min(dias, MAX_DIAS_RETROATIVOS_INTERESSE)
 
         fim = timezone.localdate()
-        inicio = fim - timedelta(days=dias - 1)
+        inicio = fim - timedelta(days=dias)
 
         andamento = busca_em_andamento()
         if andamento:

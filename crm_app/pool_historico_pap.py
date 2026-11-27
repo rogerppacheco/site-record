@@ -1,5 +1,11 @@
 # crm_app/pool_historico_pap.py
-"""Pool de logins Diretoria para busca do histórico PAP no Funil."""
+"""Pool de logins Diretoria para busca do histórico PAP no Funil.
+
+A senha efetiva vem preferencialmente da Conta de Serviço
+(Governança → Contas de Serviço → Auditoria/Histórico Excel PAP).
+O usuário Diretoria/BackOffice com “Autorizar histórico PAP” só identifica
+quem pode reservar o slot e aparece em `login_pap` da busca.
+"""
 from __future__ import annotations
 
 import logging
@@ -10,9 +16,12 @@ from django.db.models import Q
 
 logger = logging.getLogger(__name__)
 
+FUNCAO_HISTORICO_VENDAS = "HISTORICO_VENDAS"
+
 MSG_NENHUM_LOGIN = (
     "Nenhum usuário Diretoria/BackOffice está liberado para buscar o histórico PAP. "
-    "Marque “Autorizar busca do histórico PAP” na Governança e cadastre matrícula/senha PAP."
+    "Marque “Autorizar busca do histórico PAP” na Governança e cadastre matrícula PAP "
+    "(a senha deve estar na Conta de Serviço Auditoria/Histórico)."
 )
 
 MSG_TODOS_EM_USO = (
@@ -20,15 +29,57 @@ MSG_TODOS_EM_USO = (
     "Aguarde a busca atual terminar ou libere outro login com a mesma permissão."
 )
 
+MSG_SEM_ROBO = (
+    "Nenhuma Conta de Serviço ativa com função «Auditoria/Histórico (Excel PAP)». "
+    "Cadastre matrícula/senha em Governança → Contas de Serviço (Robôs)."
+)
+
+
+def obter_credencial_robo_historico(matricula: str = "") -> Optional[tuple[str, str, int]]:
+    """Credencial da Conta de Serviço HISTORICO_VENDAS.
+
+    Retorna (matricula, senha, robo_id) ou None.
+    """
+    from usuarios.models import CredencialRoboPAP
+
+    qs = CredencialRoboPAP.objects.filter(funcao=FUNCAO_HISTORICO_VENDAS, ativo=True)
+    mat = (matricula or "").strip()
+    if mat:
+        qs = qs.filter(matricula__iexact=mat)
+    robo = qs.exclude(Q(matricula__isnull=True) | Q(matricula__exact="")).exclude(
+        Q(senha__isnull=True) | Q(senha__exact="")
+    ).order_by("id").first()
+    if not robo:
+        return None
+    return ((robo.matricula or "").strip(), (robo.senha or "").strip(), int(robo.id))
+
+
+def resolver_credencial_historico_pap(usuario) -> tuple[str, str, str]:
+    """Resolve matrícula/senha para a busca.
+
+    Prefere Conta de Serviço HISTORICO_VENDAS (mesma matrícula do usuário, senão
+    qualquer ativa). Fallback: matricula_pap/senha_pap do usuário.
+    Retorna (matricula, senha, fonte).
+    """
+    mat_user = (getattr(usuario, "matricula_pap", None) or "").strip()
+    robo = obter_credencial_robo_historico(mat_user) or (
+        obter_credencial_robo_historico("") if mat_user else None
+    )
+    if not robo and not mat_user:
+        robo = obter_credencial_robo_historico("")
+    if robo:
+        return robo[0], robo[1], f"robo_historico#{robo[2]}"
+    senha_user = (getattr(usuario, "senha_pap", None) or "").strip()
+    return mat_user, senha_user, f"usuario#{getattr(usuario, 'id', '')}"
+
 
 def _tem_credencial(usuario) -> bool:
-    return bool((getattr(usuario, "matricula_pap", None) or "").strip()) and bool(
-        (getattr(usuario, "senha_pap", None) or "").strip()
-    )
+    mat, senha, _fonte = resolver_credencial_historico_pap(usuario)
+    return bool(mat) and bool(senha)
 
 
 def candidatos_historico_pap():
-    """Usuários Diretoria ou BackOffice ativos com flag + matrícula/senha PAP."""
+    """Usuários Diretoria ou BackOffice ativos com flag + matrícula PAP."""
     from usuarios.models import Usuario
 
     return (
@@ -42,7 +93,6 @@ def candidatos_historico_pap():
             | Q(groups__name__iexact="BackOffice")
         )
         .exclude(Q(matricula_pap__isnull=True) | Q(matricula_pap__exact=""))
-        .exclude(Q(senha_pap__isnull=True) | Q(senha_pap__exact=""))
         .select_related("perfil")
         .distinct()
         .order_by("username")
@@ -105,9 +155,13 @@ def obter_login_historico_pap() -> Tuple[Optional["Usuario"], Optional[str]]:
         return None, MSG_TODOS_EM_USO
 
     escolhido = livres[0]
+    mat, _senha, fonte = resolver_credencial_historico_pap(escolhido)
+    if not mat:
+        return None, MSG_SEM_ROBO
     logger.info(
-        "[POOL HIST PAP] Login %s reservado (matricula=%s)",
+        "[POOL HIST PAP] Login %s reservado (matricula=%s fonte=%s)",
         escolhido.username,
-        (escolhido.matricula_pap or "")[:12],
+        mat[:12],
+        fonte,
     )
     return escolhido, None

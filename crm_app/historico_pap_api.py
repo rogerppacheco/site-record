@@ -624,9 +624,10 @@ class FunilHistoricoPapImportarView(APIView):
                     status=400,
                 )
         elif periodo == "mes":
-            data_inicio = date(hoje.year, hoje.month, 1)
+            # PAP Nio: (fim-início).days <= 15 → janela máxima (ex.: 11/11→26/11).
+            data_inicio = hoje - timedelta(days=MAX_DIAS_BUSCA)
         elif periodo == "semana":
-            data_inicio = hoje - timedelta(days=7)
+            data_inicio = hoje - timedelta(days=6)
         elif periodo == "ontem":
             data_inicio = hoje - timedelta(days=1)
         else:

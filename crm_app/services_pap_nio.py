@@ -1228,13 +1228,12 @@ class PAPNioAutomation:
             return False
         if self._ler_valor_campo(seletor).lower() == esperado.lower():
             return True
-        teclado = getattr(self.page, "keyboard", None)
-        if teclado is None:
-            return False
         try:
-            self.page.click(seletor, timeout=5000)
-            teclado.press("Control+A")
-            teclado.type(esperado, delay=15)
+            # Locator.press evita Control+A no body (selecionava a página inteira).
+            loc = self.page.locator(seletor).first
+            loc.click(timeout=5000)
+            loc.fill("")
+            loc.type(esperado, delay=15)
         except Exception:
             return False
         return self._ler_valor_campo(seletor).lower() == esperado.lower()
