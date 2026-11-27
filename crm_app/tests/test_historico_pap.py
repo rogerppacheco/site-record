@@ -66,6 +66,64 @@ class HistoricoPapNormalizaTest(SimpleTestCase):
         )
 
 
+class ProcessamentoAssincronoTest(SimpleTestCase):
+    def test_absolutizar_e_meta(self):
+        from crm_app.historico_pap_service import (
+            _absolutizar_url_pap_api,
+            _meta_processamento_assincrono,
+            _resposta_processamento_pronta,
+            _aguardar_resultado_processamento_assincrono,
+        )
+
+        self.assertEqual(
+            _absolutizar_url_pap_api("api/portal/processamento/abc"),
+            "https://pap-api.niointernet.com.br/api/portal/processamento/abc",
+        )
+        ticket = {
+            "processamentoAssincrono": {
+                "id": "abc",
+                "urlStatus": "api/portal/processamento/abc",
+                "pooling": 100,
+                "expiresIn": 30,
+            }
+        }
+        self.assertIsNotNone(_meta_processamento_assincrono(ticket))
+        self.assertEqual(_resposta_processamento_pronta(ticket), (False, None))
+
+        pronto = {"total": 2, "data": [{"numeroPedido": "1"}, {"numeroPedido": "2"}]}
+        ok, payload = _resposta_processamento_pronta(pronto)
+        self.assertTrue(ok)
+        self.assertEqual(payload, pronto)
+
+        calls = {"n": 0}
+
+        def fake_get(url, headers):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                return 202, ticket
+            return 200, pronto
+
+        out = _aguardar_resultado_processamento_assincrono(
+            request_get=fake_get,
+            body_inicial=ticket,
+            headers={"Authorization": "Bearer x"},
+            timeout_s=5,
+        )
+        self.assertEqual(out, pronto)
+        self.assertGreaterEqual(calls["n"], 3)
+
+    def test_unwrap_resultado_concluido(self):
+        from crm_app.historico_pap_service import _resposta_processamento_pronta
+
+        body = {
+            "status": "CONCLUIDO",
+            "resultado": {"total": 1, "data": [{"numeroPedido": "9"}]},
+        }
+        ok, payload = _resposta_processamento_pronta(body)
+        self.assertTrue(ok)
+        self.assertEqual(payload["total"], 1)
+
+
 class HistoricoPapDedupTest(TestCase):
     def test_registrar_exportacao_nao_repete(self):
         from crm_app.historico_pap_service import registrar_exportacao

@@ -1203,6 +1203,22 @@ def _coletar_via_auth_capturado(
                 body = resp.json()
             except Exception:
                 body = None
+            if body is not None and _meta_processamento_assincrono(body) is not None:
+                logger.info(
+                    "[HISTORICO PAP] Reconsulta page=%s HTTP %s assíncrono — polling…",
+                    page_n,
+                    status,
+                )
+                body = _resolver_body_vendas_se_assincrono(
+                    page, body, auth_ou_headers=headers, timeout_s=120.0
+                )
+                if body is None:
+                    logger.warning(
+                        "[HISTORICO PAP] Reconsulta page=%s: timeout processamentoAssincrono",
+                        page_n,
+                    )
+                    break
+                status = 200
             if status < 200 or status >= 300 or body is None:
                 preview = ""
                 try:
@@ -1825,6 +1841,264 @@ def _contar_itens_e_total_packs(packs: list[dict]) -> tuple[int, int | None]:
             if total is None or ti > total:
                 total = ti
     return n, total
+
+
+PAP_API_BASE = "https://pap-api.niointernet.com.br"
+_STATUS_PROC_PRONTO = frozenset({
+    "CONCLUIDO", "CONCLUIDA", "DONE", "FINISHED", "COMPLETED", "SUCESSO", "SUCCESS", "OK", "READY",
+})
+_STATUS_PROC_PENDENTE = frozenset({
+    "PENDENTE", "PROCESSANDO", "PENDING", "PROCESSING", "EM_PROCESSAMENTO", "IN_PROGRESS", "QUEUED",
+})
+_STATUS_PROC_ERRO = frozenset({"ERRO", "ERROR", "FAILED", "FALHA", "CANCELADO", "CANCELLED"})
+
+
+def _absolutizar_url_pap_api(url_ou_path: str) -> str:
+    u = (url_ou_path or "").strip()
+    if not u:
+        return ""
+    if u.startswith("http://") or u.startswith("https://"):
+        return u
+    return f"{PAP_API_BASE}/{u.lstrip('/')}"
+
+
+def _meta_processamento_assincrono(body: Any) -> dict | None:
+    """Extrai ticket HTTP 202 do PAP (`processamentoAssincrono`)."""
+    if not isinstance(body, dict):
+        return None
+    pa = body.get("processamentoAssincrono") or body.get("processamento_assincrono")
+    if not isinstance(pa, dict):
+        return None
+    if pa.get("urlStatus") or pa.get("url") or pa.get("id"):
+        return pa
+    return None
+
+
+def _desembrulhar_resultado_processamento(body: Any) -> Any:
+    if not isinstance(body, dict):
+        return body
+    for key in ("resultado", "result", "response", "conteudo", "payload"):
+        inner = body.get(key)
+        if isinstance(inner, list):
+            return {"data": {"vendas": inner, "total": len(inner)}}
+        if isinstance(inner, dict):
+            lista, tot = extrair_lista_api(inner)
+            if lista or tot or any(k in inner for k in ("data", "vendas", "pedidos", "content", "items", "total")):
+                return inner
+    data = body.get("data")
+    if isinstance(data, dict) and _meta_processamento_assincrono(data) is None:
+        lista, tot = extrair_lista_api(data)
+        if lista or tot or any(k in data for k in ("vendas", "pedidos", "content", "items", "total")):
+            return data
+    return body
+
+
+def _status_texto_processamento(body: Any, meta: dict | None = None) -> str:
+    candidatos: list[Any] = []
+    if isinstance(meta, dict):
+        candidatos.extend([meta.get("status"), meta.get("situacao"), meta.get("state")])
+    if isinstance(body, dict):
+        candidatos.extend([body.get("status"), body.get("situacao"), body.get("state")])
+    for raw in candidatos:
+        s = str(raw or "").strip().upper()
+        if s:
+            return s
+    return ""
+
+
+def _resposta_processamento_pronta(body: Any) -> tuple[bool, Any]:
+    """
+    Decide se o poll de /processamento já devolveu o payload de /vendas.
+
+    Retorna (pronto, corpo_para_coleta). Se ainda pendente: (False, None).
+    """
+    if body is None:
+        return False, None
+    if isinstance(body, list):
+        return True, body
+    if not isinstance(body, dict):
+        return False, None
+
+    meta = _meta_processamento_assincrono(body)
+    st = _status_texto_processamento(body, meta)
+    if st in _STATUS_PROC_ERRO:
+        return True, body
+    if st in _STATUS_PROC_PENDENTE:
+        return False, None
+
+    lista, tot = extrair_lista_api(body)
+    if lista or (
+        meta is None
+        and any(k in body for k in ("data", "vendas", "pedidos", "content", "items", "total", "totalElements"))
+    ):
+        return True, body
+
+    if st in _STATUS_PROC_PRONTO:
+        return True, _desembrulhar_resultado_processamento(body)
+
+    if meta is not None and not lista:
+        # Ainda é só o ticket (ou poll devolveu o mesmo envelope).
+        return False, None
+
+    unwrapped = _desembrulhar_resultado_processamento(body)
+    if unwrapped is not body:
+        return _resposta_processamento_pronta(unwrapped)
+
+    return False, None
+
+
+def _timeout_processamento_s(meta: dict, default_s: float = 120.0) -> float:
+    """Usa expiresIn do ticket quando houver (segundos ou ms)."""
+    raw = meta.get("expiresIn") if isinstance(meta, dict) else None
+    try:
+        exp = float(raw)
+    except (TypeError, ValueError):
+        return default_s
+    if exp <= 0:
+        return default_s
+    # Valores grandes (>1000) costumam ser milissegundos.
+    segundos = exp / 1000.0 if exp > 1000 else exp
+    return min(max(segundos, 5.0), max(default_s, 180.0))
+
+
+def _aguardar_resultado_processamento_assincrono(
+    *,
+    request_get,
+    body_inicial: Any,
+    headers: dict | None = None,
+    timeout_s: float = 120.0,
+) -> Any | None:
+    """
+    Faz poll em urlStatus até o PAP devolver a lista de vendas.
+
+    `request_get(url, headers) -> (status_http, body_json|None)`.
+    """
+    meta = _meta_processamento_assincrono(body_inicial)
+    if not meta:
+        return body_inicial
+
+    path = meta.get("urlStatus") or meta.get("url") or ""
+    if not path and meta.get("id"):
+        path = f"api/portal/processamento/{meta.get('id')}"
+    url = _absolutizar_url_pap_api(str(path))
+    if not url:
+        logger.warning("[HISTORICO PAP] processamentoAssincrono sem urlStatus/id.")
+        return None
+
+    try:
+        pooling_ms = int(meta.get("pooling") or meta.get("polling") or 1000)
+    except (TypeError, ValueError):
+        pooling_ms = 1000
+    pooling_ms = min(max(pooling_ms, 400), 5000)
+    limite_s = _timeout_processamento_s(meta, default_s=timeout_s)
+    hdrs = dict(headers or {})
+    t0 = time.time()
+    logger.info(
+        "[HISTORICO PAP] Poll processamentoAssincrono id=%s pooling=%sms timeout=%.0fs → %s",
+        meta.get("id") or "—",
+        pooling_ms,
+        limite_s,
+        url[:220],
+    )
+
+    ultimo_preview = ""
+    while time.time() - t0 < limite_s:
+        try:
+            status, body = request_get(url, hdrs)
+        except Exception as exc:
+            logger.warning("[HISTORICO PAP] Poll processamento falhou: %s", exc)
+            time.sleep(pooling_ms / 1000.0)
+            continue
+
+        pronto, payload = _resposta_processamento_pronta(body)
+        if pronto:
+            lista, tot = extrair_lista_api(payload)
+            logger.info(
+                "[HISTORICO PAP] Processamento pronto em %.1fs (HTTP %s, itens=%s total=%s)",
+                time.time() - t0,
+                status,
+                len(lista or []),
+                tot,
+            )
+            return payload
+
+        preview = ""
+        try:
+            preview = str(body)[:160] if body is not None else f"HTTP {status}"
+        except Exception:
+            preview = f"HTTP {status}"
+        if preview != ultimo_preview:
+            logger.info(
+                "[HISTORICO PAP] Processamento pendente (%.0fs): HTTP %s preview=%s",
+                time.time() - t0,
+                status,
+                preview.replace("\n", " "),
+            )
+            ultimo_preview = preview
+        time.sleep(pooling_ms / 1000.0)
+
+    logger.warning(
+        "[HISTORICO PAP] Timeout (%.0fs) aguardando processamentoAssincrono %s",
+        limite_s,
+        meta.get("id") or url[:120],
+    )
+    return None
+
+
+def _headers_poll_pap(auth_ou_headers) -> dict[str, str]:
+    """Monta headers mínimos para poll do /processamento (reusa Authorization da SPA)."""
+    if isinstance(auth_ou_headers, dict):
+        auth = (
+            auth_ou_headers.get("authorization")
+            or auth_ou_headers.get("Authorization")
+            or ""
+        )
+        accept = auth_ou_headers.get("accept") or auth_ou_headers.get("Accept") or "application/json, text/plain, */*"
+    else:
+        auth = str(auth_ou_headers or "")
+        accept = "application/json, text/plain, */*"
+    auth = (auth or "").strip()
+    out = {
+        "Accept": accept,
+        "Origin": "https://pap.niointernet.com.br",
+        "Referer": "https://pap.niointernet.com.br/administrativo/historico",
+    }
+    if auth:
+        out["Authorization"] = auth
+    return out
+
+
+def _request_get_pap_json(page, url: str, headers: dict) -> tuple[int, Any]:
+    """GET via APIRequestContext do Playwright; devolve (status, json|None)."""
+    resp = page.context.request.get(url, headers=headers, timeout=60000)
+    status = int(resp.status or 0)
+    body = None
+    try:
+        body = resp.json()
+    except Exception:
+        try:
+            text = resp.text()
+            body = json.loads(text) if text else None
+        except Exception:
+            body = None
+    return status, body
+
+
+def _resolver_body_vendas_se_assincrono(page, body: Any, *, auth_ou_headers, timeout_s: float = 120.0) -> Any | None:
+    """Se body for ticket 202, faz poll; senão devolve o próprio body."""
+    if _meta_processamento_assincrono(body) is None:
+        return body
+    headers = _headers_poll_pap(auth_ou_headers)
+
+    def _get(url: str, hdrs: dict) -> tuple[int, Any]:
+        return _request_get_pap_json(page, url, hdrs)
+
+    return _aguardar_resultado_processamento_assincrono(
+        request_get=_get,
+        body_inicial=body,
+        headers=headers,
+        timeout_s=timeout_s,
+    )
 
 
 def _disparar_vendas_via_spa_js(
@@ -2525,6 +2799,34 @@ def _coletar_vendas_via_rede_spa(
                     espera,
                     cabecalhos_limite,
                 )
+
+            # HTTP 202 + processamentoAssincrono: poll urlStatus antes de gravar o pacote
+            # (senão a coleta termina com total_api=0 “silencioso”).
+            resolvido_async = False
+            if body is not None and _meta_processamento_assincrono(body) is not None:
+                logger.info(
+                    "[HISTORICO PAP] /vendas HTTP %s com processamentoAssincrono — aguardando resultado…",
+                    status,
+                )
+                resolvido = _resolver_body_vendas_se_assincrono(
+                    page,
+                    body,
+                    auth_ou_headers=dict(req.headers or {}),
+                    timeout_s=max(90.0, filtrar_s * 2),
+                )
+                if resolvido is None:
+                    erros.append("processamentoAssincrono: timeout sem resultado")
+                    logger.warning(
+                        "[HISTORICO PAP] /vendas assíncrono sem resultado — keys=%s preview=%s",
+                        list(body.keys())[:12] if isinstance(body, dict) else "?",
+                        (preview or str(body)[:180]).replace("\n", " "),
+                    )
+                    route.fulfill(response=api_resp)
+                    return
+                body = resolvido
+                status = 200
+                resolvido_async = True
+
             if status < 200 or status >= 300:
                 erros.append(f"HTTP {status}: {preview}")
                 logger.warning(
@@ -2558,7 +2860,17 @@ def _coletar_vendas_via_rede_spa(
                         (preview or str(body)[:180]).replace("\n", " "),
                     )
 
-            route.fulfill(response=api_resp)
+            if resolvido_async and body is not None:
+                try:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(body, ensure_ascii=False),
+                    )
+                except Exception:
+                    route.fulfill(response=api_resp)
+            else:
+                route.fulfill(response=api_resp)
             return
         except Exception as exc:
             logger.warning(
